@@ -1,0 +1,141 @@
+import Foundation
+
+@MainActor
+@Observable
+final class CommentsViewModel {
+    /// 评论接口用 av 号定位视频，所以这里存的是 aid 而不是 bvid。
+    let aid: Int
+
+    private(set) var comments: [Comment] = []
+    /// 一级评论总条数，底部标签栏上显示的就是它。
+    private(set) var totalCount = 0
+    private(set) var isLoading = false
+    private(set) var isLoadingMore = false
+    private(set) var errorMessage: String?
+    private(set) var hasMore = true
+
+    private var nextPage = 1
+
+    init(aid: Int) {
+        self.aid = aid
+    }
+
+    /// 第一次切到评论页时调用。已经加载过就直接返回，
+    /// 所以在简介和评论之间来回切换不会重复请求。
+    func loadInitial() async {
+        guard comments.isEmpty, !isLoading, errorMessage == nil else { return }
+        isLoading = true
+        await loadNextPage()
+        isLoading = false
+    }
+
+    /// 快滚到列表末尾时翻下一页。
+    func loadMoreIfNeeded(current comment: Comment) async {
+        guard hasMore, !isLoading, !isLoadingMore else { return }
+        // 只有接近末尾的那几条才触发翻页，中间的评论滚过时不会重复请求。
+        guard comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
+        isLoadingMore = true
+        await loadNextPage()
+        isLoadingMore = false
+    }
+
+    // MARK: - 楼中楼
+
+    /// 已经点开楼中楼的那些评论。
+    private(set) var expandedCommentIDs: Set<Int> = []
+    /// 评论 rpid -> 已经完整取回的回复。没有取过的用接口自带的预览。
+    private(set) var loadedReplies: [Int: [Comment]] = [:]
+    private(set) var loadingReplyIDs: Set<Int> = []
+    private(set) var moreRepliesIDs: Set<Int> = []
+    private var replyNextPage: [Int: Int] = [:]
+
+    func isExpanded(_ comment: Comment) -> Bool {
+        expandedCommentIDs.contains(comment.id)
+    }
+
+    func isLoadingReplies(_ comment: Comment) -> Bool {
+        loadingReplyIDs.contains(comment.id)
+    }
+
+    func hasMoreReplies(_ comment: Comment) -> Bool {
+        moreRepliesIDs.contains(comment.id)
+    }
+
+    /// 展开时用完整列表，收起时用接口跟着一级评论一起返回的那几条预览。
+    func replies(for comment: Comment) -> [Comment] {
+        if isExpanded(comment), let loaded = loadedReplies[comment.id] {
+            return loaded
+        }
+        return comment.replies ?? []
+    }
+
+    /// 点「查看全部回复」/「收起」。第一次展开时才请求，之后再展开直接用缓存。
+    func toggleReplies(for comment: Comment) async {
+        guard !expandedCommentIDs.contains(comment.id) else {
+            expandedCommentIDs.remove(comment.id)
+            return
+        }
+        expandedCommentIDs.insert(comment.id)
+        guard loadedReplies[comment.id] == nil else { return }
+        await loadMoreReplies(for: comment)
+    }
+
+    func loadMoreReplies(for comment: Comment) async {
+        let rootId = comment.id
+        guard !loadingReplyIDs.contains(rootId) else { return }
+        loadingReplyIDs.insert(rootId)
+        defer { loadingReplyIDs.remove(rootId) }
+
+        let page = replyNextPage[rootId] ?? 1
+        do {
+            let result = try await BiliAPI.commentReplies(aid: aid, rootId: rootId, page: page)
+            let incoming = result.replies ?? []
+            var all = loadedReplies[rootId] ?? []
+            let existingIDs = Set(all.map(\.id))
+            all.append(contentsOf: incoming.filter { !existingIDs.contains($0.id) })
+            loadedReplies[rootId] = all
+            replyNextPage[rootId] = page + 1
+
+            if incoming.isEmpty || all.count >= result.page.count {
+                moreRepliesIDs.remove(rootId)
+            } else {
+                moreRepliesIDs.insert(rootId)
+            }
+        } catch {
+            // 楼中楼取不到时保留已有内容，不把整条评论变成错误状态。
+            moreRepliesIDs.remove(rootId)
+            if loadedReplies[rootId] == nil {
+                loadedReplies[rootId] = comment.replies ?? []
+            }
+        }
+    }
+
+    func retry() async {
+        errorMessage = nil
+        hasMore = true
+        await loadInitial()
+    }
+
+    private func loadNextPage() async {
+        do {
+            let page = try await BiliAPI.comments(aid: aid, page: nextPage)
+            totalCount = page.page.count
+            let newComments = page.replies ?? []
+            guard !newComments.isEmpty else {
+                // 接口在没有更多内容时返回空数组，用它作为结束条件。
+                hasMore = false
+                return
+            }
+            // 热门排序下相邻两页偶尔会返回同一条评论，重复的会让 ForEach 的 id 冲突。
+            let existingIDs = Set(comments.map(\.id))
+            comments.append(contentsOf: newComments.filter { !existingIDs.contains($0.id) })
+            nextPage += 1
+            if comments.count >= totalCount {
+                hasMore = false
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            hasMore = false
+        }
+    }
+}
