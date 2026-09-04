@@ -8,8 +8,11 @@ import SwiftUI
 @MainActor
 @Observable
 final class NowPlayingStore {
-    /// 播放器配置由根状态注入，后续设置页可以替换它而不用接触播放内核。
-    let playbackConfiguration: VideoPlaybackConfiguration
+    /// 播放配置每次新建播放器时从系统设置现读（见 `VideoPlaybackConfiguration.current`），
+    /// 设置页改完清晰度，下一个打开的视频就生效。
+    var playbackConfiguration: VideoPlaybackConfiguration {
+        VideoPlaybackConfiguration.current
+    }
 
     /// 当前视频。为 nil 表示当前没有打开的视频页。
     private(set) var route: VideoDetailRoute?
@@ -40,7 +43,8 @@ final class NowPlayingStore {
     private var playerLoadTask: Task<Void, Never>?
 
     init(configuration: VideoPlaybackConfiguration = .fastStart) {
-        playbackConfiguration = configuration
+        // configuration 形参保留给测试注入使用；线上路径每次都读 `.current`。
+        _ = configuration
     }
 
     var canGoBack: Bool { !history.isEmpty }

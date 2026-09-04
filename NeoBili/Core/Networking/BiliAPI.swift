@@ -102,6 +102,86 @@ enum BiliAPI {
         return SearchResultPage(result: response.result?.filter { !$0.bvid.isEmpty }, vVoucher: nil)
     }
 
+    // MARK: - 账号（登录后）
+
+    /// 当前登录用户的个人信息。nav 对访客返回 code 0 但 `isLogin == false`，
+    /// Cookie 失效时返回 -101，由 `AccountStore` 据此清理本地凭据。
+    static func myProfile() async throws -> AccountProfilePayload {
+        try await APIClient.shared.get(path: "x/web-interface/nav")
+    }
+
+    /// 自己创建的收藏夹列表（含默认收藏夹）。
+    /// `list-all` 的 data 是 `{"count": N, "list": [...]}`，不是裸数组。
+    static func favoriteFolders(ownerMid: Int) async throws -> [FavFolder] {
+        let payload: FavFolderList = try await APIClient.shared.get(
+            path: "x/v3/fav/folder/created/list-all",
+            params: ["up_mid": String(ownerMid)]
+        )
+        return payload.list ?? []
+    }
+
+    static func favoriteVideos(folderID: Int, page: Int) async throws -> FavResourceList {
+        try await APIClient.shared.get(
+            path: "x/v3/fav/resource/list",
+            params: [
+                "media_id": String(folderID),
+                "pn": String(page),
+                "ps": "20",
+                "order": "mtime",
+                "platform": "web"
+            ]
+        )
+    }
+
+    /// 从收藏夹取消收藏。服务端要求表单里带 csrf（bili_jct）。
+    static func removeFavorite(folderID: Int, aid: Int) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/v3/fav/resource/deal",
+            form: [
+                "rid": String(aid),
+                "type": "2",
+                "remove_media_ids": String(folderID),
+                "csrf": csrf
+            ]
+        )
+    }
+
+    /// 观看历史按游标翻页：首页 max=0 / view_at=0，之后带上上一页返回的游标。
+    static func historyPage(max: Int, viewAt: Int) async throws -> HistoryCursorPage {
+        try await APIClient.shared.get(
+            path: "x/web-interface/history/cursor",
+            params: [
+                "type": "archive",
+                "ps": "20",
+                "max": String(max),
+                "view_at": String(viewAt)
+            ]
+        )
+    }
+
+    /// 删除单条观看历史。
+    static func deleteHistory(kid: String) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/web-interface/history/del",
+            form: ["kid": kid, "csrf": csrf]
+        )
+    }
+
+    static func watchLaterList() async throws -> WatchLaterPage {
+        try await APIClient.shared.get(path: "x/v2/history/toview")
+    }
+
+    /// 移出稍后再看。
+    static func removeWatchLater(aid: Int) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/v2/history/toview/del",
+            form: ["aid": String(aid), "csrf": csrf]
+        )
+    }
+
     /// Requests a DASH-first play manifest for `bvid`/`cid`.
     ///
     /// mpv 能直接打开 DASH 拆开的视频、音频两条流（靠 `edl://` 伪协议拼成一个

@@ -3,20 +3,43 @@ import Foundation
 /// Manages the anonymous device identity (buvid3/buvid4) that Bilibili's web
 /// API expects as a cookie on every request, even for guest (logged-out) traffic.
 /// Without it, some endpoints apply stricter risk-control throttling.
+///
+/// 登录凭据（SESSDATA / bili_jct / DedeUserID）也走这里拼进同一个 Cookie 头：
+/// 拿到之后所有接口——推荐、评论、收藏、历史——不需要任何额外改动就能获得
+/// 登录态。凭据本体存 Keychain（见 `KeychainStore`），重启 App 后自动恢复。
 actor DeviceIdentity {
     static let shared = DeviceIdentity()
 
     private let defaults = UserDefaults.standard
     private let buvid3Key = "neobili.buvid3"
     private let buvid4Key = "neobili.buvid4"
+    private static let sessdataKeychainKey = "neobili.sessdata"
+    private static let biliJctKeychainKey = "neobili.bili_jct"
+    private static let dedeUserIDKeychainKey = "neobili.dedeuserid"
 
     private var cachedBuvid3: String?
     private var cachedBuvid4: String?
+    private var cachedSessdata: String?
+    private var cachedBiliJct: String?
+    private var cachedDedeUserID: String?
     private var fetchTask: Task<Void, Never>?
 
     private init() {
         cachedBuvid3 = defaults.string(forKey: buvid3Key)
         cachedBuvid4 = defaults.string(forKey: buvid4Key)
+        cachedSessdata = KeychainStore.string(for: Self.sessdataKeychainKey)
+        cachedBiliJct = KeychainStore.string(for: Self.biliJctKeychainKey)
+        cachedDedeUserID = KeychainStore.string(for: Self.dedeUserIDKeychainKey)
+    }
+
+    /// 当前是否带着可用的登录凭据（只看本地有没有 Cookie，不验证有效性）。
+    var isLoggedIn: Bool {
+        cachedSessdata != nil
+    }
+
+    /// POST 类写操作（取消收藏、删除历史等）要求的 csrf 令牌，即 bili_jct。
+    var csrfToken: String? {
+        cachedBiliJct
     }
 
     /// App 启动时就把设备标识取回来，之后的接口请求不必再等它。
@@ -34,9 +57,33 @@ actor DeviceIdentity {
             startFetchIfNeeded()
         }
         var parts: [String] = []
+        if let sessdata = cachedSessdata { parts.append("SESSDATA=\(sessdata)") }
+        if let biliJct = cachedBiliJct { parts.append("bili_jct=\(biliJct)") }
+        if let dedeUserID = cachedDedeUserID { parts.append("DedeUserID=\(dedeUserID)") }
         if let b3 = cachedBuvid3 { parts.append("buvid3=\(b3)") }
         if let b4 = cachedBuvid4 { parts.append("buvid4=\(b4)") }
         return parts.joined(separator: "; ")
+    }
+
+    /// 扫码或密码登录成功后写入凭据。SESSDATA 的值本来就是 URL 转义过的
+    ///（含 %2C 等），原样存、原样发即可，不要再做一次编解码。
+    func setLoginCookies(sessdata: String, biliJct: String, dedeUserID: String) {
+        cachedSessdata = sessdata
+        cachedBiliJct = biliJct
+        cachedDedeUserID = dedeUserID
+        KeychainStore.set(sessdata, for: Self.sessdataKeychainKey)
+        KeychainStore.set(biliJct, for: Self.biliJctKeychainKey)
+        KeychainStore.set(dedeUserID, for: Self.dedeUserIDKeychainKey)
+    }
+
+    /// 退出登录或凭据失效时清除。
+    func clearLoginCookies() {
+        cachedSessdata = nil
+        cachedBiliJct = nil
+        cachedDedeUserID = nil
+        KeychainStore.set(nil, for: Self.sessdataKeychainKey)
+        KeychainStore.set(nil, for: Self.biliJctKeychainKey)
+        KeychainStore.set(nil, for: Self.dedeUserIDKeychainKey)
     }
 
     private func startFetchIfNeeded() {

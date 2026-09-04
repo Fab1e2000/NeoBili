@@ -65,18 +65,50 @@ struct APIClient {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
+        await applyCommonHeaders(to: &request)
+        // 搜索等接口会校验自己的网页来源。调用方最后覆盖默认值，既让普通
+        // API 继续共用全站 Referer，也不必为了一个特殊接口复制整段传输代码。
+        for (name, value) in additionalHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        return try await perform(request)
+    }
+
+    /// Performs a POST with a form-encoded body. Used by the logged-in write
+    /// operations (取消收藏、删除历史、移出稍后再看)： response data carries
+    /// nothing useful beyond the envelope's `code`/`message`, so it is decoded
+    /// into an empty placeholder and only the business code is checked.
+    func post(
+        path: String,
+        form: [String: String] = [:]
+    ) async throws {
+        guard let url = URL(string: Self.baseURL.appendingPathComponent(path).absoluteString) else {
+            throw BiliAPIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        await applyCommonHeaders(to: &request)
+
+        var components = URLComponents()
+        components.queryItems = form.map { URLQueryItem(name: $0.key, value: $0.value) }
+        request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
+
+        let _: BiliEmptyData = try await perform(request)
+    }
+
+    /// Cookie（含登录态）与 UA/Referer 是每个请求的公共部分，集中在这里拼。
+    private func applyCommonHeaders(to request: inout URLRequest) async {
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
         let cookie = await DeviceIdentity.shared.cookieHeader()
         if !cookie.isEmpty {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
-        // 搜索等接口会校验自己的网页来源。调用方最后覆盖默认值，既让普通
-        // API 继续共用全站 Referer，也不必为了一个特殊接口复制整段传输代码。
-        for (name, value) in additionalHeaders {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
+    }
 
+    private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -99,3 +131,6 @@ struct APIClient {
         }
     }
 }
+
+/// POST 写操作响应的 data 基本没有内容（`{}`）；占位类型让解码忽略全部字段。
+struct BiliEmptyData: Decodable {}

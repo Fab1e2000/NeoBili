@@ -52,6 +52,7 @@ struct VideoListCard: View {
     let coverURL: URL?
     let title: String
     let author: String
+    /// 播放量。传负数表示该页面没有播放数据（历史、稍后再看），整段隐藏。
     let playCount: Int
     /// 已经排好版的时长文字，例如 `12:34`。留空则不显示这一项。
     let durationText: String
@@ -79,9 +80,11 @@ struct VideoListCard: View {
                     .lineLimit(1)
 
                 HStack(spacing: VideoListCardLayout.metadataSpacing) {
-                    HStack(spacing: VideoListCardLayout.metadataIconTextSpacing) {
-                        Image(systemName: "play.rectangle")
-                        Text(playCount.biliCountText)
+                    if playCount >= 0 {
+                        HStack(spacing: VideoListCardLayout.metadataIconTextSpacing) {
+                            Image(systemName: "play.rectangle")
+                            Text(playCount.biliCountText)
+                        }
                     }
 
                     if !durationText.isEmpty {
