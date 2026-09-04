@@ -44,14 +44,16 @@ actor WBISigner {
     /// current mixin key.
     func sign(params: [String: String]) async throws -> [String: String] {
         let mixinKey = try await mixinKeyValue()
-        var signedParams = params
+        // 过滤要在签名之前做，而且**过滤后的值也要原样发出去**：
+        // 摘要是按这些值算的，发别的就对不上了。
+        var signedParams = params.mapValues(sanitize)
         let wts = String(Int(Date().timeIntervalSince1970))
         signedParams["wts"] = wts
 
         let sortedKeys = signedParams.keys.sorted()
         let queryString = sortedKeys
             .map { key -> String in
-                let value = sanitize(signedParams[key] ?? "")
+                let value = signedParams[key] ?? ""
                 let encoded = value.addingPercentEncoding(withAllowedCharacters: .wbiQueryValueAllowed) ?? value
                 return "\(key)=\(encoded)"
             }
@@ -165,13 +167,18 @@ actor WBISigner {
     }
 }
 
-private extension CharacterSet {
-    /// RFC 3986 unreserved set plus the characters Bilibili's signer leaves
-    /// unescaped; conservative enough for query values that already had
-    /// `!'()*` filtered out.
+extension CharacterSet {
+    /// 网页端给查询值转义时用的是 `encodeURIComponent`：除了字母数字和
+    /// `-_.~`，其余一律转成 %XX。服务端校验 w_rid 时也按这套规则重新拼一遍
+    /// 查询串，所以**签名和真正发出去的 URL 必须都用它**。
+    ///
+    /// 之前这里是 `urlQueryAllowed` 去掉 `&=+`，会把 `, : / ; @ $ ?` 原样留下。
+    /// 于是像 `dm_img_inter={"ds":[],"wh":[0,0,0]…}` 这种带逗号冒号的参数，
+    /// 我们算出的摘要和服务端算的对不上——宽松的接口（取流）照给数据，严格的
+    /// 接口（UP 主投稿列表）直接回 -403。
     static let wbiQueryValueAllowed: CharacterSet = {
-        var set = CharacterSet.urlQueryAllowed
-        set.remove(charactersIn: "&=+")
+        var set = CharacterSet.alphanumerics
+        set.insert(charactersIn: "-_.~")
         return set
     }()
 }

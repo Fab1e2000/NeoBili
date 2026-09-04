@@ -23,9 +23,58 @@ struct CoverThumbnail: View {
 struct VideoCoverThumbnail: View {
     let url: URL?
     let duration: String
-    let playCount: Int
+    /// 已经排好版的播放量。推荐流给的是裸数字，走 `playCount` 那个构造器；
+    /// 关注页的动态流给的本来就是「1.2万」这样的成品文字，原样传进来。
+    let playText: String
     var aspectRatio: CGFloat = 16.0 / 9.0
     var cornerRadius: CGFloat = 6
+    /// 下面两个角单独控制。首页卡片的封面下缘紧贴文字区，圆角会在那里
+    /// 割出一道缺口，所以传 0；不传就和上面两个角一样。
+    var bottomCornerRadius: CGFloat?
+
+    init(
+        url: URL?,
+        duration: String,
+        playText: String,
+        aspectRatio: CGFloat = 16.0 / 9.0,
+        cornerRadius: CGFloat = 6,
+        bottomCornerRadius: CGFloat? = nil
+    ) {
+        self.url = url
+        self.duration = duration
+        self.playText = playText
+        self.aspectRatio = aspectRatio
+        self.cornerRadius = cornerRadius
+        self.bottomCornerRadius = bottomCornerRadius
+    }
+
+    init(
+        url: URL?,
+        duration: String,
+        playCount: Int,
+        aspectRatio: CGFloat = 16.0 / 9.0,
+        cornerRadius: CGFloat = 6,
+        bottomCornerRadius: CGFloat? = nil
+    ) {
+        self.init(
+            url: url,
+            duration: duration,
+            playText: playCount.biliCountText,
+            aspectRatio: aspectRatio,
+            cornerRadius: cornerRadius,
+            bottomCornerRadius: bottomCornerRadius
+        )
+    }
+
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: cornerRadius,
+            bottomLeadingRadius: bottomCornerRadius ?? cornerRadius,
+            bottomTrailingRadius: bottomCornerRadius ?? cornerRadius,
+            topTrailingRadius: cornerRadius,
+            style: .continuous
+        )
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -44,9 +93,11 @@ struct VideoCoverThumbnail: View {
                 }
 
             HStack(spacing: 6) {
-                HStack(spacing: 2) {
-                    Image(systemName: "play.rectangle")
-                    Text(playCount.biliCountText)
+                if !playText.isEmpty {
+                    HStack(spacing: 2) {
+                        Image(systemName: "play.rectangle")
+                        Text(playText)
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -61,7 +112,7 @@ struct VideoCoverThumbnail: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 6)
         }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .clipShape(shape)
     }
 }
 

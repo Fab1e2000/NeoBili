@@ -66,7 +66,7 @@ enum BiliPassport {
     /// Set-Cookie 才会带上 SESSDATA 等凭据）。
     static func pollQRCode(_ qrcodeKey: String) async throws -> QRCodePollOutcome {
         let request = try makeRequest(path: "x/passport-login/web/qrcode/poll", query: ["qrcode_key": qrcodeKey])
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await send(request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
         }
@@ -153,7 +153,7 @@ enum BiliPassport {
         request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = AppSigner.queryString(from: params).data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await send(request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
         }
@@ -229,7 +229,7 @@ enum BiliPassport {
         request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = AppSigner.queryString(from: params).data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await send(request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
         }
@@ -309,7 +309,7 @@ enum BiliPassport {
         ]
         request.httpBody = Self.formEncoded(form).data(using: .utf8)
 
-        let (envelope, response) = try await send(request)
+        let (envelope, response) = try await sendEnvelope(request)
         guard (200...299).contains(response.statusCode) else {
             throw PassportError.invalidResponse
         }
@@ -341,9 +341,53 @@ enum BiliPassport {
         return request
     }
 
+    /// 登录相关请求的统一出口：不让系统的共享 Cookie 罐插手，并且对
+    /// 「连接被中断」这类抖动补发一次。
+    ///
+    /// iOS 复用 HTTP/2 长连接时，服务端如果已经悄悄关掉了连接，正在发的请求
+    /// 会以 `-1005 networkConnectionLost`（就是那句 connection lost）失败。
+    /// GET 系统会自己重发，POST 不会——它不是幂等操作。而扫码那条 App 链路
+    /// 从生成到轮询全是 POST，于是一次抖动就把整个登录流程判了死刑。
+    ///
+    /// 关闭自动 Cookie 还有一层用意：登录态由我们自己保管（Keychain + 手写
+    /// Cookie 头），共享罐里若留着上一次登录的 SESSDATA，会被系统自动贴到
+    /// 登录请求上，让服务端看到一个自相矛盾的会话。
+    private static func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        var request = request
+        request.httpShouldHandleCookies = false
+        do {
+            return try await URLSession.shared.data(for: request)
+        } catch let error as URLError where isTransient(error) {
+            try await Task.sleep(for: .milliseconds(400))
+            return try await URLSession.shared.data(for: request)
+        }
+    }
+
+    /// 这次失败是不是网络抖动（重发一次就可能成功），而不是服务端的业务拒绝。
+    static func isTransient(_ error: Error) -> Bool {
+        guard let error = error as? URLError else { return false }
+        switch error.code {
+        case .networkConnectionLost, .timedOut, .cannotConnectToHost,
+             .cannotFindHost, .dnsLookupFailed, .notConnectedToInternet:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// 登录失败时给用户看的一句话。URLError 的系统文案是英文的（「The network
+    /// connection was lost.」），对用户既看不懂也没有下一步动作。
+    static func failureText(for error: Error) -> String {
+        guard let urlError = error as? URLError else { return error.localizedDescription }
+        if isTransient(urlError) {
+            return "网络连接不稳定，请稍后再试（\(urlError.code.rawValue)）"
+        }
+        return "网络请求失败（\(urlError.code.rawValue)）"
+    }
+
     /// 只关心 envelope 的请求（扫码轮询、密码登录）走这里，响应头要单独保留。
-    private static func send(_ request: URLRequest) async throws -> (Envelope, HTTPURLResponse) {
-        let (data, response) = try await URLSession.shared.data(for: request)
+    private static func sendEnvelope(_ request: URLRequest) async throws -> (Envelope, HTTPURLResponse) {
+        let (data, response) = try await send(request)
         guard let http = response as? HTTPURLResponse else {
             throw PassportError.invalidResponse
         }
@@ -372,7 +416,7 @@ enum BiliPassport {
     /// 常规 GET：解出强类型的 data 字段。
     private static func get<Response: Decodable>(path: String, query: [String: String] = [:]) async throws -> Response {
         let request = try makeRequest(path: path, query: query)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await send(request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
         }

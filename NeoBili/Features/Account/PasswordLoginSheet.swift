@@ -124,7 +124,7 @@ struct PasswordLoginSheet: View {
             )
         } catch {
             statusText = nil
-            errorMessage = error.localizedDescription
+            errorMessage = BiliPassport.failureText(for: error)
         }
     }
 
@@ -146,7 +146,7 @@ struct PasswordLoginSheet: View {
             dismiss()
         } catch {
             statusText = nil
-            errorMessage = error.localizedDescription
+            errorMessage = BiliPassport.failureText(for: error)
         }
     }
 }

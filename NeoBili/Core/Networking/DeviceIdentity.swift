@@ -101,6 +101,20 @@ actor DeviceIdentity {
         KeychainStore.set(nil, for: Self.biliJctKeychainKey)
         KeychainStore.set(nil, for: Self.dedeUserIDKeychainKey)
         KeychainStore.set(nil, for: Self.accessKeyKeychainKey)
+        Self.purgeSharedCookieJar()
+    }
+
+    /// 把系统共享 Cookie 罐里的 B 站 Cookie 也删掉。
+    ///
+    /// 登录接口的响应带着 `Set-Cookie`，URLSession 会顺手把它们存进
+    /// `HTTPCookieStorage.shared`。我们自己只清 Keychain 的话，共享罐里那份
+    /// SESSDATA 还在，退出登录就不彻底：界面已经是未登录，请求却仍可能带着
+    /// 旧会话出去，重新登录时新旧凭据还会撞在一起。
+    private static func purgeSharedCookieJar() {
+        let storage = HTTPCookieStorage.shared
+        for cookie in storage.cookies ?? [] where cookie.domain.contains("bilibili.com") {
+            storage.deleteCookie(cookie)
+        }
     }
 
     private func startFetchIfNeeded() {

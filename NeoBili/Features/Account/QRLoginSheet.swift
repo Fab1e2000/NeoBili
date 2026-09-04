@@ -169,8 +169,24 @@ struct QRLoginSheet: View {
             qrImage = Self.makeQRCodeImage(codeContent)
             phase = .waiting
 
+            // 轮询期间的一次网络抖动不该让整次登录失败：连着失败几次才放弃。
+            var consecutiveFailures = 0
+
             while !Task.isCancelled {
-                switch try await poll(channel) {
+                let outcome: BiliPassport.QRCodePollOutcome
+                do {
+                    outcome = try await poll(channel)
+                    consecutiveFailures = 0
+                } catch is CancellationError {
+                    return
+                } catch {
+                    consecutiveFailures += 1
+                    guard BiliPassport.isTransient(error), consecutiveFailures < 5 else { throw error }
+                    try await Task.sleep(for: .seconds(2))
+                    continue
+                }
+
+                switch outcome {
                 case .waiting:
                     phase = .waiting
                 case .scanned:
@@ -190,7 +206,7 @@ struct QRLoginSheet: View {
         } catch is CancellationError {
             // 页面关闭属于正常取消。
         } catch {
-            phase = .failed(error.localizedDescription)
+            phase = .failed(BiliPassport.failureText(for: error))
         }
     }
 

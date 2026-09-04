@@ -50,17 +50,18 @@ enum BiliAPI {
         return items.compactMap(\.asVideoSummary)
     }
 
-    /// 视频评论。
+    /// 评论列表。
     ///
-    /// `oid` 要传 av 号（`aid`）而不是 bvid，`type: 1` 表示这是视频稿件的评论区。
+    /// `oid` + `type` 一起定位一个评论区：视频传 av 号和 `type: 1`，动态传
+    /// `comment_id_str` 和它自己的 `comment_type`（图文 11、纯文字 17）。
     /// `sort: 1` 是按点赞数排序，也就是网页端默认的「热门」。
     /// 每条一级评论会顺带返回最多 3 条楼中楼，展示它们不需要再发请求。
-    static func comments(aid: Int, page: Int) async throws -> CommentPage {
+    static func comments(oid: Int, type: Int, page: Int) async throws -> CommentPage {
         try await APIClient.shared.get(
             path: "x/v2/reply",
             params: [
-                "type": "1",
-                "oid": String(aid),
+                "type": String(type),
+                "oid": String(oid),
                 "pn": String(page),
                 "ps": "20",
                 "sort": "1"
@@ -71,12 +72,12 @@ enum BiliAPI {
     /// 展开某条评论下的全部回复（楼中楼）。`root` 传那条一级评论的 `rpid`。
     ///
     /// 和一级评论不同，这个接口对未登录用户没有条数限制，可以正常一页页翻。
-    static func commentReplies(aid: Int, rootId: Int, page: Int) async throws -> CommentReplyPage {
+    static func commentReplies(oid: Int, type: Int, rootId: Int, page: Int) async throws -> CommentReplyPage {
         try await APIClient.shared.get(
             path: "x/v2/reply/reply",
             params: [
-                "type": "1",
-                "oid": String(aid),
+                "type": String(type),
+                "oid": String(oid),
                 "root": String(rootId),
                 "pn": String(page),
                 "ps": "20"
@@ -100,6 +101,167 @@ enum BiliAPI {
         // video 分类里仍可能混入课堂推广卡，它们没有 bvid，不能进入普通
         // 视频详情页；同时过滤后可避免多个空字符串破坏 SwiftUI 的列表 ID。
         return SearchResultPage(result: response.result?.filter { !$0.bvid.isEmpty }, vVoucher: nil)
+    }
+
+    /// 输入过程中的候选词。
+    ///
+    /// 这个接口在 s.search.bilibili.com 上，返回体也没有站内那层
+    /// `{code, message, data}` 信封：候选词直接挂在 `result.tag` 上，而且
+    /// 一个都没命中时 `code` 会是 3、`result` 退化成空数组。所以这里走
+    /// `getRaw`，由 `SearchSuggestPayload` 自己宽松地解。
+    static func searchSuggestions(term: String) async throws -> [SearchSuggestion] {
+        var components = URLComponents(string: "https://s.search.bilibili.com/main/suggest")!
+        components.queryItems = [
+            URLQueryItem(name: "term", value: term),
+            URLQueryItem(name: "main_ver", value: "v1"),
+            // 传空值即可，服务端仍会在 name 里加高亮标签，我们只用 value。
+            URLQueryItem(name: "highlight", value: "")
+        ]
+        guard let url = components.url else { throw BiliAPIError.invalidURL }
+
+        let payload: SearchSuggestPayload = try await APIClient.shared.getRaw(
+            url: url,
+            additionalHeaders: SearchRequest.headers(keyword: term)
+        )
+        return payload.suggestions
+    }
+
+    // MARK: - 关注（动态）
+
+    /// 动态页顶上那一排关注的 UP 主，附带「有没有更新」用来画小红点。
+    /// 未登录时接口直接回 -101，由调用方转成登录提示。
+    static func followedUps() async throws -> [FollowedUp] {
+        let payload: DynamicPortalPayload = try await APIClient.shared.get(
+            path: "x/polymer/web-dynamic/v1/portal",
+            params: ["web_location": "333.1365"],
+            additionalHeaders: DynamicRequest.headers
+        )
+        return payload.upList ?? []
+    }
+
+    /// 关注的 UP 主的动态。
+    ///
+    /// `type=all` 把视频投稿、纯文字、图文都取回来（转发、直播预约这些由
+    /// `DynamicEntry` 那一层过滤掉）。翻页用的是上一页返回的 `offset` 游标
+    /// 而不是页码，`page` 只是给服务端做统计；第一页不传 offset。
+    static func followedDynamics(page: Int, offset: String?) async throws -> DynamicFeedPage {
+        var params = [
+            "timezone_offset": "-480",
+            "type": "all",
+            "platform": "web",
+            "features": "itemOpusStyle",
+            "page": String(page),
+            "web_location": "333.1365"
+        ]
+        if let offset, !offset.isEmpty {
+            params["offset"] = offset
+        }
+        return try await APIClient.shared.get(
+            path: "x/polymer/web-dynamic/v1/feed/all",
+            params: params,
+            additionalHeaders: DynamicRequest.headers
+        )
+    }
+
+    /// 某个 UP 主自己的动态。结构和关注流完全一样，只是换了个端点。
+    static func spaceDynamics(hostMid: Int, offset: String?) async throws -> DynamicFeedPage {
+        var params = [
+            "host_mid": String(hostMid),
+            "timezone_offset": "-480",
+            "platform": "web",
+            "features": "itemOpusStyle",
+            "web_location": "333.999"
+        ]
+        if let offset, !offset.isEmpty {
+            params["offset"] = offset
+        }
+        return try await APIClient.shared.get(
+            path: "x/polymer/web-dynamic/v1/feed/space",
+            params: params,
+            additionalHeaders: DynamicRequest.headers
+        )
+    }
+
+    /// 给动态点赞 / 取消点赞。`up` 传 1 是点赞，2 是取消。
+    static func likeDynamic(id: String, like: Bool) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/dynamic/feed/dyn/thumb",
+            form: [
+                "dyn_id_str": id,
+                "up": like ? "1" : "2",
+                "csrf": csrf
+            ],
+            additionalHeaders: DynamicRequest.headers
+        )
+    }
+
+    /// UP 主空间页头部要的那一堆信息：头像、头图、签名、等级、大会员，
+    /// 以及粉丝 / 关注 / 获赞三个数字和「我有没有关注他」。
+    ///
+    /// 走的是不需要 WBI 的 `card` 接口——`space/wbi/acc/info` 风控严得多，
+    /// 而这里要的字段它基本都有。唯一拿不到的是 IP 属地，那一项直接不显示。
+    static func spaceCard(mid: Int) async throws -> SpaceCard {
+        // 头图和名片是两个接口：`card` 给的 `space.l_img` 绝大多数账号都是
+        // B 站那张默认图，客户端里看到的那张自定义头图在 `acc/info` 的
+        // `top_photo` 上。后者风控更严，所以只作尽力而为——拿不到就退回默认图。
+        async let topPhoto = try? spaceTopPhoto(mid: mid)
+
+        let payload: SpaceCardPayload = try await APIClient.shared.get(
+            path: "x/web-interface/card",
+            params: ["mid": String(mid), "photo": "true"]
+        )
+        return payload.asSpaceCard(mid: mid, banner: await topPhoto ?? nil)
+    }
+
+    /// 空间页顶部那张自定义头图。风控挡下来时抛错，由调用方忽略。
+    private static func spaceTopPhoto(mid: Int) async throws -> String? {
+        var params = [
+            "mid": String(mid),
+            "platform": "web",
+            "token": "",
+            "from_spmid": "",
+            "web_location": "1550101"
+        ]
+        params.merge(fingerprintParams()) { current, _ in current }
+
+        let info: SpaceAccountInfo = try await APIClient.shared.get(
+            path: "x/space/wbi/acc/info",
+            params: params,
+            requiresWBI: true,
+            additionalHeaders: [
+                "Origin": "https://space.bilibili.com",
+                "Referer": "https://space.bilibili.com/\(mid)"
+            ]
+        )
+        return info.topPhoto
+    }
+
+    /// 某个 UP 主的投稿列表（空间页「投稿」那一栏）。
+    ///
+    /// 走 WBI 签名，并且要带上和取流同一组浏览器指纹参数：缺了它们，
+    /// 连续翻几页之后就会被风控挡下（-352）。
+    static func spaceVideos(mid: Int, page: Int) async throws -> SpaceVideoPage {
+        var params = [
+            "mid": String(mid),
+            "pn": String(page),
+            "ps": "30",
+            "index": "1",
+            "order": "pubdate",
+            "order_avoided": "true",
+            "platform": "web",
+            "web_location": "1550101"
+        ]
+        params.merge(fingerprintParams()) { current, _ in current }
+        return try await APIClient.shared.get(
+            path: "x/space/wbi/arc/search",
+            params: params,
+            requiresWBI: true,
+            additionalHeaders: [
+                "Origin": "https://space.bilibili.com",
+                "Referer": "https://space.bilibili.com/\(mid)/video"
+            ]
+        )
     }
 
     // MARK: - 账号（登录后）
@@ -293,14 +455,14 @@ enum BiliAPI {
         )
     }
 
-    /// 给评论点赞 / 取消点赞。`oid` 传视频的 avid，`type: 1` 表示视频稿件的评论区。
-    static func likeComment(aid: Int, rpid: Int, like: Bool) async throws {
+    /// 给评论点赞 / 取消点赞。`oid` 和 `type` 的含义与拉取评论时相同。
+    static func likeComment(oid: Int, type: Int, rpid: Int, like: Bool) async throws {
         let csrf = await DeviceIdentity.shared.csrfToken ?? ""
         try await APIClient.shared.post(
             path: "x/v2/reply/action",
             form: [
-                "type": "1",
-                "oid": String(aid),
+                "type": String(type),
+                "oid": String(oid),
                 "rpid": String(rpid),
                 "action": like ? "1" : "0",
                 "csrf": csrf
@@ -427,13 +589,22 @@ enum BiliAPI {
     /// `gaia_source` 和 `isGaiaAvoided` 直接对应风控系统；三个 `dm_` 字段是网页
     /// 播放器上报的浏览器指纹，网页端每次都会带上随机值，缺了就不像真实浏览器。
     private static func riskControlParams() -> [String: String] {
-        [
+        var params = [
             "gaia_source": "pre-load",
             "isGaiaAvoided": "true",
             "web_location": "1315873",
             // 未登录也能拿到较高画质。
             "try_look": "1",
-            "voice_balance": "0",
+            "voice_balance": "0"
+        ]
+        params.merge(fingerprintParams()) { current, _ in current }
+        return params
+    }
+
+    /// 网页播放器上报的那几个浏览器指纹字段。取流和空间投稿列表都要带，
+    /// 所以单独拆出来共用。
+    private static func fingerprintParams() -> [String: String] {
+        [
             "dm_img_list": "[]",
             "dm_img_str": randomFingerprint(minimumBytes: 16, maximumBytes: 64),
             "dm_cover_img_str": randomFingerprint(minimumBytes: 32, maximumBytes: 128),
@@ -623,5 +794,64 @@ enum SearchRequest {
             "Origin": "https://search.bilibili.com",
             "Referer": components.url?.absoluteString ?? "https://search.bilibili.com/video"
         ]
+    }
+}
+
+/// 搜索联想的响应。没有命中任何候选词时 `result` 会从对象退化成空数组，
+/// 按对象硬解会直接抛错，所以这里解不出来就当作「没有候选词」。
+struct SearchSuggestPayload: Decodable {
+    let suggestions: [SearchSuggestion]
+
+    private enum CodingKeys: String, CodingKey {
+        case result
+    }
+
+    private struct ResultBody: Decodable {
+        let tag: [SearchSuggestion]?
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let tags = (try? container.decode(ResultBody.self, forKey: .result))?.tag ?? []
+        // 同一个词偶尔会出现两次，去重后才能直接当 ForEach 的标识用。
+        var seen = Set<String>()
+        suggestions = tags.filter { !$0.value.isEmpty && seen.insert($0.value).inserted }
+    }
+}
+
+/// 一条搜索候选词。`name` 里带 `<em>` 高亮标签，展示只用 `value`。
+struct SearchSuggestion: Decodable, Identifiable, Hashable {
+    let value: String
+
+    var id: String { value }
+
+    enum CodingKeys: String, CodingKey {
+        case value
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        value = try container.decodeIfPresent(String.self, forKey: .value) ?? ""
+    }
+
+    init(value: String) {
+        self.value = value
+    }
+}
+
+/// 动态接口会校验来源站点，来源要写成动态站而不是全站默认的 www。
+enum DynamicRequest {
+    static let headers = [
+        "Origin": "https://t.bilibili.com",
+        "Referer": "https://t.bilibili.com/"
+    ]
+}
+
+/// `x/space/wbi/acc/info` 里现在只用得上头图这一项。
+private struct SpaceAccountInfo: Decodable {
+    let topPhoto: String?
+
+    enum CodingKeys: String, CodingKey {
+        case topPhoto = "top_photo"
     }
 }
