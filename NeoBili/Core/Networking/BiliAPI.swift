@@ -183,14 +183,18 @@ enum BiliAPI {
     }
 
     /// 给动态点赞 / 取消点赞。`up` 传 1 是点赞，2 是取消。
+    ///
+    /// 该接口只认 JSON body：表单编码会报 4100001 参数错误。csrf 按惯例
+    /// 放 query，body 里带 spmid（对齐 PiliPlus 的请求格式）。
     static func likeDynamic(id: String, like: Bool) async throws {
         let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
+        try await APIClient.shared.postJSON(
             path: "x/dynamic/feed/dyn/thumb",
-            form: [
+            query: ["csrf": csrf],
+            json: [
                 "dyn_id_str": id,
-                "up": like ? "1" : "2",
-                "csrf": csrf
+                "up": like ? 1 : 2,
+                "spmid": "333.1365.0.0"
             ],
             additionalHeaders: DynamicRequest.headers
         )
@@ -202,39 +206,13 @@ enum BiliAPI {
     /// 走的是不需要 WBI 的 `card` 接口——`space/wbi/acc/info` 风控严得多，
     /// 而这里要的字段它基本都有。唯一拿不到的是 IP 属地，那一项直接不显示。
     static func spaceCard(mid: Int) async throws -> SpaceCard {
-        // 头图和名片是两个接口：`card` 给的 `space.l_img` 绝大多数账号都是
-        // B 站那张默认图，客户端里看到的那张自定义头图在 `acc/info` 的
-        // `top_photo` 上。后者风控更严，所以只作尽力而为——拿不到就退回默认图。
-        async let topPhoto = try? spaceTopPhoto(mid: mid)
-
+        // 自定义空间头图接口返回不稳定，统一使用 card 接口随名片返回的
+        // B 站默认背景，避免偶尔串到回退图或在加载后突然换图。
         let payload: SpaceCardPayload = try await APIClient.shared.get(
             path: "x/web-interface/card",
             params: ["mid": String(mid), "photo": "true"]
         )
-        return payload.asSpaceCard(mid: mid, banner: await topPhoto ?? nil)
-    }
-
-    /// 空间页顶部那张自定义头图。风控挡下来时抛错，由调用方忽略。
-    private static func spaceTopPhoto(mid: Int) async throws -> String? {
-        var params = [
-            "mid": String(mid),
-            "platform": "web",
-            "token": "",
-            "from_spmid": "",
-            "web_location": "1550101"
-        ]
-        params.merge(fingerprintParams()) { current, _ in current }
-
-        let info: SpaceAccountInfo = try await APIClient.shared.get(
-            path: "x/space/wbi/acc/info",
-            params: params,
-            requiresWBI: true,
-            additionalHeaders: [
-                "Origin": "https://space.bilibili.com",
-                "Referer": "https://space.bilibili.com/\(mid)"
-            ]
-        )
-        return info.topPhoto
+        return payload.asSpaceCard(mid: mid)
     }
 
     /// 某个 UP 主的投稿列表（空间页「投稿」那一栏）。
@@ -352,6 +330,25 @@ enum BiliAPI {
                 "ps": "20",
                 "max": String(max),
                 "view_at": String(viewAt)
+            ]
+        )
+    }
+
+    /// 上报观看进度（心跳）。历史记录页的数据源就是它：不报的话，
+    /// 在本 App 里看过的视频永远不会出现在 B 站的观看历史里。
+    ///
+    /// 格式对齐 PiliPlus：UGC 稿件 type=3，`played_time` 传秒数，
+    /// 看完时传 -1。未登录（拿不到 csrf）时直接不发。
+    static func reportWatchProgress(bvid: String, cid: Int, playedTime: Double) async throws {
+        guard let csrf = await DeviceIdentity.shared.csrfToken, !csrf.isEmpty else { return }
+        try await APIClient.shared.post(
+            path: "x/click-interface/web/heartbeat",
+            form: [
+                "bvid": bvid,
+                "cid": String(cid),
+                "type": "3",
+                "played_time": String(Int(playedTime.rounded())),
+                "csrf": csrf
             ]
         )
     }
@@ -845,13 +842,4 @@ enum DynamicRequest {
         "Origin": "https://t.bilibili.com",
         "Referer": "https://t.bilibili.com/"
     ]
-}
-
-/// `x/space/wbi/acc/info` 里现在只用得上头图这一项。
-private struct SpaceAccountInfo: Decodable {
-    let topPhoto: String?
-
-    enum CodingKeys: String, CodingKey {
-        case topPhoto = "top_photo"
-    }
 }

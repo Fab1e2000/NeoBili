@@ -83,6 +83,10 @@ final class SystemNowPlayingCenter {
             infoCenter.playbackState = .paused
         }
         setCommandsEnabled(true)
+        // 纯 SwiftUI 生命周期里没有 viewController 做第一响应者，必须显式
+        // 打开远程控制事件，系统才会把本 App 登记为「正在播放」的媒体应用
+        // （灵动岛 / 锁屏 / 控制中心的卡片都挂在这个登记上）。
+        UIApplication.shared.beginReceivingRemoteControlEvents()
 
         if isNewSession || artworkChanged {
             artwork = nil
@@ -125,6 +129,7 @@ final class SystemNowPlayingCenter {
         toggleHandler = nil
         seekHandler = nil
         setCommandsEnabled(false)
+        UIApplication.shared.endReceivingRemoteControlEvents()
         infoCenter.playbackState = .stopped
         infoCenter.nowPlayingInfo = nil
     }

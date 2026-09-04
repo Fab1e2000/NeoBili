@@ -96,6 +96,17 @@ struct VideoPart: Decodable, Identifiable, Hashable, Sendable {
     let part: String
     let duration: Int
     var id: Int { cid }
+
+    var formattedDuration: String {
+        guard duration > 0 else { return "" }
+        let hours = duration / 3600
+        let minutes = (duration % 3600) / 60
+        let seconds = duration % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
 }
 
 struct VideoDetail: Decodable, Hashable, Sendable {

@@ -13,13 +13,13 @@ import UIKit
 /// 同步 API 本身，不是我们怎么调它。iOS 27 才有官方异步版本，26 上只能退回
 /// 同步调用（回到最初那个"可能卡主线程"的警告，但至少不崩）。
 enum PlaybackAudioSession {
+    /// 幂等且可重复调用。建播放器时先做一次（必须早于 mpv 初始化音频输出），
+    /// 第一帧后再兜一次——启动时那次激活可能失败（错误被 `try?` 吞掉），
+    /// 失败的会话不会让系统把 App 认成「正在播放」的媒体应用，灵动岛、
+    /// 锁屏和控制中心就都不出现。第一帧时 mpv 的音频输出已经建好，
+    /// 这时重复激活不会碰它的初始化。
     @MainActor
     static func activateOnce() {
-        _ = isActivated
-    }
-
-    @MainActor
-    private static let isActivated: Bool = {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .moviePlayback)
         if #available(iOS 27.0, *) {
@@ -27,8 +27,7 @@ enum PlaybackAudioSession {
         } else {
             try? session.setActive(true)
         }
-        return true
-    }()
+    }
 }
 
 struct PlaybackStream: Sendable, Hashable {

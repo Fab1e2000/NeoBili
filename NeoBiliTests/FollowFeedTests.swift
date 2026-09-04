@@ -204,6 +204,64 @@ final class FollowFeedTests: XCTestCase {
         XCTAssertTrue(ups[0].hasUpdate, "has_update 是 1 也算有更新")
     }
 
+    @MainActor
+    func testFollowingCarouselDefaultsToAllAndKeepsPortalOrder() {
+        let viewModel = FollowingViewModel()
+        let first = FollowedUp(mid: 11, uname: "第一位", face: "", hasUpdate: true)
+        let second = FollowedUp(mid: 22, uname: "第二位", face: "", hasUpdate: false)
+
+        viewModel.replaceUps([first, second])
+
+        XCTAssertEqual(viewModel.selectedTarget.id, .all)
+        XCTAssertEqual(viewModel.carouselItems.map(\.id), [.all, .up(11), .up(22)])
+        XCTAssertEqual(viewModel.carouselItems.map(\.title), ["全部动态", "第一位", "第二位"])
+    }
+
+    @MainActor
+    func testFollowingSelectionReusesCachedUpFeed() {
+        let viewModel = FollowingViewModel()
+        let up = FollowedUp(mid: 42, uname: "缓存 UP", face: "", hasUpdate: false)
+
+        viewModel.select(.up(up))
+        let firstFeed = viewModel.activeFeed
+        viewModel.select(.all)
+        viewModel.select(.up(up))
+
+        XCTAssertTrue(firstFeed === viewModel.activeFeed, "切回同一个 UP 时要复用已有动态流")
+    }
+
+    @MainActor
+    func testFollowingRefreshReconcilesSelectionAndRemovesDuplicateUps() {
+        let viewModel = FollowingViewModel()
+        let old = FollowedUp(mid: 7, uname: "旧名字", face: "", hasUpdate: true)
+        let refreshed = FollowedUp(mid: 7, uname: "新名字", face: "", hasUpdate: false)
+        let other = FollowedUp(mid: 8, uname: "其他 UP", face: "", hasUpdate: false)
+
+        viewModel.select(.up(old))
+        viewModel.replaceUps([refreshed, refreshed, other])
+        XCTAssertEqual(viewModel.ups.map(\.mid), [7, 8])
+        XCTAssertEqual(viewModel.selectedUp?.uname, "新名字")
+
+        viewModel.replaceUps([other])
+        XCTAssertEqual(viewModel.selectedTarget.id, .all, "已不在轮盘的 UP 应回退到全部动态")
+    }
+
+    @MainActor
+    func testFollowingAccountChangeClearsSelectionAndFeedCache() {
+        let viewModel = FollowingViewModel()
+        let up = FollowedUp(mid: 9, uname: "旧账号 UP", face: "", hasUpdate: false)
+        viewModel.replaceUps([up])
+        viewModel.select(.up(up))
+        let oldFeed = viewModel.activeFeed
+
+        viewModel.resetForAccountChange()
+
+        XCTAssertEqual(viewModel.selectedTarget.id, .all)
+        XCTAssertEqual(viewModel.carouselItems.map(\.id), [.all])
+        viewModel.select(.up(up))
+        XCTAssertFalse(oldFeed === viewModel.activeFeed, "换账号后不能复用旧账号的 UP 动态")
+    }
+
     // MARK: - UP 主投稿列表
 
     func testSpaceVideoHandlesHiddenPlayCount() throws {

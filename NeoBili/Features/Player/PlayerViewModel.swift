@@ -183,6 +183,71 @@ final class PlayerViewModel {
     private var isStopped = false
     private let playbackURLLoader: PlaybackURLLoader
     private let systemMediaSessionID = UUID()
+    /// 上次心跳已上报到的秒数。播放中每前进 5 秒报一次；暂停、换页、
+    /// 看完时再补一次，保证历史记录里的进度停在最后看的位置。
+    private var lastReportedWatchTime: Double = 0
+
+    // MARK: - 定时休眠
+
+    /// 定时休眠的可选项。`afterVideoEnd` 表示当前这条视频播完就停。
+    enum SleepOption: Equatable, Hashable {
+        case minutes(Int)
+        case afterVideoEnd
+    }
+
+    static let sleepOptions: [SleepOption] = [
+        .minutes(15), .minutes(30), .minutes(60), .minutes(90), .minutes(120)
+    ]
+
+    /// 倒计时的到期时刻。nil 表示没有正在运行的倒计时休眠。
+    private(set) var sleepDeadline: Date?
+    /// 「播完就睡」是否生效。
+    private(set) var sleepsAfterVideoEnd = false
+    /// 菜单上当前选中的选项，给高亮对勾用。
+    private(set) var selectedSleepOption: SleepOption?
+    private var sleepTask: Task<Void, Never>?
+
+    var isSleepTimerActive: Bool {
+        sleepDeadline != nil || sleepsAfterVideoEnd
+    }
+
+    /// 剩余时间（分钟），给界面显示用。只在倒计时休眠时有值。
+    var sleepRemainingMinutes: Int? {
+        guard let sleepDeadline else { return nil }
+        return max(0, Int(ceil(sleepDeadline.timeIntervalSinceNow / 60)))
+    }
+
+    func setSleepTimer(_ option: SleepOption) {
+        cancelSleepTimer()
+        selectedSleepOption = option
+        switch option {
+        case .minutes(let minutes):
+            sleepDeadline = Date.now.addingTimeInterval(TimeInterval(minutes) * 60)
+            sleepTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(TimeInterval(minutes) * 60))
+                guard !Task.isCancelled else { return }
+                self?.enterSleep()
+            }
+        case .afterVideoEnd:
+            sleepsAfterVideoEnd = true
+        }
+    }
+
+    func cancelSleepTimer() {
+        sleepTask?.cancel()
+        sleepTask = nil
+        sleepDeadline = nil
+        sleepsAfterVideoEnd = false
+        selectedSleepOption = nil
+    }
+
+    /// 休眠时刻到了：清掉定时状态并暂停播放。
+    private func enterSleep() {
+        cancelSleepTimer()
+        if isPlaying {
+            pause()
+        }
+    }
 
     init(
         bvid: String,
@@ -260,9 +325,11 @@ final class PlayerViewModel {
     func stop() {
         guard !isStopped else { return }
         isStopped = true
+        cancelSleepTimer()
         Task {
             await VideoPreparationCache.shared.cancelPlaybackURL(bvid: bvid, cid: cid)
         }
+        reportWatchProgress(currentTime)
         session.stop()
         SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
         isPlaying = false
@@ -274,6 +341,7 @@ final class PlayerViewModel {
         guard isPlaying else { return }
         session.pause()
         isPlaying = false
+        reportWatchProgress(currentTime)
         SystemNowPlayingCenter.shared.updatePlaybackState(
             isPlaying: false,
             sessionID: systemMediaSessionID
@@ -324,6 +392,9 @@ final class PlayerViewModel {
         case .firstFrame:
             hasRenderedFirstFrame = true
             isLoading = false
+            // mpv 的音频输出已经建好，这里是重试音频会话激活的安全窗口：
+            // 启动时那次可能失败，失败的会话不会出现在系统的「正在播放」里。
+            PlaybackAudioSession.activateOnce()
         case .playing(let playing):
             isPlaying = playing
             SystemNowPlayingCenter.shared.updatePlaybackState(
@@ -336,6 +407,11 @@ final class PlayerViewModel {
             }
         case .position(let position):
             currentTime = position
+            // 观看进度心跳：距离上次上报前进超过 5 秒才发，对齐官方
+            // 网页播放器的节奏。
+            if isPlaying, position - lastReportedWatchTime >= 5 {
+                reportWatchProgress(position)
+            }
             SystemNowPlayingCenter.shared.updateElapsed(
                 position,
                 sessionID: systemMediaSessionID
@@ -353,6 +429,11 @@ final class PlayerViewModel {
         case .ended:
             isPlaying = false
             isLoading = false
+            // 看完时 played_time 传 -1，服务端会把它记成「已看完」。
+            reportWatchProgress(-1)
+            if sleepsAfterVideoEnd {
+                enterSleep()
+            }
             SystemNowPlayingCenter.shared.updatePlaybackState(
                 isPlaying: false,
                 sessionID: systemMediaSessionID
@@ -362,6 +443,20 @@ final class PlayerViewModel {
             isPlaying = false
             isLoading = false
             SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
+        }
+    }
+
+    /// 观看进度上报（心跳）。失败静默：历史记录是尽力而为的副产品，
+    /// 不能因为上报失败打断或提示播放。
+    private func reportWatchProgress(_ playedTime: Double) {
+        guard playedTime != lastReportedWatchTime, playedTime > 0 || currentTime > 0 else { return }
+        if playedTime > 0 {
+            lastReportedWatchTime = playedTime
+        }
+        let bvid = self.bvid
+        let cid = self.cid
+        Task.detached(priority: .utility) {
+            try? await BiliAPI.reportWatchProgress(bvid: bvid, cid: cid, playedTime: playedTime)
         }
     }
 }

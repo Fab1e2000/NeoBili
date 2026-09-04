@@ -74,6 +74,7 @@ struct VideoPage: View {
     private static let contentInset: CGFloat = 16
 
     @State private var isShowingSeason = false
+    @State private var isShowingParts = false
     @State private var isShowingFavoriteFolders = false
 
     var body: some View {
@@ -143,6 +144,16 @@ struct VideoPage: View {
                     season: season,
                     currentBvid: store.route?.bvid,
                     onSelect: store.openEpisode
+                )
+                .appTextSize()
+            }
+        }
+        .sheet(isPresented: $isShowingParts) {
+            if let detail = viewModel?.detail, detail.pages.count > 1 {
+                VideoPartsSheet(
+                    parts: detail.pages,
+                    currentCid: store.activeCid ?? detail.cid,
+                    onSelect: { part in store.selectPart(cid: part.cid) }
                 )
                 .appTextSize()
             }
@@ -334,8 +345,12 @@ struct VideoPage: View {
             }
 
             if detail.pages.count > 1 {
-                partList(detail)
-                    .padding(.horizontal, Self.contentInset)
+                VideoPartsRow(
+                    parts: detail.pages,
+                    currentIndex: currentPartIndex(in: detail),
+                    onTap: { isShowingParts = true }
+                )
+                .padding(.horizontal, Self.contentInset)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -418,7 +433,7 @@ struct VideoPage: View {
             coinCount: viewModel?.coinCount ?? detail.stat.coin,
             favoriteCount: viewModel?.favoriteCount ?? detail.stat.favorite,
             shareCount: detail.stat.share,
-            isLiked: relation?.isLiked ?? false,
+            isLiked: viewModel?.displayedIsLiked ?? (relation?.isLiked ?? false),
             isDisliked: relation?.isDisliked ?? false,
             isCoined: relation?.isCoined ?? false,
             isFavorited: relation?.isFavorited ?? false,
@@ -457,37 +472,11 @@ struct VideoPage: View {
         return index + 1
     }
 
-    private func partList(_ detail: VideoDetail) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("分P (\(detail.pages.count))")
-                .font(.headline)
-
-            ForEach(detail.pages) { part in
-                let isSelected = (store.activeCid ?? detail.cid) == part.cid
-                Button {
-                    store.selectPart(cid: part.cid)
-                } label: {
-                    HStack {
-                        Text("P\(part.page) · \(part.part)")
-                            .font(.subheadline)
-                            .foregroundStyle(isSelected ? .white : .primary)
-                        Spacer()
-                        if isSelected {
-                            Image(systemName: "play.fill")
-                                .font(.caption)
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.background.secondary),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
+    /// 当前播放的分P排第几（从 1 开始），用于折叠行右侧的「P3/12」。
+    private func currentPartIndex(in detail: VideoDetail) -> Int? {
+        let cid = store.activeCid ?? detail.cid
+        guard let index = detail.pages.firstIndex(where: { $0.cid == cid }) else { return nil }
+        return index + 1
     }
 
     /// 内联状态下 16:9 视频区的高度。

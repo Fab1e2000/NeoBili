@@ -157,6 +157,9 @@ struct CommentRow: View {
 
             Spacer(minLength: 0)
         }
+        // 横向分页容器会向评论页传入整屏高度；明确按内容固有高度收紧，
+        // 避免带楼中楼的评论行吞掉剩余空间，把分隔线推到很远的位置。
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     /// 时间 + 点赞按钮那一行。

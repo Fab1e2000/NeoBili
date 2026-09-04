@@ -26,13 +26,15 @@ struct HomeView: View {
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("推荐")
-            .navigationBarTitleDisplayMode(.large)
-            // 展开时位于大标题下方；内容上滚后随系统导航栏收起并停靠在顶部。
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            // 搜索框直接占据导航工具栏，不再为已移除的大标题保留空白行。
             // 导航栏自己的 Liquid Glass 会承接从下面滑过的内容。
+            // （退出搜索后偶发下坠不归位是 iOS 26 系统动画的 bug，官方
+            // App 也复现，这里维持 toolbarPrincipal 的紧凑形态不绕路。）
             .searchable(
                 text: $search.query,
-                placement: .navigationBarDrawer(displayMode: .always),
+                placement: .toolbarPrincipal,
                 prompt: "搜索视频"
             )
             // 系统原生的候选词浮层。点中一条由 searchCompletion 填回输入框
@@ -135,11 +137,11 @@ struct HomeView: View {
                     .padding(.horizontal, HomeCardLayout.horizontalInset)
                     .padding(.vertical, HomeCardLayout.verticalInset)
 
-                    // 下拉刷新已有系统顶部转圈，只有加载下一页时才在列表底部再显示进度。
-                    if viewModel.isLoadingMore {
-                        ProgressView()
-                            .padding()
-                    }
+                // 下拉刷新已有系统顶部转圈，只有加载下一页时才在列表底部再显示进度。
+                if viewModel.isLoadingMore {
+                    ProgressView()
+                        .padding()
+                }
                 }
                 // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
                 .scrollBounceBehavior(.always, axes: .vertical)
