@@ -34,8 +34,9 @@ struct RootView: View {
             Tab("推荐", systemImage: "house.fill") {
                 HomeView()
             }
-            Tab("搜索", systemImage: "magnifyingglass") {
-                SearchView()
+            // 搜索不再单独占一个 Tab：入口挪到了首页顶部那个常驻搜索框。
+            Tab("关注", systemImage: "person.2.fill") {
+                FollowingView()
             }
             Tab("我的", systemImage: "person.crop.circle") {
                 MineView()

@@ -15,11 +15,42 @@ enum BiliAPIError: Error, LocalizedError {
         case .missingWbiKeys: return "无法获取 WBI 签名密钥"
         case .httpStatus(let code): return "网络请求失败 (HTTP \(code))"
         case .apiError(let code, let message): return "\(message) (code \(code))"
+#if DEBUG
+        // 开发版把出错的字段路径带出来。只写「数据解析失败」时，
+        // 排查只能靠猜是哪个接口的哪个字段变了。
+        case .decoding(let error): return "数据解析失败：\(Self.diagnostic(for: error))"
+#else
         case .decoding: return "数据解析失败"
+#endif
         case .riskControlled: return "请求被 B 站风控拦截，请稍后重试"
         case .missingAccessKey: return "该操作需要 App 端登录凭据，请退出后用扫码方式重新登录"
         }
     }
+
+#if DEBUG
+    /// DecodingError 里真正有用的是「哪个字段、缺了还是类型不对」。
+    private static func diagnostic(for error: Error) -> String {
+        guard let error = error as? DecodingError else { return error.localizedDescription }
+
+        func path(_ context: DecodingError.Context) -> String {
+            let keys = context.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue }
+            return keys.isEmpty ? "(根)" : keys.joined(separator: ".")
+        }
+
+        switch error {
+        case .keyNotFound(let key, let context):
+            return "缺字段 \(path(context)).\(key.stringValue)"
+        case .typeMismatch(let type, let context):
+            return "\(path(context)) 不是 \(type)"
+        case .valueNotFound(let type, let context):
+            return "\(path(context)) 是 null（需要 \(type)）"
+        case .dataCorrupted(let context):
+            return "\(path(context)) 内容异常"
+        @unknown default:
+            return error.localizedDescription
+        }
+    }
+#endif
 }
 
 /// Envelope every Bilibili web-API JSON response is wrapped in.
@@ -58,9 +89,20 @@ struct APIClient {
         guard var components = URLComponents(url: Self.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
             throw BiliAPIError.invalidURL
         }
-        components.queryItems = finalParams
+        // 自己转义，不交给 URLComponents。
+        //
+        // URLComponents 生成查询串时会把 `+ , : / @` 这些字符原样留下，而 WBI
+        // 摘要是按 `encodeURIComponent` 的规则算的（全部转义）。两边一旦不一致，
+        // 服务端重算出来的签名就对不上：随机指纹里只要出现一个 `+`，UP 主投稿
+        // 列表这种严格接口就回 -403。用同一套字符集编码，字节层面保持一致。
+        components.percentEncodedQueryItems = finalParams
             .sorted { $0.key < $1.key }
-            .map { URLQueryItem(name: $0.key, value: $0.value) }
+            .map { key, value in
+                URLQueryItem(
+                    name: key,
+                    value: value.addingPercentEncoding(withAllowedCharacters: .wbiQueryValueAllowed) ?? value
+                )
+            }
 
         guard let url = components.url else {
             throw BiliAPIError.invalidURL
@@ -75,6 +117,32 @@ struct APIClient {
             request.setValue(value, forHTTPHeaderField: name)
         }
         return try await perform(request)
+    }
+
+    /// 少数接口不在 api.bilibili.com 上，返回体也没有 `{code, message, data}`
+    /// 这层信封——搜索联想就是这样：结果直接挂在 `result` 上，而且没有候选词
+    /// 时连 `code` 都不是 0。这里只负责带上公共请求头并把整个响应体解出来，
+    /// 具体形状由调用方自己定义。
+    func getRaw<T: Decodable>(
+        url: URL,
+        additionalHeaders: [String: String] = [:]
+    ) async throws -> T {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        await applyCommonHeaders(to: &request)
+        for (name, value) in additionalHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw BiliAPIError.httpStatus((response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw BiliAPIError.decoding(error)
+        }
     }
 
     /// Performs a POST with a form-encoded body. Used by the logged-in write
@@ -140,6 +208,7 @@ struct APIClient {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.httpMethod = "POST"
+        request.httpShouldHandleCookies = false
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
         // 签名串和请求体必须逐字节一致，所以两边共用同一个拼接函数。
@@ -149,7 +218,13 @@ struct APIClient {
     }
 
     /// Cookie（含登录态）与 UA/Referer 是每个请求的公共部分，集中在这里拼。
+    ///
+    /// 同时关掉系统的自动 Cookie：登录态由 App 自己保管（Keychain + 下面这个
+    /// 手写的 Cookie 头）。如果放任 `HTTPCookieStorage` 也往请求上贴，退出登录
+    /// 之后共享罐里残留的 SESSDATA 会继续被发出去——界面显示已退出，接口那边
+    /// 却还是登录态，重新登录时两份凭据还会互相打架。
     private func applyCommonHeaders(to request: inout URLRequest) async {
+        request.httpShouldHandleCookies = false
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
         let cookie = await DeviceIdentity.shared.cookieHeader()

@@ -7,6 +7,10 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     private static let topAnchor = "home-feed-top"
 
+    /// 搜索就在首页完成，不跳页：系统搜索框跟随大标题一起收放，
+    /// 回车后这一页的内容换成结果，清空后回到推荐流。
+    @State private var search = SearchViewModel()
+
     private let columns = [
         GridItem(.flexible(), spacing: HomeCardLayout.columnSpacing),
         GridItem(.flexible(), spacing: HomeCardLayout.columnSpacing)
@@ -14,87 +18,44 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        // 这是一个看不见的定位点。“上次看到这里”卡片被点击时，页面会回到这里再刷新。
-                        Color.clear
-                            .frame(height: 0)
-                            .id(Self.topAnchor)
-
-                        LazyVGrid(columns: columns, spacing: HomeCardLayout.rowSpacing) {
-                            ForEach(viewModel.feedItems) { item in
-                                switch item {
-                                case .video(let video):
-                                    // 推荐卡片自带 cid，直接交给详情页，省掉一次串行的详情请求。
-                                    Button {
-                                        nowPlaying.open(
-                                            VideoDetailRoute(
-                                                bvid: video.bvid,
-                                                cid: video.cid,
-                                                cover: video.pic,
-                                                title: video.title,
-                                                artist: video.owner.name
-                                            ),
-                                            from: video.bvid
-                                        )
-                                    } label: {
-                                        VideoCard(video: video)
-                                            .frame(height: HomeCardLayout.cardHeight(for: geometry.size.width))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .contextMenu {
-                                        WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
-                                    }
-                                    .videoTransitionSource(video.bvid, in: videoTransition)
-                                    .task {
-                                        await viewModel.loadMoreIfNeeded(current: video)
-                                    }
-                                    // 卡片出现在屏幕上就先把播放地址取回来，点开时通常已经有结果了。
-                                    // 分成两个 .task 是为了不让预取挡住上面的翻页请求。
-                                    .task {
-                                        await VideoPreparationCache.shared.prefetch(
-                                            bvid: video.bvid,
-                                            cid: video.cid
-                                        )
-                                    }
-
-                                case .lastSeen:
-                                    Button {
-                                        Task {
-                                            // 与 PiliPlus 一致：点击提示卡先回到顶部，再请求一批新推荐。
-                                            withAnimation(.easeOut(duration: 0.25)) {
-                                                proxy.scrollTo(Self.topAnchor, anchor: .top)
-                                            }
-                                            await viewModel.refresh()
-                                        }
-                                    } label: {
-                                        LastSeenCard()
-                                            .frame(height: HomeCardLayout.cardHeight(for: geometry.size.width))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, HomeCardLayout.horizontalInset)
-                        .padding(.vertical, HomeCardLayout.verticalInset)
-
-                        // 下拉刷新已有系统顶部转圈，只有加载下一页时才在列表底部再显示进度。
-                        if viewModel.isLoadingMore {
-                            ProgressView()
-                                .padding()
-                        }
-                    }
-                    // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
-                    .scrollBounceBehavior(.always, axes: .vertical)
-                    .refreshable { await viewModel.refresh() }
-                    // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
-                    .leftEdgeTapDeadZone()
+            Group {
+                if search.hasSubmittedSearch {
+                    SearchResultsView(viewModel: search)
+                } else {
+                    feed
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            // 不显示“推荐”标题栏：卡片从屏幕顶部安全区下方直接开始，不再空出一整行标题高度。
-            .toolbarVisibility(.hidden, for: .navigationBar)
+            .navigationTitle("推荐")
+            .navigationBarTitleDisplayMode(.large)
+            // 展开时位于大标题下方；内容上滚后随系统导航栏收起并停靠在顶部。
+            // 导航栏自己的 Liquid Glass 会承接从下面滑过的内容。
+            .searchable(
+                text: $search.query,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "搜索视频"
+            )
+            // 系统原生的候选词浮层。点中一条由 searchCompletion 填回输入框
+            // 并触发下面的 onSubmit，不需要自己处理点击。
+            .searchSuggestions {
+                if search.isShowingSuggestions {
+                    ForEach(search.suggestions) { suggestion in
+                        // 就是一行黑字：放大镜图标去掉，只留一点左边距。
+                        Text(suggestion.value)
+                            .foregroundStyle(.primary)
+                            .padding(.leading, 6)
+                            .searchCompletion(suggestion.value)
+                    }
+                }
+            }
+            .onSubmit(of: .search) { search.submit() }
+            // 输入一变就重新取候选词。上一次的任务会被 SwiftUI 取消，
+            // 所以视图模型里那个 250 毫秒的等待就等于防抖。
+            .task(id: search.trimmedQuery) { await search.loadSuggestions() }
+            // 清空输入（点「取消」或点叉）就回到推荐流。
+            .onChange(of: search.trimmedQuery) {
+                if search.trimmedQuery.isEmpty { search.reset() }
+            }
             .task { await viewModel.loadInitial() }
             // 登录/退出后同一套推荐接口在服务端会切到个性化/通用推流，
             // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。
@@ -105,16 +66,100 @@ struct HomeView: View {
                 // Popping back here always restores the app's portrait lock.
                 OrientationController.enterPortrait()
             }
-            .overlay {
-                if viewModel.isLoading, viewModel.videos.isEmpty {
-                    ProgressView("正在加载推荐…")
-                } else if let message = viewModel.errorMessage, viewModel.videos.isEmpty {
-                    ContentUnavailableView(
-                        "加载失败",
-                        systemImage: "wifi.slash",
-                        description: Text(message)
-                    )
+        }
+    }
+
+    private var feed: some View {
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // 这是一个看不见的定位点。“上次看到这里”卡片被点击时，页面会回到这里再刷新。
+                    Color.clear
+                        .frame(height: 0)
+                        .id(Self.topAnchor)
+
+                    LazyVGrid(columns: columns, spacing: HomeCardLayout.rowSpacing) {
+                        ForEach(viewModel.feedItems) { item in
+                            switch item {
+                            case .video(let video):
+                                // 推荐卡片自带 cid，直接交给详情页，省掉一次串行的详情请求。
+                                Button {
+                                    nowPlaying.open(
+                                        VideoDetailRoute(
+                                            bvid: video.bvid,
+                                            cid: video.cid,
+                                            cover: video.pic,
+                                            title: video.title,
+                                            artist: video.owner.name
+                                        ),
+                                        from: video.bvid
+                                    )
+                                } label: {
+                                    VideoCard(video: video)
+                                        .frame(height: HomeCardLayout.cardHeight(for: geometry.size.width))
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
+                                }
+                                .videoTransitionSource(video.bvid, in: videoTransition)
+                                .task {
+                                    await viewModel.loadMoreIfNeeded(current: video)
+                                }
+                                // 卡片出现在屏幕上就先把播放地址取回来，点开时通常已经有结果了。
+                                // 分成两个 .task 是为了不让预取挡住上面的翻页请求。
+                                .task {
+                                    await VideoPreparationCache.shared.prefetch(
+                                        bvid: video.bvid,
+                                        cid: video.cid
+                                    )
+                                }
+
+                            case .lastSeen:
+                                Button {
+                                    Task {
+                                        // 与 PiliPlus 一致：点击提示卡先回到顶部，再请求一批新推荐。
+                                        withAnimation(.easeOut(duration: 0.25)) {
+                                            proxy.scrollTo(Self.topAnchor, anchor: .top)
+                                        }
+                                        await viewModel.refresh()
+                                    }
+                                } label: {
+                                    LastSeenCard()
+                                        .frame(height: HomeCardLayout.cardHeight(for: geometry.size.width))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, HomeCardLayout.horizontalInset)
+                    .padding(.vertical, HomeCardLayout.verticalInset)
+
+                    // 下拉刷新已有系统顶部转圈，只有加载下一页时才在列表底部再显示进度。
+                    if viewModel.isLoadingMore {
+                        ProgressView()
+                            .padding()
+                    }
                 }
+                // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
+                .scrollBounceBehavior(.always, axes: .vertical)
+                // 卡片从搜索框下面滑过去时，顶部给一层渐隐，让搜索框浮在内容之上
+                // 而不是硬生生压着卡片（iOS 26 的 scroll edge effect）。
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                .refreshable { await viewModel.refresh() }
+                // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
+                .leftEdgeTapDeadZone()
+            }
+        }
+        .overlay {
+            if viewModel.isLoading, viewModel.videos.isEmpty {
+                ProgressView("正在加载推荐…")
+            } else if let message = viewModel.errorMessage, viewModel.videos.isEmpty {
+                ContentUnavailableView(
+                    "加载失败",
+                    systemImage: "wifi.slash",
+                    description: Text(message)
+                )
             }
         }
     }
@@ -132,6 +177,8 @@ private enum HomeCardLayout {
     static let verticalInset: CGFloat = 10
     /// 推荐封面保持 4:3。
     static let coverAspectRatio: CGFloat = 4.0 / 3.0
+    /// 封面上方两个角的圆角，和卡片本身的圆角一致。
+    static let coverCornerRadius: CGFloat = 7
     /// 标题和 UP 主所在白色区域的固定高度。
     static let detailsHeight: CGFloat = 81
 
@@ -177,7 +224,10 @@ private struct VideoCard: View {
                 url: video.secureCoverURL,
                 duration: video.formattedDuration,
                 playCount: video.stat.view,
-                aspectRatio: HomeCardLayout.coverAspectRatio
+                aspectRatio: HomeCardLayout.coverAspectRatio,
+                cornerRadius: HomeCardLayout.coverCornerRadius,
+                // 封面下缘紧贴着文字区，那两个角再圆就会割出一道缺口。
+                bottomCornerRadius: 0
             )
 
             VStack(alignment: .leading, spacing: 7) {

@@ -218,7 +218,7 @@ final class NowPlayingStore {
     private func buildCommentsIfNeeded() {
         guard let aid = detailViewModel?.detail?.aid else { return }
         // 评论接口要用 av 号，所以只能等详情回来才能建这个视图模型。
-        if commentsViewModel?.aid != aid {
+        if commentsViewModel?.oid != aid {
             commentsViewModel = CommentsViewModel(aid: aid)
         }
     }

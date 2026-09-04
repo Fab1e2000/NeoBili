@@ -3,8 +3,10 @@ import Foundation
 @MainActor
 @Observable
 final class CommentsViewModel {
-    /// 评论接口用 av 号定位视频，所以这里存的是 aid 而不是 bvid。
-    let aid: Int
+    /// 评论区的定位。视频是 av 号 + `type: 1`，动态是 `comment_id_str` +
+    /// 它自己的评论区类型（图文 11、纯文字 17），所以这里存的不是 bvid。
+    let oid: Int
+    let type: Int
 
     private(set) var comments: [Comment] = []
     /// 一级评论总条数，底部标签栏上显示的就是它。
@@ -53,15 +55,21 @@ final class CommentsViewModel {
         likeOverrides[comment.rpid] = !wasLiked
 
         do {
-            try await BiliAPI.likeComment(aid: aid, rpid: comment.rpid, like: !wasLiked)
+            try await BiliAPI.likeComment(oid: oid, type: type, rpid: comment.rpid, like: !wasLiked)
         } catch {
             likeOverrides[comment.rpid] = wasLiked
             actionMessage = error.localizedDescription
         }
     }
 
-    init(aid: Int) {
-        self.aid = aid
+    init(oid: Int, type: Int) {
+        self.oid = oid
+        self.type = type
+    }
+
+    /// 视频评论区的便利入口：`type` 固定是 1。
+    convenience init(aid: Int) {
+        self.init(oid: aid, type: 1)
     }
 
     /// 第一次切到评论页时调用。已经加载过就直接返回，
@@ -138,7 +146,7 @@ final class CommentsViewModel {
 
         let page = replyNextPage[rootId] ?? 1
         do {
-            let result = try await BiliAPI.commentReplies(aid: aid, rootId: rootId, page: page)
+            let result = try await BiliAPI.commentReplies(oid: oid, type: type, rootId: rootId, page: page)
             let incoming = result.replies ?? []
             var all = loadedReplies[rootId] ?? []
             let existingIDs = Set(all.map(\.id))
@@ -168,7 +176,7 @@ final class CommentsViewModel {
 
     private func loadNextPage() async {
         do {
-            let page = try await BiliAPI.comments(aid: aid, page: nextPage)
+            let page = try await BiliAPI.comments(oid: oid, type: type, page: nextPage)
             totalCount = page.page.count
             let newComments = page.replies ?? []
             guard !newComments.isEmpty else {
