@@ -6,6 +6,9 @@ import SwiftUI
 /// 和官方客户端的动态详情页一个结构。
 struct DynamicDetailView: View {
     let entry: DynamicEntry
+    /// 点赞状态直接读写所属列表的 DynamicFeedModel：详情页点完返回
+    /// 列表、或在列表点完再进详情，两边看到的是同一份本地叠加状态。
+    let feed: DynamicFeedModel
 
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
@@ -13,18 +16,14 @@ struct DynamicDetailView: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
 
     @State private var comments: CommentsViewModel
-    /// 点赞状态在这一页自己管：进来时用列表带过来的值，点完就地更新。
-    @State private var isLiked: Bool
-    @State private var likeCount: Int
     @State private var isLiking = false
 
-    init(entry: DynamicEntry) {
+    init(entry: DynamicEntry, feed: DynamicFeedModel) {
         self.entry = entry
+        self.feed = feed
         _comments = State(
             initialValue: CommentsViewModel(oid: entry.commentOid, type: entry.commentType)
         )
-        _isLiked = State(initialValue: entry.isLikedByServer)
-        _likeCount = State(initialValue: entry.likeCount)
     }
 
     var body: some View {
@@ -189,9 +188,9 @@ struct DynamicDetailView: View {
 
             Button(action: toggleLike) {
                 counter(
-                    icon: isLiked ? "hand.thumbsup.fill" : "hand.thumbsup",
-                    text: countText(likeCount, zero: "点赞"),
-                    isHighlighted: isLiked
+                    icon: feed.isLiked(entry) ? "hand.thumbsup.fill" : "hand.thumbsup",
+                    text: countText(feed.likeCount(entry), zero: "点赞"),
+                    isHighlighted: feed.isLiked(entry)
                 )
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
@@ -222,21 +221,11 @@ struct DynamicDetailView: View {
         }
         guard !isLiking else { return }
 
-        let wasLiked = isLiked
-        isLiked = !wasLiked
-        likeCount = max(0, likeCount + (wasLiked ? -1 : 1))
-
-        Task {
-            isLiking = true
+        isLiking = true
+        Task { @MainActor in
             defer { isLiking = false }
-            do {
-                try await BiliAPI.likeDynamic(id: entry.id, like: !wasLiked)
-            } catch {
-                isLiked = wasLiked
-                likeCount = max(0, likeCount + (wasLiked ? 1 : -1))
-                if !error.isCancellation {
-                    feedback.show(error.localizedDescription)
-                }
+            if let message = await feed.toggleLike(entry, isLoggedIn: account.isLoggedIn) {
+                feedback.show(message)
             }
         }
     }

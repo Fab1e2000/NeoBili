@@ -14,6 +14,8 @@ struct SpaceView: View {
     @State private var viewModel: SpaceViewModel
     @State private var tab: Tab = .videos
     @State private var detailEntry: DynamicEntry?
+    @State private var headerHeight: CGFloat = 0
+    @State private var pageOffsets: [Tab: CGFloat] = [:]
 
     private enum Tab: String, CaseIterable, Identifiable {
         case videos = "投稿"
@@ -28,12 +30,26 @@ struct SpaceView: View {
     }
 
     var body: some View {
-        // 两栏做成分页，左右滑动就能换——分段控件只是另一种切换方式。
-        TabView(selection: $tab) {
-            page(for: .videos).tag(Tab.videos)
-            page(for: .dynamics).tag(Tab.dynamics)
+        VStack(spacing: 0) {
+            // 头部不放进横向分页，因此切换时不会左右移动；当前列表向下滚时，
+            // 根据真实偏移逐步裁掉它，让内容区自然扩展到导航栏下方。
+            header
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    if currentHeaderCollapse == 0, height > 0 { headerHeight = height }
+                }
+                .frame(height: visibleHeaderHeight, alignment: .bottom)
+                .clipped()
+
+            tabPicker
+
+            TabView(selection: $tab) {
+                page(for: .videos).tag(Tab.videos)
+                page(for: .dynamics).tag(Tab.dynamics)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(viewModel.card?.name ?? up.uname)
         .navigationBarTitleDisplayMode(.inline)
@@ -52,29 +68,63 @@ struct SpaceView: View {
         }
         .onAppear { OrientationController.enterPortrait() }
         .navigationDestination(item: $detailEntry) { entry in
-            DynamicDetailView(entry: entry)
+            DynamicDetailView(entry: entry, feed: viewModel.dynamics)
         }
     }
 
-    /// 一栏的内容。头部跟着一起滑，分段控件吸在顶上。
-    private func page(for tab: Tab) -> some View {
-        ScrollView {
-            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                header
+    private var currentHeaderCollapse: CGFloat {
+        headerCollapse(for: tab)
+    }
 
-                Section {
-                    switch tab {
-                    case .videos: videoList
-                    case .dynamics: dynamicList
-                    }
-                } header: {
-                    tabPicker
+    private var visibleHeaderHeight: CGFloat? {
+        guard headerHeight > 0 else { return nil }
+        return max(headerHeight - currentHeaderCollapse, 0)
+    }
+
+    /// 每个分页保留自己的懒加载滚动容器，切换和滚动时都只布局屏幕附近的内容。
+    private func page(for pageTab: Tab) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                switch pageTab {
+                case .videos:
+                    videoList
+                case .dynamics:
+                    dynamicList
                 }
             }
+            // 当前列表的前 headerHeight 滚动距离只用于收起资料头部。
+            // 用等量视觉补偿抵消列表自身的位移，头部完全收起后列表才开始滚动。
+            // 仍然使用 LazyVStack，不测量整条长列表。
+            .padding(.bottom, headerHeight)
+            .offset(y: headerCollapse(for: pageTab))
         }
         .scrollBounceBehavior(.always, axes: .vertical)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, offset in
+            pageOffsets[pageTab] = max(offset, 0)
+        }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
+    }
+
+    private func headerCollapse(for pageTab: Tab) -> CGFloat {
+        guard headerHeight > 0 else { return 0 }
+        return min(max(pageOffsets[pageTab] ?? 0, 0), headerHeight)
+    }
+
+    private var tabPicker: some View {
+        Picker("内容", selection: $tab) {
+            ForEach(Tab.allCases) { tab in
+                Text(tab.rawValue).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, SpaceHeaderLayout.horizontalInset)
+        .padding(.vertical, 8)
+        // 固定在分页内容上方，横向切换时自身不参与动画。
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     // MARK: - 头部
@@ -199,20 +249,6 @@ struct SpaceView: View {
         .tint(viewModel.isFollowing ? Color(uiColor: .systemFill) : .accentColor)
         .foregroundStyle(viewModel.isFollowing ? Color.primary : Color.white)
         .controlSize(.small)
-    }
-
-    private var tabPicker: some View {
-        Picker("内容", selection: $tab) {
-            ForEach(Tab.allCases) { tab in
-                Text(tab.rawValue).tag(tab)
-            }
-        }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, SpaceHeaderLayout.horizontalInset)
-        .padding(.vertical, 8)
-        // 吸顶的这条要实底，卡片从它背后滑过去时不能透出来。
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .overlay(alignment: .bottom) { Divider() }
     }
 
     // MARK: - 投稿

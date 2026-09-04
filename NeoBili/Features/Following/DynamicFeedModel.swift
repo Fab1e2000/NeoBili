@@ -123,18 +123,26 @@ final class DynamicFeedModel {
     // MARK: - 点赞
 
     func isLiked(_ entry: DynamicEntry) -> Bool {
-        likeOverrides[entry.id] ?? entry.isLikedByServer
+        // 视频动态的点赞就是稿件点赞，走全 App 共享的差量，
+        // 这样视频详情页点完赞回到列表（或反过来）状态一致。
+        if let aid = entry.video?.aid {
+            return VideoLikeStore.shared.isLiked(aid: aid, serverValue: entry.isLikedByServer)
+        }
+        return likeOverrides[entry.id] ?? entry.isLikedByServer
     }
 
     /// 展示用的点赞数：接口给的原始值，加上本地这一次的增减。
     func likeCount(_ entry: DynamicEntry) -> Int {
-        guard let overridden = likeOverrides[entry.id], overridden != entry.isLikedByServer else {
+        guard isLiked(entry) != entry.isLikedByServer else {
             return entry.likeCount
         }
-        return max(0, entry.likeCount + (overridden ? 1 : -1))
+        return max(0, entry.likeCount + (isLiked(entry) ? 1 : -1))
     }
 
     /// 点赞 / 取消点赞。界面先变，失败再改回去并把接口原话交给调用方提示。
+    ///
+    /// 视频动态点的是稿件本身（`archive/like`），和视频详情页同一个对象；
+    /// 文字/图文动态点的是动态（`dyn/thumb`）。
     func toggleLike(_ entry: DynamicEntry, isLoggedIn: Bool) async -> String? {
         guard isLoggedIn else { return "请先登录" }
         guard !likingIDs.contains(entry.id) else { return nil }
@@ -142,13 +150,26 @@ final class DynamicFeedModel {
         defer { likingIDs.remove(entry.id) }
 
         let wasLiked = isLiked(entry)
-        likeOverrides[entry.id] = !wasLiked
+        let willBeLiked = !wasLiked
+        if let aid = entry.video?.aid {
+            VideoLikeStore.shared.setOverride(aid: aid, liked: willBeLiked)
+        } else {
+            likeOverrides[entry.id] = willBeLiked
+        }
 
         do {
-            try await BiliAPI.likeDynamic(id: entry.id, like: !wasLiked)
+            if let aid = entry.video?.aid {
+                try await BiliAPI.likeVideo(aid: aid, like: willBeLiked)
+            } else {
+                try await BiliAPI.likeDynamic(id: entry.id, like: willBeLiked)
+            }
             return nil
         } catch {
-            likeOverrides[entry.id] = wasLiked
+            if let aid = entry.video?.aid {
+                VideoLikeStore.shared.setOverride(aid: aid, liked: wasLiked)
+            } else {
+                likeOverrides[entry.id] = wasLiked
+            }
             return error.isCancellation ? nil : error.localizedDescription
         }
     }

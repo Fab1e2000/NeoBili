@@ -163,22 +163,68 @@ struct APIClient {
         form: [String: String] = [:],
         additionalHeaders: [String: String] = [:]
     ) async throws -> T {
-        guard let url = URL(string: Self.baseURL.appendingPathComponent(path).absoluteString) else {
+        try await postJSONBody(
+            path: path,
+            query: form,
+            jsonBody: nil,
+            additionalHeaders: additionalHeaders
+        )
+    }
+
+    /// 部分网页端接口已迁移为 JSON body（如动态点赞 `dyn/thumb`，
+    /// 表单编码会被判成参数错误 4100001）。PiliPlus 用的就是这个格式：
+    /// csrf 走 query，业务参数走 JSON body。
+    func postJSON(
+        path: String,
+        query: [String: String] = [:],
+        json: [String: Any],
+        additionalHeaders: [String: String] = [:]
+    ) async throws {
+        let _: BiliEmptyData = try await postJSONBody(
+            path: path,
+            query: query,
+            jsonBody: json,
+            additionalHeaders: additionalHeaders
+        )
+    }
+
+    private func postJSONBody<T: Decodable>(
+        path: String,
+        query: [String: String],
+        jsonBody: [String: Any]?,
+        additionalHeaders: [String: String]
+    ) async throws -> T {
+        guard var components = URLComponents(
+            string: Self.baseURL.appendingPathComponent(path).absoluteString
+        ) else {
+            throw BiliAPIError.invalidURL
+        }
+        if !query.isEmpty {
+            components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        guard let url = components.url else {
             throw BiliAPIError.invalidURL
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         await applyCommonHeaders(to: &request)
         // 关注等接口会校验自己的来源站点，调用方最后覆盖默认的全站 Referer。
         for (name, value) in additionalHeaders {
             request.setValue(value, forHTTPHeaderField: name)
         }
 
-        var components = URLComponents()
-        components.queryItems = form.map { URLQueryItem(name: $0.key, value: $0.value) }
-        request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
+        if let jsonBody,
+           JSONSerialization.isValidJSONObject(jsonBody),
+           let data = try? JSONSerialization.data(withJSONObject: jsonBody) {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = data
+        } else {
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            var formComponents = URLComponents()
+            formComponents.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+            request.httpBody = formComponents.percentEncodedQuery?.data(using: .utf8)
+        }
 
         return try await perform(request)
     }

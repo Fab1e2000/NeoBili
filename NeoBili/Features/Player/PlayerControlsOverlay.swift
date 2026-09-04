@@ -31,6 +31,30 @@ struct PlayerControlsOverlay: View {
                 .opacity(controlsVisible ? 1 : 0)
                 .allowsHitTesting(controlsVisible)
 
+            // 右上角的定时休眠按钮，跟着控件一起显隐。
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Spacer(minLength: 0)
+
+                    if let remaining = viewModel.sleepRemainingMinutes {
+                        Text("\(remaining) 分")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.4), in: Capsule())
+                    }
+
+                    sleepTimerMenu
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+
+                Spacer(minLength: 0)
+            }
+            .opacity(controlsVisible ? 1 : 0)
+            .allowsHitTesting(controlsVisible)
+
             // 只让底部进度条所在的小片区域渐变变暗。
             // 这层始终存在，只改透明度，避免进度条重新插入时引起画面抖动。
             VStack(spacing: 0) {
@@ -91,6 +115,53 @@ struct PlayerControlsOverlay: View {
             .contentShape(Circle())
         }
         .accessibilityLabel(viewModel.isPlaying ? "暂停" : "播放")
+    }
+
+    private var sleepTimerMenu: some View {
+        Menu {
+            ForEach(PlayerViewModel.sleepOptions, id: \.self) { option in
+                sleepMenuButton(option)
+            }
+
+            sleepMenuButton(.afterVideoEnd)
+
+            if viewModel.isSleepTimerActive {
+                Divider()
+                Button("取消定时", role: .destructive) {
+                    viewModel.cancelSleepTimer()
+                }
+            }
+        } label: {
+            Image(systemName: viewModel.isSleepTimerActive ? "moon.zzz.fill" : "moon.zzz")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("定时休眠")
+        .accessibilityValue(viewModel.isSleepTimerActive ? "已开启" : "未开启")
+    }
+
+    private func sleepMenuButton(_ option: PlayerViewModel.SleepOption) -> some View {
+        Button {
+            viewModel.setSleepTimer(option)
+        } label: {
+            if viewModel.selectedSleepOption == option {
+                Label(title(for: option), systemImage: "checkmark")
+            } else {
+                Text(title(for: option))
+            }
+        }
+    }
+
+    private func title(for option: PlayerViewModel.SleepOption) -> String {
+        switch option {
+        case .afterVideoEnd: return "本视频播完"
+        case .minutes(let minutes):
+            return minutes >= 60 && minutes % 60 == 0
+                ? "\(minutes / 60) 小时"
+                : "\(minutes) 分钟"
+        }
     }
 
     private var bottomBar: some View {

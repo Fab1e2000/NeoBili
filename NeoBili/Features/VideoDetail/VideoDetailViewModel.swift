@@ -45,6 +45,13 @@ final class VideoDetailViewModel {
         return relation.isLiked && relation.isCoined && relation.isFavorited
     }
 
+    /// 界面展示用的点赞状态：全 App 共享的差量优先，让视频页和
+    /// 关注流里的视频卡片始终显示同一个值。
+    var displayedIsLiked: Bool {
+        guard let detail else { return relation?.isLiked ?? false }
+        return VideoLikeStore.shared.isLiked(aid: detail.aid, serverValue: relation?.isLiked ?? false)
+    }
+
     init(bvid: String) {
         self.bvid = bvid
     }
@@ -111,12 +118,14 @@ final class VideoDetailViewModel {
         // 点赞和点踩互斥，界面上先按最终状态显示。
         apply(like: !wasLiked, dislike: wasLiked ? wasDisliked : false)
         likeCount += wasLiked ? -1 : 1
+        VideoLikeStore.shared.setOverride(aid: detail.aid, liked: !wasLiked)
 
         do {
             try await BiliAPI.likeVideo(aid: detail.aid, like: !wasLiked)
         } catch {
             apply(like: wasLiked, dislike: wasDisliked)
             likeCount += wasLiked ? 1 : -1
+            VideoLikeStore.shared.setOverride(aid: detail.aid, liked: wasLiked)
             actionMessage = error.localizedDescription
         }
     }
@@ -129,13 +138,19 @@ final class VideoDetailViewModel {
         let wasLiked = relation?.isLiked ?? false
         apply(like: wasDisliked ? wasLiked : false, dislike: !wasDisliked)
         // 点踩会顺带取消点赞，点赞数要跟着减。
-        if !wasDisliked, wasLiked { likeCount -= 1 }
+        if !wasDisliked, wasLiked {
+            likeCount -= 1
+            VideoLikeStore.shared.setOverride(aid: detail.aid, liked: false)
+        }
 
         do {
             try await BiliAPI.dislikeVideo(aid: detail.aid, dislike: !wasDisliked)
         } catch {
             apply(like: wasLiked, dislike: wasDisliked)
-            if !wasDisliked, wasLiked { likeCount += 1 }
+            if !wasDisliked, wasLiked {
+                likeCount += 1
+                VideoLikeStore.shared.setOverride(aid: detail.aid, liked: wasLiked)
+            }
             actionMessage = error.localizedDescription
         }
     }
@@ -184,6 +199,7 @@ final class VideoDetailViewModel {
             // 本来就已点赞/已收藏的，计数不能再加一次。
             if result.didLike, !(relation?.isLiked ?? false) { likeCount += 1 }
             if result.didFavorite, !(relation?.isFavorited ?? false) { favoriteCount += 1 }
+            if result.didLike { VideoLikeStore.shared.setOverride(aid: detail.aid, liked: true) }
 
             // 硬币要在原有基础上累加，不能直接用这次返回的 multiply 覆盖。
             // 已经投过币的稿件再三连时，投币那一步会被服务端跳过（multiply 为 0），

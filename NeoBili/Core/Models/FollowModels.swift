@@ -645,9 +645,7 @@ struct SpaceCardPayload: Decodable, Sendable {
         archiveCount = container.flexibleInt(forKey: .archiveCount)
     }
 
-    /// `banner` 传非空值时优先用它——那是空间页真正的自定义头图，
-    /// 比 `card` 接口给的默认图准。
-    func asSpaceCard(mid: Int, banner: String? = nil) -> SpaceCard {
+    func asSpaceCard(mid: Int) -> SpaceCard {
         SpaceCard(
             mid: mid,
             name: card?.name ?? "",
@@ -655,7 +653,7 @@ struct SpaceCardPayload: Decodable, Sendable {
             sign: card?.sign ?? "",
             level: card?.levelInfo?.currentLevel ?? 0,
             isVIP: (card?.vip?.status ?? 0) == 1,
-            banner: banner?.isEmpty == false ? banner : (card?.space?.largeImage ?? space?.largeImage),
+            banner: card?.space?.largeImage ?? space?.largeImage,
             follower: follower ?? card?.fans ?? 0,
             followingCount: card?.attention ?? 0,
             likeCount: likeNum ?? 0,
