@@ -284,6 +284,8 @@ struct FavoriteFolderView: View {
     private func remove(_ media: FavMedia) async {
         guard let index = videos.firstIndex(where: { $0.id == media.id }) else { return }
 
+        // 先等长按菜单退场快照掀开，否则淡出被盖在快照后面看不见。
+        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
         withAnimation(CardRemovalAnimation.fade) { removingIDs.insert(media.id) }
         try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
 

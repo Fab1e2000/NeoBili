@@ -81,6 +81,10 @@ struct VideoListCard: View {
                     .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
 
+                // UP 主和数据行以文字区底部为基准往上排，不紧跟在标题后面：
+                // 标题只有一行时，这两行沉在底部，和左侧 16:9 封面的下缘对齐。
+                Spacer(minLength: 0)
+
                 Text(author)
                     .font(.caption)
                     .foregroundStyle(.secondary)

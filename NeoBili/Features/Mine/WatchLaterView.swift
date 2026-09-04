@@ -83,6 +83,10 @@ struct WatchLaterView: View {
         }
         // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。前缀避免与首页
         // 同一视频的转场源在共享命名空间里撞 id。
+        //
+        // 已知系统问题（iOS 26/27，摘掉转场源也复现）：A 的长按菜单还在
+        // 退场时立刻长按 B，弹出的胶囊还是 A 的菜单项，点「移出」删掉的是
+        // A。应用侧无法分辨菜单归属，只能等菜单完全收起再长按下一张卡。
         .videoTransitionSource("wl-\(summary?.bvid ?? "")", in: videoTransition)
         // 移除动效第一段：原地淡出、占位不变，列表此时不动。
         .cardFadeOut(isRemoving: removingIDs.contains(item.id))
@@ -125,6 +129,8 @@ struct WatchLaterView: View {
               let index = items.firstIndex(where: { $0.id == item.id })
         else { return }
 
+        // 先等长按菜单退场快照掀开，否则淡出被盖在快照后面看不见。
+        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
         withAnimation(CardRemovalAnimation.fade) { removingIDs.insert(item.id) }
         try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
 

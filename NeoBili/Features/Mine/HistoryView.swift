@@ -191,6 +191,8 @@ struct HistoryView: View {
     private func delete(_ item: HistoryItem) async {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
 
+        // 先等长按菜单退场快照掀开，否则淡出被盖在快照后面看不见。
+        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
         withAnimation(CardRemovalAnimation.fade) { removingIDs.insert(item.id) }
         try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
 
