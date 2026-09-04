@@ -85,6 +85,24 @@ final class NowPlayingStore {
         )
     }
 
+    /// 合集里选另一集：和点相关视频一样就地换片，旧的压进历史，
+    /// 所以左上角返回能一级级退回原来那一集。
+    func openEpisode(_ episode: UgcSeasonEpisode) {
+        guard let bvid = episode.bvid else { return }
+        if let route {
+            history.append(route)
+        }
+        start(
+            VideoDetailRoute(
+                bvid: bvid,
+                cid: episode.cid,
+                cover: episode.arc?.pic,
+                title: episode.title,
+                artist: detailViewModel?.detail?.owner.name
+            )
+        )
+    }
+
     /// 左上角返回：先在历史里逐级回退，退到底了就关闭视频并停止播放。
     func goBack() {
         if let previous = history.popLast() {
@@ -148,6 +166,9 @@ final class NowPlayingStore {
                 self?.startPlayerIfPossible()
                 self?.refreshSystemMediaMetadata()
                 self?.buildCommentsIfNeeded()
+                // 标签、互动状态、UP 主名片都要用详情里的 aid / mid，
+                // 所以只能排在详情之后；三者内部仍然是并行发出的。
+                await viewModel.loadExtras()
             },
             // 相关视频和详情各自独立请求，互不等待。
             Task { await viewModel.loadRelated() }

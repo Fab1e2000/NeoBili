@@ -54,7 +54,9 @@ final class AccountSessionTests: XCTestCase {
 
         XCTAssertEqual(items.count, 2)
         let video = try XCTUnwrap(items.first)
-        XCTAssertEqual(video.kidParam, "3_12345")
+        // 删除接口要的是「业务名_条目号」。这条断言原先写的是 "3_12345"（拿 type
+        // 当前缀），把一个会让服务端回 -400 的格式当成了正确答案。
+        XCTAssertEqual(video.kidParam, "archive_12345")
         XCTAssertTrue(video.isVideo)
         XCTAssertEqual(video.asVideoSummary?.cid, 777)
         XCTAssertEqual(video.asVideoSummary?.bvid, "BV1xx")
@@ -109,7 +111,7 @@ final class AccountSessionTests: XCTestCase {
         // 而不是把「未扫码」当成功。
         let confirmed = Data(#"{"code":0,"message":"0","data":{"url":"https://passport.bilibili.com","refresh_token":"","timestamp":1,"code":0,"message":""}}"#.utf8)
         XCTAssertThrowsError(try BiliPassport.pollOutcome(fromPayload: confirmed, cookies: nil))
-        if case .confirmed(let cookies) = try BiliPassport.pollOutcome(
+        if case .confirmed(let cookies, _) = try BiliPassport.pollOutcome(
             fromPayload: confirmed,
             cookies: BiliPassport.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "1")
         ) {
@@ -141,16 +143,16 @@ final class AccountSessionTests: XCTestCase {
         """
         let page = try JSONDecoder().decode(HistoryCursorPage.self, from: Data(json.utf8))
         XCTAssertEqual(page.allItems.count, 1)
-        XCTAssertEqual(page.allItems.first?.kidParam, "12345", "条目自带的 kid 优先")
+        XCTAssertEqual(page.allItems.first?.kidParam, "archive_12345", "条目自带的 kid 优先，前缀仍是业务名")
         XCTAssertEqual(page.cursor?.resolvedViewAt, 1700000000)
     }
 
-    func testHistoryItemWithoutDirectKidFallsBackToTypeOid() throws {
+    func testHistoryItemWithoutDirectKidFallsBackToOid() throws {
         let json = """
         {"title":"某个视频","history":{"business":"archive","oid":12345,"bvid":"BV1xx","cid":777}}
         """
         let item = try JSONDecoder().decode(HistoryItem.self, from: Data(json.utf8))
-        XCTAssertEqual(item.kidParam, "3_12345")
+        XCTAssertEqual(item.kidParam, "archive_12345")
     }
 
     // MARK: - 稍后再看

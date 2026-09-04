@@ -7,6 +7,7 @@ enum BiliAPIError: Error, LocalizedError {
     case apiError(code: Int, message: String)
     case decoding(Error)
     case riskControlled
+    case missingAccessKey
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +17,7 @@ enum BiliAPIError: Error, LocalizedError {
         case .apiError(let code, let message): return "\(message) (code \(code))"
         case .decoding: return "数据解析失败"
         case .riskControlled: return "请求被 B 站风控拦截，请稍后重试"
+        case .missingAccessKey: return "该操作需要 App 端登录凭据，请退出后用扫码方式重新登录"
         }
     }
 }
@@ -33,6 +35,7 @@ struct APIClient {
     static let shared = APIClient()
 
     private static let baseURL = URL(string: "https://api.bilibili.com")!
+    private static let appBaseURL = URL(string: "https://app.bilibili.com")!
     private let session: URLSession
 
     init(session: URLSession = .shared) {
@@ -80,8 +83,18 @@ struct APIClient {
     /// into an empty placeholder and only the business code is checked.
     func post(
         path: String,
-        form: [String: String] = [:]
+        form: [String: String] = [:],
+        additionalHeaders: [String: String] = [:]
     ) async throws {
+        let _: BiliEmptyData = try await post(path: path, form: form, additionalHeaders: additionalHeaders)
+    }
+
+    /// 同上，但把响应的 `data` 解出来。点赞这类接口会在 data 里回一段提示文案。
+    func post<T: Decodable>(
+        path: String,
+        form: [String: String] = [:],
+        additionalHeaders: [String: String] = [:]
+    ) async throws -> T {
         guard let url = URL(string: Self.baseURL.appendingPathComponent(path).absoluteString) else {
             throw BiliAPIError.invalidURL
         }
@@ -90,10 +103,47 @@ struct APIClient {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         await applyCommonHeaders(to: &request)
+        // 关注等接口会校验自己的来源站点，调用方最后覆盖默认的全站 Referer。
+        for (name, value) in additionalHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
 
         var components = URLComponents()
         components.queryItems = form.map { URLQueryItem(name: $0.key, value: $0.value) }
         request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
+
+        return try await perform(request)
+    }
+
+    /// APP 端接口（app.bilibili.com）。
+    ///
+    /// 和网页端是完全两套认证：这里不发 Cookie，改用 `access_key` 表明身份，
+    /// 再用 appkey/appsec 给整组参数签名（见 `AppSigner`）。UA 也必须换成
+    /// BiliDroid 那串，否则请求会被当成非法客户端。
+    ///
+    /// 目前只有「点踩」需要走这条路——网页端没有对应的写接口。
+    func postApp(
+        path: String,
+        form: [String: String] = [:]
+    ) async throws {
+        guard let accessKey = await DeviceIdentity.shared.accessKey, !accessKey.isEmpty else {
+            throw BiliAPIError.missingAccessKey
+        }
+        guard let url = URL(string: Self.appBaseURL.appendingPathComponent(path).absoluteString) else {
+            throw BiliAPIError.invalidURL
+        }
+
+        var params = form
+        params["access_key"] = accessKey
+        let signed = AppSigner.signed(params)
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
+        // 签名串和请求体必须逐字节一致，所以两边共用同一个拼接函数。
+        request.httpBody = AppSigner.queryString(from: signed).data(using: .utf8)
 
         let _: BiliEmptyData = try await perform(request)
     }
@@ -121,6 +171,12 @@ struct APIClient {
                 throw BiliAPIError.apiError(code: decoded.code, message: decoded.message)
             }
             guard let payload = decoded.data else {
+                // 关注、点踩这类写接口成功时根本不返回 data。调用方要的是
+                // `BiliEmptyData` 之类的占位类型时，用空对象把它补出来即可；
+                // 真正需要内容的类型仍会解码失败，落到下面的错误分支。
+                if let placeholder = try? JSONDecoder().decode(T.self, from: Data("{}".utf8)) {
+                    return placeholder
+                }
                 throw BiliAPIError.apiError(code: decoded.code, message: "响应缺少 data 字段")
             }
             return payload

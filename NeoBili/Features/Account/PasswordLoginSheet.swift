@@ -67,7 +67,7 @@ struct PasswordLoginSheet: View {
                 }
             }
             .sheet(item: $geetestRequest) { request in
-                geetestSheet(request)
+                geetestSheet(request).appTextSize()
             }
         }
     }

@@ -9,6 +9,9 @@ struct NeoBiliApp: App {
         // just sit unflushed instead of reaching `devicectl --console`.
         setvbuf(stdout, nil, _IONBF, 0)
 
+        // 「有声音没画面」只在真机上复现，诊断日志同时进 Xcode 控制台和沙盒文件，
+        // 事后整份拉下来看。每次冷启动清空，拉到的就只有本轮复现的记录。
+
         // 设备标识和 WBI 签名密钥是每个接口都要用的前置条件。
         // 启动时先在后台取好，第一批推荐和第一个视频就不用排在它们后面。
         DeviceIdentity.shared.warmUp()

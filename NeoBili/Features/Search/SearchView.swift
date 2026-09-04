@@ -48,6 +48,10 @@ struct SearchView: View {
                         }
                         .disabled(isOpeningVideo)
                         .buttonStyle(.plain)
+                        // 搜索结果没有 avid，稍后再看接口用 bvid 也能加。
+                        .contextMenu {
+                            WatchLaterMenuButton(bvid: item.bvid)
+                        }
                         // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。
                         .videoTransitionSource(item.bvid, in: videoTransition)
                         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
@@ -59,6 +63,8 @@ struct SearchView: View {
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
+            // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
+            .leftEdgeTapDeadZone()
             .overlay {
                 if viewModel.isLoading {
                     ProgressView()
@@ -93,4 +99,5 @@ struct SearchView: View {
     SearchView()
         .environment(NowPlayingStore())
         .environment(AccountStore())
+        .environment(ActionFeedback())
 }

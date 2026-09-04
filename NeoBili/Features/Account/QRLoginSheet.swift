@@ -150,17 +150,27 @@ struct QRLoginSheet: View {
 
     // MARK: - 登录循环
 
+    /// 二维码取自哪条链路。两条都是「拿 B 站 App 扫一扫」，界面完全一样。
+    private enum Channel {
+        /// App（HD 版）链路。除 Cookie 外还会带回 `access_key`，
+        /// 点踩这类只存在于 App 端的接口需要它。优先用这条。
+        case app(authCode: String)
+        /// 网页链路。只有 Cookie。App 链路请求不通时的兜底，
+        /// 保证登录能力不会因为新链路出问题而整体退化。
+        case web(qrcodeKey: String)
+    }
+
     private func runLoginLoop() async {
         phase = .generating
         qrImage = nil
         do {
-            let info = try await BiliPassport.generateQRCode()
+            let (channel, codeContent) = try await makeQRCode()
             guard !Task.isCancelled else { return }
-            qrImage = Self.makeQRCodeImage(info.url)
+            qrImage = Self.makeQRCodeImage(codeContent)
             phase = .waiting
 
             while !Task.isCancelled {
-                switch try await BiliPassport.pollQRCode(info.qrcodeKey) {
+                switch try await poll(channel) {
                 case .waiting:
                     phase = .waiting
                 case .scanned:
@@ -168,9 +178,9 @@ struct QRLoginSheet: View {
                 case .expired:
                     phase = .expired
                     return
-                case .confirmed(let cookies):
+                case .confirmed(let cookies, let accessKey):
                     phase = .succeeded
-                    await account.completeLogin(cookies)
+                    await account.completeLogin(cookies, accessKey: accessKey)
                     try? await Task.sleep(for: .seconds(0.8))
                     dismiss()
                     return
@@ -181,6 +191,29 @@ struct QRLoginSheet: View {
             // 页面关闭属于正常取消。
         } catch {
             phase = .failed(error.localizedDescription)
+        }
+    }
+
+    private func makeQRCode() async throws -> (Channel, String) {
+        do {
+            let info = try await BiliPassport.generateAppQRCode()
+            return (.app(authCode: info.authCode), info.url)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // App 链路自己出问题时（签名被服务端改动、接口下线等）不该让用户
+            // 完全登录不了，退回网页扫码；代价只是拿不到 access_key。
+            let info = try await BiliPassport.generateQRCode()
+            return (.web(qrcodeKey: info.qrcodeKey), info.url)
+        }
+    }
+
+    private func poll(_ channel: Channel) async throws -> BiliPassport.QRCodePollOutcome {
+        switch channel {
+        case .app(let authCode):
+            try await BiliPassport.pollAppQRCode(authCode)
+        case .web(let qrcodeKey):
+            try await BiliPassport.pollQRCode(qrcodeKey)
         }
     }
 

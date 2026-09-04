@@ -33,6 +33,28 @@ struct CommentMember: Decodable, Hashable, Sendable {
 
 struct CommentContent: Decodable, Hashable, Sendable {
     let message: String
+    /// 正文里出现过的表情。键就是正文里那段字面量，例如 `[doge]`。
+    /// 只有用到表情的评论才有这个字段。
+    let emote: [String: CommentEmote]?
+}
+
+/// 评论里的一个表情。
+///
+/// 正文本身仍然是纯文本（`[doge]`），要显示成图得靠这张表里的 `url` 去换。
+/// 没有这张表时就按原样显示那段方括号文字，和网页端未登录时的表现一致。
+struct CommentEmote: Decodable, Hashable, Sendable {
+    let url: String
+    let meta: Meta?
+
+    struct Meta: Decodable, Hashable, Sendable {
+        /// 1 是跟文字同高的行内小表情，2 是单独占一行的大表情。
+        let size: Int?
+    }
+
+    var secureURL: URL? { URL.biliSecure(url) }
+
+    /// 大表情画得比正文高一截，和官方一致。
+    var heightMultiplier: CGFloat { (meta?.size ?? 1) >= 2 ? 2.4 : 1.3 }
 }
 
 struct Comment: Decodable, Identifiable, Hashable, Sendable {
@@ -44,6 +66,8 @@ struct Comment: Decodable, Identifiable, Hashable, Sendable {
     let rcount: Int
     let member: CommentMember
     let content: CommentContent
+    /// 当前账号有没有给这条评论点过赞：1 是点过。未登录时接口返回 0。
+    let action: Int?
     /// 接口自带的楼中楼预览，最多 3 条。这部分是跟着一级评论一起返回的，
     /// 显示它们不需要任何额外请求。
     let replies: [Comment]?
@@ -51,6 +75,13 @@ struct Comment: Decodable, Identifiable, Hashable, Sendable {
     var id: Int { rpid }
 
     var message: String { content.message }
+
+    /// 正文里用到的表情表。没有表情的评论是空字典。
+    var emotes: [String: CommentEmote] { content.emote ?? [:] }
+
+    /// 接口回报的点赞状态。界面上的即时状态由 `CommentsViewModel` 叠加，
+    /// 因为点完之后不会为了一个按钮把整页评论重新拉一遍。
+    var isLikedByServer: Bool { action == 1 }
 
     /// 把时间戳变成“3天前”这类相对说法；超过一年就直接显示日期。
     var relativeTime: String {

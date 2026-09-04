@@ -16,6 +16,50 @@ final class CommentsViewModel {
 
     private var nextPage = 1
 
+    // MARK: - 评论点赞
+
+    /// 本地叠加的点赞状态：rpid -> 是否已赞。
+    ///
+    /// 点完一条评论不值得把整页评论重新拉一遍，而 `Comment` 又是不可变的值类型
+    /// （还嵌套在楼中楼里），所以这里只记差量，展示时和接口回报的状态叠加。
+    private(set) var likeOverrides: [Int: Bool] = [:]
+    /// 正在请求中的评论，用来防连点。
+    private var likingRpids: Set<Int> = []
+    /// 点赞失败时的提示，由评论页弹出。
+    var actionMessage: String?
+
+    func isLiked(_ comment: Comment) -> Bool {
+        likeOverrides[comment.rpid] ?? comment.isLikedByServer
+    }
+
+    /// 展示用的点赞数：接口给的原始值，加上本地这一次的增减。
+    func likeCount(_ comment: Comment) -> Int {
+        guard let overridden = likeOverrides[comment.rpid], overridden != comment.isLikedByServer else {
+            return comment.like
+        }
+        return max(0, comment.like + (overridden ? 1 : -1))
+    }
+
+    func toggleLike(_ comment: Comment, isLoggedIn: Bool) async {
+        guard isLoggedIn else {
+            actionMessage = "请先登录"
+            return
+        }
+        guard !likingRpids.contains(comment.rpid) else { return }
+        likingRpids.insert(comment.rpid)
+        defer { likingRpids.remove(comment.rpid) }
+
+        let wasLiked = isLiked(comment)
+        likeOverrides[comment.rpid] = !wasLiked
+
+        do {
+            try await BiliAPI.likeComment(aid: aid, rpid: comment.rpid, like: !wasLiked)
+        } catch {
+            likeOverrides[comment.rpid] = wasLiked
+            actionMessage = error.localizedDescription
+        }
+    }
+
     init(aid: Int) {
         self.aid = aid
     }
@@ -67,6 +111,12 @@ final class CommentsViewModel {
             return loaded
         }
         return comment.replies ?? []
+    }
+
+    /// 仅供间距测试：跳过网络直接把楼中楼置为展开状态。
+    func setExpandedForTesting(rootId: Int, replies: [Comment]) {
+        expandedCommentIDs.insert(rootId)
+        loadedReplies[rootId] = replies
     }
 
     /// 点「查看全部回复」/「收起」。第一次展开时才请求，之后再展开直接用缓存。

@@ -54,7 +54,10 @@ enum BiliPassport {
         /// 二维码过期，需要重新生成。
         case expired
         /// 确认完成，拿到登录凭据。
-        case confirmed(LoginCookies)
+        ///
+        /// `accessKey` 只有 App 端扫码（`pollAppQRCode`）才会带回来；网页扫码
+        /// 拿到的只有 Cookie，这里为 nil。见 `APIClient.postApp`。
+        case confirmed(LoginCookies, accessKey: String?)
     }
 
     /// 轮询扫码结果。注意业务状态码在 `data.code` 里（顶层 `code` 恒为 0，
@@ -62,7 +65,7 @@ enum BiliPassport {
     /// 86101 未扫码、86090 已扫码未确认、86038 已过期、0 已确认（此刻
     /// Set-Cookie 才会带上 SESSDATA 等凭据）。
     static func pollQRCode(_ qrcodeKey: String) async throws -> QRCodePollOutcome {
-        var request = try makeRequest(path: "x/passport-login/web/qrcode/poll", query: ["qrcode_key": qrcodeKey])
+        let request = try makeRequest(path: "x/passport-login/web/qrcode/poll", query: ["qrcode_key": qrcodeKey])
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
@@ -97,9 +100,149 @@ enum BiliPassport {
             guard let cookies else {
                 throw PassportError.missingCookies
             }
-            return .confirmed(cookies)
+            return .confirmed(cookies, accessKey: nil)
         case let code:
             throw PassportError.rejected("\(envelope.data?.message ?? envelope.message ?? "登录失败") (code \(code))")
+        }
+    }
+
+    // MARK: - App 端扫码登录
+
+    /// App（HD 版）扫码登录，用来换取 `access_key`。
+    ///
+    /// 为什么不直接用上面的网页扫码：网页登录只下发 Cookie，而「点踩」这类接口
+    /// 只存在于 app.bilibili.com 上，认的是 `access_key`（见 `APIClient.postApp`）。
+    /// App 端这条扫码链路成功时，同一份 JSON 里既有 `access_token` 也有整套
+    /// Cookie，一次扫码就能把两种凭据都拿齐，所以它是网页扫码的超集。
+    ///
+    /// 用户体验上没有区别，仍然是拿 B 站 App 扫一张二维码；手机上的确认页会
+    /// 显示成「HD 端登录」。
+    struct AppQRCodeInfo: Decodable, Sendable {
+        let url: String
+        let authCode: String
+
+        enum CodingKeys: String, CodingKey {
+            case url
+            case authCode = "auth_code"
+        }
+    }
+
+    static func generateAppQRCode() async throws -> AppQRCodeInfo {
+        let params = AppSigner.signed([
+            "local_id": "0",
+            "platform": "android",
+            "mobi_app": "android_hd"
+        ])
+        return try await postSigned(path: "x/passport-tv-login/qrcode/auth_code", params: params)
+    }
+
+    /// 轮询 App 扫码结果。
+    ///
+    /// 和网页那条链路不同，这里的业务状态码在**顶层** `code` 上，凭据也在
+    /// JSON body 里而不是 Set-Cookie 头里：
+    /// 86039 未确认、86038 已过期、0 已确认。
+    static func pollAppQRCode(_ authCode: String) async throws -> QRCodePollOutcome {
+        let params = AppSigner.signed(["auth_code": authCode, "local_id": "0"])
+        guard let url = URL(string: baseURL.appendingPathComponent("x/passport-tv-login/qrcode/poll").absoluteString) else {
+            throw PassportError.invalidResponse
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
+        request.httpBody = AppSigner.queryString(from: params).data(using: .utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PassportError.invalidResponse
+        }
+        return try appPollOutcome(fromPayload: data)
+    }
+
+    private struct AppPollEnvelope: Decodable {
+        let code: Int
+        let message: String?
+        let data: AppPollData?
+
+        struct AppPollData: Decodable {
+            let accessToken: String?
+            let cookieInfo: CookieInfo?
+
+            enum CodingKeys: String, CodingKey {
+                case accessToken = "access_token"
+                case cookieInfo = "cookie_info"
+            }
+
+            struct CookieInfo: Decodable {
+                let cookies: [Cookie]?
+
+                struct Cookie: Decodable {
+                    let name: String
+                    let value: String
+                }
+            }
+        }
+    }
+
+    /// 解析 App 扫码轮询的响应体。单独拆出来是为了能脱离网络直接测。
+    static func appPollOutcome(fromPayload payload: Data) throws -> QRCodePollOutcome {
+        guard let envelope = try? JSONDecoder().decode(AppPollEnvelope.self, from: payload) else {
+            throw PassportError.invalidResponse
+        }
+        switch envelope.code {
+        case 86039, 86090:
+            // 86039 是「未确认」，它同时覆盖了网页那条链路里未扫码和已扫码两种状态。
+            return .waiting
+        case 86038:
+            return .expired
+        case 0:
+            var values: [String: String] = [:]
+            for cookie in envelope.data?.cookieInfo?.cookies ?? [] {
+                values[cookie.name] = cookie.value
+            }
+            guard let sessdata = values["SESSDATA"],
+                  let biliJct = values["bili_jct"],
+                  let dedeUserID = values["DedeUserID"]
+            else {
+                throw PassportError.missingCookies
+            }
+            let cookies = LoginCookies(sessdata: sessdata, biliJct: biliJct, dedeUserID: dedeUserID)
+            return .confirmed(cookies, accessKey: envelope.data?.accessToken)
+        case let code:
+            throw PassportError.rejected("\(envelope.message ?? "登录失败") (code \(code))")
+        }
+    }
+
+    /// App 端接口统一走 POST + 签名后的表单体。
+    private static func postSigned<Response: Decodable>(
+        path: String,
+        params: [String: String]
+    ) async throws -> Response {
+        guard let url = URL(string: baseURL.appendingPathComponent(path).absoluteString) else {
+            throw PassportError.invalidResponse
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
+        request.httpBody = AppSigner.queryString(from: params).data(using: .utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PassportError.invalidResponse
+        }
+        do {
+            let envelope = try JSONDecoder().decode(TypedEnvelope<Response>.self, from: data)
+            guard envelope.code == 0, let payload = envelope.data else {
+                throw PassportError.rejected("\(envelope.message ?? "登录服务异常") (code \(envelope.code))")
+            }
+            return payload
+        } catch let error as PassportError {
+            throw error
+        } catch {
+            throw PassportError.invalidResponse
         }
     }
 

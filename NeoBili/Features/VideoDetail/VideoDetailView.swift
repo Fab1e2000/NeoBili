@@ -41,6 +41,9 @@ extension VideoDetailRoute: Identifiable {
 /// 页面退出时会关闭 store，播放器和相关加载任务随之停止并释放。
 struct VideoPage: View {
     @Environment(NowPlayingStore.self) private var store
+    /// 点赞、投币这些操作都要求登录，按钮点下去时据此决定是执行还是提示登录。
+    @Environment(AccountStore.self) private var account
+    @Environment(ActionFeedback.self) private var feedback
 
     /// iPhone 上横屏就等于全屏：App 平时锁着竖屏，只有点全屏按钮才会去请求
     /// 横屏，所以真实方向本身就是全屏状态最可靠的来源。
@@ -51,7 +54,7 @@ struct VideoPage: View {
     /// 不一致，也不需要用 sleep 去等旋转。
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    /// 简介收起时显示几行。想让收起状态更高或更矮，改这个数字即可。
+    /// 收起状态下标题最多显示几行。展开后标题不再截断，简介正文也跟着铺开。
     private static let collapsedDescriptionLines = 2
 
     private var viewModel: VideoDetailViewModel? { store.detailViewModel }
@@ -67,12 +70,21 @@ struct VideoPage: View {
     @State private var lastFullScreenToggle = Date.distantPast
     private static let fullScreenToggleCooldown: TimeInterval = 0.6
 
+    /// 简介区左右留白。tag 那一行要用同样的值才能和正文对齐。
+    private static let contentInset: CGFloat = 16
+
+    @State private var isShowingSeason = false
+    @State private var isShowingFavoriteFolders = false
+
     var body: some View {
         @Bindable var store = store
 
         return GeometryReader { geometry in
             VStack(spacing: 0) {
                 videoArea
+                    // 左缘触控死区先盖在视频画面上；关闭按钮的 overlay 挂在
+                    // 它后面、层级更高，视频页唯一的出口不会被死区挡住。
+                    .leftEdgeTapDeadZone()
                     // 全屏时这个按钮让位给播放控件里的缩小按钮。
                     .overlay(alignment: .topLeading) {
                         if !isFullScreen {
@@ -93,13 +105,24 @@ struct VideoPage: View {
                     )
 
                 if !isFullScreen {
-                    VideoSectionBar(selection: $store.section)
+                    VStack(spacing: 0) {
+                        VideoSectionBar(
+                            selection: $store.section,
+                            // 用详情里的 `stat.reply`，而不是评论列表的总数：后者要等
+                            // 用户真的划到评论页、列表发出第一次请求之后才有值，
+                            // 于是标签上的数字迟迟不出现。详情一回来这里就有了。
+                            commentCount: viewModel?.detail?.stat.reply ?? 0
+                        )
 
-                    sectionPages
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        // 黑色只属于上方视频区域；下面的内容用普通页面底色。
-                        // 详情还没返回时也先铺好，否则进入视频页会闪一下黑。
-                        .background(Color(uiColor: .systemBackground))
+                        sectionPages
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            // 黑色只属于上方视频区域；下面的内容用普通页面底色。
+                            // 详情还没返回时也先铺好，否则进入视频页会闪一下黑。
+                            .background(Color(uiColor: .systemBackground))
+                    }
+                    // 简介和相关视频、评论区与视频画面盖同一条左缘死区，
+                    // 防止边缘误触点开相关视频。
+                    .leftEdgeTapDeadZone()
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
@@ -114,6 +137,39 @@ struct VideoPage: View {
             store.finishDismissal()
             OrientationController.enterPortrait()
         }
+        .sheet(isPresented: $isShowingSeason) {
+            if let season = viewModel?.detail?.ugcSeason {
+                UgcSeasonSheet(
+                    season: season,
+                    currentBvid: store.route?.bvid,
+                    onSelect: store.openEpisode
+                )
+                .appTextSize()
+            }
+        }
+        .sheet(isPresented: $isShowingFavoriteFolders) {
+            if let mid = account.profile?.mid, let aid = viewModel?.detail?.aid {
+                FavoriteFolderSheet(ownerMid: mid, videoAid: aid) { add, remove in
+                    Task {
+                        await viewModel?.updateFavorites(
+                            add: add,
+                            remove: remove,
+                            isLoggedIn: account.isLoggedIn
+                        )
+                    }
+                }
+                .appTextSize()
+            }
+        }
+        // 操作结果统一交给那个非模态浮层。用 alert 的话，视频页本身是
+        // fullScreenCover，弹窗会和它抢 present，页面会被弹走。
+        .onChange(of: viewModel?.actionMessage) { _, message in
+            guard let message else { return }
+            feedback.show(message)
+            viewModel?.actionMessage = nil
+        }
+        // 视频页盖在根视图上面，根视图那层浮层在它下面看不见，得自己再挂一层。
+        .actionFeedbackOverlay()
     }
 
     /// 视频页没有导航栏，所以关闭入口自己画在画面左上角。
@@ -219,10 +275,11 @@ struct VideoPage: View {
             VStack(alignment: .leading, spacing: 0) {
                 if let detail = viewModel?.detail {
                     infoBlock(detail)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, 14)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        // 上半段是普通页面底色，和下面的卡片区自然分开，不需要再画分隔线。
-                        .background(Color(uiColor: .systemBackground))
+
+                    // 简介和推流之间用一条分隔线分段，代替原来的换底色。
+                    Divider()
                 }
 
                 RelatedVideosSection(
@@ -230,86 +287,174 @@ struct VideoPage: View {
                     isLoading: viewModel?.isLoadingRelated ?? false,
                     onSelect: store.openRelated
                 )
-                .padding(.top, 12)
+                .padding(.top, 14)
                 .padding(.bottom, 16)
             }
         }
         // 收起再展开时回到原来的滚动位置。
         .scrollPosition($store.descriptionScroll)
-        // 卡片本身是 secondarySystemGroupedBackground，必须铺在分组灰底上才有对比。
-        // 搜索页就是这么配的；之前这里是纯白底，白卡片贴白背景所以看起来不一样。
-        .background(Color(uiColor: .systemGroupedBackground))
+        // 整页统一用普通页面底色。相关视频那段已经改成白底 + 分隔线，
+        // 不再需要靠一层分组灰底去衬托白卡片；两段同色之后，
+        // 简介和推流之间也就没有那道生硬的色块交界了。
+        .background(Color(uiColor: .systemBackground))
     }
 
+    /// 简介区。顺序照官方客户端：先「谁发的」，再标题和元信息，
+    /// 然后是标签、操作栏、合集，最后才是分P。
     private func infoBlock(_ detail: VideoDetail) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(detail.title)
-                .font(.title3.weight(.semibold))
+        VStack(alignment: .leading, spacing: 14) {
+            VideoOwnerRow(
+                owner: detail.owner,
+                avatarURL: detail.secureAvatarURL,
+                card: viewModel?.ownerCard,
+                isFollowing: viewModel?.relation?.isFollowing ?? false,
+                onToggleFollow: {
+                    Task { await viewModel?.toggleFollow(isLoggedIn: account.isLoggedIn) }
+                }
+            )
+            .padding(.horizontal, Self.contentInset)
 
-            HStack(spacing: 8) {
-                BiliImage(url: detail.secureAvatarURL)
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 32, height: 32)
-                    .clipShape(Circle())
+            titleBlock(detail)
+                .padding(.horizontal, Self.contentInset)
 
-                Text(detail.owner.name)
-                    .font(.subheadline.weight(.medium))
-                    // UP 主名字是这一行里唯一允许被压缩的部分，
-                    // 右边的播放量数字则保持完整宽度。
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                statLabel(systemImage: "play.fill", value: detail.stat.view)
-                statLabel(systemImage: "hand.thumbsup.fill", value: detail.stat.like)
-                statLabel(systemImage: "b.circle.fill", value: detail.stat.coin)
+            if let tags = viewModel?.tags, !tags.isEmpty {
+                VideoTagsRow(tags: tags, horizontalInset: Self.contentInset)
             }
 
-            if !detail.desc.isEmpty {
-                descriptionText(detail.desc)
+            actionBar(detail)
+                .padding(.horizontal, Self.contentInset)
+
+            if let season = detail.ugcSeason, !season.episodes.isEmpty {
+                UgcSeasonRow(
+                    season: season,
+                    currentIndex: currentEpisodeIndex(in: season),
+                    onTap: { isShowingSeason = true }
+                )
+                .padding(.horizontal, Self.contentInset)
             }
 
             if detail.pages.count > 1 {
                 partList(detail)
+                    .padding(.horizontal, Self.contentInset)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
     }
 
-    /// 简介默认只显示 `collapsedDescriptionLines` 行，点文字或“展开”都能张开。
-    private func descriptionText(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(text)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(store.isDescriptionExpanded ? nil : Self.collapsedDescriptionLines)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    guard canExpand(text) else { return }
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        store.isDescriptionExpanded.toggle()
-                    }
+    /// 标题 + 元信息 + 简介正文。
+    ///
+    /// 官方把简介折叠进标题右边那个箭头里：收起时只看到标题和一行数据，
+    /// 展开后才在下面铺开简介全文。这样不管简介多长，进页面时操作栏的位置
+    /// 都是固定的。
+    private func titleBlock(_ detail: VideoDetail) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    store.isDescriptionExpanded.toggle()
                 }
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(detail.title)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(store.isDescriptionExpanded ? nil : Self.collapsedDescriptionLines)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-            if canExpand(text) {
-                Button(store.isDescriptionExpanded ? "收起" : "展开") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        store.isDescriptionExpanded.toggle()
-                    }
+                    Image(systemName: "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(store.isDescriptionExpanded ? 180 : 0))
+                        .padding(.top, 3)
                 }
-                .font(.caption.weight(.medium))
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(detail.title)
+            .accessibilityHint(store.isDescriptionExpanded ? "收起简介" : "展开简介")
+
+            metadataLine(detail)
+
+            if store.isDescriptionExpanded, !detail.desc.isEmpty {
+                Text(detail.desc)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
             }
         }
     }
 
-    /// 简介短到一眼看完时就没必要显示“展开”。
-    /// 这里按字数和换行做粗略判断；想让更多简介带上展开按钮，把字数调小即可。
-    private func canExpand(_ text: String) -> Bool {
-        text.count > 50 || text.contains("\n")
+    /// 播放量、弹幕数、发布时间那一行，以及下面的 BV 号与转载声明。
+    private func metadataLine(_ detail: VideoDetail) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(
+                [
+                    "\(detail.stat.view.biliCountText)播放",
+                    "\(detail.stat.danmaku.biliCountText)弹幕",
+                    detail.pubdate.biliPubdateText
+                ].joined(separator: "  ")
+            )
+
+            HStack(spacing: 6) {
+                Text(detail.bvid)
+
+                // copyright 为 1 是自制稿件，只有它才带这条声明；2 是转载。
+                if detail.copyright == 1 {
+                    Label("未经作者授权禁止转载", systemImage: "nosign")
+                }
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+
+    private func actionBar(_ detail: VideoDetail) -> some View {
+        let relation = viewModel?.relation
+
+        return VideoActionBar(
+            likeCount: viewModel?.likeCount ?? detail.stat.like,
+            coinCount: viewModel?.coinCount ?? detail.stat.coin,
+            favoriteCount: viewModel?.favoriteCount ?? detail.stat.favorite,
+            shareCount: detail.stat.share,
+            isLiked: relation?.isLiked ?? false,
+            isDisliked: relation?.isDisliked ?? false,
+            isCoined: relation?.isCoined ?? false,
+            isFavorited: relation?.isFavorited ?? false,
+            shareURL: URL(string: "https://www.bilibili.com/video/\(detail.bvid)"),
+            onLike: { Task { await viewModel?.toggleLike(isLoggedIn: account.isLoggedIn) } },
+            onTriple: { Task { await viewModel?.tripleAction(isLoggedIn: account.isLoggedIn) } },
+            onDislike: { Task { await viewModel?.toggleDislike(isLoggedIn: account.isLoggedIn) } },
+            onCoin: { Task { await viewModel?.addCoin(isLoggedIn: account.isLoggedIn) } },
+            onFavorite: {
+                // 还没收藏时要先问收进哪个收藏夹；已经收藏了再点就是撤销，
+                // 直接从所有收藏夹里移除，不必再弹一次窗让用户挨个取消勾选。
+                if relation?.isFavorited == true {
+                    Task { await viewModel?.unfavoriteEverywhere(isLoggedIn: account.isLoggedIn) }
+                } else {
+                    presentFavoriteFolders()
+                }
+            },
+            onPickFavoriteFolder: presentFavoriteFolders
+        )
+    }
+
+    /// 收藏夹选择弹窗要用当前账号的 mid 去查收藏夹，未登录时没有可查的东西。
+    private func presentFavoriteFolders() {
+        guard account.isLoggedIn else {
+            viewModel?.actionMessage = "请先登录"
+            return
+        }
+        isShowingFavoriteFolders = true
+    }
+
+    /// 当前这一集在合集里排第几，用于折叠行右侧的「12/41」。
+    private func currentEpisodeIndex(in season: UgcSeason) -> Int? {
+        guard let bvid = store.route?.bvid,
+              let index = season.episodes.firstIndex(where: { $0.bvid == bvid })
+        else { return nil }
+        return index + 1
     }
 
     private func partList(_ detail: VideoDetail) -> some View {
@@ -371,15 +516,6 @@ struct VideoPage: View {
             OrientationController.enterLandscape()
         }
     }
-
-    private func statLabel(systemImage: String, value: Int) -> some View {
-        Label(value.biliCountText, systemImage: systemImage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            // 播放量上百万后文字变长，不加这两行的话「123.4万」会被折成两行。
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-    }
 }
 
 
@@ -387,4 +523,5 @@ struct VideoPage: View {
     VideoPage()
         .environment(NowPlayingStore())
         .environment(AccountStore())
+        .environment(ActionFeedback())
 }

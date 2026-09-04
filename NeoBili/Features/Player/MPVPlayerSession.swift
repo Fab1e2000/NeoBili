@@ -475,6 +475,7 @@ final class MPVMetalViewController: UIViewController {
         view.layer.addSublayer(metalLayer)
         layoutMetalLayer()
 
+
         engine.start(renderingInto: metalLayer)
 
         NotificationCenter.default.addObserver(
@@ -490,6 +491,19 @@ final class MPVMetalViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         layoutMetalLayer()
+    }
+
+    /// 渲染控制器有没有挂在某个容器下面。脱离父级就等于画面不再显示。
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
     }
 
     private func layoutMetalLayer() {
@@ -527,6 +541,9 @@ final class MPVMetalViewController: UIViewController {
     func stop() {
         NotificationCenter.default.removeObserver(self)
         engine.stop()
+    }
+
+    deinit {
     }
 
     @objc private func handleDidEnterBackground() { engine.enterBackground() }

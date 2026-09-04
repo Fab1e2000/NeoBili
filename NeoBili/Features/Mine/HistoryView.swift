@@ -6,6 +6,7 @@ import SwiftUI
 /// Button 上），这样点开/退出视频页的 zoom 动效和首页完全一致。
 struct HistoryView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
+    @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
 
     @State private var items: [HistoryItem] = []
@@ -15,6 +16,8 @@ struct HistoryView: View {
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
+    /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `delete`。
+    @State private var removingIDs: Set<String> = []
 
     var body: some View {
         Group {
@@ -43,8 +46,11 @@ struct HistoryView: View {
                 .background(Color(uiColor: .systemGroupedBackground))
             }
         }
+        // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
+        .leftEdgeTapDeadZone()
         .navigationTitle("历史记录")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .overlay {
             if isLoading, items.isEmpty { ProgressView() }
         }
@@ -76,18 +82,22 @@ struct HistoryView: View {
                 playCount: -1,
                 durationText: summary?.formattedDuration ?? ""
             )
-            .contextMenu {
-                Button(role: .destructive) {
-                    Task { await delete(item) }
-                } label: {
-                    Label("删除这条历史", systemImage: "trash")
-                }
-            }
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            WatchLaterMenuButton(aid: summary?.aid, bvid: summary?.bvid)
+
+            Button(role: .destructive) {
+                Task { await delete(item) }
+            } label: {
+                Label("删除这条历史", systemImage: "trash")
+            }
+        }
         // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。前缀避免与首页
         // 同一视频的转场源在共享命名空间里撞 id。
         .videoTransitionSource("history-\(summary?.bvid ?? "")", in: videoTransition)
+        // 移除动效第一段：原地淡出、占位不变，列表此时不动。
+        .cardFadeOut(isRemoving: removingIDs.contains(item.id))
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
@@ -106,12 +116,31 @@ struct HistoryView: View {
         await reload()
     }
 
+    /// 下拉刷新和「重试」都走这里。
+    ///
+    /// 同 `FavoriteFolderView.reload`：**不要**先清空 `items`。列表内容一变，
+    /// SwiftUI 持有的下拉刷新任务就被取消，请求跟着失败，页面报「加载失败」；
+    /// 而「重试」是另起的任务，不受影响，所以看起来只有下拉会坏。
     private func reload() async {
-        cursorMax = 0
-        cursorViewAt = 0
-        hasMore = true
-        items = []
-        await loadNextPage()
+        isLoading = items.isEmpty
+        defer { isLoading = false }
+        do {
+            let payload = try await BiliAPI.historyPage(max: 0, viewAt: 0)
+            let incoming = payload.allItems.filter(\.isVideo)
+            items = incoming
+
+            if let cursor = payload.cursor, let nextMax = cursor.max, nextMax > 0, !incoming.isEmpty {
+                cursorMax = nextMax
+                cursorViewAt = cursor.resolvedViewAt ?? 0
+                hasMore = true
+            } else {
+                hasMore = false
+            }
+            errorMessage = nil
+        } catch {
+            guard !error.isCancellation else { return }
+            if items.isEmpty { errorMessage = error.localizedDescription }
+        }
     }
 
     private func loadMoreIfNeeded(current item: HistoryItem) async {
@@ -145,17 +174,37 @@ struct HistoryView: View {
             }
             errorMessage = nil
         } catch {
+            guard !error.isCancellation else { return }
             if items.isEmpty { errorMessage = error.localizedDescription }
             hasMore = false
         }
     }
 
+    /// 删除一条历史。
+    ///
+    /// 先把卡片移走，再发请求。原来是等接口回来才移，网络往返那几百毫秒里
+    /// 卡片一直杵在那儿，看起来就是「点了没反应，过一会儿才消失」。
+    /// 失败时按原位放回去并说明原因。
+    ///
+    /// 动效拆成两段顺序执行（`CardRemovalAnimation`）：先原地淡出，完全
+    /// 看不见后空位才收拢、下方卡片上移补位——两段同时进行会出现叠影。
     private func delete(_ item: HistoryItem) async {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+
+        withAnimation(CardRemovalAnimation.fade) { removingIDs.insert(item.id) }
+        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
+
+        withAnimation(CardRemovalAnimation.collapse) { items.remove(at: index) }
+
         do {
             try await BiliAPI.deleteHistory(kid: item.kidParam)
-            withAnimation { items.removeAll { $0.id == item.id } }
+            // 等退出转场走完再清标记，避免同 id 的卡片被残留标记隐藏。
+            try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.collapseMilliseconds))
+            removingIDs.remove(item.id)
         } catch {
-            // 失败保持原样。
+            removingIDs.remove(item.id)
+            withAnimation { items.insert(item, at: min(index, items.count)) }
+            feedback.show(error.localizedDescription)
         }
     }
 }

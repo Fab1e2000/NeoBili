@@ -1,0 +1,119 @@
+import SwiftUI
+
+/// 简介里的合集入口：折叠成一行，点开才列出全部分集。
+///
+/// 合集动辄几十上百集，直接铺在简介里会把相关视频推到很远的地方；官方也是
+/// 折叠一行的做法，右侧标出「当前第几集 / 共几集」。
+struct UgcSeasonRow: View {
+    let season: UgcSeason
+    /// 当前正在播放的分集在合集里的序号（从 1 开始）。找不到时不显示序号。
+    let currentIndex: Int?
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                Text("合集 · \(season.title ?? "")")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "list.bullet")
+                    .font(.caption)
+
+                Text(progressText)
+                    .font(.caption)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("合集 \(season.title ?? "")，\(progressText)，展开分集列表")
+    }
+
+    private var progressText: String {
+        let total = season.episodes.count
+        guard let currentIndex else { return "\(total)" }
+        return "\(currentIndex)/\(total)"
+    }
+}
+
+/// 合集分集列表。当前这一集高亮并带播放标记，点其它集就地换片。
+struct UgcSeasonSheet: View {
+    let season: UgcSeason
+    /// 当前播放的稿件 bvid，用来高亮。
+    let currentBvid: String?
+    let onSelect: (UgcSeasonEpisode) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List(season.episodes) { episode in
+                let isCurrent = episode.bvid == currentBvid
+                Button {
+                    onSelect(episode)
+                    dismiss()
+                } label: {
+                    row(episode, isCurrent: isCurrent)
+                }
+                .buttonStyle(.plain)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            }
+            .listStyle(.plain)
+            // 左缘触控死区：防止边缘误触直接切了分集。
+            .leftEdgeTapDeadZone()
+            .navigationTitle(season.title ?? "合集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func row(_ episode: UgcSeasonEpisode, isCurrent: Bool) -> some View {
+        HStack(spacing: 12) {
+            ZStack(alignment: .bottomTrailing) {
+                BiliImage(url: episode.secureCoverURL)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 120, height: 68)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                if !episode.formattedDuration.isEmpty {
+                    Text(episode.formattedDuration)
+                        .font(.caption2)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 3))
+                        .padding(4)
+                }
+            }
+
+            Text(episode.title ?? "")
+                .font(.subheadline)
+                .foregroundStyle(isCurrent ? Color.accentColor : Color.primary)
+                .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isCurrent {
+                Image(systemName: "play.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+}
