@@ -9,6 +9,20 @@ struct VideoPlaybackConfiguration: Sendable, Equatable {
     var networkTimeoutSeconds: Int = 10
 
     static let fastStart = VideoPlaybackConfiguration()
+
+    /// 系统设置里的「默认清晰度」。每次新建播放器都重新读取，改动即时生效，
+    /// 不必重启应用；已打开的视频页保持原来的配置不受影响。
+    static var current: VideoPlaybackConfiguration {
+        var configuration = VideoPlaybackConfiguration()
+        let stored = UserDefaults.standard.object(forKey: "neobili.preferredQuality") as? Int
+        if let stored, Self.validQualities.contains(stored) {
+            configuration.quality = stored
+        }
+        return configuration
+    }
+
+    /// 设置页允许选择的清晰度集合，挡住随手写进 UserDefaults 的无效值。
+    static let validQualities: Set<Int> = [16, 32, 64, 80, 112]
 }
 
 /// Maps our own configuration onto the mpv option strings `mpv_set_option_string`

@@ -9,60 +9,55 @@ struct SearchView: View {
 
     var body: some View {
         NavigationStack {
-            List(viewModel.results) { item in
-                Button {
-                    Task { @MainActor in
-                        // 搜索栏收起期间禁止再次点卡片，避免同一个视频被连续推入两次。
-                        guard !isOpeningVideo else { return }
-                        isOpeningVideo = true
-                        defer { isOpeningVideo = false }
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(viewModel.results) { item in
+                        Button {
+                            Task { @MainActor in
+                                // 搜索栏收起期间禁止再次点卡片，避免同一个视频被连续推入两次。
+                                guard !isOpeningVideo else { return }
+                                isOpeningVideo = true
+                                defer { isOpeningVideo = false }
 
-                        // 先结束系统搜索状态，再使用和首页完全相同的视频路由进入详情页。
-                        // 系统搜索栏有自己的收起动画；必须等动画结束，导航栏占用的高度才真正释放。
-                        if isSearchPresented {
-                            isSearchPresented = false
-                            try? await Task.sleep(for: .milliseconds(300))
-                        }
+                                // 先结束系统搜索状态，再使用和首页完全相同的视频路由进入详情页。
+                                // 系统搜索栏有自己的收起动画；必须等动画结束，导航栏占用的高度才真正释放。
+                                if isSearchPresented {
+                                    isSearchPresented = false
+                                    try? await Task.sleep(for: .milliseconds(300))
+                                }
 
-                        guard !Task.isCancelled else { return }
-                        nowPlaying.open(
-                            VideoDetailRoute(
-                                bvid: item.bvid,
-                                cover: item.pic,
+                                guard !Task.isCancelled else { return }
+                                nowPlaying.open(
+                                    VideoDetailRoute(
+                                        bvid: item.bvid,
+                                        cover: item.pic,
+                                        title: item.plainTitle,
+                                        artist: item.author
+                                    ),
+                                    from: item.bvid
+                                )
+                            }
+                        } label: {
+                            VideoListCard(
+                                coverURL: item.secureCoverURL,
                                 title: item.plainTitle,
-                                artist: item.author
-                            ),
-                            from: item.bvid
-                        )
+                                author: item.author,
+                                playCount: item.play,
+                                durationText: item.duration
+                            )
+                        }
+                        .disabled(isOpeningVideo)
+                        .buttonStyle(.plain)
+                        // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。
+                        .videoTransitionSource(item.bvid, in: videoTransition)
+                        .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
+                        .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
+                        // 搜索结果里没有 cid，所以预取要先取一次详情再取播放地址。
+                        // 详情会一起缓存下来，进入视频页时不会重复请求。
+                        .task { await VideoPreparationCache.shared.prefetch(bvid: item.bvid) }
                     }
-                } label: {
-                    VideoListCard(
-                        coverURL: item.secureCoverURL,
-                        title: item.plainTitle,
-                        author: item.author,
-                        playCount: item.play,
-                        durationText: item.duration
-                    )
                 }
-                .disabled(isOpeningVideo)
-                .buttonStyle(.plain)
-                .videoTransitionSource(item.bvid, in: videoTransition)
-                // 搜索结果里没有 cid，所以预取要先取一次详情再取播放地址。
-                // 详情会一起缓存下来，进入视频页时不会重复请求。
-                .task { await VideoPreparationCache.shared.prefetch(bvid: item.bvid) }
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(
-                    EdgeInsets(
-                        top: VideoListCardLayout.cardVerticalSpacing,
-                        leading: VideoListCardLayout.pageHorizontalInset,
-                        bottom: VideoListCardLayout.cardVerticalSpacing,
-                        trailing: VideoListCardLayout.pageHorizontalInset
-                    )
-                )
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
             .background(Color(uiColor: .systemGroupedBackground))
             .overlay {
                 if viewModel.isLoading {
@@ -97,4 +92,5 @@ struct SearchView: View {
 #Preview {
     SearchView()
         .environment(NowPlayingStore())
+        .environment(AccountStore())
 }

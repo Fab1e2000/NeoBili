@@ -386,4 +386,5 @@ struct VideoPage: View {
 #Preview {
     VideoPage()
         .environment(NowPlayingStore())
+        .environment(AccountStore())
 }

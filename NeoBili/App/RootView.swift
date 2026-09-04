@@ -20,6 +20,7 @@ extension View {
 
 struct RootView: View {
     @State private var nowPlaying = NowPlayingStore()
+    @State private var account = AccountStore()
     @Namespace private var videoTransition
 
     var body: some View {
@@ -32,6 +33,9 @@ struct RootView: View {
             Tab("搜索", systemImage: "magnifyingglass") {
                 SearchView()
             }
+            Tab("我的", systemImage: "person.crop.circle") {
+                MineView()
+            }
         }
         // 视频页由最外层持有，播放器和整页状态统一由 NowPlayingStore 管理；
         // 视频页退出时由 store 负责停止并释放播放器。
@@ -42,7 +46,11 @@ struct RootView: View {
                 )
         }
         .environment(nowPlaying)
+        .environment(account)
         .environment(\.videoTransitionNamespace, videoTransition)
+        // 冷启动时用 Keychain 里可能存在的登录凭据恢复会话；
+        // 「我的」页在恢复完成前不会闪出登录按钮。
+        .task { await account.restoreSessionIfNeeded() }
     }
 }
 

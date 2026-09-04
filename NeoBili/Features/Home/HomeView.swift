@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
+    @Environment(AccountStore.self) private var account
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @State private var viewModel = HomeViewModel()
     private static let topAnchor = "home-feed-top"
@@ -90,6 +91,11 @@ struct HomeView: View {
             // 不显示“推荐”标题栏：卡片从屏幕顶部安全区下方直接开始，不再空出一整行标题高度。
             .toolbarVisibility(.hidden, for: .navigationBar)
             .task { await viewModel.loadInitial() }
+            // 登录/退出后同一套推荐接口在服务端会切到个性化/通用推流，
+            // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。
+            .onChange(of: account.profile?.mid) {
+                Task { await viewModel.refresh() }
+            }
             .onAppear {
                 // Popping back here always restores the app's portrait lock.
                 OrientationController.enterPortrait()
@@ -208,4 +214,5 @@ private struct VideoCard: View {
 #Preview {
     HomeView()
         .environment(NowPlayingStore())
+        .environment(AccountStore())
 }
