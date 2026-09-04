@@ -62,12 +62,16 @@ final class AccountStore {
     }
 
     /// 扫码或密码登录成功后的共同出口：写入凭据 → 拉个人信息。
-    func completeLogin(_ cookies: BiliPassport.LoginCookies) async {
+    ///
+    /// `accessKey` 只有 App 端扫码会带回来。密码登录传 nil，此时点踩这类
+    /// 只存在于 App 端的接口会提示需要改用扫码登录，其余功能不受影响。
+    func completeLogin(_ cookies: BiliPassport.LoginCookies, accessKey: String? = nil) async {
         await DeviceIdentity.shared.setLoginCookies(
             sessdata: cookies.sessdata,
             biliJct: cookies.biliJct,
             dedeUserID: cookies.dedeUserID
         )
+        await DeviceIdentity.shared.setAccessKey(accessKey)
         await refreshProfile()
     }
 

@@ -6,6 +6,13 @@ struct SettingsView: View {
 
     /// 与 `VideoPlaybackConfiguration.current` 共用的键。改动对之后新打开的视频生效。
     @AppStorage("neobili.preferredQuality") private var preferredQuality = 64
+    /// 文字大小档位。根视图读同一个键，拖完滑杆全 App 立刻跟着变。
+    @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
+    /// 左缘触控死区宽度。各页面的死区都读这同一个键。
+    @AppStorage(LeftEdgeTapDeadZone.storageKey) private var edgeDeadZoneWidth = LeftEdgeTapDeadZone.defaultWidth
+    /// 拖动死区滑杆期间在屏幕左缘亮起的实时遮罩，停手后自动淡出。
+    @State private var isShowingDeadZonePreview = false
+    @State private var deadZonePreviewHideTask: Task<Void, Never>?
     @State private var confirmLogout = false
 
     /// 清晰度选项的展示名。实际可用上限取决于账号等级与稿件本身。
@@ -31,6 +38,22 @@ struct SettingsView: View {
                 Text("对之后打开的视频生效。可用画质还受账号等级和稿件本身的限制。")
             }
 
+            Section {
+                textSizeSlider
+            } header: {
+                Text("显示")
+            } footer: {
+                Text("App 内所有文字按这个档位显示，不跟随系统「设置 → 显示与亮度 → 文字大小」——两边同时缩放会让排版不可预期。")
+            }
+
+            Section {
+                edgeDeadZoneSlider
+            } header: {
+                Text("防误触")
+            } footer: {
+                Text("屏幕左缘这一小条内的点击不生效，避免滑动返回时误触卡片；滑动返回不受影响。在这条里起手的竖向滚动也滚不动列表，调到 0 即关闭。")
+            }
+
             Section("账号") {
                 if let profile = account.profile {
                     LabeledContent("当前用户", value: profile.name)
@@ -49,8 +72,30 @@ struct SettingsView: View {
                 LabeledContent("接口与交互参考", value: "PiliPlus / MeloX")
             }
         }
+        // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触条目。
+        .leftEdgeTapDeadZone()
         .navigationTitle("系统设置")
+        // 拖动「左缘触控死区」滑杆时，屏幕左缘亮起一条实时遮罩标出当前
+        // 宽度，停手后自动淡出。遮罩只是给人看的，不参与命中测试。
+        .overlay(alignment: .leading) {
+            if isShowingDeadZonePreview {
+                Rectangle()
+                    .fill(Color.accentColor.opacity(0.22))
+                    .overlay(alignment: .trailing) {
+                        // 右缘一道实线，宽度很小时也能看清遮罩到哪儿为止。
+                        Rectangle()
+                            .fill(Color.accentColor.opacity(0.85))
+                            .frame(width: 1.5)
+                    }
+                    .frame(width: edgeDeadZoneWidth)
+                    // 伸到状态栏和屏幕底部之外，标的是「屏幕左缘」而不是表单左缘。
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .confirmationDialog(
             "退出登录后将回到访客模式，推荐不再个性化；需要重新登录才能使用收藏等功能。确定退出？",
             isPresented: $confirmLogout,
@@ -63,6 +108,84 @@ struct SettingsView: View {
         }
     }
 
+    /// 仿系统「文字大小」那一页：两端是「小」「大」，中间七个刻度。
+    private var textSizeSlider: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // 拖动时这一行会跟着当前档位一起放大缩小，等于就地预览。
+            Text("正文预览：这段文字会随档位一起变化")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .dynamicTypeSize(AppTextSize.size(at: textSizeIndex))
+
+            HStack(spacing: 12) {
+                Text("小")
+                    .font(.footnote)
+
+                Slider(
+                    value: Binding(
+                        get: { Double(textSizeIndex) },
+                        set: { textSizeIndex = Int($0.rounded()) }
+                    ),
+                    in: 0...Double(AppTextSize.steps.count - 1),
+                    step: 1
+                )
+                .accessibilityLabel("文字大小")
+                .accessibilityValue("第 \(textSizeIndex + 1) 档，共 \(AppTextSize.steps.count) 档")
+
+                Text("大")
+                    .font(.title3)
+            }
+            // 两端的「小」「大」是刻度标签，不该跟着档位一起缩放，
+            // 否则拖到最大时它们会把滑杆挤没。
+            .dynamicTypeSize(.large)
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// 左缘触控死区的宽度滑杆，样式仿文字大小那一行。
+    ///
+    /// 拖动时屏幕左缘出现一条实时遮罩（见 body 里的 overlay），当前宽度
+    /// 挡住多少内容一眼可见；停手约一秒后遮罩自动淡出。
+    private var edgeDeadZoneSlider: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("左缘触控死区")
+                Spacer()
+                Text("\(Int(edgeDeadZoneWidth))pt")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            Slider(
+                value: Binding(
+                    get: { edgeDeadZoneWidth },
+                    set: { newValue in
+                        edgeDeadZoneWidth = newValue.rounded()
+                        revealDeadZonePreview()
+                    }
+                ),
+                in: 0...LeftEdgeTapDeadZone.maxWidth,
+                step: 1
+            )
+            .accessibilityLabel("左缘触控死区宽度")
+            .accessibilityValue("\(Int(edgeDeadZoneWidth)) 点")
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// 亮起左缘遮罩，并安排在最后一次拖动之后一秒淡出。
+    private func revealDeadZonePreview() {
+        if !isShowingDeadZonePreview {
+            withAnimation(.easeOut(duration: 0.15)) { isShowingDeadZonePreview = true }
+        }
+        deadZonePreviewHideTask?.cancel()
+        deadZonePreviewHideTask = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.45)) { isShowingDeadZonePreview = false }
+        }
+    }
+
     private static var appVersion: String {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
@@ -71,5 +194,5 @@ struct SettingsView: View {
 
     /// 每次 UI 行为调整后手动更新。设置页可见 + 二进制里可 grep（长度必须
     /// 超过 15 字节，否则会被 Swift 小字符串优化内联进机器码导致搜不到）。
-    private static let uiRevision = "zoom-unify-1-20260904"
+    private static let uiRevision = "emote-flush-20260904"
 }

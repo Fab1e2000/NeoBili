@@ -43,6 +43,9 @@ struct HomeView: View {
                                             .frame(height: HomeCardLayout.cardHeight(for: geometry.size.width))
                                     }
                                     .buttonStyle(.plain)
+                                    .contextMenu {
+                                        WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
+                                    }
                                     .videoTransitionSource(video.bvid, in: videoTransition)
                                     .task {
                                         await viewModel.loadMoreIfNeeded(current: video)
@@ -85,6 +88,8 @@ struct HomeView: View {
                     // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
                     .scrollBounceBehavior(.always, axes: .vertical)
                     .refreshable { await viewModel.refresh() }
+                    // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
+                    .leftEdgeTapDeadZone()
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
@@ -215,4 +220,5 @@ private struct VideoCard: View {
     HomeView()
         .environment(NowPlayingStore())
         .environment(AccountStore())
+        .environment(ActionFeedback())
 }

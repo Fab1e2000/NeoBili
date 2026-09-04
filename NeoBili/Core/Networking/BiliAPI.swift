@@ -112,10 +112,18 @@ enum BiliAPI {
 
     /// 自己创建的收藏夹列表（含默认收藏夹）。
     /// `list-all` 的 data 是 `{"count": N, "list": [...]}`，不是裸数组。
-    static func favoriteFolders(ownerMid: Int) async throws -> [FavFolder] {
+    ///
+    /// 传了 `videoAid` 时每个收藏夹会多带一个 `fav_state`，表示它里面有没有
+    /// 这个视频——收藏夹选择弹窗靠它决定默认勾选哪几项，不必逐个收藏夹去查。
+    static func favoriteFolders(ownerMid: Int, videoAid: Int? = nil) async throws -> [FavFolder] {
+        var params = ["up_mid": String(ownerMid)]
+        if let videoAid {
+            params["type"] = "2"
+            params["rid"] = String(videoAid)
+        }
         let payload: FavFolderList = try await APIClient.shared.get(
             path: "x/v3/fav/folder/created/list-all",
-            params: ["up_mid": String(ownerMid)]
+            params: params
         )
         return payload.list ?? []
     }
@@ -133,18 +141,44 @@ enum BiliAPI {
         )
     }
 
-    /// 从收藏夹取消收藏。服务端要求表单里带 csrf（bili_jct）。
+    /// 从某个收藏夹里取消收藏。
+    ///
+    /// 走的就是下面那个 `updateFavorites`——`deal` 接口只认 `add_media_ids` 和
+    /// `del_media_ids` 两个字段。这里以前写的是 `remove_media_ids`，服务端认不出
+    /// 来，于是每次都返回成功却什么也没删，表现就是「取消收藏没反应」。
     static func removeFavorite(folderID: Int, aid: Int) async throws {
+        try await updateFavorites(aid: aid, addFolderIDs: [], removeFolderIDs: [folderID])
+    }
+
+    /// 把稿件从**所有**收藏夹里移除。收藏按钮在已收藏状态下再点一次走这里。
+    static func unfavoriteEverywhere(aid: Int) async throws {
         let csrf = await DeviceIdentity.shared.csrfToken ?? ""
         try await APIClient.shared.post(
-            path: "x/v3/fav/resource/deal",
+            path: "x/v3/fav/resource/unfav-all",
+            form: ["rid": String(aid), "type": "2", "csrf": csrf]
+        )
+    }
+
+    /// 删除整个收藏夹。可以一次删多个，服务端要求逗号分隔。
+    static func deleteFavoriteFolders(folderIDs: [Int]) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/v3/fav/folder/del",
             form: [
-                "rid": String(aid),
-                "type": "2",
-                "remove_media_ids": String(folderID),
+                "media_ids": folderIDs.map(String.init).joined(separator: ","),
+                "platform": "web",
                 "csrf": csrf
             ]
         )
+    }
+
+    /// 加入稍后再看。avid 和 bvid 给一个就行——搜索结果只有 bvid。
+    static func addWatchLater(aid: Int?, bvid: String?) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        var form = ["csrf": csrf]
+        if let aid { form["aid"] = String(aid) }
+        if let bvid { form["bvid"] = bvid }
+        try await APIClient.shared.post(path: "x/v2/history/toview/add", form: form)
     }
 
     /// 观看历史按游标翻页：首页 max=0 / view_at=0，之后带上上一页返回的游标。
@@ -161,11 +195,14 @@ enum BiliAPI {
     }
 
     /// 删除单条观看历史。
+    ///
+    /// 端点是 `x/v2/history/delete`——之前写成了 `x/web-interface/history/del`，
+    /// 那个路径根本不存在，所以返回的是 HTTP 404 而不是业务错误码。
     static func deleteHistory(kid: String) async throws {
         let csrf = await DeviceIdentity.shared.csrfToken ?? ""
         try await APIClient.shared.post(
-            path: "x/web-interface/history/del",
-            form: ["kid": kid, "csrf": csrf]
+            path: "x/v2/history/delete",
+            form: ["kid": kid, "jsonp": "jsonp", "csrf": csrf]
         )
     }
 
@@ -179,6 +216,148 @@ enum BiliAPI {
         try await APIClient.shared.post(
             path: "x/v2/history/toview/del",
             form: ["aid": String(aid), "csrf": csrf]
+        )
+    }
+
+    // MARK: - 视频页附加信息
+
+    /// 稿件标签。这是网页端播放页现在用的那个端点，不是更早的 `x/tag/archive/tags`。
+    static func videoTags(aid: Int) async throws -> [VideoTag] {
+        try await APIClient.shared.get(
+            path: "x/web-interface/view/detail/tag",
+            params: ["aid": String(aid)]
+        )
+    }
+
+    /// 当前账号与这个稿件的关系：点赞、投币、收藏、点踩、是否关注 UP 主。
+    ///
+    /// 五个按钮的高亮状态一次拿全。未登录时接口照样返回 code 0，只是全为假值，
+    /// 所以调用方不需要为访客单独分支。
+    static func videoRelation(aid: Int, bvid: String) async throws -> VideoRelation {
+        try await APIClient.shared.get(
+            path: "x/web-interface/archive/relation",
+            params: ["aid": String(aid), "bvid": bvid]
+        )
+    }
+
+    /// UP 主名片，用来显示粉丝数和投稿数。`photo=false` 让服务端不必附带空间头图。
+    static func memberCard(mid: Int) async throws -> MemberCard {
+        let payload: MemberCardPayload = try await APIClient.shared.get(
+            path: "x/web-interface/card",
+            params: ["mid": String(mid), "photo": "false"]
+        )
+        return MemberCard(follower: payload.follower, archiveCount: payload.archiveCount)
+    }
+
+    // MARK: - 视频页写操作（登录后）
+
+    /// 点赞 / 取消点赞。`like` 传 true 是点赞，false 是取消。
+    static func likeVideo(aid: Int, like: Bool) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/web-interface/archive/like",
+            form: [
+                "aid": String(aid),
+                "like": like ? "1" : "2",
+                "csrf": csrf
+            ]
+        )
+    }
+
+    /// 点踩 / 取消点踩。
+    ///
+    /// 网页端没有这个写接口，只能走 App 端，因此它需要 `access_key`——也就是
+    /// 只有扫码登录的账号能用（见 `APIClient.postApp`）。密码登录的账号调用时
+    /// 会拿到 `BiliAPIError.missingAccessKey`。
+    static func dislikeVideo(aid: Int, dislike: Bool) async throws {
+        try await APIClient.shared.postApp(
+            path: "x/v2/view/dislike",
+            form: [
+                "aid": String(aid),
+                // 注意这个接口是反的：0 才是点踩，1 是取消点踩。传反了服务端会回
+                // 65005「取消踩失败，未点踩过」，看起来像点踩功能整个不能用。
+                "dislike": dislike ? "0" : "1"
+            ]
+        )
+    }
+
+    /// 一键三连：点赞 + 投币 + 收藏到默认收藏夹，服务端一次做完。
+    ///
+    /// 返回值说明这三步各自的结果——账号硬币不够时 `coin` 会是 false，
+    /// 但点赞和收藏仍然成功，所以要按字段分别反映到界面上。
+    static func tripleAction(aid: Int) async throws -> TripleResult {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        return try await APIClient.shared.post(
+            path: "x/web-interface/archive/like/triple",
+            form: ["aid": String(aid), "csrf": csrf]
+        )
+    }
+
+    /// 给评论点赞 / 取消点赞。`oid` 传视频的 avid，`type: 1` 表示视频稿件的评论区。
+    static func likeComment(aid: Int, rpid: Int, like: Bool) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/v2/reply/action",
+            form: [
+                "type": "1",
+                "oid": String(aid),
+                "rpid": String(rpid),
+                "action": like ? "1" : "0",
+                "csrf": csrf
+            ]
+        )
+    }
+
+    /// 投币。`multiply` 上限是 2；`selectLike` 为 true 时顺带点赞。
+    static func addCoin(aid: Int, multiply: Int, selectLike: Bool = false) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/web-interface/coin/add",
+            form: [
+                "aid": String(aid),
+                "multiply": String(multiply),
+                "select_like": selectLike ? "1" : "0",
+                "csrf": csrf
+            ]
+        )
+    }
+
+    /// 一次性调整这个视频在各个收藏夹里的归属。
+    /// 两个列表都可以为空，服务端按「加入这些、移出那些」处理。
+    static func updateFavorites(aid: Int, addFolderIDs: [Int], removeFolderIDs: [Int]) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/v3/fav/resource/deal",
+            form: [
+                "rid": String(aid),
+                "type": "2",
+                "add_media_ids": addFolderIDs.map(String.init).joined(separator: ","),
+                "del_media_ids": removeFolderIDs.map(String.init).joined(separator: ","),
+                "csrf": csrf
+            ]
+        )
+    }
+
+    /// 关注 / 取消关注 UP 主。
+    ///
+    /// 这个接口会校验来源站点，所以要把 Origin/Referer 换成 space 站——沿用
+    /// 全站默认的 www 来源会被拒。`re_src=11` 表示来源是视频播放页。
+    static func modifyRelation(mid: Int, follow: Bool) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/relation/modify",
+            form: [
+                "fid": String(mid),
+                "act": follow ? "1" : "2",
+                "re_src": "11",
+                "gaia_source": "web_main",
+                "spmid": "333.788",
+                "csrf": csrf
+            ],
+            additionalHeaders: [
+                "Origin": "https://space.bilibili.com",
+                "Referer": "https://space.bilibili.com/\(mid)/dynamic"
+            ]
         )
     }
 
@@ -277,6 +456,18 @@ enum BiliAPI {
               case .apiError(let code, _) = biliError
         else { return false }
         return code == -400
+    }
+}
+
+/// `x/web-interface/card` 的 data 里除了名片本体，粉丝数和投稿数是平铺在
+/// 顶层的（`follower` / `archive_count`），所以单独解一层再收敛成 `MemberCard`。
+private struct MemberCardPayload: Decodable {
+    let follower: Int?
+    let archiveCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case follower
+        case archiveCount = "archive_count"
     }
 }
 

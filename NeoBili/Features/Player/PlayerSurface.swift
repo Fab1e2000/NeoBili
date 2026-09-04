@@ -8,7 +8,8 @@ struct PlayerSurface: UIViewControllerRepresentable {
     let session: MPVPlayerSession
 
     func makeUIViewController(context: Context) -> PlayerSurfaceContainerController {
-        PlayerSurfaceContainerController(content: session.viewController)
+        let container = PlayerSurfaceContainerController(content: session.viewController)
+        return container
     }
 
     func updateUIViewController(_ uiViewController: PlayerSurfaceContainerController, context: Context) {
@@ -35,6 +36,10 @@ final class PlayerSurfaceContainerController: UIViewController {
         self.content = content
     }
 
+    deinit {
+        // 容器被销毁时，渲染控制器如果还挂在它下面，就等于离开了视图层级。
+    }
+
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func viewDidLoad() {
@@ -42,6 +47,28 @@ final class PlayerSurfaceContainerController: UIViewController {
         view.backgroundColor = .black
         view.clipsToBounds = true
         if let content { attach(content) }
+    }
+
+    /// 真正显示出来的容器要把渲染层要回来。
+    ///
+    /// SwiftUI 有时会为同一个 session 建**两个** `PlayerSurface` 容器（重新
+    /// present 视频页时实测就会），后建的那个会把渲染层从先建的那个手里抢走，
+    /// 而留在屏幕上的往往是先建的那个——于是渲染层挂在一个没进窗口的容器下面，
+    /// 声音照放，画面全黑。只有真正上屏的容器才会收到出现和布局回调，所以在
+    /// 这两处认领一次，屏幕上的那个一定拿得回来。
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        reclaimContentIfNeeded()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        reclaimContentIfNeeded()
+    }
+
+    private func reclaimContentIfNeeded() {
+        guard let content, content.parent !== self else { return }
+        attach(content)
     }
 
     /// 幂等：已经装着这个控制器就什么都不做，否则先从旧的父级上摘干净再接过来。
@@ -62,6 +89,15 @@ final class PlayerSurfaceContainerController: UIViewController {
 
     private func attach(_ content: UIViewController) {
         guard content.parent !== self else { return }
+
+        // 不要从一个正显示在屏幕上的容器手里抢渲染层。
+        // 抢走之后画面就没了，而抢的这一个自己还没上屏（多半根本不会上屏）。
+        if let holder = content.parent,
+           holder.viewIfLoaded?.window != nil,
+           viewIfLoaded?.window == nil {
+            return
+        }
+
         if content.parent != nil {
             content.willMove(toParent: nil)
             content.view.removeFromSuperview()

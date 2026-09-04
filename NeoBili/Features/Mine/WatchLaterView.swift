@@ -5,11 +5,14 @@ import SwiftUI
 /// （ScrollView + Button + 转场源紧跟 buttonStyle），zoom 动效和首页一致。
 struct WatchLaterView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
+    @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
 
     @State private var items: [WatchLaterItem] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `remove`。
+    @State private var removingIDs: Set<Int> = []
 
     var body: some View {
         Group {
@@ -34,8 +37,11 @@ struct WatchLaterView: View {
                 .background(Color(uiColor: .systemGroupedBackground))
             }
         }
+        // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
+        .leftEdgeTapDeadZone()
         .navigationTitle("稍后再看")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .overlay {
             if isLoading, items.isEmpty { ProgressView() }
         }
@@ -66,18 +72,20 @@ struct WatchLaterView: View {
                 playCount: -1,
                 durationText: summary?.formattedDuration ?? ""
             )
-            .contextMenu {
-                Button(role: .destructive) {
-                    Task { await remove(item) }
-                } label: {
-                    Label("移出稍后再看", systemImage: "flag.slash")
-                }
-            }
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                Task { await remove(item) }
+            } label: {
+                Label("移出稍后再看", systemImage: "flag.slash")
+            }
+        }
         // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。前缀避免与首页
         // 同一视频的转场源在共享命名空间里撞 id。
         .videoTransitionSource("wl-\(summary?.bvid ?? "")", in: videoTransition)
+        // 移除动效第一段：原地淡出、占位不变，列表此时不动。
+        .cardFadeOut(isRemoving: removingIDs.contains(item.id))
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
@@ -103,17 +111,34 @@ struct WatchLaterView: View {
             items = (payload.list ?? []).filter { $0.bvid?.isEmpty == false }
             errorMessage = nil
         } catch {
+            guard !error.isCancellation else { return }
             if items.isEmpty { errorMessage = error.localizedDescription }
         }
     }
 
+    /// 同 `HistoryView.delete`：先移走卡片再发请求，失败了放回原位。
+    ///
+    /// 动效拆成两段顺序执行（`CardRemovalAnimation`）：先原地淡出，完全
+    /// 看不见后空位才收拢、下方卡片上移补位——两段同时进行会出现叠影。
     private func remove(_ item: WatchLaterItem) async {
-        guard let aid = item.aid else { return }
+        guard let aid = item.aid,
+              let index = items.firstIndex(where: { $0.id == item.id })
+        else { return }
+
+        withAnimation(CardRemovalAnimation.fade) { removingIDs.insert(item.id) }
+        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
+
+        withAnimation(CardRemovalAnimation.collapse) { items.remove(at: index) }
+
         do {
             try await BiliAPI.removeWatchLater(aid: aid)
-            withAnimation { items.removeAll { $0.id == item.id } }
+            // 等退出转场走完再清标记，避免同 id 的卡片被残留标记隐藏。
+            try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.collapseMilliseconds))
+            removingIDs.remove(item.id)
         } catch {
-            // 失败保持原样。
+            removingIDs.remove(item.id)
+            withAnimation { items.insert(item, at: min(index, items.count)) }
+            feedback.show(error.localizedDescription)
         }
     }
 }

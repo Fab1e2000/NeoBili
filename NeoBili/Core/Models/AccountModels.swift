@@ -41,10 +41,17 @@ struct FavFolder: Decodable, Identifiable, Hashable, Sendable {
     let id: Int
     let title: String
     let mediaCount: Int
+    /// 查询时带上 `rid`（稿件 avid）才有这个字段：1 表示这个收藏夹里已经有该视频。
+    /// 收藏夹选择弹窗据此决定哪几项默认打勾。
+    let favState: Int?
+
+    /// 这个收藏夹当前是否已收藏了所查询的视频。
+    var containsQueriedVideo: Bool { favState == 1 }
 
     enum CodingKeys: String, CodingKey {
         case id, title
         case mediaCount = "media_count"
+        case favState = "fav_state"
     }
 }
 
@@ -198,9 +205,13 @@ struct HistoryItem: Decodable, Identifiable, Hashable, Sendable {
 
     /// 删除单条历史用的 kid 字符串：优先用接口直接给的值，
     /// 缺失时按 `<type>_<oid>` 自行拼接（archive 的 type 是 3）。
+    /// 删除历史时要传的 kid。
+    ///
+    /// 格式是「业务名_条目号」，例如 `archive_114514`——普通视频的业务名就是
+    /// `archive`。之前传的是裸数字（或者拿 `type` 当前缀），接口一律回 -400。
     var kidParam: String {
-        if let kid { return String(kid) }
-        return "\(history.type ?? 3)_\(history.oid ?? 0)"
+        let business = history.business ?? "archive"
+        return "\(business)_\(kid ?? history.oid ?? 0)"
     }
 
     var asVideoSummary: VideoSummary? {

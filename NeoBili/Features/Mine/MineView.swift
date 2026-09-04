@@ -26,13 +26,16 @@ struct MineView: View {
                     loggedOutView
                 }
             }
+            // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触入口行。
+            .leftEdgeTapDeadZone()
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("我的")
         }
         .sheet(item: $loginSheet) { sheet in
             switch sheet {
-            case .qr: QRLoginSheet()
-            case .password: PasswordLoginSheet()
+            // sheet 有自己的 UIHostingController，文字档位要在根部重新注入。
+            case .qr: QRLoginSheet().appTextSize()
+            case .password: PasswordLoginSheet().appTextSize()
             }
         }
     }
@@ -69,8 +72,13 @@ struct MineView: View {
     private func loggedInView(_ profile: AccountStore.Profile) -> some View {
         List {
             Section {
-                profileHeader(profile)
+                profileCard(profile)
             }
+            // 头部是一张自己排版的卡片，不该套 List 行那套内边距、分隔线和
+            // 点按高亮，所以把行样式整个撤掉，由卡片自己决定留白。
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 16, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
 
             Section {
                 serviceRow(
@@ -106,45 +114,61 @@ struct MineView: View {
         }
     }
 
-    private func profileHeader(_ profile: AccountStore.Profile) -> some View {
-        HStack(spacing: 14) {
+    /// 个人信息卡片。
+    ///
+    /// 头像居中放大、名字单独占一行，等级 / 大会员 / 硬币收成一排 chip 摆在下面。
+    /// 之前是「左头像 + 右两行」的列表行样式：名字要和大会员徽章抢同一行的宽度，
+    /// 名字一长就被压缩，等级和硬币又挤在第二行，几种字号和圆角混在一起。
+    /// 竖排之后每一层只承担一件事，长名字也不会挤到徽章。
+    private func profileCard(_ profile: AccountStore.Profile) -> some View {
+        VStack(spacing: 12) {
             BiliImage(url: profile.secureAvatarURL)
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 60, height: 60)
+                .frame(width: 72, height: 72)
                 .clipShape(Circle())
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(profile.name)
-                        .font(.title3.weight(.semibold))
-                        .lineLimit(1)
-                    if profile.isVIP {
-                        Text("大会员")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color(red: 0.98, green: 0.45, blue: 0.09), in: RoundedRectangle(cornerRadius: 4))
-                    }
+                .overlay {
+                    Circle().stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
                 }
 
-                HStack(spacing: 8) {
-                    Text("LV\(profile.level)")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color(uiColor: .systemGray), in: RoundedRectangle(cornerRadius: 4))
+            Text(profile.name)
+                .font(.title3.weight(.semibold))
+                .lineLimit(1)
 
-                    Label(String(format: "%.1f", profile.coins), systemImage: "centsign.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                badge("LV\(profile.level)", background: Color(uiColor: .systemGray))
+
+                if profile.isVIP {
+                    badge("大会员", background: Color(red: 0.98, green: 0.45, blue: 0.09))
                 }
+
+                badge(
+                    String(format: "%.1f 硬币", profile.coins),
+                    background: Color(uiColor: .tertiarySystemFill),
+                    foreground: .secondary
+                )
             }
-
-            Spacer()
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(
+            Color(uiColor: .secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+    }
+
+    /// 卡片下方那排小标签。三个徽章共用同一套字号、内边距和圆角，
+    /// 高度才会一致——原来等级和大会员是两套数值，并排时上下差半格。
+    private func badge(
+        _ text: String,
+        background: Color,
+        foreground: Color = .white
+    ) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(background, in: Capsule())
     }
 
     /// Apple Music 式的服务入口行：圆角彩色底 + SF Symbol + 标题。

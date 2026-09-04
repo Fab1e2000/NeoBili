@@ -16,12 +16,14 @@ actor DeviceIdentity {
     private static let sessdataKeychainKey = "neobili.sessdata"
     private static let biliJctKeychainKey = "neobili.bili_jct"
     private static let dedeUserIDKeychainKey = "neobili.dedeuserid"
+    private static let accessKeyKeychainKey = "neobili.access_key"
 
     private var cachedBuvid3: String?
     private var cachedBuvid4: String?
     private var cachedSessdata: String?
     private var cachedBiliJct: String?
     private var cachedDedeUserID: String?
+    private var cachedAccessKey: String?
     private var fetchTask: Task<Void, Never>?
 
     private init() {
@@ -30,6 +32,7 @@ actor DeviceIdentity {
         cachedSessdata = KeychainStore.string(for: Self.sessdataKeychainKey)
         cachedBiliJct = KeychainStore.string(for: Self.biliJctKeychainKey)
         cachedDedeUserID = KeychainStore.string(for: Self.dedeUserIDKeychainKey)
+        cachedAccessKey = KeychainStore.string(for: Self.accessKeyKeychainKey)
     }
 
     /// 当前是否带着可用的登录凭据（只看本地有没有 Cookie，不验证有效性）。
@@ -40,6 +43,12 @@ actor DeviceIdentity {
     /// POST 类写操作（取消收藏、删除历史等）要求的 csrf 令牌，即 bili_jct。
     var csrfToken: String? {
         cachedBiliJct
+    }
+
+    /// APP 端接口（app.bilibili.com）的凭据。只有扫码登录能拿到它，
+    /// 网页密码登录只有 Cookie，所以这里可能为 nil。
+    var accessKey: String? {
+        cachedAccessKey
     }
 
     /// App 启动时就把设备标识取回来，之后的接口请求不必再等它。
@@ -76,14 +85,22 @@ actor DeviceIdentity {
         KeychainStore.set(dedeUserID, for: Self.dedeUserIDKeychainKey)
     }
 
+    /// 扫码登录额外带回来的 APP 端凭据。密码登录没有这个值，传 nil 即可。
+    func setAccessKey(_ accessKey: String?) {
+        cachedAccessKey = accessKey
+        KeychainStore.set(accessKey, for: Self.accessKeyKeychainKey)
+    }
+
     /// 退出登录或凭据失效时清除。
     func clearLoginCookies() {
         cachedSessdata = nil
         cachedBiliJct = nil
         cachedDedeUserID = nil
+        cachedAccessKey = nil
         KeychainStore.set(nil, for: Self.sessdataKeychainKey)
         KeychainStore.set(nil, for: Self.biliJctKeychainKey)
         KeychainStore.set(nil, for: Self.dedeUserIDKeychainKey)
+        KeychainStore.set(nil, for: Self.accessKeyKeychainKey)
     }
 
     private func startFetchIfNeeded() {
@@ -138,4 +155,8 @@ actor DeviceIdentity {
 enum BiliHeaders {
     static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
     static let referer = "https://www.bilibili.com"
+
+    /// APP 端接口只认 BiliDroid 的 UA。带着浏览器 UA 去请求 app.bilibili.com
+    /// 会被当成非法客户端，即使签名正确也拿不到数据。
+    static let appUserAgent = "Mozilla/5.0 BiliDroid/2.0.1 (bbcallen@gmail.com) os/android model/android_hd mobi_app/android_hd build/2001100 channel/master innerVer/2001100 osVer/15 network/2"
 }

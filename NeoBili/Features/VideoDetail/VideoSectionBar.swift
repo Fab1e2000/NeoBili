@@ -22,6 +22,9 @@ private enum VideoSectionBarLayout {
 /// 选中项下方有一条会滑动的指示条，滑动切换页面时它跟着一起动。
 struct VideoSectionBar: View {
     @Binding var selection: VideoPageSection
+    /// 评论总数，跟在「评论」后面显示。还没加载出来（为 0）时不显示，
+    /// 免得先出现一个 0 再跳成真实数字。
+    var commentCount: Int = 0
 
     /// 指示条靠它在两个选项之间做滑动动画，而不是在旧位置消失、新位置出现。
     @Namespace private var indicatorNamespace
@@ -49,7 +52,7 @@ struct VideoSectionBar: View {
             }
         } label: {
             VStack(spacing: VideoSectionBarLayout.textIndicatorSpacing) {
-                Text(section.title)
+                Text(title(for: section))
                     .font(.subheadline.weight(isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? Color.primary : Color.secondary)
 
@@ -66,8 +69,13 @@ struct VideoSectionBar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(section.title)
+        .accessibilityLabel(title(for: section))
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private func title(for section: VideoPageSection) -> String {
+        guard section == .comments, commentCount > 0 else { return section.title }
+        return "\(section.title) \(commentCount.biliCountText)"
     }
 }
 

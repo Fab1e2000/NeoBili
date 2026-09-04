@@ -56,6 +56,13 @@ struct VideoListCard: View {
     let playCount: Int
     /// 已经排好版的时长文字，例如 `12:34`。留空则不显示这一项。
     let durationText: String
+    /// 是否画出卡片本身的外观（浅色底、圆角、边线）。
+    ///
+    /// 视频页的相关视频推流传 false：那一页整体是白底 + 分隔线的样子，
+    /// 卡片外观会在白底上多出一层看不清又挡路的方框。其余页面保持默认。
+    /// 传 false 时仍会铺一层和页面同色的底：长按预览被系统抬起来时，
+    /// 裸内容会像悬浮在列表上，有这层底才像一块完整的卡片。
+    var showsCardChrome = true
 
     var body: some View {
         HStack(alignment: .top, spacing: VideoListCardLayout.imageTextSpacing) {
@@ -104,19 +111,23 @@ struct VideoListCard: View {
             Spacer(minLength: 0)
         }
         .padding(VideoListCardLayout.contentPadding)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(
-            RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous)
-                .stroke(
-                    Color(uiColor: .separator).opacity(VideoListCardLayout.borderOpacity),
-                    lineWidth: VideoListCardLayout.borderWidth
-                )
+        .background {
+            if showsCardChrome {
+                RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous)
+                            .stroke(
+                                Color(uiColor: .separator).opacity(VideoListCardLayout.borderOpacity),
+                                lineWidth: VideoListCardLayout.borderWidth
+                            )
+                    }
+            } else {
+                // 和视频页整页背景同色：平时叠在页面上看不出来，
+                // 只在系统抬起长按预览时提供一块实底。
+                Color(uiColor: .systemBackground)
+            }
         }
-        .contentShape(
-            RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous)
-        )
+        .contentShape(Rectangle())
     }
 }
