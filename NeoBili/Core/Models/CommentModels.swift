@@ -36,6 +36,42 @@ struct CommentContent: Decodable, Hashable, Sendable {
     /// 正文里出现过的表情。键就是正文里那段字面量，例如 `[doge]`。
     /// 只有用到表情的评论才有这个字段。
     let emote: [String: CommentEmote]?
+    /// 图文评论的配图。宽松解码：这个字段的形态并不稳定，
+    /// 解不动的时候当作没有配图，不能连累整页评论。
+    let pictures: [CommentPicture]
+
+    enum CodingKeys: String, CodingKey {
+        case message, emote, pictures
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        message = try container.decode(String.self, forKey: .message)
+        emote = try? container.decodeIfPresent([String: CommentEmote].self, forKey: .emote)
+        pictures = (try? container.decodeIfPresent(LenientList<CommentPicture>.self, forKey: .pictures))??.elements ?? []
+    }
+}
+
+/// 评论里的一张配图。
+struct CommentPicture: Decodable, Hashable, Sendable, Identifiable {
+    let imgSrc: String
+    let imgWidth: Int?
+    let imgHeight: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case imgSrc = "img_src"
+        case imgWidth = "img_width"
+        case imgHeight = "img_height"
+    }
+
+    var id: String { imgSrc }
+    var secureURL: URL? { URL.biliSecure(imgSrc) }
+
+    /// 单图按原图比例显示，压在 3:4 到 16:9 之间，和动态里的单图一个规矩。
+    var displayAspectRatio: CGFloat {
+        guard let imgWidth, let imgHeight, imgWidth > 0, imgHeight > 0 else { return 4.0 / 3.0 }
+        return min(max(CGFloat(imgWidth) / CGFloat(imgHeight), 0.75), 16.0 / 9.0)
+    }
 }
 
 /// 评论里的一个表情。
@@ -78,6 +114,9 @@ struct Comment: Decodable, Identifiable, Hashable, Sendable {
 
     /// 正文里用到的表情表。没有表情的评论是空字典。
     var emotes: [String: CommentEmote] { content.emote ?? [:] }
+
+    /// 图文评论的配图。没有配图时是空数组。
+    var pictures: [CommentPicture] { content.pictures }
 
     /// 接口回报的点赞状态。界面上的即时状态由 `CommentsViewModel` 叠加，
     /// 因为点完之后不会为了一个按钮把整页评论重新拉一遍。

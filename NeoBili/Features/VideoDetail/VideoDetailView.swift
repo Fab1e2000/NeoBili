@@ -132,6 +132,9 @@ struct VideoPage: View {
         .background(Color.black)
         .ignoresSafeArea(isFullScreen ? .all : [], edges: .all)
         .statusBarHidden(isFullScreen)
+        // 评论里的配图点开看大图。视频页本身就是 fullScreenCover，
+        // 查看器挂在它内部而不是根视图上。
+        .imageViewerHost()
         .onDisappear {
             // 系统手势关闭时负责清理；若用户已点开下一张卡片，则不能让旧页面
             // 延迟到达的 onDisappear 把新页面的 route 和 player 一起清掉。
