@@ -55,9 +55,6 @@ struct FavoritesView: View {
         .leftEdgeTapDeadZone()
         .navigationTitle("收藏")
         .navigationBarTitleDisplayMode(.inline)
-        // 二级页面不该再顶着底部标签栏。系统会让它跟着导航转场一起滑走，
-        // 返回时再滑回来，和 iOS 内置 App 的行为一致。
-        .toolbar(.hidden, for: .tabBar)
         .overlay {
             if isLoading, folders.isEmpty { ProgressView() }
         }
@@ -159,7 +156,6 @@ struct FavoriteFolderView: View {
         .leftEdgeTapDeadZone()
         .navigationTitle(folder.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
         .overlay {
             if isLoading, videos.isEmpty { ProgressView() }
         }

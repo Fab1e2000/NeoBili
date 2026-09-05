@@ -3,18 +3,22 @@ import SwiftUI
 struct HomeView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
+    @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @State private var viewModel = HomeViewModel()
+    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
+    @State private var pullDistance: CGFloat = 0
+    @State private var pullArmed = false
+    @State private var feedOffset: CGFloat = 0
+    @State private var reselectCount = 0
+    @State private var shortcutTask: Task<Void, Never>?
+    @State private var isRefreshing = false
+    @State private var refreshHoldingHeight: CGFloat = 0
     private static let topAnchor = "home-feed-top"
 
     /// 搜索就在首页完成，不跳页：系统搜索框跟随大标题一起收放，
     /// 回车后这一页的内容换成结果，清空后回到推荐流。
     @State private var search = SearchViewModel()
-
-    private let columns = [
-        GridItem(.flexible(), spacing: HomeCardLayout.columnSpacing),
-        GridItem(.flexible(), spacing: HomeCardLayout.columnSpacing)
-    ]
 
     var body: some View {
         NavigationStack {
@@ -69,6 +73,18 @@ struct HomeView: View {
                 OrientationController.enterPortrait()
             }
         }
+        .background {
+            HomeTabReselectionObserver {
+                guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented else { return }
+                if search.hasSubmittedSearch {
+                    search.query = ""
+                    search.reset()
+                } else {
+                    reselectCount += 1
+                }
+            }
+            .frame(width: 0, height: 0)
+        }
     }
 
     private var feed: some View {
@@ -79,44 +95,25 @@ struct HomeView: View {
                     Color.clear
                         .frame(height: 0)
                         .id(Self.topAnchor)
+                        .background {
+                            ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing,
+                                             onProgress: { distance, armed in
+                                                 pullDistance = distance
+                                                 pullArmed = armed
+                                             }, onRefresh: { startRefresh() })
+                        }
 
-                    LazyVGrid(columns: columns, spacing: HomeCardLayout.rowSpacing) {
-                        ForEach(viewModel.feedItems) { item in
-                            switch item {
-                            case .video(let video):
-                                // 推荐卡片自带 cid，直接交给详情页，省掉一次串行的详情请求。
-                                Button {
-                                    nowPlaying.open(
-                                        VideoDetailRoute(
-                                            bvid: video.bvid,
-                                            cid: video.cid,
-                                            cover: video.pic,
-                                            title: video.title,
-                                            artist: video.owner.name
-                                        ),
-                                        from: video.bvid
-                                    )
-                                } label: {
-                                    VideoCard(video: video)
-                                        .frame(height: HomeCardLayout.cardHeight(for: geometry.size.width))
+                    LazyVStack(spacing: HomeCardLayout.rowSpacing) {
+                        ForEach(viewModel.feedRows) { row in
+                            switch row {
+                            case .videos(let videos):
+                                HStack(alignment: .top, spacing: HomeCardLayout.columnSpacing) {
+                                    ForEach(videos) { video in
+                                        videoCard(video, pageWidth: geometry.size.width)
+                                            .frame(width: (geometry.size.width - HomeCardLayout.horizontalInset * 2 - HomeCardLayout.columnSpacing) / 2)
+                                    }
+                                    if videos.count == 1 { Spacer(minLength: 0) }
                                 }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
-                                }
-                                .videoTransitionSource(video.bvid, in: videoTransition)
-                                .task {
-                                    await viewModel.loadMoreIfNeeded(current: video)
-                                }
-                                // 卡片出现在屏幕上就先把播放地址取回来，点开时通常已经有结果了。
-                                // 分成两个 .task 是为了不让预取挡住上面的翻页请求。
-                                .task {
-                                    await VideoPreparationCache.shared.prefetch(
-                                        bvid: video.bvid,
-                                        cid: video.cid
-                                    )
-                                }
-
                             case .lastSeen:
                                 Button {
                                     Task {
@@ -124,11 +121,10 @@ struct HomeView: View {
                                         withAnimation(.easeOut(duration: 0.25)) {
                                             proxy.scrollTo(Self.topAnchor, anchor: .top)
                                         }
-                                        await viewModel.refresh()
+                                        await refreshFeed()
                                     }
                                 } label: {
                                     LastSeenCard()
-                                        .frame(height: HomeCardLayout.cardHeight(for: geometry.size.width))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -137,7 +133,7 @@ struct HomeView: View {
                     .padding(.horizontal, HomeCardLayout.horizontalInset)
                     .padding(.vertical, HomeCardLayout.verticalInset)
 
-                // 下拉刷新已有系统顶部转圈，只有加载下一页时才在列表底部再显示进度。
+                // 刷新进度在顶部浮层显示，翻页进度单独放在列表底部。
                 if viewModel.isLoadingMore {
                     ProgressView()
                         .padding()
@@ -145,10 +141,53 @@ struct HomeView: View {
                 }
                 // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
                 .scrollBounceBehavior(.always, axes: .vertical)
+                .scrollDisabled(isRefreshing)
                 // 卡片从搜索框下面滑过去时，顶部给一层渐隐，让搜索框浮在内容之上
                 // 而不是硬生生压着卡片（iOS 26 的 scroll edge effect）。
                 .scrollEdgeEffectStyle(.soft, for: .top)
-                .refreshable { await viewModel.refresh() }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { _, offset in feedOffset = offset }
+                .onChange(of: reselectCount) {
+                    guard shortcutTask == nil, !isRefreshing else { return }
+                    if feedOffset > 1 {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo(Self.topAnchor, anchor: .top)
+                        }
+                        // 回顶动画结束前忽略重复点击，避免误触发刷新。
+                        shortcutTask = Task {
+                            try? await Task.sleep(for: .milliseconds(300))
+                            shortcutTask = nil
+                        }
+                    } else {
+                        startRefresh()
+                    }
+                }
+                .onChange(of: isRefreshing) { _, refreshing in
+                    if refreshing {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo(Self.topAnchor, anchor: .top)
+                        }
+                    }
+                }
+                .overlay(alignment: .top) {
+                    if isRefreshing || pullDistance > 10 {
+                        HStack(spacing: 8) {
+                            if isRefreshing { ProgressView().controlSize(.small) }
+                            else { Image(systemName: pullArmed ? "arrow.up" : "arrow.down") }
+                            Text(isRefreshing ? "正在刷新…" : pullArmed ? "松开刷新" : "下拉刷新")
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(.regularMaterial, in: Capsule())
+                        .frame(height: isRefreshing ? refreshHoldingHeight : max(-feedOffset, 40))
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                    }
+                }
+                .animation(.easeOut(duration: 0.25), value: isRefreshing)
+                .accessibilityAction(named: "刷新推荐") { startRefresh() }
                 // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
                 .leftEdgeTapDeadZone()
             }
@@ -165,9 +204,84 @@ struct HomeView: View {
             }
         }
     }
+    private func startRefresh() {
+        guard !isRefreshing else { return }
+        // 同步锁住入口，防止同一帧内连续点击开启多个请求。
+        refreshHoldingHeight = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
+        isRefreshing = true
+        Task {
+            await viewModel.refresh()
+            isRefreshing = false
+        }
+    }
+
+    private func refreshFeed() async {
+        guard !isRefreshing else { return }
+        refreshHoldingHeight = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
+        isRefreshing = true
+        await viewModel.refresh()
+        isRefreshing = false
+    }
+
+    @ViewBuilder
+    private func videoCard(_ video: VideoSummary, pageWidth: CGFloat) -> some View {
+        if viewModel.uninterestedIDs.contains(video.bvid) {
+            Button {
+                Task {
+                    if let message = await viewModel.replaceUninterested(video) { feedback.show(message) }
+                }
+            } label: {
+                VStack(spacing: 10) {
+                    if viewModel.replacingIDs.contains(video.bvid) {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "eye.slash").font(.title2)
+                    }
+                    Text("已提交不感兴趣").font(.subheadline)
+                    Text("点击换一条").font(.caption)
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: HomeCardLayout.cardHeight(for: pageWidth))
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 7))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!viewModel.replacingIDs.isEmpty)
+            .task { await viewModel.loadMoreIfNeeded(current: video) }
+        } else {
+            Button {
+                nowPlaying.open(
+                    VideoDetailRoute(bvid: video.bvid, cid: video.cid, cover: video.pic,
+                                     title: video.title, artist: video.owner.name),
+                    from: video.bvid
+                )
+            } label: {
+                VideoCard(video: video)
+                    .frame(height: HomeCardLayout.cardHeight(for: pageWidth))
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
+                Button("不感兴趣", systemImage: "eye.slash") {
+                    Task {
+                        guard account.isLoggedIn else { feedback.show("请先登录"); return }
+                        if let message = await viewModel.markUninterested(video) { feedback.show(message) }
+                    }
+                }
+                .disabled(viewModel.reportingIDs.contains(video.bvid))
+            }
+            .videoTransitionSource(video.bvid, in: videoTransition)
+            .task { await viewModel.loadMoreIfNeeded(current: video) }
+            .task {
+                await VideoPreparationCache.shared.prefetch(bvid: video.bvid, cid: video.cid)
+            }
+        }
+    }
+
 }
 
-/// 首页双列卡片的尺寸参数都在这里。提示卡和视频卡共同使用同一个高度计算公式。
+/// 首页双列视频卡片的尺寸参数。
 private enum HomeCardLayout {
     /// 页面左右留白。
     static let horizontalInset: CGFloat = 8
@@ -192,20 +306,20 @@ private enum HomeCardLayout {
     }
 }
 
-/// 分隔本次刷新和上一次内容的提示卡，外观占一个普通视频卡的位置。
+/// 分隔本次刷新和上一次内容的扁平提示条，横跨两列。
 private struct LastSeenCard: View {
     var body: some View {
-        VStack(spacing: 8) {
+        HStack(spacing: 8) {
             Image(systemName: "arrow.clockwise")
-                .font(.title3.weight(.medium))
+                .font(.subheadline.weight(.medium))
 
-            Text("上次看到这里\n点击刷新")
+            Text("上次看到这里 · 点击刷新")
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
         }
         .foregroundStyle(.secondary)
-        // 外层会传入与视频卡完全相同的高度，这里只负责把背景铺满。
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .overlay {

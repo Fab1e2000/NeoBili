@@ -40,6 +40,9 @@ enum FollowingSelection: Hashable, Identifiable, Sendable {
 final class FollowingViewModel {
     private(set) var feed = DynamicFeedModel(source: .following)
     private(set) var ups: [FollowedUp] = []
+    private let readStore: FollowingReadStore
+
+    init(readStore: FollowingReadStore = .shared) { self.readStore = readStore }
 
     /// 轮盘停稳后真正提交给下方列表的选择。
     private(set) var selectedTarget: FollowingSelection = .all
@@ -49,7 +52,12 @@ final class FollowingViewModel {
     private var upFeeds: [Int: DynamicFeedModel] = [:]
 
     var carouselItems: [FollowingSelection] {
-        [.all] + ups.map(FollowingSelection.up)
+        let displayed = ups.map { up in
+            FollowedUp(mid: up.mid, uname: up.uname, face: up.face,
+                       hasUpdate: readStore.hasUpdate(up))
+        }
+        return [.all] + (displayed.filter { readStore.keepsPriority($0) } + displayed.filter { !readStore.keepsPriority($0) })
+            .map(FollowingSelection.up)
     }
 
     var selectedUp: FollowedUp? { selectedTarget.up }
@@ -113,13 +121,37 @@ final class FollowingViewModel {
     private func loadUps() async {
         guard let list = try? await BiliAPI.followedUps(), !Task.isCancelled else { return }
         replaceUps(list)
+        // portal 只有布尔标记，没有更新版本。对本地已读但服务端仍标红的
+        // UP 查询最新动态时间，区分旧标记与真正的新更新；每批最多三个请求。
+        let candidates = list.filter { $0.hasUpdate && readStore.readThrough[String($0.mid)] != nil }
+        for start in stride(from: 0, to: candidates.count, by: 3) {
+            guard !Task.isCancelled else { return }
+            let batch = Array(candidates[start..<min(start + 3, candidates.count)])
+            let entries = await withTaskGroup(of: [DynamicEntry].self, returning: [DynamicEntry].self) { group in
+                for up in batch {
+                    group.addTask {
+                        (try? await BiliAPI.spaceDynamics(hostMid: up.mid, offset: nil).entries) ?? []
+                    }
+                }
+                var entries: [DynamicEntry] = []
+                for await result in group { entries.append(contentsOf: result) }
+                return entries
+            }
+            guard !Task.isCancelled else { return }
+            readStore.observe(entries)
+        }
     }
 
     /// 服务端列表刷新时保留同一个 mid 的选择；如果它已不在轮盘里，
     /// 回退到「全部动态」。这个入口也让纯状态行为可以不经网络地测试。
     func replaceUps(_ list: [FollowedUp]) {
         var seen = Set<Int>()
-        ups = list.filter { seen.insert($0.mid).inserted }
+        let incoming = list.filter { seen.insert($0.mid).inserted }
+        readStore.updateServerStatus(incoming)
+        // 未读只是展示层的稳定分组，已读后回到首次加载的默认顺序。
+        let byID = Dictionary(uniqueKeysWithValues: incoming.map { ($0.mid, $0) })
+        let existing = Set(ups.map(\.mid))
+        ups = ups.compactMap { byID[$0.mid] } + incoming.filter { !existing.contains($0.mid) }
 
         guard case .up(let selected) = selectedTarget else { return }
         if let refreshed = ups.first(where: { $0.mid == selected.mid }) {

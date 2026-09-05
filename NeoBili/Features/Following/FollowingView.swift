@@ -61,12 +61,16 @@ struct FollowingView: View {
 
     private var feed: some View {
         list
-            .task { await viewModel.loadInitial() }
+            .task {
+                FollowingReadStore.shared.configure(accountID: account.profile?.mid)
+                await viewModel.loadInitial()
+            }
             // 换账号后关注的人整个变了，重新取一遍。
             .onChange(of: account.profile?.mid) {
                 selectionTransitionTask?.cancel()
                 feedOpacity = 1
                 listPosition.scrollTo(edge: .top)
+                FollowingReadStore.shared.configure(accountID: account.profile?.mid)
                 viewModel.resetForAccountChange()
                 Task { await viewModel.loadInitial() }
             }
@@ -148,6 +152,9 @@ struct FollowingView: View {
         } else {
             ForEach(feed.entries) { entry in
                 card(for: entry)
+                    .onScrollVisibilityChange(threshold: 0.1) { visible in
+                        if visible { FollowingReadStore.shared.markViewed(entry) }
+                    }
                     .padding(.horizontal, DynamicCardLayout.pageHorizontalInset)
                     .padding(.vertical, DynamicCardLayout.cardVerticalSpacing)
                     .task { await feed.loadMoreIfNeeded(current: entry) }

@@ -29,6 +29,19 @@ enum BiliAPI {
         return page.item.compactMap { $0.asVideoSummary }
     }
 
+    /// 首页推荐的内容反馈，与视频页的点踩分别上报。
+    static func markRecommendationUninterested(_ video: VideoSummary) async throws {
+        var form = recommendationFeedbackForm(video)
+        form["csrf"] = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(path: "x/web-interface/feedback/dislike", form: form)
+    }
+
+    static func recommendationFeedbackForm(_ video: VideoSummary) -> [String: String] {
+        ["app_id": "100", "platform": "5", "from_spmid": "", "spmid": "333.1007.0.0",
+         "goto": "av", "id": String(video.aid), "mid": String(video.owner.mid),
+         "track_id": video.recommendationTrackID ?? "", "feedback_page": "1", "reason_id": "1"]
+    }
+
     static func videoDetail(bvid: String) async throws -> VideoDetail {
         try await APIClient.shared.get(
             path: "x/web-interface/view",
@@ -130,6 +143,21 @@ enum BiliAPI {
 
     /// 动态页顶上那一排关注的 UP 主，附带「有没有更新」用来画小红点。
     /// 未登录时接口直接回 -101，由调用方转成登录提示。
+    static func dynamicVoteInfo(id: Int) async throws -> DynamicVoteResponse {
+        try await APIClient.shared.get(path: "x/vote/vote_info", params: ["vote_id": String(id)])
+    }
+
+    static func submitDynamicVote(id: Int, options: [Int], voterMID: Int, dynamicID: String) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.postJSON(
+            path: "x/vote/do_vote",
+            query: ["csrf": csrf],
+            json: ["vote_id": id, "votes": options, "voter_uid": voterMID,
+                   "status": 0, "op_bit": 0, "dynamic_id": Int(dynamicID) ?? 0,
+                   "csrf": csrf, "csrf_token": csrf]
+        )
+    }
+
     static func followedUps() async throws -> [FollowedUp] {
         let payload: DynamicPortalPayload = try await APIClient.shared.get(
             path: "x/polymer/web-dynamic/v1/portal",
@@ -701,9 +729,12 @@ private struct RecommendFeedItem: Decodable {
     let owner: VideoOwner?
     let stat: RecommendFeedStat?
 
+    let trackID: String?
+
     enum CodingKeys: String, CodingKey {
         case goto, bvid, cid, title, pic, desc, duration, pubdate, owner, stat
         case aid = "id"
+        case trackID = "track_id"
     }
 
     var asVideoSummary: VideoSummary? {
@@ -723,7 +754,8 @@ private struct RecommendFeedItem: Decodable {
                 coin: 0,
                 share: 0,
                 reply: 0
-            )
+            ),
+            recommendationTrackID: trackID
         )
     }
 }

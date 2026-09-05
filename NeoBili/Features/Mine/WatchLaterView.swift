@@ -41,7 +41,6 @@ struct WatchLaterView: View {
         .leftEdgeTapDeadZone()
         .navigationTitle("稍后再看")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
         .overlay {
             if isLoading, items.isEmpty { ProgressView() }
         }
