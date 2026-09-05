@@ -121,12 +121,29 @@ struct VideoCoverThumbnail: View {
 /// rest of the app - plain `AsyncImage` can't attach those headers.
 actor BiliImageCache {
     static let shared = BiliImageCache()
-    private var storage: [URL: Image] = [:]
+    /// 存 `UIImage` 而不是 SwiftUI 的 `Image`：图片查看器要拿原图去保存和分享，
+    /// `Image` 取不回底层位图。展示端再包一层 `Image(uiImage:)` 就是了。
+    private var storage: [URL: UIImage] = [:]
 
-    func image(for url: URL) -> Image? { storage[url] }
-    func insert(_ image: Image, for url: URL) {
+    func image(for url: URL) -> UIImage? { storage[url] }
+    func insert(_ image: UIImage, for url: URL) {
         if storage.count > 300 { storage.removeAll() } // crude cap, good enough for a feed
         storage[url] = image
+    }
+}
+
+/// 带 B 站必需请求头的取图。命中缓存直接返回，不发请求。
+enum BiliImageLoader {
+    static func load(_ url: URL) async throws -> UIImage {
+        if let cached = await BiliImageCache.shared.image(for: url) { return cached }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        guard let image = UIImage(data: data) else { throw BiliAPIError.invalidURL }
+        await BiliImageCache.shared.insert(image, for: url)
+        return image
     }
 }
 
@@ -165,29 +182,11 @@ struct BiliImage: View {
             failed = true
             return
         }
-        if let cached = await BiliImageCache.shared.image(for: url) {
-            image = cached
-            return
-        }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 8
-        request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard let uiImage = UIImage(data: data) else {
-                failed = true
-                return
-            }
-            let loaded = Image(uiImage: uiImage)
-            await BiliImageCache.shared.insert(loaded, for: url)
-            if !Task.isCancelled {
-                image = loaded
-            }
+            let loaded = try await BiliImageLoader.load(url)
+            if !Task.isCancelled { image = Image(uiImage: loaded) }
         } catch {
-            if !Task.isCancelled {
-                failed = true
-            }
+            if !Task.isCancelled { failed = true }
         }
     }
 }

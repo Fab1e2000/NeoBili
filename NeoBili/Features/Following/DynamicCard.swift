@@ -44,8 +44,10 @@ struct DynamicCard: View {
         VStack(alignment: .leading, spacing: 0) {
             authorRow
 
-            // 正文和图片点一下进详情页看评论；「展开」按钮在它自己的
-            // 范围内优先响应，所以这里用 onTapGesture 而不是再套一层 Button。
+            // 正文点一下进详情页看评论；「展开」按钮在它自己的范围内优先
+            // 响应，所以这里用 onTapGesture 而不是再套一层 Button。
+            // 图片那一块也挂着同一个手势，但每张图自己的"看大图"在内层，
+            // 点到图上是看大图，点到图与图之间的空隙才是进详情。
             if !entry.text.isEmpty {
                 textBlock
                     .contentShape(Rectangle())
@@ -119,8 +121,13 @@ struct DynamicCard: View {
 
     private var textBlock: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(entry.text)
-                .font(.subheadline)
+            // 正文里的 [UPOWER_xxx_戳手手] 这类表情要换成图，和评论共用同一套。
+            CommentEmoteText(
+                message: entry.text,
+                emotes: entry.emotes,
+                font: .subheadline,
+                textStyle: .subheadline
+            )
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.leading)
                 .lineLimit(isTextExpanded ? nil : DynamicCardLayout.collapsedTextLines)
@@ -143,33 +150,16 @@ struct DynamicCard: View {
 
     // MARK: - 图片
 
-    @ViewBuilder
     private var imageBlock: some View {
-        if entry.images.count == 1, let image = entry.images.first {
-            // 单图按原图比例显示（已经压在 3:4 到 16:9 之间）。
-            CoverThumbnail(url: image.secureURL, aspectRatio: image.displayAspectRatio)
-                .clipShape(RoundedRectangle(cornerRadius: DynamicCardLayout.imageCornerRadius, style: .continuous))
-                .padding(.horizontal, DynamicCardLayout.contentInset)
-                .padding(.top, 8)
-        } else {
-            LazyVGrid(columns: gridColumns, spacing: DynamicCardLayout.gridSpacing) {
-                ForEach(entry.images.prefix(9)) { image in
-                    CoverThumbnail(url: image.secureURL, aspectRatio: 1)
-                        .clipShape(RoundedRectangle(cornerRadius: DynamicCardLayout.imageCornerRadius, style: .continuous))
-                }
-            }
-            .padding(.horizontal, DynamicCardLayout.contentInset)
-            .padding(.top, 8)
-        }
-    }
-
-    /// 和官方一致：2 张、4 张排两列，其余排三列。
-    private var gridColumns: [GridItem] {
-        let count = entry.images.count == 2 || entry.images.count == 4 ? 2 : 3
-        return Array(
-            repeating: GridItem(.flexible(), spacing: DynamicCardLayout.gridSpacing),
-            count: count
+        // 单图/九宫格的排版和"点开看大图"都在 TappableImageGrid 里，
+        // 动态详情和评论配图用的是同一套。
+        TappableImageGrid(
+            dynamicImages: entry.images,
+            spacing: DynamicCardLayout.gridSpacing,
+            cornerRadius: DynamicCardLayout.imageCornerRadius
         )
+        .padding(.horizontal, DynamicCardLayout.contentInset)
+        .padding(.top, 8)
     }
 
     // MARK: - 视频

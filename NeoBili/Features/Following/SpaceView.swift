@@ -70,6 +70,7 @@ struct SpaceView: View {
         .toolbarBackground(Color(uiColor: .secondarySystemGroupedBackground), for: .navigationBar)
         // 进了 UP 主页就把底部标签栏收起来，整屏都留给他的内容。
         .toolbarVisibility(.hidden, for: .tabBar)
+        .imageViewerHost()
         .task { await viewModel.loadInitial() }
         .task(id: tab) {
             // 切到动态那一栏才去加载它，进页面时不白跑一次请求。

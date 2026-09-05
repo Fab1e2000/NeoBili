@@ -60,6 +60,7 @@ struct DynamicDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         // 详情页整屏都留给内容，底部标签栏收起来。
         .toolbarVisibility(.hidden, for: .tabBar)
+        .imageViewerHost()
         .leftEdgeTapDeadZone()
         .task {
             if entry.hasComments {
@@ -100,8 +101,12 @@ struct DynamicDetailView: View {
             .padding(.top, 12)
 
             if !entry.text.isEmpty {
-                Text(entry.text)
-                    .font(.body)
+                CommentEmoteText(
+                    message: entry.text,
+                    emotes: entry.emotes,
+                    font: .body,
+                    textStyle: .body
+                )
                     // 详情页不再截断，长文也一次看完。
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -125,29 +130,10 @@ struct DynamicDetailView: View {
         }
     }
 
-    @ViewBuilder
     private var images: some View {
-        if entry.images.count == 1, let image = entry.images.first {
-            CoverThumbnail(url: image.secureURL, aspectRatio: image.displayAspectRatio)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .padding(.horizontal, CommentLayout.pageHorizontalInset)
-                .padding(.top, 12)
-        } else {
-            LazyVGrid(
-                columns: Array(
-                    repeating: GridItem(.flexible(), spacing: 4),
-                    count: entry.images.count == 2 || entry.images.count == 4 ? 2 : 3
-                ),
-                spacing: 4
-            ) {
-                ForEach(entry.images.prefix(9)) { image in
-                    CoverThumbnail(url: image.secureURL, aspectRatio: 1)
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                }
-            }
+        TappableImageGrid(dynamicImages: entry.images, cornerRadius: 6)
             .padding(.horizontal, CommentLayout.pageHorizontalInset)
             .padding(.top, 12)
-        }
     }
 
     private func videoCard(_ video: FollowedVideo) -> some View {
