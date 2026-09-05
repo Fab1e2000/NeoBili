@@ -16,6 +16,11 @@ struct SpaceView: View {
     @State private var detailEntry: DynamicEntry?
     @State private var headerHeight: CGFloat = 0
     @State private var pageOffsets: [Tab: CGFloat] = [:]
+    @State private var headerCollapse: CGFloat = 0
+    @State private var pickerHeight: CGFloat = 0
+    @State private var scrollingPages: Set<Tab> = []
+    @State private var videoPosition = ScrollPosition(edge: .top)
+    @State private var dynamicPosition = ScrollPosition(edge: .top)
 
     private enum Tab: String, CaseIterable, Identifiable {
         case videos = "投稿"
@@ -30,25 +35,31 @@ struct SpaceView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 头部不放进横向分页，因此切换时不会左右移动；当前列表向下滚时，
-            // 根据真实偏移逐步裁掉它，让内容区自然扩展到导航栏下方。
-            header
-                .onGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.size.height
-                } action: { height in
-                    if currentHeaderCollapse == 0, height > 0 { headerHeight = height }
-                }
-                .frame(height: visibleHeaderHeight, alignment: .bottom)
-                .clipped()
-
-            tabPicker
-
+        GeometryReader { viewport in
             TabView(selection: $tab) {
-                page(for: .videos).tag(Tab.videos)
-                page(for: .dynamics).tag(Tab.dynamics)
+                page(for: .videos, viewportHeight: viewport.size.height).tag(Tab.videos)
+                page(for: .dynamics, viewportHeight: viewport.size.height).tag(Tab.dynamics)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .overlay(alignment: .top) {
+                VStack(spacing: 0) {
+                    header
+                        // 先按完整宽度测量固有高度，再裁掉滚出顶部的部分。
+                        // 折叠不能反过来压缩头图的宽高比或资料区。
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            headerHeight = height
+                        }
+                        .frame(height: headerHeight > 0 ? max(headerHeight - headerCollapse, 0) : nil,
+                               alignment: .bottom)
+                        .clipped()
+
+                    tabPicker
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            pickerHeight = height
+                        }
+                }
+            }
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(viewModel.card?.name ?? up.uname)
@@ -72,17 +83,9 @@ struct SpaceView: View {
         }
     }
 
-    private var currentHeaderCollapse: CGFloat {
-        headerCollapse(for: tab)
-    }
-
-    private var visibleHeaderHeight: CGFloat? {
-        guard headerHeight > 0 else { return nil }
-        return max(headerHeight - currentHeaderCollapse, 0)
-    }
-
-    /// 每个分页保留自己的懒加载滚动容器，切换和滚动时都只布局屏幕附近的内容。
-    private func page(for pageTab: Tab) -> some View {
+    /// 分页始终占据同一个视口；头部覆盖其上，列表预留完整头部的空间。
+    /// 因此折叠只改变头部裁切，不会触发滚动容器高度与偏移的反馈循环。
+    private func page(for pageTab: Tab, viewportHeight: CGFloat) -> some View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 switch pageTab {
@@ -92,25 +95,51 @@ struct SpaceView: View {
                     dynamicList
                 }
             }
-            // 当前列表的前 headerHeight 滚动距离只用于收起资料头部。
-            // 用等量视觉补偿抵消列表自身的位移，头部完全收起后列表才开始滚动。
-            // 仍然使用 LazyVStack，不测量整条长列表。
-            .padding(.bottom, headerHeight)
-            .offset(y: headerCollapse(for: pageTab))
+            .frame(maxWidth: .infinity)
+            // 空列表、加载中和短列表也能完整收起头部。
+            .frame(minHeight: max(viewportHeight - pickerHeight, 0), alignment: .top)
+            .padding(.top, headerHeight + pickerHeight)
         }
+        .scrollPosition(pageTab == .videos ? $videoPosition : $dynamicPosition)
         .scrollBounceBehavior(.always, axes: .vertical)
+        .onScrollPhaseChange { _, phase in
+            if phase == .interacting || phase == .decelerating {
+                scrollingPages.insert(pageTab)
+            } else {
+                scrollingPages.remove(pageTab)
+            }
+        }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, offset in
             pageOffsets[pageTab] = max(offset, 0)
+            // 只有纵向手势更新共享头部；分页切换和程序同步产生的回调不参与。
+            guard pageTab == tab, scrollingPages.contains(pageTab) else { return }
+            let collapse = min(max(offset, 0), headerHeight)
+            guard collapse != headerCollapse else { return }
+            headerCollapse = collapse
+            synchronizeHeader(in: pageTab == .videos ? .dynamics : .videos)
         }
-        // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
+        .onAppear {
+            if pageTab != tab { synchronizeHeader(in: pageTab) }
+        }
         .leftEdgeTapDeadZone()
     }
 
-    private func headerCollapse(for pageTab: Tab) -> CGFloat {
-        guard headerHeight > 0 else { return 0 }
-        return min(max(pageOffsets[pageTab] ?? 0, 0), headerHeight)
+    /// 横向手势开始前，另一页已处于相同的头部折叠位置。
+    /// 头部完全收起时保留各页更深的阅读位置；展开时两页共同露出头部。
+    private func synchronizeHeader(in pageTab: Tab) {
+        let offset = SpaceHeaderLayout.synchronizedOffset(
+            pageOffset: pageOffsets[pageTab] ?? 0,
+            collapse: headerCollapse,
+            headerHeight: headerHeight
+        )
+        pageOffsets[pageTab] = offset
+        if pageTab == .videos {
+            videoPosition.scrollTo(y: offset)
+        } else {
+            dynamicPosition.scrollTo(y: offset)
+        }
     }
 
     private var tabPicker: some View {
@@ -133,45 +162,47 @@ struct SpaceView: View {
         VStack(alignment: .leading, spacing: 10) {
             banner
 
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(viewModel.card?.name ?? up.uname)
-                    .font(.title3.weight(.semibold))
-                    .lineLimit(1)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(viewModel.card?.name ?? up.uname)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(1)
 
-                if let level = viewModel.card?.level, level > 0 {
-                    Text("LV\(level)")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    if let level = viewModel.card?.level, level > 0 {
+                        Text("LV\(level)")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
+
+                    if viewModel.card?.isVIP == true {
+                        Text("大会员")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.pink, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
+
+                    Spacer(minLength: 0)
+
+                    followButton
                 }
 
-                if viewModel.card?.isVIP == true {
-                    Text("大会员")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.pink, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                statsRow
+
+                if let sign = viewModel.card?.sign, !sign.isEmpty {
+                    Text(sign)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
                 }
-
-                Spacer(minLength: 0)
-
-                followButton
             }
-
-            statsRow
-
-            if let sign = viewModel.card?.sign, !sign.isEmpty {
-                Text(sign)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-            }
+            .padding(.horizontal, SpaceHeaderLayout.horizontalInset)
         }
-        .padding(.horizontal, SpaceHeaderLayout.horizontalInset)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
@@ -207,8 +238,6 @@ struct SpaceView: View {
                 .padding(.leading, SpaceHeaderLayout.horizontalInset)
                 .offset(y: SpaceHeaderLayout.avatarSize / 2)
         }
-        // 头图本身画到屏幕两边，所以要把外层的左右留白抵消掉。
-        .padding(.horizontal, -SpaceHeaderLayout.horizontalInset)
         // 给探出来的那半个头像让出高度。
         .padding(.bottom, SpaceHeaderLayout.avatarSize / 2 + 8)
     }
@@ -329,6 +358,9 @@ struct SpaceView: View {
                     onLike: { like(entry) },
                     onOpenDetail: { detailEntry = entry }
                 )
+                .onScrollVisibilityChange(threshold: 0.1) { visible in
+                    if visible { FollowingReadStore.shared.markViewed(entry) }
+                }
                 .contextMenu {
                     if let video = entry.video {
                         WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
@@ -374,6 +406,11 @@ struct SpaceView: View {
 
 /// UP 主页头部的尺寸。
 enum SpaceHeaderLayout {
+    static func synchronizedOffset(pageOffset: CGFloat, collapse: CGFloat, headerHeight: CGFloat) -> CGFloat {
+        let collapse = min(max(collapse, 0), max(headerHeight, 0))
+        return collapse < headerHeight ? collapse : max(pageOffset, collapse)
+    }
+
     /// 头部内容与屏幕左右边缘的距离。
     static let horizontalInset: CGFloat = 16
     /// 头像直径。

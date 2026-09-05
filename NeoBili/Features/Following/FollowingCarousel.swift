@@ -82,6 +82,8 @@ struct FollowingCarousel: View {
                 synchronizeFocus(to: .all)
                 return
             }
+            // 红点消失导致重排后，仍以同一个 UP 为中央焦点。
+            scheduleAlignmentSnap()
         }
         .onChange(of: positionID) { _, newID in
             // 用户滚动时让焦点描边实时跟随居中的头像；此时 focusedID 的变化

@@ -66,7 +66,10 @@ struct DynamicDetailView: View {
                 await comments.loadInitial()
             }
         }
-        .onAppear { OrientationController.enterPortrait() }
+        .onAppear {
+            OrientationController.enterPortrait()
+            FollowingReadStore.shared.markViewed(entry)
+        }
     }
 
     // MARK: - 动态原文
@@ -108,6 +111,12 @@ struct DynamicDetailView: View {
 
             if !entry.images.isEmpty {
                 images
+            }
+
+            if let vote = entry.vote {
+                DynamicVoteCard(vote: vote, dynamicID: entry.id)
+                    .padding(.horizontal, CommentLayout.pageHorizontalInset)
+                    .padding(.top, 12)
             }
 
             if let video = entry.video {

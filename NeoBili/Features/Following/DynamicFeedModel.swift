@@ -71,6 +71,7 @@ final class DynamicFeedModel {
             let feed = try await fetch(page: 1, offset: nil)
             guard !Task.isCancelled else { return }
             entries = Self.removingDuplicates(feed.entries)
+            FollowingReadStore.shared.observe(entries)
             offset = feed.offset
             hasMore = feed.hasMore && !feed.offset.isEmpty
             page = 1
@@ -98,6 +99,7 @@ final class DynamicFeedModel {
             page += 1
             offset = feed.offset
             hasMore = feed.hasMore && !feed.offset.isEmpty && !feed.items.isEmpty
+            FollowingReadStore.shared.observe(feed.entries)
             let existing = Set(entries.map(\.id))
             entries.append(contentsOf: Self.removingDuplicates(feed.entries).filter { !existing.contains($0.id) })
         } catch {

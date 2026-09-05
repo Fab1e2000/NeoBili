@@ -100,6 +100,7 @@ final class CommentsViewModel {
     private(set) var loadingReplyIDs: Set<Int> = []
     private(set) var moreRepliesIDs: Set<Int> = []
     private var replyNextPage: [Int: Int] = [:]
+    private(set) var replyErrors: [Int: String] = [:]
 
     func isExpanded(_ comment: Comment) -> Bool {
         expandedCommentIDs.contains(comment.id)
@@ -127,20 +128,22 @@ final class CommentsViewModel {
         loadedReplies[rootId] = replies
     }
 
-    /// 点「查看全部回复」/「收起」。第一次展开时才请求，之后再展开直接用缓存。
-    func toggleReplies(for comment: Comment) async {
-        guard !expandedCommentIDs.contains(comment.id) else {
-            expandedCommentIDs.remove(comment.id)
-            return
-        }
+    func shouldShowAllReplies(_ comment: Comment) -> Bool {
+        replyErrors[comment.id] != nil || (!isExpanded(comment) && comment.rcount > replies(for: comment).count)
+    }
+
+    /// 楼中楼只展开，不跟随主评论正文的展开状态，也不提供收起入口。
+    func expandReplies(for comment: Comment) async {
         expandedCommentIDs.insert(comment.id)
-        guard loadedReplies[comment.id] == nil else { return }
+        guard comment.rcount > (comment.replies ?? []).count || replyErrors[comment.id] != nil else { return }
+        guard loadedReplies[comment.id] == nil || replyErrors[comment.id] != nil else { return }
         await loadMoreReplies(for: comment)
     }
 
     func loadMoreReplies(for comment: Comment) async {
         let rootId = comment.id
         guard !loadingReplyIDs.contains(rootId) else { return }
+        replyErrors[rootId] = nil
         loadingReplyIDs.insert(rootId)
         defer { loadingReplyIDs.remove(rootId) }
 
@@ -160,11 +163,9 @@ final class CommentsViewModel {
                 moreRepliesIDs.insert(rootId)
             }
         } catch {
-            // 楼中楼取不到时保留已有内容，不把整条评论变成错误状态。
+            // 保留已显示的预览/回复和页码，允许重试这一页。
             moreRepliesIDs.remove(rootId)
-            if loadedReplies[rootId] == nil {
-                loadedReplies[rootId] = comment.replies ?? []
-            }
+            replyErrors[rootId] = error.localizedDescription
         }
     }
 

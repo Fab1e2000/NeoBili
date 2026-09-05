@@ -47,6 +47,9 @@ final class NowPlayingStore {
         _ = configuration
     }
 
+    /// 服务 sheet 打开期间，由它承载视频模态，根 TabView 暂停呈现。
+    var isServiceSheetPresented = false
+
     var canGoBack: Bool { !history.isEmpty }
 
     /// 正在播放的分P。入口已经给了 cid 时立刻有值，播放器不必等详情接口。

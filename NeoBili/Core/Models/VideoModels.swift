@@ -69,6 +69,9 @@ struct VideoSummary: Decodable, Identifiable, Hashable {
     let owner: VideoOwner
     let stat: VideoStat
 
+    /// 首页推荐反馈必须携带服务端返回的追踪标识。
+    var recommendationTrackID: String? = nil
+
     var id: String { bvid }
 
     var secureCoverURL: URL? { URL.biliSecure(pic) }

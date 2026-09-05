@@ -50,27 +50,14 @@ final class CommentSpacingTests: XCTestCase {
         )
     }
 
-    /// 有楼中楼的评论 vs 没有楼中楼的评论：两者「最后一点内容 → 分隔线」的
-    /// 空白必须看起来一样。灰块是硬边缘，文字下面还带着行高留白，所以哪怕
-    /// padding 数值相同，肉眼看到的空白也会差一截——这正是「间距不一致」。
-    func testInkToDividerGapMatchesBetweenRepliedAndPlainComments() throws {
-        let replied = try makeComment(
-            rpid: 1,
-            message: "烧卖不就是面皮里面包米饭吗",
-            rcount: 27,
-            replies: ["你求我求你啊：但那是糯米，不是大米"]
-        )
-        let plain = try makeComment(rpid: 2, message: "大饼卷馒头揪着米饭吃", rcount: 0, replies: [])
-
-        let withBlock = try measureInkToDivider(replied)
-        let withoutBlock = try measureInkToDivider(plain)
-
-        XCTAssertEqual(
-            withBlock,
-            withoutBlock,
-            accuracy: 3,
-            "有楼中楼时空白 \(withBlock)，没有时 \(withoutBlock)——两种评论之间看起来不一样宽"
-        )
+    /// 布局边界固定为 12pt，不再根据文字墨迹或辅助功能字号补偿。
+    func testReplyBlockBottomPaddingIsFixedAcrossTextSizes() throws {
+        let comment = try makeComment(rpid: 1, message: "主评论", rcount: 3, replies: ["楼中楼内容"])
+        for size in [DynamicTypeSize.small, .large, .xxxLarge, .accessibility3] {
+            let gap = try measureGapBelowReplyBlock(for: comment, dynamicTypeSize: size)
+            XCTAssertEqual(gap, CommentLayout.rowVerticalPadding + 1, accuracy: 1,
+                           "字号 \(size) 下灰块与分隔线的固定间距不正确")
+        }
     }
 
     /// 同一条评论「展开」和「收起」两种状态下，灰块底部到分隔线的距离必须一样。
@@ -103,10 +90,32 @@ final class CommentSpacingTests: XCTestCase {
         )
     }
 
+    func testSingleLongReplyIsFullyVisibleWithoutExtraBottomSpacing() throws {
+        let short = try makeComment(rpid: 10, message: "正文", rcount: 1, replies: ["简短回复"])
+        let long = try makeComment(rpid: 11, message: "正文", rcount: 1,
+                                   replies: [String(repeating: "这是一条需要完整显示的很长的楼中楼回复。", count: 30)])
+        let model = CommentsViewModel(aid: 1)
+        XCTAssertFalse(model.shouldShowAllReplies(short))
+        XCTAssertFalse(model.shouldShowAllReplies(long), "已拿到唯一回复时不显示查看全部")
+        let heightDifference = try render(long).height - render(short).height
+        XCTAssertGreaterThan(heightDifference, 200, "长回复不能仍被截成三行")
+        let gap = try measureGapBelowReplyBlock(for: long)
+        XCTAssertEqual(gap, CommentLayout.rowVerticalPadding + 1, accuracy: 1)
+        XCTAssertEqual(gap, try measureGapBelowReplyBlock(for: short), accuracy: 1)
+    }
+
+    func testAllRepliesControlOnlyAppearsForMissingReplies() async throws {
+        let comment = try makeComment(rpid: 12, message: "正文", rcount: 2, replies: ["预览回复"])
+        let model = CommentsViewModel(aid: 1)
+        XCTAssertTrue(model.shouldShowAllReplies(comment))
+        model.setExpandedForTesting(rootId: comment.id, replies: comment.replies ?? [])
+        XCTAssertFalse(model.shouldShowAllReplies(comment))
+    }
+
     // MARK: - 渲染与取样
 
     /// 按 `CommentsView` 里那一段的结构渲染：评论行 + 上下留白 + 分隔线。
-    private func render(_ comment: Comment, viewModel: CommentsViewModel? = nil) throws -> CGImage {
+    private func render(_ comment: Comment, viewModel: CommentsViewModel? = nil, dynamicTypeSize: DynamicTypeSize = .large) throws -> CGImage {
         let viewModel = viewModel ?? CommentsViewModel(aid: 1)
         let content = VStack(alignment: .leading, spacing: 0) {
             CommentRow(comment: comment, viewModel: viewModel)
@@ -123,6 +132,7 @@ final class CommentSpacingTests: XCTestCase {
         .background(Color.white)
         .environment(AccountStore())
         .environment(\.colorScheme, .light)
+        .environment(\.dynamicTypeSize, dynamicTypeSize)
 
         let renderer = ImageRenderer(content: content)
         renderer.scale = 1
@@ -166,31 +176,16 @@ final class CommentSpacingTests: XCTestCase {
     /// 灰块下边缘到分隔线的距离。
     private func measureGapBelowReplyBlock(
         for comment: Comment,
-        viewModel: CommentsViewModel? = nil
+        viewModel: CommentsViewModel? = nil,
+        dynamicTypeSize: DynamicTypeSize = .large
     ) throws -> CGFloat {
-        let rows = try rowSummaries(of: render(comment, viewModel: viewModel))
+        let rows = try rowSummaries(of: render(comment, viewModel: viewModel, dynamicTypeSize: dynamicTypeSize))
         let blockBottom = try XCTUnwrap(rows.indices.last { rows[$0].isBlock }, "没找到灰块")
         let dividerRow = try XCTUnwrap(
             rows.indices.first { $0 > blockBottom && rows[$0].hasInk },
             "灰块下面没找到分隔线"
         )
         return CGFloat(dividerRow - blockBottom)
-    }
-
-    /// 这条评论「最后一点内容」到分隔线之间的空白。
-    ///
-    /// 分隔线是整张图里最靠下的那段墨迹（后面只剩纯白），倒着找它最省事。
-    private func measureInkToDivider(_ comment: Comment) throws -> CGFloat {
-        let rows = try rowSummaries(of: render(comment))
-        let lastInk = try XCTUnwrap(rows.indices.last { rows[$0].hasInk }, "整张图是空的")
-        // 分隔线本身是连续几行墨迹，先退到它的上边缘。
-        var dividerTop = lastInk
-        while dividerTop > 0, rows[dividerTop - 1].hasInk { dividerTop -= 1 }
-        let contentBottom = try XCTUnwrap(
-            rows.indices.last { $0 < dividerTop && rows[$0].hasInk },
-            "分隔线上面没有内容"
-        )
-        return CGFloat(dividerTop - contentBottom - 1)
     }
 
     private func makeComment(

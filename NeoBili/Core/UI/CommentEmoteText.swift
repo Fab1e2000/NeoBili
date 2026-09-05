@@ -138,6 +138,7 @@ struct CommentEmoteText: View {
     /// 表情随这套文字样式的档位一起缩放。`Font` 本身查不回样式信息，
     /// 所以单独传一份进来。
     let textStyle: Font.TextStyle
+    var prefix: String = ""
 
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -152,7 +153,7 @@ struct CommentEmoteText: View {
     }
 
     private var composed: Text {
-        segments.reduce(Text("")) { partial, segment in
+        segments.reduce(Text(prefix).foregroundColor(.secondary)) { partial, segment in
             switch segment {
             case .text(let value):
                 return partial + Text(value)

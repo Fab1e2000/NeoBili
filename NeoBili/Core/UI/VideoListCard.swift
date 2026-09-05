@@ -114,7 +114,8 @@ struct VideoListCard: View {
 
             Spacer(minLength: 0)
         }
-        .padding(VideoListCardLayout.contentPadding)
+        .padding(.vertical, VideoListCardLayout.contentPadding)
+        .padding(.horizontal, showsCardChrome ? VideoListCardLayout.contentPadding : 0)
         .background {
             if showsCardChrome {
                 RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous)

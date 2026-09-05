@@ -58,6 +58,12 @@ struct DynamicCard: View {
                     .onTapGesture(perform: onOpenDetail)
             }
 
+            if let vote = entry.vote {
+                DynamicVoteCard(vote: vote, dynamicID: entry.id)
+                    .padding(.horizontal, DynamicCardLayout.contentInset)
+                    .padding(.top, 12)
+            }
+
             if let video = entry.video {
                 videoBlock(video)
             }
