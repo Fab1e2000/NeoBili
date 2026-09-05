@@ -97,7 +97,9 @@ struct ShortPullRefresh: UIViewRepresentable {
             case .ended:
                 update(translation)
                 let refresh = state.finish(cancelled: !enabled)
-                onProgress?(0, false)
+                // 真要刷新时不清零：调用方靠这个值把下拉的淡出接着往下走，
+                // 清零会让列表先弹回全不透明再重新淡，看着就是闪一下。
+                if !refresh { onProgress?(0, false) }
                 if refresh { onRefresh?() }
             case .cancelled, .failed:
                 _ = state.finish(cancelled: true)

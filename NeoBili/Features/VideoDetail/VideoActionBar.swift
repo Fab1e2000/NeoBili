@@ -80,19 +80,9 @@ struct VideoActionBar: View {
         action: @escaping () -> Void,
         longPressAction: (() -> Void)? = nil
     ) -> some View {
-        Button(action: action) {
+        ActionItemButton(action: action, longPressAction: longPressAction) {
             content(symbol: symbol, caption: caption, isActive: isActive)
         }
-        .buttonStyle(.plain)
-        // 长按放在按钮外层：`simultaneousGesture` 让长按和普通点击共存，
-        // 手指抬得快就是点击，按住就走长按，不需要自己判定手势状态。
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.45).onEnded { _ in
-                guard let longPressAction else { return }
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                longPressAction()
-            }
-        )
         .accessibilityLabel(label)
         .accessibilityHint(hint ?? "")
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
@@ -132,5 +122,50 @@ struct VideoActionBar: View {
         .foregroundStyle(isActive ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary))
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
+    }
+}
+
+/// 操作栏上的一颗按钮：短按走 `action`，长按走 `longPressAction`，**两者互斥**。
+///
+/// 要点在于 `simultaneousGesture` 的语义是两个手势**都**成立：长按满 0.45 秒
+/// 触发一次长按之后，手指抬起时按钮的点击照样还会再触发一次。表现出来就是
+/// 一键三连（长按点赞）之后紧跟着一次普通点赞，把三连刚点上的赞又取消掉了。
+///
+/// 按钮本身仍然是 `Button`——换成裸的 `TapGesture` / `ExclusiveGesture` 之后，
+/// 点击要等长按先判定失败才轮得到，在 ScrollView 里经常直接被吞掉。这里保留
+/// Button 的点击，改用一个标记把长按之后那次多余的点击挡掉：
+/// 按下瞬间复位，长按成立时置位，抬手时按钮先看标记再决定要不要执行。
+private struct ActionItemButton<Label: View>: View {
+    let action: () -> Void
+    let longPressAction: (() -> Void)?
+    @ViewBuilder var label: Label
+
+    /// 这一次按压是否已经走了长按。抬手时的点击靠它判断该不该跳过。
+    @State private var didLongPress = false
+
+    var body: some View {
+        Button {
+            // 长按刚跑过，这次抬手不再算一次点击。
+            // 标记不在这里清：手指划出按钮再抬起时这段根本不会执行，
+            // 留给下一次按下的 onChanged 复位才不会漏。
+            guard !didLongPress else { return }
+            action()
+        } label: {
+            label
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(longPressGesture)
+    }
+
+    private var longPressGesture: some Gesture {
+        LongPressGesture(minimumDuration: 0.45)
+            // 手指落下就复位，所以标记不会跨越两次按压残留。
+            .onChanged { _ in didLongPress = false }
+            .onEnded { _ in
+                guard let longPressAction else { return }
+                didLongPress = true
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                longPressAction()
+            }
     }
 }

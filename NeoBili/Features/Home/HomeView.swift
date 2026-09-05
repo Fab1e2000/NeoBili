@@ -7,14 +7,29 @@ struct HomeView: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @State private var viewModel = HomeViewModel()
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
+    /// 刷新动画的快慢，设置页可调。
+    @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
+    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
     @State private var pullDistance: CGFloat = 0
     @State private var pullArmed = false
     @State private var feedOffset: CGFloat = 0
     @State private var reselectCount = 0
     @State private var shortcutTask: Task<Void, Never>?
     @State private var isRefreshing = false
-    @State private var refreshHoldingHeight: CGFloat = 0
     private static let topAnchor = "home-feed-top"
+
+    /// 刷新的三段式可视化：旧卡片原地淡出，新卡片按行落位。
+    /// 参数集中在 FeedRefreshTuning 里。
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 列表整体的浓度。下拉时先淡一点，松手后接着往下淡，数据到达后淡尽再让新卡落位。
+    /// 全程只有这一个量在变，卡片本身不位移，所以不会出现错位。
+    @State private var listOpacity: Double = 1
+    /// 每次刷新加一，驱动每一行重新播落位动画。
+    @State private var landingGeneration = 0
+    /// 落位窗口。开着时新建出来的行才播动画，关掉后滚动新建的行保持原样。
+    @State private var landingWindow = false
+    /// 这一轮淡出的起点。数据回得比淡出还快时，靠它算出还要等多久才轮到落位。
+    @State private var exitStartedAt: Date?
 
     /// 搜索就在首页完成，不跳页：系统搜索框跟随大标题一起收放，
     /// 回车后这一页的内容换成结果，清空后回到推荐流。
@@ -100,38 +115,46 @@ struct HomeView: View {
                                              onProgress: { distance, armed in
                                                  pullDistance = distance
                                                  pullArmed = armed
+                                                 updatePullFade(distance)
                                              }, onRefresh: { startRefresh() })
                         }
 
                     LazyVStack(spacing: HomeCardLayout.rowSpacing) {
-                        ForEach(viewModel.feedRows) { row in
-                            switch row {
-                            case .videos(let videos):
-                                HStack(alignment: .top, spacing: HomeCardLayout.columnSpacing) {
-                                    ForEach(videos) { video in
-                                        videoCard(video, pageWidth: geometry.size.width)
-                                            .frame(width: (geometry.size.width - HomeCardLayout.horizontalInset * 2 - HomeCardLayout.columnSpacing) / 2)
-                                    }
-                                    if videos.count == 1 { Spacer(minLength: 0) }
-                                }
-                            case .lastSeen:
-                                Button {
-                                    Task {
-                                        // 与 PiliPlus 一致：点击提示卡先回到顶部，再请求一批新推荐。
-                                        withAnimation(.easeOut(duration: 0.25)) {
-                                            proxy.scrollTo(Self.topAnchor, anchor: .top)
+                        ForEach(Array(viewModel.feedRows.enumerated()), id: \.element.id) { index, row in
+                            FeedDropInRow(index: index,
+                                          generation: landingGeneration,
+                                          landing: landingWindow,
+                                          speed: enterSpeed,
+                                          reduceMotion: reduceMotion) {
+                                switch row {
+                                case .videos(let videos):
+                                    HStack(alignment: .top, spacing: HomeCardLayout.columnSpacing) {
+                                        ForEach(videos) { video in
+                                            videoCard(video, pageWidth: geometry.size.width)
+                                                .frame(width: (geometry.size.width - HomeCardLayout.horizontalInset * 2 - HomeCardLayout.columnSpacing) / 2)
                                         }
-                                        await refreshFeed()
+                                        if videos.count == 1 { Spacer(minLength: 0) }
                                     }
-                                } label: {
-                                    LastSeenCard()
+                                case .lastSeen:
+                                    Button {
+                                        Task {
+                                            // 与 PiliPlus 一致：点击提示卡先回到顶部，再请求一批新推荐。
+                                            withAnimation(.easeOut(duration: 0.25)) {
+                                                proxy.scrollTo(Self.topAnchor, anchor: .top)
+                                            }
+                                            await refreshFeed()
+                                        }
+                                    } label: {
+                                        LastSeenCard()
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
                     .padding(.horizontal, HomeCardLayout.horizontalInset)
                     .padding(.vertical, HomeCardLayout.verticalInset)
+                    .opacity(listOpacity)
 
                 // 刷新进度在顶部浮层显示，翻页进度单独放在列表底部。
                 if viewModel.isLoadingMore {
@@ -170,23 +193,12 @@ struct HomeView: View {
                         }
                     }
                 }
+                // Reduce Motion 下不做位移和 3D，只留一颗系统转圈。
                 .overlay(alignment: .top) {
-                    if isRefreshing || pullDistance > 10 {
-                        HStack(spacing: 8) {
-                            if isRefreshing { ProgressView().controlSize(.small) }
-                            else { Image(systemName: pullArmed ? "arrow.up" : "arrow.down") }
-                            Text(isRefreshing ? "正在刷新…" : pullArmed ? "松开刷新" : "下拉刷新")
-                                .font(.caption)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(.regularMaterial, in: Capsule())
-                        .frame(height: isRefreshing ? refreshHoldingHeight : max(-feedOffset, 40))
-                        .transition(.opacity)
-                        .allowsHitTesting(false)
+                    if reduceMotion, isRefreshing {
+                        ProgressView().controlSize(.small).padding(.top, 12)
                     }
                 }
-                .animation(.easeOut(duration: 0.25), value: isRefreshing)
                 .accessibilityAction(named: "刷新推荐") { startRefresh() }
                 // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
                 .leftEdgeTapDeadZone()
@@ -204,23 +216,78 @@ struct HomeView: View {
             }
         }
     }
+    /// 下拉过程中列表先淡一点，作为退出动画的预告。
+    ///
+    /// ShortPullRefresh 在真的要刷新时不会把距离清零，所以松手那一帧
+    /// 浓度就停在这里的值上，接着由 beginRefresh 往下淡，中间没有跳变。
+    private func updatePullFade(_ distance: CGFloat) {
+        guard !isRefreshing, !reduceMotion else { return }
+        let threshold = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
+        let progress = Double(min(max(distance, 0) / threshold, 1))
+        listOpacity = 1 - FeedRefreshTuning.pullFade * progress
+    }
+
     private func startRefresh() {
         guard !isRefreshing else { return }
         // 同步锁住入口，防止同一帧内连续点击开启多个请求。
-        refreshHoldingHeight = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
-        isRefreshing = true
+        beginRefresh()
         Task {
-            await viewModel.refresh()
-            isRefreshing = false
+            await viewModel.refresh(staged: !reduceMotion)
+            finishRefresh()
         }
     }
 
     private func refreshFeed() async {
         guard !isRefreshing else { return }
-        refreshHoldingHeight = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
+        beginRefresh()
+        await viewModel.refresh(staged: !reduceMotion)
+        finishRefresh()
+    }
+
+    /// 退出段：旧卡片原地淡尽。不等网络，跑完就是跑完。
+    private func beginRefresh() {
         isRefreshing = true
-        await viewModel.refresh()
+        guard !reduceMotion else { return }
+        exitStartedAt = .now
+        withAnimation(.easeOut(duration: FeedRefreshTuning.fadeExit(speed: exitSpeed))) {
+            listOpacity = 0
+        }
+    }
+
+    /// 第三段：残影淡尽，新卡逐行落位。
+    ///
+    /// 刷新失败或没有新内容时列表不变，这里仍然会重播落位——用户看到的是
+    /// "重新发了一次牌"，而不是卡在半途。
+    private func finishRefresh() {
         isRefreshing = false
+        guard !reduceMotion else {
+            viewModel.commitStagedRefresh()
+            listOpacity = 1
+            landingGeneration += 1
+            return
+        }
+
+        // 数据回得比淡出还快时，先把淡出走完再落位，不然旧卡片是被硬切掉的。
+        let total = FeedRefreshTuning.fadeExit(speed: exitSpeed)
+        let elapsed = exitStartedAt.map { Date.now.timeIntervalSince($0) } ?? total
+        let remaining = max(total - elapsed, 0)
+
+        Task { @MainActor in
+            if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
+            // 期间又开始了一次刷新的话，那一边正在自己淡出，别插手。
+            guard !isRefreshing else { return }
+
+            // 以下几句必须同一帧生效。新数据到这一刻才合并进列表——旧卡片已经
+            // 淡尽，所以看不到"半透明的旧卡突然变成新卡"。合并后首屏几行都是
+            // 全新的视图，它们出生就是全透明的起始态，浓度恢复成 1 也不会闪。
+            landingWindow = true
+            viewModel.commitStagedRefresh()
+            listOpacity = 1
+            landingGeneration += 1
+
+            try? await Task.sleep(for: .seconds(FeedRefreshTuning.landingWindow(speed: enterSpeed)))
+            landingWindow = false
+        }
     }
 
     @ViewBuilder
