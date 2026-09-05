@@ -164,10 +164,26 @@ struct CommentEmoteText: View {
                     // 还没下载好就先显示原来那段文字，不留空洞。
                     return partial + Text(literal)
                 }
-                return partial + Text(image)
+                // 往下沉一点，见 `emoteBaselineOffset`。
+                return partial + Text(image).baselineOffset(emoteBaselineOffset)
             }
         }
     }
+
+    /// 表情相对基线往下沉的量（负值向下）。
+    ///
+    /// `Text` 里的行内图片是底边贴基线排的，而中文字面框要伸到基线**以下**
+    /// 一段——汉字没有降部，整行的视觉底边就落在基线之下，图片于是显得被
+    /// 架高了。这里按降部高度的一半把图片压下去，对齐汉字的视觉底边。
+    ///
+    /// 取一半而不是取满：取满是对齐 `g`/`y` 这类降部字母的最低点，中文行里
+    /// 表情会低于汉字底边，显得往下掉。
+    private var emoteBaselineOffset: CGFloat {
+        (scaledFont.descender * Self.baselineOffsetRatio).rounded()
+    }
+
+    /// 降部高度的取用比例。0 就是回到 SwiftUI 默认的基线对齐。
+    private static let baselineOffsetRatio: CGFloat = 0.5
 
     // MARK: - 表情高度
 
@@ -198,14 +214,26 @@ struct CommentEmoteText: View {
             .scaledFont(for: .systemFont(ofSize: baseSize), compatibleWith: traits)
     }
 
-    /// `.large`（默认档）下这两种样式的字号，供 `UIFontMetrics` 起算。
+    /// `.large`（默认档）下这几种样式的字号，供 `UIFontMetrics` 起算。
+    ///
+    /// 认不出的样式退回 subheadline，和以前的行为一致。
     private var baseSize: CGFloat {
-        textStyle == .caption ? 12 : 15
+        switch textStyle {
+        case .caption, .caption2: 12
+        case .footnote: 13
+        case .body: 17
+        default: 15
+        }
     }
 
     /// SwiftUI 的文字样式翻成 UIKit 的同名样式。
     private var uiTextStyle: UIFont.TextStyle {
-        textStyle == .caption ? .caption1 : .subheadline
+        switch textStyle {
+        case .caption, .caption2: .caption1
+        case .footnote: .footnote
+        case .body: .body
+        default: .subheadline
+        }
     }
 
     /// 把 SwiftUI 的档位枚举翻成 UIKit 的内容大小分类。
