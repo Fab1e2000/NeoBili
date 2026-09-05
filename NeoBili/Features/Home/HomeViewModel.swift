@@ -105,6 +105,10 @@ final class HomeViewModel {
     private var freshIndex: Int
     private var popularPage: Int
     private var useFallback = false
+    /// 刷新拿到的新批次先寄存在这里，等界面把旧卡片淡尽再合并进列表。
+    /// 数据一到就换列表的话，用户会看到旧卡片在半透明状态下突然变成新卡片。
+    private var pendingRefresh: [VideoSummary]?
+    private var stageNextRefresh = false
     private var activeLoadTask: Task<Void, Never>?
     private var activeLoadID: UUID?
 
@@ -127,10 +131,20 @@ final class HomeViewModel {
         await startLoad(reason: .initial, replacingActiveLoad: false)
     }
 
-    func refresh() async {
+    /// `staged` 为真时新批次只寄存不入列，由界面在合适的时机调用
+    /// `commitStagedRefresh()` 合并——留给退出动画把旧卡片淡完。
+    func refresh(staged: Bool = false) async {
         // 下拉刷新优先级最高：取消可能仍在进行的分页，并立刻开始新的刷新。
         // freshIndex 不归零是 NeoBili 对 PiliPlus 逻辑的必要适配，防止重启 App 后再次拿到同一批推荐。
+        stageNextRefresh = staged
         await startLoad(reason: .refresh, replacingActiveLoad: true)
+    }
+
+    /// 把寄存的新批次合并进列表。没有寄存内容（请求失败、或者没有新推荐）时什么都不做。
+    func commitStagedRefresh() {
+        guard let batch = pendingRefresh else { return }
+        pendingRefresh = nil
+        applyRefresh(batch)
     }
 
     func loadMoreIfNeeded(current video: VideoSummary) async {
@@ -180,6 +194,7 @@ final class HomeViewModel {
         if reason == .refresh {
             // 每次手动刷新都先尝试个性化推荐，失败后才使用热门榜。
             useFallback = false
+            pendingRefresh = nil
         }
 
         do {
@@ -189,7 +204,11 @@ final class HomeViewModel {
 
             switch reason {
             case .refresh:
-                applyRefresh(newBatch)
+                if stageNextRefresh {
+                    pendingRefresh = newBatch
+                } else {
+                    applyRefresh(newBatch)
+                }
             case .initial, .loadMore:
                 appendUnique(newBatch)
             }
