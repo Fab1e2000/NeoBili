@@ -137,6 +137,14 @@ struct CommentRow: View {
                 messageText
                     .padding(.top, CommentLayout.textVerticalSpacing)
 
+                if !comment.pictures.isEmpty {
+                    // 配图不占满整行：评论正文本来就有头像的缩进，
+                    // 图再铺满会显得比正文还宽。
+                    TappableImageGrid(commentPictures: comment.pictures)
+                        .padding(.trailing, CommentLayout.pageHorizontalInset)
+                        .padding(.top, CommentLayout.textVerticalSpacing)
+                }
+
                 metaRow
                     .padding(.top, CommentLayout.textVerticalSpacing)
 

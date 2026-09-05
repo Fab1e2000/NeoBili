@@ -98,6 +98,8 @@ struct DynamicEntry: Identifiable, Hashable, Sendable {
     let publishedText: String
     /// 正文。视频动态这里是 UP 主写的推荐语，可能为空。
     let text: String
+    /// 正文里用到的表情表，键是正文里那段方括号字面量。没有表情时是空字典。
+    var emotes: [String: CommentEmote] = [:]
     let images: [DynamicImage]
     let video: FollowedVideo?
 
@@ -326,12 +328,50 @@ struct DynamicItem: Decodable, Sendable {
 
         struct Description: Decodable, Sendable {
             let text: String?
+            /// 正文里用到的表情，键就是正文里那段字面量（例如
+            /// `[UPOWER_1150976664_戳手手]`）。和评论共用 `CommentEmote`，
+            /// 这样两边可以用同一个 `CommentEmoteText` 去画。
+            let emotes: [String: CommentEmote]
 
-            enum CodingKeys: String, CodingKey { case text }
+            enum CodingKeys: String, CodingKey {
+                case text
+                case richTextNodes = "rich_text_nodes"
+            }
 
             init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 text = container.flexibleString(forKey: .text)
+                // 正文本身仍然是纯文本，表情要靠这张富文本节点表去换图。
+                // 这张表解不动时按原样显示方括号文字，和网页端未登录时一致。
+                let nodes = (try? container.decodeIfPresent(
+                    LenientList<RichTextNode>.self, forKey: .richTextNodes
+                ))??.elements ?? []
+                emotes = Dictionary(nodes.compactMap(\.asEmote)) { first, _ in first }
+            }
+        }
+
+        /// 富文本节点。这里只关心表情那一种，其余（@某人、话题、链接）
+        /// 的文字已经在 `text` 里了，不必重复处理。
+        struct RichTextNode: Decodable, Sendable {
+            let text: String?
+            let emoji: Emoji?
+
+            struct Emoji: Decodable, Sendable {
+                let iconURL: String?
+                /// 1 是跟文字同高的小表情，2 是大表情，和评论里的含义一致。
+                let size: Int?
+
+                enum CodingKeys: String, CodingKey {
+                    case iconURL = "icon_url"
+                    case size
+                }
+            }
+
+            var asEmote: (String, CommentEmote)? {
+                guard let text, !text.isEmpty,
+                      let icon = emoji?.iconURL, !icon.isEmpty
+                else { return nil }
+                return (text, CommentEmote(url: icon, meta: .init(size: emoji?.size)))
             }
         }
     }
@@ -478,6 +518,9 @@ struct DynamicItem: Decodable, Sendable {
         let dynamic = modules?.dynamic
         let opus = dynamic?.major?.opus
         let body = dynamic?.desc?.text ?? opus?.summary?.text ?? ""
+        // 标题和正文各自带一份表情表，合起来给整条动态用。
+        let emotes = (dynamic?.desc?.emotes ?? [:])
+            .merging(opus?.summary?.emotes ?? [:]) { existing, _ in existing }
         let text = [opus?.title, body]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
@@ -498,6 +541,7 @@ struct DynamicItem: Decodable, Sendable {
             authorFace: author?.face ?? "",
             publishedText: author?.pubTime ?? "",
             text: text,
+            emotes: emotes,
             images: images,
             video: video,
             likeCount: stat?.like?.count ?? 0,

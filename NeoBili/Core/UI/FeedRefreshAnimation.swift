@@ -114,7 +114,7 @@ struct FeedDropInEffect: ViewModifier {
 struct FeedDropInRow<Content: View>: View {
     let index: Int
     let generation: Int
-    /// 落位窗口是否开着。只有开着时新建的行才播动画。
+    /// 落位窗口是否开着。只在创建的那一刻起作用，用来决定这一行要不要先藏起来。
     let landing: Bool
     /// 落位速度倍率，来自设置页。
     let speed: Double
@@ -122,6 +122,13 @@ struct FeedDropInRow<Content: View>: View {
     @ViewBuilder var content: Content
 
     @State private var progress: Double
+    /// 这一行是不是"出生就藏着、等着播落位"的。
+    ///
+    /// 这个判断在 init 时定死，之后不再看 `landing` 的脸色。早先是每次播动画
+    /// 前重新读 `landing`，于是靠近首屏底边的那一行（懒加载出来得晚一点）
+    /// 可能在窗口关掉之后才轮到播——判断不通过，它就永远停在全透明上，
+    /// 表现就是刷新后第四行偶尔是一片空白。
+    @State private var awaitingLanding: Bool
     /// 已经为哪一代播过动画，避免同一代播两次。
     @State private var playedGeneration: Int?
 
@@ -139,36 +146,52 @@ struct FeedDropInRow<Content: View>: View {
         self.speed = speed
         self.reduceMotion = reduceMotion
         self.content = content()
-        let willAnimate = landing && !reduceMotion && index < FeedRefreshTuning.staggerRows
-        _progress = State(initialValue: willAnimate ? 0 : 1)
+        let startsHidden = landing && !reduceMotion && index < FeedRefreshTuning.staggerRows
+        _progress = State(initialValue: startsHidden ? 0 : 1)
+        _awaitingLanding = State(initialValue: startsHidden)
     }
 
-    private var animates: Bool {
-        landing && !reduceMotion && index < FeedRefreshTuning.staggerRows
+    /// 沿用下来的行（id 没变）在换代时要不要重播。换代只发生在刷新那一刻，
+    /// 那时窗口一定是开着的，所以这里不必再看 `landing`。
+    private var animatable: Bool {
+        !reduceMotion && index < FeedRefreshTuning.staggerRows
     }
 
     var body: some View {
         content
             .modifier(FeedDropInEffect(progress: progress))
-            // 刷新后新建出来的行走这条。
-            .task { play() }
+            // 刷新后新建出来的行走这条。用结构化的 task 而不是自己起 Task：
+            // 视图被回收重建时它会跟着取消，新实例按自己的 init 重新决定。
+            .task {
+                guard awaitingLanding else { return }
+                awaitingLanding = false
+                playedGeneration = generation
+                // 隔一帧再启动：同一帧内改两次状态会被合并成"没有动画"。
+                try? await Task.sleep(for: .milliseconds(16))
+                guard !Task.isCancelled else { return }
+                withAnimation(landingAnimation) { progress = 1 }
+            }
             // id 没变、被沿用下来的行走这条（比如刷新没拿到新内容）。
-            .onChange(of: generation) { play() }
-    }
-
-    private func play() {
-        guard animates, playedGeneration != generation else { return }
-        playedGeneration = generation
-        // 沿用下来的行此刻还停在落位状态，先无动画地放回起点。
-        // 新建的行本来就是 0，这一句是空操作。
-        progress = 0
-        Task { @MainActor in
-            // 隔一帧再启动：同一帧内改两次状态会被合并成"没有动画"。
-            try? await Task.sleep(for: .milliseconds(16))
-            let delay = Double(index) * FeedRefreshTuning.stagger(speed: speed)
-            withAnimation(FeedRefreshTuning.landing(speed: speed).delay(delay)) {
+            .onChange(of: generation) {
+                guard animatable, playedGeneration != generation else { return }
+                playedGeneration = generation
+                progress = 0
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(16))
+                    withAnimation(landingAnimation) { progress = 1 }
+                }
+            }
+            // 兜底：窗口都关了这一行还藏着，说明它的落位没能跑起来，直接显出来。
+            // 宁可少一次动画，也不能留一行空白。
+            .onChange(of: landing) { _, isLanding in
+                guard !isLanding, awaitingLanding else { return }
+                awaitingLanding = false
                 progress = 1
             }
-        }
+    }
+
+    private var landingAnimation: Animation {
+        FeedRefreshTuning.landing(speed: speed)
+            .delay(Double(index) * FeedRefreshTuning.stagger(speed: speed))
     }
 }

@@ -41,6 +41,7 @@ struct FollowingView: View {
             // 顶部不要标题栏：头像行直接从安全区下面开始，省掉一整行高度。
             // 标题本身留着，推入 UP 主页时返回按钮才有「关注」这两个字。
             .toolbarVisibility(.hidden, for: .navigationBar)
+            .imageViewerHost()
             // 关注流滚动时底部标签栏始终保留；进入子页面后由子页面自行隐藏。
             .tabBarMinimizeBehavior(.never)
             .onAppear {
