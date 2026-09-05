@@ -18,6 +18,11 @@ extension View {
     }
 }
 
+/// 三个主页面。切换时旧页面整体渐隐、新页面逐渐显现。
+enum MainTab: Hashable {
+    case home, following, mine
+}
+
 struct RootView: View {
     @State private var nowPlaying = NowPlayingStore()
     @State private var account = AccountStore()
@@ -27,19 +32,28 @@ struct RootView: View {
     /// 设置页那根滑杆选的档位。写在根视图上，改完立刻全 App 生效。
     @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
 
+    /// 主页面切换特效：新页面淡入，快慢用设置页那条「进入」滑杆。
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
+    /// 当前页面。点下去立刻就换，高亮跟着立刻走。
+    @State private var displayedTab: MainTab = .home
+    /// 新页面的浓度：切换那一刻置 0，随后淡入。
+    @State private var tabContentOpacity: Double = 1
+    @State private var tabSwitchTask: Task<Void, Never>?
+
     var body: some View {
         @Bindable var nowPlaying = nowPlaying
 
-        return TabView {
-            Tab("推荐", systemImage: "house.fill") {
-                HomeView()
+        return TabView(selection: tabSelection) {
+            Tab("推荐", systemImage: "house.fill", value: MainTab.home) {
+                HomeView().opacity(tabContentOpacity)
             }
             // 搜索不再单独占一个 Tab：入口挪到了首页顶部那个常驻搜索框。
-            Tab("关注", systemImage: "person.2.fill") {
-                FollowingView()
+            Tab("关注", systemImage: "person.2.fill", value: MainTab.following) {
+                FollowingView().opacity(tabContentOpacity)
             }
-            Tab("我的", systemImage: "person.crop.circle") {
-                MineView()
+            Tab("我的", systemImage: "person.crop.circle", value: MainTab.mine) {
+                MineView().opacity(tabContentOpacity)
             }
         }
         // 提示浮层只包住 TabView，不要包住下面那个 fullScreenCover。
@@ -73,6 +87,43 @@ struct RootView: View {
         // 冷启动时用 Keychain 里可能存在的登录凭据恢复会话；
         // 「我的」页在恢复完成前不会闪出登录按钮。
         .task { await account.restoreSessionIfNeeded() }
+    }
+
+    /// TabView 的 selection 走这个代理：内容和高亮照常立刻切换，
+    /// 只给新页面补一段淡入。
+    ///
+    /// 旧页面没有淡出——TabView 的内容按选中项懒建，切换那一刻它已经不在视图树里了。
+    /// 要让它淡出就得推迟切换，而推迟多久高亮就滞后多久，点起来不跟手。
+    private var tabSelection: Binding<MainTab> {
+        Binding(
+            get: { displayedTab },
+            set: { switchTab(to: $0) }
+        )
+    }
+
+    private func switchTab(to tab: MainTab) {
+        // 重复点当前 Tab 是"回到顶部/刷新"的手势，
+        // 由 HomeTabReselectionObserver 单独接管，这里不插手。
+        guard tab != displayedTab else { return }
+
+        tabSwitchTask?.cancel()
+
+        guard !reduceMotion else {
+            tabContentOpacity = 1
+            displayedTab = tab
+            return
+        }
+
+        tabContentOpacity = 0
+        displayedTab = tab
+
+        let fadeIn = AnimationSpeedSettings.tabFade(speed: enterSpeed)
+        tabSwitchTask = Task { @MainActor in
+            // 隔一帧再启动：同一帧内改两次状态会被合并成"没有动画"。
+            try? await Task.sleep(for: .milliseconds(16))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: fadeIn)) { tabContentOpacity = 1 }
+        }
     }
 }
 

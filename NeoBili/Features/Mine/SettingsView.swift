@@ -15,6 +15,9 @@ struct SettingsView: View {
     @State private var deadZonePreviewHideTask: Task<Void, Never>?
     @State private var confirmLogout = false
     @AppStorage(HomeRefreshSettings.storageKey) private var homeRefreshDistance = HomeRefreshSettings.defaultDistance
+    /// 刷新动画的快慢。退出＝旧卡片淡出，进入＝新卡片落位，两段分开调。
+    @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var feedExitSpeed = AnimationSpeedSettings.defaultSpeed
+    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var feedEnterSpeed = AnimationSpeedSettings.defaultSpeed
 
     /// 清晰度选项的展示名。实际可用上限取决于账号等级与稿件本身。
     private static let qualityOptions: [(qn: Int, label: String)] = [
@@ -69,6 +72,23 @@ struct SettingsView: View {
                 Text("首页刷新")
             } footer: {
                 Text("手指下拉达到设定距离后轻震，松手刷新，回推可取消。默认 70pt。再次点击底部「推荐」可回到顶部；已在顶部时点击则刷新。")
+            }
+
+            Section {
+                animationSpeedSlider(
+                    title: "退出动画",
+                    value: $feedExitSpeed,
+                    accessibilityLabel: "刷新退出动画速度"
+                )
+                animationSpeedSlider(
+                    title: "进入动画",
+                    value: $feedEnterSpeed,
+                    accessibilityLabel: "刷新进入动画速度"
+                )
+            } header: {
+                Text("动画")
+            } footer: {
+                Text("首页刷新：退出＝松手后旧卡片原地淡尽，与网络无关；进入＝新卡片从上方逐行落位。数据来得快就等淡出走完再落位，来得慢则中间是一段空屏。\n主页面切换：新页面淡入，只受进入倍率影响，时长比刷新短。\n倍率越大越快，1.0× 是默认速度。开启系统「减弱动效」后一律不播。")
             }
 
             Section {
@@ -133,6 +153,31 @@ struct SettingsView: View {
     }
 
     /// 仿系统「文字大小」那一页：两端是「小」「大」，中间七个刻度。
+    /// 两条动画速度滑杆长得一样，只有标题和绑定不同。
+    private func animationSpeedSlider(
+        title: String,
+        value: Binding<Double>,
+        accessibilityLabel: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(String(format: "%.1f×", AnimationSpeedSettings.clamped(value.wrappedValue)))
+                    .monospacedDigit().foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: AnimationSpeedSettings.range, step: 0.1)
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityValue(String(format: "%.1f 倍速", value.wrappedValue))
+            HStack {
+                Text("更舒缓")
+                Spacer()
+                Text("更利落")
+            }
+            .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     private var textSizeSlider: some View {
         VStack(alignment: .leading, spacing: 10) {
             // 拖动时这一行会跟着当前档位一起放大缩小，等于就地预览。
