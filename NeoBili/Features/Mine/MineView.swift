@@ -14,6 +14,8 @@ struct MineView: View {
     }
 
     @State private var loginSheet: LoginSheet?
+    @State private var serviceSheet: MineService?
+
 
     var body: some View {
         NavigationStack {
@@ -30,6 +32,15 @@ struct MineView: View {
             .leftEdgeTapDeadZone()
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("我的")
+        }
+        .sheet(item: $serviceSheet, onDismiss: {
+            nowPlaying.isServiceSheetPresented = false
+        }) { service in
+            MineServiceSheet(service: service)
+                .appTextSize()
+        }
+        .onChange(of: account.isLoggedIn) { _, loggedIn in
+            if !loggedIn { serviceSheet = nil }
         }
         .sheet(item: $loginSheet) { sheet in
             switch sheet {
@@ -85,19 +96,19 @@ struct MineView: View {
                     icon: "star.fill",
                     color: .orange,
                     title: "收藏",
-                    destination: { FavoritesView() }
+                    service: .favorites
                 )
                 serviceRow(
                     icon: "clock.arrow.circlepath",
                     color: .blue,
                     title: "历史记录",
-                    destination: { HistoryView() }
+                    service: .history
                 )
                 serviceRow(
                     icon: "flag.checkered",
                     color: .pink,
                     title: "稍后再看",
-                    destination: { WatchLaterView() }
+                    service: .watchLater
                 )
             } header: {
                 Text("我的服务")
@@ -108,7 +119,7 @@ struct MineView: View {
                     icon: "gearshape.fill",
                     color: .gray,
                     title: "系统设置",
-                    destination: { SettingsView() }
+                    service: .settings
                 )
             }
         }
@@ -172,14 +183,15 @@ struct MineView: View {
     }
 
     /// Apple Music 式的服务入口行：圆角彩色底 + SF Symbol + 标题。
-    private func serviceRow<Destination: View>(
+    private func serviceRow(
         icon: String,
         color: Color,
         title: String,
-        @ViewBuilder destination: () -> Destination
+        service: MineService
     ) -> some View {
-        NavigationLink {
-            destination()
+        Button {
+            nowPlaying.isServiceSheetPresented = true
+            serviceSheet = service
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: icon)
@@ -191,8 +203,16 @@ struct MineView: View {
                 Text(title)
                     .font(.subheadline)
                     .foregroundStyle(.primary)
+
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
             .padding(.vertical, 2)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .tint(.primary)
     }
 }

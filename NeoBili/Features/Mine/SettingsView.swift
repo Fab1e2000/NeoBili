@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var isShowingDeadZonePreview = false
     @State private var deadZonePreviewHideTask: Task<Void, Never>?
     @State private var confirmLogout = false
+    @AppStorage(HomeRefreshSettings.storageKey) private var homeRefreshDistance = HomeRefreshSettings.defaultDistance
 
     /// 清晰度选项的展示名。实际可用上限取决于账号等级与稿件本身。
     private static let qualityOptions: [(qn: Int, label: String)] = [
@@ -44,6 +45,30 @@ struct SettingsView: View {
                 Text("显示")
             } footer: {
                 Text("App 内所有文字按这个档位显示，不跟随系统「设置 → 显示与亮度 → 文字大小」——两边同时缩放会让排版不可预期。")
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("下拉刷新距离")
+                        Spacer()
+                        Text("\(Int(HomeRefreshSettings.clamped(homeRefreshDistance))) pt")
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Slider(value: $homeRefreshDistance, in: HomeRefreshSettings.range, step: 5)
+                        .accessibilityLabel("首页下拉刷新距离")
+                        .accessibilityValue("\(Int(homeRefreshDistance)) 点")
+                    HStack {
+                        Text("更灵敏")
+                        Spacer()
+                        Text("不易误触")
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("首页刷新")
+            } footer: {
+                Text("手指下拉达到设定距离后轻震，松手刷新，回推可取消。默认 70pt。再次点击底部「推荐」可回到顶部；已在顶部时点击则刷新。")
             }
 
             Section {
@@ -95,7 +120,6 @@ struct SettingsView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
         .confirmationDialog(
             "退出登录后将回到访客模式，推荐不再个性化；需要重新登录才能使用收藏等功能。确定退出？",
             isPresented: $confirmLogout,

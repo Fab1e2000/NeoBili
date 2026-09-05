@@ -14,6 +14,35 @@ enum HomeFeedItem: Identifiable {
     }
 }
 
+enum HomeFeedRow: Identifiable {
+    case videos([VideoSummary])
+    case lastSeen
+
+    var id: String {
+        switch self {
+        case .videos(let videos): "row-\(videos[0].bvid)"
+        case .lastSeen: "last-seen-row"
+        }
+    }
+
+    static func group(_ items: [HomeFeedItem]) -> [HomeFeedRow] {
+        var rows: [HomeFeedRow] = []
+        var pending: [VideoSummary] = []
+        for item in items {
+            switch item {
+            case .video(let video):
+                pending.append(video)
+                if pending.count == 2 { rows.append(.videos(pending)); pending = [] }
+            case .lastSeen:
+                if !pending.isEmpty { rows.append(.videos(pending)); pending = [] }
+                rows.append(.lastSeen)
+            }
+        }
+        if !pending.isEmpty { rows.append(.videos(pending)) }
+        return rows
+    }
+}
+
 @MainActor
 @Observable
 final class HomeViewModel {
@@ -22,6 +51,38 @@ final class HomeViewModel {
     private(set) var isLoadingMore = false
     private(set) var errorMessage: String?
     private(set) var lastRefreshAt: Int?
+    private(set) var uninterestedIDs: Set<String> = []
+    private(set) var reportingIDs: Set<String> = []
+    private(set) var replacingIDs: Set<String> = []
+    private let reportUninterested: (VideoSummary) async throws -> Void
+
+    func markUninterested(_ video: VideoSummary) async -> String? {
+        guard !reportingIDs.contains(video.bvid), !uninterestedIDs.contains(video.bvid) else { return nil }
+        reportingIDs.insert(video.bvid)
+        defer { reportingIDs.remove(video.bvid) }
+        do {
+            try await reportUninterested(video)
+            uninterestedIDs.insert(video.bvid)
+            return nil
+        } catch { return error.localizedDescription }
+    }
+
+    func replaceUninterested(_ video: VideoSummary) async -> String? {
+        guard uninterestedIDs.contains(video.bvid), replacingIDs.isEmpty else { return nil }
+        replacingIDs.insert(video.bvid)
+        defer { replacingIDs.remove(video.bvid) }
+        do {
+            let batch = try await fetchNextBatch()
+            let existing = Set(videos.map(\.bvid)).union(uninterestedIDs)
+            guard let replacement = batch.first(where: { !existing.contains($0.bvid) }) else {
+                return "暂时没有新的推荐，请稍后重试"
+            }
+            // 等待网络期间刷新可能已改变列表，以原视频标识重新定位。
+            guard let index = videos.firstIndex(where: { $0.bvid == video.bvid }) else { return nil }
+            videos[index] = replacement
+            return nil
+        } catch { return error.localizedDescription }
+    }
 
     /// 这是页面真正显示的顺序。提示卡会被插在“本次刷新内容”和“上次内容”之间。
     var feedItems: [HomeFeedItem] {
@@ -29,15 +90,13 @@ final class HomeViewModel {
         if let lastRefreshAt,
            lastRefreshAt >= 0,
            lastRefreshAt <= items.count {
-            // 双列网格从 0 开始计数：偶数在左列，奇数在右列。
-            // 如果刷新分界正好落在左列，就先显示一张旧视频，再把提示卡放进右列。
-            let markerIndex = lastRefreshAt.isMultiple(of: 2)
-                ? min(lastRefreshAt + 1, items.count)
-                : lastRefreshAt
-            items.insert(.lastSeen, at: markerIndex)
+            items.insert(.lastSeen, at: lastRefreshAt)
         }
         return items
     }
+
+    /// 按行惰性布局，刷新分界独占两列，不与旧视频混在同一行。
+    var feedRows: [HomeFeedRow] { HomeFeedRow.group(feedItems) }
 
     private static let freshIndexKey = "neobili.recommendFreshIndex"
     private static let popularPageKey = "neobili.popularFallbackPage"
@@ -55,8 +114,10 @@ final class HomeViewModel {
         case loadMore
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         reportUninterested: @escaping (VideoSummary) async throws -> Void = BiliAPI.markRecommendationUninterested) {
         self.defaults = defaults
+        self.reportUninterested = reportUninterested
         freshIndex = max(defaults.integer(forKey: Self.freshIndexKey), 1)
         popularPage = max(defaults.integer(forKey: Self.popularPageKey), 1)
     }
@@ -166,7 +227,7 @@ final class HomeViewModel {
     /// 复刻 PiliPlus 的保留刷新：新内容放在上面，旧内容接在提示卡之后。
     /// 旧列表超过 200 条时只保留前 50 条，避免连续刷新让内存无限增长。
     private func applyRefresh(_ batch: [VideoSummary]) {
-        let newVideos = Self.removingDuplicates(from: batch)
+        let newVideos = Self.removingDuplicates(from: batch).filter { !uninterestedIDs.contains($0.bvid) }
         guard !newVideos.isEmpty else { return }
 
         guard !videos.isEmpty else {
@@ -187,7 +248,7 @@ final class HomeViewModel {
     private func appendUnique(_ batch: [VideoSummary]) {
         let existingIDs = Set(videos.map(\.bvid))
         let uniqueBatch = Self.removingDuplicates(from: batch)
-            .filter { !existingIDs.contains($0.bvid) }
+            .filter { !existingIDs.contains($0.bvid) && !uninterestedIDs.contains($0.bvid) }
         videos.append(contentsOf: uniqueBatch)
     }
 

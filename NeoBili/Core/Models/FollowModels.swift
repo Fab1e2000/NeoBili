@@ -111,6 +111,8 @@ struct DynamicEntry: Identifiable, Hashable, Sendable {
     /// （视频 1、图文 11、纯文字 17）。两个都拿到才有评论可看。
     let commentOid: Int
     let commentType: Int
+    var publishedTimestamp: Int = 0
+    var vote: DynamicVote? = nil
 
     var secureAvatarURL: URL? { URL.biliSecure(authorFace) }
     var hasComments: Bool { commentOid > 0 && commentType > 0 }
@@ -305,15 +307,21 @@ struct DynamicItem: Decodable, Sendable {
         /// 正文。图文和纯文字动态的文字在这里。
         let desc: Description?
         let major: Major?
+        let additional: Additional?
+
+        struct Additional: Decodable, Sendable {
+            let vote: DynamicVote?
+        }
 
         enum CodingKeys: String, CodingKey {
-            case desc, major
+            case desc, major, additional
         }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             desc = try? container.decodeIfPresent(Description.self, forKey: .desc)
             major = try? container.decodeIfPresent(Major.self, forKey: .major)
+            additional = try? container.decodeIfPresent(Additional.self, forKey: .additional)
         }
 
         struct Description: Decodable, Sendable {
@@ -478,7 +486,7 @@ struct DynamicItem: Decodable, Sendable {
         let pictures = opus?.pics ?? dynamic?.major?.draw?.items ?? []
         let images = pictures.compactMap(\.asImage)
 
-        guard video != nil || !text.isEmpty || !images.isEmpty else { return nil }
+        guard video != nil || !text.isEmpty || !images.isEmpty || dynamic?.additional?.vote != nil else { return nil }
         guard let id = idStr ?? video?.bvid else { return nil }
 
         let author = modules?.author
@@ -497,7 +505,9 @@ struct DynamicItem: Decodable, Sendable {
             forwardCount: stat?.forward?.count ?? 0,
             isLikedByServer: stat?.like?.status ?? false,
             commentOid: basic?.commentIdStr ?? 0,
-            commentType: basic?.commentType ?? 0
+            commentType: basic?.commentType ?? 0,
+            publishedTimestamp: author?.pubTs ?? 0,
+            vote: dynamic?.additional?.vote
         )
     }
 }

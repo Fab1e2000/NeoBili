@@ -50,7 +50,6 @@ struct HistoryView: View {
         .leftEdgeTapDeadZone()
         .navigationTitle("历史记录")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
         .overlay {
             if isLoading, items.isEmpty { ProgressView() }
         }

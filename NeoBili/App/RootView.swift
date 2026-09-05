@@ -50,7 +50,10 @@ struct RootView: View {
         .actionFeedbackOverlay()
         // 视频页由最外层持有，播放器和整页状态统一由 NowPlayingStore 管理；
         // 视频页退出时由 store 负责停止并释放播放器。
-        .fullScreenCover(isPresented: $nowPlaying.isExpanded) {
+        .fullScreenCover(isPresented: Binding(
+            get: { nowPlaying.isExpanded && !nowPlaying.isServiceSheetPresented },
+            set: { if !nowPlaying.isServiceSheetPresented { nowPlaying.isExpanded = $0 } }
+        )) {
             VideoPage()
                 // 视频页有自己的 UIHostingController，不会继承根视图注入的文字
                 // 档位（会退回跟随系统设置），必须在这里再补一次。

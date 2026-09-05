@@ -14,7 +14,7 @@ enum CommentLayout {
     /// 用户名、正文、点赞行之间的竖向距离。
     static let textVerticalSpacing: CGFloat = 5
     /// 楼中楼区块与上方点赞行之间的距离。
-    static let replyBlockGap = rowVerticalPadding
+    static let replyBlockGap: CGFloat = 12
     /// 楼中楼区块的圆角。
     static let replyCornerRadius: CGFloat = 8
     /// 楼中楼区块内部的留白。
@@ -119,14 +119,6 @@ struct CommentRow: View {
     /// 正文是否已经展开。每条评论各自记住自己的状态。
     @State private var isMessageExpanded = false
 
-    /// 楼中楼灰块下面额外补的一点空白。
-    ///
-    /// 以文字结尾的评论，最后一行字的下方还带着行高留出的空档，所以哪怕
-    /// `padding` 数值一样，它到分隔线的空白看起来也比灰块宽——实测是 16px
-    /// 对 12px。灰块是硬边缘，没有这段空档，得手动补回来，两种评论交替出现
-    /// 时才不会一紧一松。`CommentSpacingTests` 会把这个差值钉住。
-    @ScaledMetric(relativeTo: .caption2) private var replyBlockBottomInset: CGFloat = 4
-
     var body: some View {
         HStack(alignment: .top, spacing: CommentLayout.avatarTextSpacing) {
             BiliImage(url: comment.member.secureAvatarURL)
@@ -151,7 +143,6 @@ struct CommentRow: View {
                 if comment.rcount > 0 {
                     replySection
                         .padding(.top, CommentLayout.replyBlockGap)
-                        .padding(.bottom, replyBlockBottomInset)
                 }
             }
 
@@ -248,14 +239,21 @@ struct CommentRow: View {
                 // 用户名和内容排在同一段文字里，这样回复读起来更紧凑。
                 // 用户名单独作为一段前缀交给同一个渲染器，表情才能和文字排在一行。
                 CommentEmoteText(
-                    message: "\(reply.member.uname)：\(reply.message)",
+                    message: reply.message,
                     emotes: reply.emotes,
                     font: .caption,
-                    textStyle: .caption
+                    textStyle: .caption,
+                    prefix: "\(reply.member.uname)："
                 )
-                    // 收起状态下每条回复最多三行，展开后完整显示。
-                    .lineLimit(isExpanded ? nil : 3)
+                    // 楼中楼只折叠回复数量，不截断单条正文，也不预留隐藏行高度。
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .task(id: isExpanded && reply.id == replies.last?.id && viewModel.hasMoreReplies(comment)) {
+                        if isExpanded, reply.id == replies.last?.id, viewModel.hasMoreReplies(comment) {
+                            await viewModel.loadMoreReplies(for: comment)
+                        }
+                    }
             }
 
             if viewModel.isLoadingReplies(comment) {
@@ -264,26 +262,25 @@ struct CommentRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if isExpanded, viewModel.hasMoreReplies(comment) {
-                Button("加载更多回复") {
-                    Task { await viewModel.loadMoreReplies(for: comment) }
-                }
-                .font(.caption.weight(.medium))
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+            if let error = viewModel.replyErrors[comment.id] {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            // 未登录时一级评论被 B 站限制成很少几条，但楼中楼不受限制，可以完整翻页。
-            if isExpanded || comment.rcount > replies.count {
-                Button(isExpanded ? "收起回复" : "查看全部 \(comment.rcount.biliCountText) 条回复") {
-                    Task { await viewModel.toggleReplies(for: comment) }
+            if viewModel.shouldShowAllReplies(comment) {
+                Button("查看全部回复") {
+                    Task { await viewModel.expandReplies(for: comment) }
                 }
                 .font(.caption.weight(.medium))
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
+                .disabled(viewModel.isLoadingReplies(comment))
             }
+
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(CommentLayout.replyPadding)
         .background(
             Color(uiColor: .secondarySystemBackground),
