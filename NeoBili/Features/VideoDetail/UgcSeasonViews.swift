@@ -22,7 +22,8 @@ struct UgcSeasonRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass)
+        .tint(.primary)
         .controlSize(.large)
         .accessibilityLabel("合集 \(season.title ?? "")，\(progressText)，展开分集列表")
     }
@@ -53,6 +54,7 @@ struct UgcSeasonSheet: View {
                     }
                 }
                 .pickerStyle(.inline)
+                .tint(.primary)
                 .labelsHidden()
             }
             .listStyle(.insetGrouped)

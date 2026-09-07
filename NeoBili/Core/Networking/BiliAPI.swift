@@ -85,6 +85,16 @@ enum BiliAPI {
     /// 展开某条评论下的全部回复（楼中楼）。`root` 传那条一级评论的 `rpid`。
     ///
     /// 和一级评论不同，这个接口对未登录用户没有条数限制，可以正常一页页翻。
+    static func sendComment(oid: Int, type: Int, message: String, root: Int, parent: Int) async throws -> CommentSubmission {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        let result: CommentSubmission = try await APIClient.shared.post(path: "x/v2/reply/add", form: [
+            "oid": String(oid), "type": String(type), "message": message,
+            "root": String(root), "parent": String(parent), "plat": "1", "csrf": csrf
+        ])
+        guard result.needCaptcha != true else { throw CommentSubmissionError.verificationRequired }
+        return result
+    }
+
     static func commentReplies(oid: Int, type: Int, rootId: Int, page: Int) async throws -> CommentReplyPage {
         try await APIClient.shared.get(
             path: "x/v2/reply/reply",
@@ -113,7 +123,7 @@ enum BiliAPI {
         }
         // video 分类里仍可能混入课堂推广卡，它们没有 bvid，不能进入普通
         // 视频详情页；同时过滤后可避免多个空字符串破坏 SwiftUI 的列表 ID。
-        return SearchResultPage(result: response.result?.filter { !$0.bvid.isEmpty }, vVoucher: nil)
+        return SearchResultPage(result: response.result?.filter { !$0.bvid.isEmpty }, vVoucher: nil, numPages: response.numPages)
     }
 
     /// 输入过程中的候选词。
@@ -795,10 +805,12 @@ struct SearchResultItem: Decodable, Identifiable, Hashable {
 struct SearchResultPage: Decodable {
     let result: [SearchResultItem]?
     let vVoucher: String?
+    var numPages: Int? = nil
 
     enum CodingKeys: String, CodingKey {
         case result
         case vVoucher = "v_voucher"
+        case numPages
     }
 }
 
@@ -874,4 +886,20 @@ enum DynamicRequest {
         "Origin": "https://t.bilibili.com",
         "Referer": "https://t.bilibili.com/"
     ]
+}
+
+struct CommentSubmission: Decodable {
+    let reply: Comment?
+    let successToast: String?
+    let needCaptcha: Bool?
+    enum CodingKeys: String, CodingKey {
+        case reply
+        case successToast = "success_toast"
+        case needCaptcha = "need_captcha"
+    }
+}
+
+enum CommentSubmissionError: LocalizedError {
+    case verificationRequired
+    var errorDescription: String? { "需要完成验证才能发送，请在官方客户端验证后重试。草稿已保留。" }
 }

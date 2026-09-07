@@ -23,8 +23,6 @@ enum CommentLayout {
     static let replySpacing: CGFloat = 7
     /// 长评论收起时显示几行。想让收起状态更高或更矮，改这个数字即可。
     static let collapsedMessageLines = 6
-    /// 超过这个字数才显示「展开」。太短的评论没必要多一个按钮。
-    static let messageExpandThreshold = 120
 }
 
 /// 评论列表本体（没有自己的 ScrollView）。
@@ -105,6 +103,7 @@ struct CommentsView: View {
             CommentsPlaceholder(viewModel: viewModel)
         }
         .task { await viewModel.loadInitial() }
+        .commentComposer(viewModel: viewModel)
     }
 }
 
@@ -142,9 +141,12 @@ struct CommentRow: View {
 
     @Environment(AccountStore.self) private var account
     @Environment(\.openCommentThread) private var openCommentThread
+    @Environment(\.replyToComment) private var replyToComment
 
     /// 正文是否已经展开。每条评论各自记住自己的状态。
     @State private var isMessageExpanded = false
+    @State private var fullMessageHeight: CGFloat = 0
+    @State private var collapsedMessageHeight: CGFloat = 0
 
     var body: some View {
         HStack(alignment: .top, spacing: CommentLayout.avatarTextSpacing) {
@@ -175,7 +177,7 @@ struct CommentRow: View {
                 metaRow
                     .padding(.top, CommentLayout.textVerticalSpacing)
 
-                if showsReplies, comment.rcount > 0 {
+                if showsReplies, comment.rcount > 0 || !(viewModel.submittedReplies[comment.id] ?? []).isEmpty {
                     replySection
                         .padding(.top, CommentLayout.replyBlockGap)
                 }
@@ -196,6 +198,13 @@ struct CommentRow: View {
                 .foregroundStyle(.tertiary)
 
             likeButton
+            if let replyToComment {
+                Button("回复") { replyToComment(comment) }
+                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+            }
         }
     }
 
@@ -232,14 +241,11 @@ struct CommentRow: View {
     /// 一个 VStack，外层每一段的间距才能一眼看清。
     private var messageText: some View {
         VStack(alignment: .leading, spacing: CommentLayout.textVerticalSpacing) {
-            CommentEmoteText(
-                message: comment.message,
-                emotes: comment.emotes,
-                font: .subheadline,
-                textStyle: .subheadline
-            )
+            messageBody
                 .foregroundStyle(.primary)
                 .lineLimit(isMessageExpanded ? nil : CommentLayout.collapsedMessageLines)
+                .fixedSize(horizontal: false, vertical: true)
+                .background { messageMeasurements }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -248,9 +254,14 @@ struct CommentRow: View {
                 }
 
             if canExpandMessage {
-                Button(isMessageExpanded ? "收起" : "展开") {
+                Button {
                     withAnimation(.easeInOut(duration: 0.2)) { isMessageExpanded.toggle() }
+                } label: {
+                    Text(isMessageExpanded ? "收起" : "展开")
+                        .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
+                .accessibilityLabel(isMessageExpanded ? "收起评论正文" : "展开评论正文")
                 .font(.caption.weight(.medium))
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
@@ -258,9 +269,38 @@ struct CommentRow: View {
         }
     }
 
-    /// 短评论一眼就能看完，没必要多一个「展开」按钮。
+    private var messageBody: some View {
+        CommentEmoteText(message: comment.message, emotes: comment.emotes,
+                         font: .subheadline, textStyle: .subheadline)
+    }
+
+    /// 用相同宽度和表情渲染测量两种高度，换行、字体和表情加载都会重新判断。
+    private var messageMeasurements: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                messageBody
+                    .lineLimit(CommentLayout.collapsedMessageLines)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: geometry.size.width, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                        collapsedMessageHeight = $0
+                    }
+                messageBody
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: geometry.size.width, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                        fullMessageHeight = $0
+                    }
+            }
+            .hidden()
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
+        }
+    }
+
     private var canExpandMessage: Bool {
-        comment.message.count > CommentLayout.messageExpandThreshold
+        fullMessageHeight > collapsedMessageHeight + 0.5
     }
 
     // MARK: - 楼中楼展开

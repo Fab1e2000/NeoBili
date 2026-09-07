@@ -20,7 +20,8 @@ struct VideoPartsRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass)
+        .tint(.primary)
         .controlSize(.large)
         .accessibilityLabel("分P，\(progressText)，展开分P列表")
     }
@@ -59,6 +60,7 @@ struct VideoPartsSheet: View {
                     }
                 }
                 .pickerStyle(.inline)
+                .tint(.primary)
                 .labelsHidden()
             }
             .listStyle(.insetGrouped)
