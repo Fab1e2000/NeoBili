@@ -36,13 +36,22 @@ struct DynamicCard: View {
     let onLike: () -> Void
     /// 进动态详情页：点评论按钮，或者直接点正文、图片。
     let onOpenDetail: () -> Void
+    var showsAuthor = true
 
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @State private var isTextExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            authorRow
+            if showsAuthor {
+                authorRow
+            } else if !entry.publishedText.isEmpty {
+                Text(entry.publishedText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, DynamicCardLayout.contentInset)
+                    .padding(.top, DynamicCardLayout.contentInset)
+            }
 
             // 正文点一下进详情页看评论；「展开」按钮在它自己的范围内优先
             // 响应，所以这里用 onTapGesture 而不是再套一层 Button。

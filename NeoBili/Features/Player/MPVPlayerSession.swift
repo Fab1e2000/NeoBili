@@ -187,9 +187,8 @@ enum PlaybackSourceBuilder {
 /// 触发这种检查。真正需要碰 UIKit（渲染层、通知）的部分留在
 /// `MPVMetalViewController` 里，那边所有入口本来就只会从 MainActor 调用。
 ///
-/// v1（先验证渲染链路能不能跑通）：只打开主候选地址，没有 AVFoundation 版本
-/// 那一套候选重试、看门狗超时；这些等真机确认 Metal+Vulkan 渲染没问题之后
-/// 再加回来。
+/// 地址失败后的候选切换由 PlayerViewModel 管理，每次尝试使用独立内核，
+/// 旧内核的迟到事件不会混入下一次播放。
 /// `@unchecked`：这个类的可变状态确实会被多个线程碰到（mpv 的回调线程、
 /// eventQueue、主线程），但访问路径靠的是人工约束好的顺序（各处注释已经
 /// 说明），不是 Swift 的 actor/Sendable 机制——安全性是手动保证的。
@@ -239,7 +238,14 @@ final class MPVEngine: @unchecked Sendable {
             mpv_set_option_string(mpv, name, value)
         }
 
-        mpv_initialize(mpv)
+        let status = mpv_initialize(mpv)
+        guard status >= 0 else {
+            let message = String(cString: mpv_error_string(status))
+            mpv_terminate_destroy(mpv)
+            self.mpv = nil
+            dispatchToMain { [weak self] in self?.onEvent?(.error(message)) }
+            return
+        }
 
         mpv_observe_property(mpv, 0, "time-pos", MPV_FORMAT_DOUBLE)
         mpv_observe_property(mpv, 0, "duration", MPV_FORMAT_DOUBLE)
@@ -256,13 +262,17 @@ final class MPVEngine: @unchecked Sendable {
         }, Unmanaged.passUnretained(self).toOpaque())
     }
 
-    func open(source: PlaybackSource) {
+    func open(source: PlaybackSource, startTime: TimeInterval = 0) {
         guard !isStopped, let mpv else { return }
         hasReportedFirstFrame = false
         lastKnownPosition = 0
         dispatchToMain { [weak self] in self?.onEvent?(.duration(source.duration)) }
         let url = PlaybackSourceBuilder.edlURL(for: source)
-        sendCommand(mpv, ["loadfile", url, "replace"])
+        let status = sendCommand(mpv, PlaybackLoadCommand.arguments(url: url, startTime: startTime))
+        if status < 0 {
+            let message = String(cString: mpv_error_string(status))
+            dispatchToMain { [weak self] in self?.onEvent?(.error(message)) }
+        }
     }
 
     func play() {
@@ -299,8 +309,8 @@ final class MPVEngine: @unchecked Sendable {
             var pauseFlag: Int32 = 1
             mpv_set_property(mpv, "pause", MPV_FORMAT_FLAG, &pauseFlag)
             mpv_terminate_destroy(mpv)
+            self.mpv = nil
         }
-        self.mpv = nil
     }
 
     /// 回前台后画面有时不会自动恢复；先关视频轨道，回前台再打开，强制让
@@ -317,7 +327,8 @@ final class MPVEngine: @unchecked Sendable {
 
     // MARK: - mpv command/property helpers（只从调用方所在线程执行，本身线程安全）
 
-    private func sendCommand(_ mpv: OpaquePointer, _ args: [String]) {
+    @discardableResult
+    private func sendCommand(_ mpv: OpaquePointer, _ args: [String]) -> Int32 {
         // `mpv_command` 要的是 `const char*` 数组（不可变），`strdup` 给的是
         // `char*`（可变，因为我们要负责 free）；两个数组分开，一个管分配和
         // 释放，一个只负责喂给 C 调用。
@@ -325,7 +336,7 @@ final class MPVEngine: @unchecked Sendable {
         defer { owned.forEach { if let pointer = $0 { free(pointer) } } }
         var cArgs: [UnsafePointer<CChar>?] = owned.map { $0.map { UnsafePointer($0) } }
         cArgs.append(nil)
-        mpv_command(mpv, &cArgs)
+        return mpv_command(mpv, &cArgs)
     }
 
     private func setFlag(_ mpv: OpaquePointer, name: String, value: Bool) {
@@ -532,7 +543,9 @@ final class MPVMetalViewController: UIViewController {
             .first
     }
 
-    func open(source: PlaybackSource) { engine.open(source: source) }
+    func open(source: PlaybackSource, startTime: TimeInterval = 0) {
+        engine.open(source: source, startTime: startTime)
+    }
     func play() { engine.play() }
     func pause() { engine.pause() }
     func seek(to seconds: TimeInterval) { engine.seek(to: seconds) }
@@ -601,14 +614,14 @@ final class MPVPlayerSession {
         viewController = MPVMetalViewController(configuration: configuration)
     }
 
-    func open(source: PlaybackSource) async throws {
+    func open(source: PlaybackSource, startTime: TimeInterval = 0) async throws {
         guard !isStopped else { return }
         // mpv 只有在 `viewDidLoad` 跑过之后才存在（`engine.start` 在那里调用）。
         // SwiftUI 什么时候真正把 viewController 挂进窗口是不确定的——如果
         // playURL 命中缓存、`load()` 里的 await 几乎立刻返回，这里可能跑在
         // SwiftUI 挂载之前。主动强制加载一次，不能指望调用方替我们做这件事。
         viewController.loadViewIfNeeded()
-        viewController.open(source: source)
+        viewController.open(source: source, startTime: startTime)
     }
 
     func play() {

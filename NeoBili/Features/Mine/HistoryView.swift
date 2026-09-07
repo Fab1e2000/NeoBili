@@ -17,7 +17,8 @@ struct HistoryView: View {
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
     /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `delete`。
-    @State private var removingIDs: Set<String> = []
+    @State private var removals = ListRemovalState<String>()
+    @State private var loadID = UUID()
 
     var body: some View {
         Group {
@@ -40,6 +41,14 @@ struct HistoryView: View {
                         if isLoadingMore {
                             ProgressView()
                                 .padding(.vertical, 12)
+                        }
+                        if let errorMessage, !items.isEmpty {
+                            VStack(spacing: 8) {
+                                Text(errorMessage).font(.footnote).foregroundStyle(.secondary)
+                                Button("重试加载") { Task { await loadNextPage() } }
+                                    .disabled(isLoading || isLoadingMore)
+                            }
+                            .padding()
                         }
                     }
                 }
@@ -96,7 +105,7 @@ struct HistoryView: View {
         // 同一视频的转场源在共享命名空间里撞 id。
         .videoTransitionSource("history-\(summary?.bvid ?? "")", in: videoTransition)
         // 移除动效第一段：原地淡出、占位不变，列表此时不动。
-        .cardFadeOut(isRemoving: removingIDs.contains(item.id))
+        .cardFadeOut(isRemoving: removals.hiddenIDs.contains(item.id))
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
@@ -121,12 +130,17 @@ struct HistoryView: View {
     /// SwiftUI 持有的下拉刷新任务就被取消，请求跟着失败，页面报「加载失败」；
     /// 而「重试」是另起的任务，不受影响，所以看起来只有下拉会坏。
     private func reload() async {
-        isLoading = items.isEmpty
-        defer { isLoading = false }
+        let requestID = UUID()
+        loadID = requestID
+        let revision = removals.revision
+        isLoading = true
+        isLoadingMore = false
+        defer { if loadID == requestID { isLoading = false } }
         do {
             let payload = try await BiliAPI.historyPage(max: 0, viewAt: 0)
+            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = payload.allItems.filter(\.isVideo)
-            items = incoming
+            items = incoming.filter { !removals.hiddenIDs.contains($0.id) }
 
             if let cursor = payload.cursor, let nextMax = cursor.max, nextMax > 0, !incoming.isEmpty {
                 cursorMax = nextMax
@@ -137,30 +151,37 @@ struct HistoryView: View {
             }
             errorMessage = nil
         } catch {
-            guard !error.isCancellation else { return }
+            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
             if items.isEmpty { errorMessage = error.localizedDescription }
         }
     }
 
     private func loadMoreIfNeeded(current item: HistoryItem) async {
-        guard hasMore, !isLoadingMore, !isLoading else { return }
+        guard hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
         guard items.suffix(5).contains(where: { $0.id == item.id }) else { return }
         await loadNextPage()
     }
 
     private func loadNextPage() async {
-        guard !isLoadingMore else { return }
+        guard !isLoadingMore, !isLoading else { return }
+        let requestID = UUID()
+        loadID = requestID
+        let revision = removals.revision
+        errorMessage = nil
         isLoading = items.isEmpty
         isLoadingMore = !items.isEmpty
         defer {
-            isLoading = false
-            isLoadingMore = false
+            if loadID == requestID {
+                isLoading = false
+                isLoadingMore = false
+            }
         }
         do {
             let payload = try await BiliAPI.historyPage(max: cursorMax, viewAt: cursorViewAt)
+            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = payload.allItems.filter(\.isVideo)
             let existing = Set(items.map(\.id))
-            items.append(contentsOf: incoming.filter { !existing.contains($0.id) })
+            items.append(contentsOf: incoming.filter { !existing.contains($0.id) && !removals.hiddenIDs.contains($0.id) })
 
             if let cursor = payload.cursor, let nextMax = cursor.max, nextMax > 0 {
                 cursorMax = nextMax
@@ -173,9 +194,8 @@ struct HistoryView: View {
             }
             errorMessage = nil
         } catch {
-            guard !error.isCancellation else { return }
-            if items.isEmpty { errorMessage = error.localizedDescription }
-            hasMore = false
+            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -188,24 +208,25 @@ struct HistoryView: View {
     /// 动效拆成两段顺序执行（`CardRemovalAnimation`）：先原地淡出，完全
     /// 看不见后空位才收拢、下方卡片上移补位——两段同时进行会出现叠影。
     private func delete(_ item: HistoryItem) async {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-
-        // 先等长按菜单退场快照掀开，否则淡出被盖在快照后面看不见。
-        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
-        withAnimation(CardRemovalAnimation.fade) { removingIDs.insert(item.id) }
-        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
-
-        withAnimation(CardRemovalAnimation.collapse) { items.remove(at: index) }
-
+        guard items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
+        defer { removals.finish(item.id) }
+        var removedIndex: Int?
         do {
+            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
+            withAnimation(CardRemovalAnimation.fade) { removals.hide(item.id) }
+            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
+            withAnimation(CardRemovalAnimation.collapse) {
+                removedIndex = removals.remove(item.id, from: &items)
+            }
             try await BiliAPI.deleteHistory(kid: item.kidParam)
-            // 等退出转场走完再清标记，避免同 id 的卡片被残留标记隐藏。
+            // 同时完成的刷新也不能留下同 ID 的旧条目。
+            withAnimation { items.removeAll { $0.id == item.id } }
             try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.collapseMilliseconds))
-            removingIDs.remove(item.id)
         } catch {
-            removingIDs.remove(item.id)
-            withAnimation { items.insert(item, at: min(index, items.count)) }
-            feedback.show(error.localizedDescription)
+            if let removedIndex {
+                withAnimation { removals.restore(item, at: removedIndex, in: &items) }
+            }
+            if !error.isCancellation { feedback.show(error.localizedDescription) }
         }
     }
 }

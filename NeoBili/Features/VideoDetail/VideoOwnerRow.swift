@@ -11,13 +11,21 @@ struct VideoOwnerRow: View {
     let card: MemberCard?
     let isFollowing: Bool
     let onToggleFollow: () -> Void
+    /// 头像是进 UP 主空间页的入口。
+    let onOpenSpace: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            BiliImage(url: avatarURL)
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 40, height: 40)
-                .clipShape(Circle())
+            Button(action: onOpenSpace) {
+                BiliImage(url: avatarURL)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            // 命中区域跟着裁成圆形，四角留白不响应点击。
+            .contentShape(Circle())
+            .accessibilityLabel("\(owner.name)的个人空间")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(owner.name)

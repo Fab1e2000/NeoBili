@@ -4,6 +4,12 @@ import Foundation
 @Observable
 final class VideoDetailViewModel {
     let bvid: String
+    private let likeStore: VideoLikeStore
+    private let sessionID: UUID
+    private let fetchDetail: @MainActor (String) async throws -> VideoDetail
+    private let fetchRelation: @MainActor (Int, String) async throws -> VideoRelation
+    private let sendLike: @MainActor (Int, Bool) async throws -> Void
+    private var relationTask: Task<Void, Never>?
     private(set) var detail: VideoDetail?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
@@ -42,35 +48,50 @@ final class VideoDetailViewModel {
     /// 已经三连过的稿件不再重复三连（硬币收不回来，重复投也没意义）。
     var hasTripled: Bool {
         guard let relation else { return false }
-        return relation.isLiked && relation.isCoined && relation.isFavorited
+        return displayedIsLiked && relation.isCoined && relation.isFavorited
     }
 
     /// 界面展示用的点赞状态：全 App 共享的差量优先，让视频页和
     /// 关注流里的视频卡片始终显示同一个值。
     var displayedIsLiked: Bool {
         guard let detail else { return relation?.isLiked ?? false }
-        return VideoLikeStore.shared.isLiked(aid: detail.aid, serverValue: relation?.isLiked ?? false)
+        return likeStore.isLiked(aid: detail.aid, serverValue: relation?.isLiked ?? false)
     }
 
-    init(bvid: String) {
+    init(bvid: String, likeStore: VideoLikeStore = .shared,
+         fetchDetail: @escaping @MainActor (String) async throws -> VideoDetail = {
+             try await VideoPreparationCache.shared.detail(for: $0)
+         },
+         fetchRelation: @escaping @MainActor (Int, String) async throws -> VideoRelation = {
+             try await BiliAPI.videoRelation(aid: $0, bvid: $1)
+         },
+         sendLike: @escaping @MainActor (Int, Bool) async throws -> Void = {
+             try await BiliAPI.likeVideo(aid: $0, like: $1)
+         }) {
         self.bvid = bvid
+        self.likeStore = likeStore
+        self.sessionID = likeStore.sessionID
+        self.fetchDetail = fetchDetail
+        self.fetchRelation = fetchRelation
+        self.sendLike = sendLike
     }
 
     func load() async {
         guard detail == nil else { return }
         isLoading = true
+        defer { isLoading = false }
         errorMessage = nil
         do {
             // 搜索卡片如果已经预取过详情，这里会直接读取缓存，不再重复请求。
-            let loaded = try await VideoPreparationCache.shared.detail(for: bvid)
+            let loaded = try await fetchDetail(bvid)
+            guard !Task.isCancelled else { return }
             detail = loaded
             likeCount = loaded.stat.like
             coinCount = loaded.stat.coin
             favoriteCount = loaded.stat.favorite
         } catch {
-            errorMessage = error.localizedDescription
+            if !error.isCancellation { errorMessage = error.localizedDescription }
         }
-        isLoading = false
     }
 
     func loadRelated() async {
@@ -88,12 +109,33 @@ final class VideoDetailViewModel {
     func loadExtras() async {
         guard let detail else { return }
         async let tags = try? BiliAPI.videoTags(aid: detail.aid)
-        async let relation = try? BiliAPI.videoRelation(aid: detail.aid, bvid: detail.bvid)
+        async let relation: Void = loadRelationIfNeeded()
         async let card = try? BiliAPI.memberCard(mid: detail.owner.mid)
 
         self.tags = await tags ?? []
-        self.relation = await relation
+        await relation
         self.ownerCard = await card
+    }
+
+    /// 操作前和初次进入页面共用同一请求，避免迟到的快照覆盖已完成的互动。
+    private func loadRelationIfNeeded() async {
+        guard relation == nil, let detail, likeStore.sessionID == sessionID else { return }
+        if let relationTask { await relationTask.value; return }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let loaded = try await fetchRelation(detail.aid, bvid)
+                guard likeStore.sessionID == sessionID, !Task.isCancelled else { return }
+                relation = loaded
+            } catch {
+                if !error.isCancellation, likeStore.sessionID == sessionID {
+                    actionMessage = "互动状态加载失败，请重试"
+                }
+            }
+        }
+        relationTask = task
+        await task.value
+        relationTask = nil
     }
 
     // 写操作成功后**不要**再回读 `archive/relation`。
@@ -110,46 +152,50 @@ final class VideoDetailViewModel {
     // MARK: - 操作
 
     func toggleLike(isLoggedIn: Bool) async {
-        guard let detail, checkReady(.like, isLoggedIn: isLoggedIn) else { return }
+        guard let detail, await checkReady(.like, isLoggedIn: isLoggedIn) else { return }
         defer { busyActions.remove(.like) }
 
-        let wasLiked = relation?.isLiked ?? false
+        let wasLiked = displayedIsLiked
         let wasDisliked = relation?.isDisliked ?? false
         // 点赞和点踩互斥，界面上先按最终状态显示。
         apply(like: !wasLiked, dislike: wasLiked ? wasDisliked : false)
-        likeCount += wasLiked ? -1 : 1
-        VideoLikeStore.shared.setOverride(aid: detail.aid, liked: !wasLiked)
+        let previousLikeCount = likeCount
+        likeCount = max(0, likeCount + (wasLiked ? -1 : 1))
+        likeStore.setOverride(aid: detail.aid, liked: !wasLiked, sessionID: sessionID)
 
         do {
-            try await BiliAPI.likeVideo(aid: detail.aid, like: !wasLiked)
+            try await sendLike(detail.aid, !wasLiked)
         } catch {
+            guard likeStore.sessionID == sessionID else { return }
             apply(like: wasLiked, dislike: wasDisliked)
-            likeCount += wasLiked ? 1 : -1
-            VideoLikeStore.shared.setOverride(aid: detail.aid, liked: wasLiked)
+            likeCount = previousLikeCount
+            likeStore.setOverride(aid: detail.aid, liked: wasLiked, sessionID: sessionID)
             actionMessage = error.localizedDescription
         }
     }
 
     func toggleDislike(isLoggedIn: Bool) async {
-        guard let detail, checkReady(.dislike, isLoggedIn: isLoggedIn) else { return }
+        guard let detail, await checkReady(.dislike, isLoggedIn: isLoggedIn) else { return }
         defer { busyActions.remove(.dislike) }
 
         let wasDisliked = relation?.isDisliked ?? false
-        let wasLiked = relation?.isLiked ?? false
+        let wasLiked = displayedIsLiked
         apply(like: wasDisliked ? wasLiked : false, dislike: !wasDisliked)
+        let previousLikeCount = likeCount
         // 点踩会顺带取消点赞，点赞数要跟着减。
         if !wasDisliked, wasLiked {
-            likeCount -= 1
-            VideoLikeStore.shared.setOverride(aid: detail.aid, liked: false)
+            likeCount = max(0, likeCount - 1)
+            likeStore.setOverride(aid: detail.aid, liked: false, sessionID: sessionID)
         }
 
         do {
             try await BiliAPI.dislikeVideo(aid: detail.aid, dislike: !wasDisliked)
         } catch {
+            guard likeStore.sessionID == sessionID else { return }
             apply(like: wasLiked, dislike: wasDisliked)
             if !wasDisliked, wasLiked {
-                likeCount += 1
-                VideoLikeStore.shared.setOverride(aid: detail.aid, liked: wasLiked)
+                likeCount = previousLikeCount
+                likeStore.setOverride(aid: detail.aid, liked: wasLiked, sessionID: sessionID)
             }
             actionMessage = error.localizedDescription
         }
@@ -157,7 +203,7 @@ final class VideoDetailViewModel {
 
     /// 一键投 1 币。已经投过的稿件不能再投，直接提示。
     func addCoin(isLoggedIn: Bool) async {
-        guard let detail, checkReady(.coin, isLoggedIn: isLoggedIn) else { return }
+        guard let detail, await checkReady(.coin, isLoggedIn: isLoggedIn) else { return }
         defer { busyActions.remove(.coin) }
 
         guard !(relation?.isCoined ?? false) else {
@@ -172,6 +218,7 @@ final class VideoDetailViewModel {
         do {
             try await BiliAPI.addCoin(aid: detail.aid, multiply: 1)
         } catch {
+            guard likeStore.sessionID == sessionID else { return }
             // 只还原投币这一项。整个 relation 覆盖回去的话，会把这期间
             // 其它按钮刚改好的状态一起抹掉。
             apply(coin: previousCoin)
@@ -185,7 +232,7 @@ final class VideoDetailViewModel {
     /// 服务端一次做完三步，但三步是分别判定的（比如硬币不够只会让投币那一步
     /// 失败），所以这里按返回的字段逐项更新，而不是笼统当成全成功。
     func tripleAction(isLoggedIn: Bool) async {
-        guard let detail, checkReady(.triple, isLoggedIn: isLoggedIn) else { return }
+        guard let detail, await checkReady(.triple, isLoggedIn: isLoggedIn) else { return }
         defer { busyActions.remove(.triple) }
 
         guard !hasTripled else {
@@ -195,11 +242,12 @@ final class VideoDetailViewModel {
 
         do {
             let result = try await BiliAPI.tripleAction(aid: detail.aid)
+            guard likeStore.sessionID == sessionID else { return }
 
             // 本来就已点赞/已收藏的，计数不能再加一次。
-            if result.didLike, !(relation?.isLiked ?? false) { likeCount += 1 }
+            if result.didLike, !displayedIsLiked { likeCount += 1 }
             if result.didFavorite, !(relation?.isFavorited ?? false) { favoriteCount += 1 }
-            if result.didLike { VideoLikeStore.shared.setOverride(aid: detail.aid, liked: true) }
+            if result.didLike { likeStore.setOverride(aid: detail.aid, liked: true, sessionID: sessionID) }
 
             // 硬币要在原有基础上累加，不能直接用这次返回的 multiply 覆盖。
             // 已经投过币的稿件再三连时，投币那一步会被服务端跳过（multiply 为 0），
@@ -215,6 +263,7 @@ final class VideoDetailViewModel {
             )
             actionMessage = tripleSummary(result)
         } catch {
+            guard likeStore.sessionID == sessionID else { return }
             actionMessage = error.localizedDescription
         }
     }
@@ -231,7 +280,7 @@ final class VideoDetailViewModel {
     /// 已收藏状态下再点收藏按钮：从所有收藏夹里移除。
     /// 未收藏时不走这里，而是先弹收藏夹选择弹窗。
     func unfavoriteEverywhere(isLoggedIn: Bool) async {
-        guard let detail, checkReady(.favorite, isLoggedIn: isLoggedIn) else { return }
+        guard let detail, await checkReady(.favorite, isLoggedIn: isLoggedIn) else { return }
         defer { busyActions.remove(.favorite) }
 
         let wasFavorited = relation?.isFavorited ?? false
@@ -242,6 +291,7 @@ final class VideoDetailViewModel {
             try await BiliAPI.unfavoriteEverywhere(aid: detail.aid)
             actionMessage = "已取消收藏"
         } catch {
+            guard likeStore.sessionID == sessionID else { return }
             apply(favorite: wasFavorited)
             favoriteCount += 1
             actionMessage = error.localizedDescription
@@ -250,7 +300,7 @@ final class VideoDetailViewModel {
 
     /// 收藏夹弹窗确认后调用。两个列表分别是要加入和要移出的收藏夹。
     func updateFavorites(add: [Int], remove: [Int], isLoggedIn: Bool) async {
-        guard let detail, checkReady(.favorite, isLoggedIn: isLoggedIn) else { return }
+        guard let detail, await checkReady(.favorite, isLoggedIn: isLoggedIn) else { return }
         defer { busyActions.remove(.favorite) }
 
         guard !add.isEmpty || !remove.isEmpty else { return }
@@ -274,6 +324,7 @@ final class VideoDetailViewModel {
             )
             actionMessage = willBeFavorited ? "已收藏" : "已取消收藏"
         } catch {
+            guard likeStore.sessionID == sessionID else { return }
             apply(favorite: wasFavorited)
             favoriteCount = previousCount
             actionMessage = error.localizedDescription
@@ -281,7 +332,7 @@ final class VideoDetailViewModel {
     }
 
     func toggleFollow(isLoggedIn: Bool) async {
-        guard let detail, checkReady(.follow, isLoggedIn: isLoggedIn) else { return }
+        guard let detail, await checkReady(.follow, isLoggedIn: isLoggedIn) else { return }
         defer { busyActions.remove(.follow) }
 
         let wasFollowing = relation?.isFollowing ?? false
@@ -290,6 +341,7 @@ final class VideoDetailViewModel {
         do {
             try await BiliAPI.modifyRelation(mid: detail.owner.mid, follow: !wasFollowing)
         } catch {
+            guard likeStore.sessionID == sessionID else { return }
             apply(attention: wasFollowing)
             actionMessage = error.localizedDescription
         }
@@ -298,13 +350,18 @@ final class VideoDetailViewModel {
     // MARK: - 内部
 
     /// 未登录、详情还没到、或者上一次请求还没回来时都不该继续。
-    private func checkReady(_ action: Action, isLoggedIn: Bool) -> Bool {
-        guard isLoggedIn else {
+    private func checkReady(_ action: Action, isLoggedIn: Bool) async -> Bool {
+        guard isLoggedIn, likeStore.sessionID == sessionID else {
             actionMessage = "请先登录"
             return false
         }
-        guard !busyActions.contains(action) else { return false }
+        guard busyActions.isEmpty else { return false }
         busyActions.insert(action)
+        await loadRelationIfNeeded()
+        guard relation != nil, likeStore.sessionID == sessionID, !Task.isCancelled else {
+            busyActions.remove(action)
+            return false
+        }
         return true
     }
 

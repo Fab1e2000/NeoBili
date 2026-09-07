@@ -41,6 +41,7 @@ final class FollowingViewModel {
     private(set) var feed = DynamicFeedModel(source: .following)
     private(set) var ups: [FollowedUp] = []
     private let readStore: FollowingReadStore
+    private let accountSessionID = VideoLikeStore.shared.sessionID
 
     init(readStore: FollowingReadStore = .shared) { self.readStore = readStore }
 
@@ -76,9 +77,16 @@ final class FollowingViewModel {
     /// 便于在页面消失或下一次选择时正常取消等待。
     func select(_ target: FollowingSelection) {
         selectedTarget = target
-        if case .up(let up) = target, upFeeds[up.mid] == nil {
-            upFeeds[up.mid] = DynamicFeedModel(source: .space(hostMid: up.mid))
-        }
+        _ = feed(for: target)
+    }
+
+    /// 可预先加载目标，而不改变当前展示的数据源。
+    func feed(for target: FollowingSelection) -> DynamicFeedModel {
+        guard case .up(let up) = target else { return feed }
+        if let cached = upFeeds[up.mid] { return cached }
+        let model = DynamicFeedModel(source: .space(hostMid: up.mid))
+        upFeeds[up.mid] = model
+        return model
     }
 
     func loadSelectedIfNeeded() async {
@@ -92,14 +100,14 @@ final class FollowingViewModel {
         await upList
     }
 
-    func refresh() async {
+    func refresh(staged: Bool = false, stagingID: UUID? = nil) async {
         // 选中某个 UP 时，下拉刷新刷的是他那一份，不去动整条关注流。
         if selectedUp != nil {
-            await activeFeed.refresh()
+            await activeFeed.refresh(staged: staged, stagingID: stagingID)
             return
         }
         async let upList: Void = loadUps()
-        await feed.refresh()
+        await feed.refresh(staged: staged, stagingID: stagingID)
         await upList
     }
 
@@ -119,13 +127,14 @@ final class FollowingViewModel {
     /// 头像行失败不该让整页变成错误页，所以这里把错误吞掉：
     /// 动态流本身还能正常显示。
     private func loadUps() async {
-        guard let list = try? await BiliAPI.followedUps(), !Task.isCancelled else { return }
+        guard let list = try? await BiliAPI.followedUps(),
+              VideoLikeStore.shared.sessionID == accountSessionID, !Task.isCancelled else { return }
         replaceUps(list)
         // portal 只有布尔标记，没有更新版本。对本地已读但服务端仍标红的
         // UP 查询最新动态时间，区分旧标记与真正的新更新；每批最多三个请求。
         let candidates = list.filter { $0.hasUpdate && readStore.readThrough[String($0.mid)] != nil }
         for start in stride(from: 0, to: candidates.count, by: 3) {
-            guard !Task.isCancelled else { return }
+            guard VideoLikeStore.shared.sessionID == accountSessionID, !Task.isCancelled else { return }
             let batch = Array(candidates[start..<min(start + 3, candidates.count)])
             let entries = await withTaskGroup(of: [DynamicEntry].self, returning: [DynamicEntry].self) { group in
                 for up in batch {
@@ -137,7 +146,7 @@ final class FollowingViewModel {
                 for await result in group { entries.append(contentsOf: result) }
                 return entries
             }
-            guard !Task.isCancelled else { return }
+            guard VideoLikeStore.shared.sessionID == accountSessionID, !Task.isCancelled else { return }
             readStore.observe(entries)
         }
     }

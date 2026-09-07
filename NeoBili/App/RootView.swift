@@ -27,6 +27,7 @@ struct RootView: View {
     @State private var nowPlaying = NowPlayingStore()
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
+    @Environment(\.scenePhase) private var scenePhase
     @Namespace private var videoTransition
 
     /// 设置页那根滑杆选的档位。写在根视图上，改完立刻全 App 生效。
@@ -50,7 +51,7 @@ struct RootView: View {
             }
             // 搜索不再单独占一个 Tab：入口挪到了首页顶部那个常驻搜索框。
             Tab("关注", systemImage: "person.2.fill", value: MainTab.following) {
-                FollowingView().opacity(tabContentOpacity)
+                FollowingView().id(account.sessionID).opacity(tabContentOpacity)
             }
             Tab("我的", systemImage: "person.crop.circle", value: MainTab.mine) {
                 MineView().opacity(tabContentOpacity)
@@ -87,6 +88,10 @@ struct RootView: View {
         // 冷启动时用 Keychain 里可能存在的登录凭据恢复会话；
         // 「我的」页在恢复完成前不会闪出登录按钮。
         .task { await account.restoreSessionIfNeeded() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await account.retrySessionIfNeeded() } }
+        }
+        .onChange(of: account.sessionID) { nowPlaying.close() }
     }
 
     /// TabView 的 selection 走这个代理：内容和高亮照常立刻切换，

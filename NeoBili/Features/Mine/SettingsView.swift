@@ -14,6 +14,9 @@ struct SettingsView: View {
     @State private var isShowingDeadZonePreview = false
     @State private var deadZonePreviewHideTask: Task<Void, Never>?
     @State private var confirmLogout = false
+    @AppStorage(FollowingSidebarSide.storageKey) private var followingSidebarSide: FollowingSidebarSide = .left
+    @AppStorage(FollowingSidebarLayout.countKey) private var followingSidebarCount = FollowingSidebarLayout.defaultCount
+    @AppStorage(FollowingSidebarDwellSettings.storageKey) private var followingSidebarDwellDuration = FollowingSidebarDwellSettings.defaultDuration
     @AppStorage(HomeRefreshSettings.storageKey) private var homeRefreshDistance = HomeRefreshSettings.defaultDistance
     /// 刷新动画的快慢。退出＝旧卡片淡出，进入＝新卡片落位，两段分开调。
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var feedExitSpeed = AnimationSpeedSettings.defaultSpeed
@@ -43,6 +46,35 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("头像列表位置", selection: $followingSidebarSide) {
+                    ForEach(FollowingSidebarSide.allCases) { side in
+                        Text(side.title).tag(side)
+                    }
+                }
+                Picker("选择器显示数量", selection: $followingSidebarCount) {
+                    ForEach(FollowingSidebarLayout.counts, id: \.self) { count in
+                        Text("\(count) 个").tag(count)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("头像停留判定时间")
+                        Spacer()
+                        Text("\(FollowingSidebarDwellSettings.clamped(followingSidebarDwellDuration), specifier: "%.1f") 秒")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $followingSidebarDwellDuration, in: FollowingSidebarDwellSettings.range, step: 0.1)
+                        .accessibilityLabel("头像停留判定时间")
+                        .accessibilityValue("\(FollowingSidebarDwellSettings.clamped(followingSidebarDwellDuration), specifier: "%.1f") 秒")
+                }
+            } header: {
+                Text("关注页")
+            } footer: {
+                Text("页面右滑或触碰侧边头像可展开选择器；展开后在页面任意位置上下滑动均可选择，左滑或轻点选择器外部收起。头像焦点停留达到判定时间后自动刷新对应页面，默认 0.5 秒，可调 0.1–2 秒。显示数量默认 7 个，高度会适应屏幕可用空间。")
+            }
+
+            Section {
                 textSizeSlider
             } header: {
                 Text("显示")
@@ -59,7 +91,7 @@ struct SettingsView: View {
                             .monospacedDigit().foregroundStyle(.secondary)
                     }
                     Slider(value: $homeRefreshDistance, in: HomeRefreshSettings.range, step: 5)
-                        .accessibilityLabel("首页下拉刷新距离")
+                        .accessibilityLabel("推荐与关注下拉刷新距离")
                         .accessibilityValue("\(Int(homeRefreshDistance)) 点")
                     HStack {
                         Text("更灵敏")
@@ -69,9 +101,9 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 }
             } header: {
-                Text("首页刷新")
+                Text("下拉刷新")
             } footer: {
-                Text("手指下拉达到设定距离后轻震，松手刷新，回推可取消。默认 70pt。再次点击底部「推荐」可回到顶部；已在顶部时点击则刷新。")
+                Text("推荐与关注页共用此设置。手指下拉达到设定距离后轻震，松手刷新，回推可取消。默认 70pt。再次点击底部「推荐」可回到顶部；已在顶部时点击则刷新。")
             }
 
             Section {
@@ -88,7 +120,7 @@ struct SettingsView: View {
             } header: {
                 Text("动画")
             } footer: {
-                Text("首页刷新：退出＝松手后旧卡片原地淡尽，与网络无关；进入＝新卡片从上方逐行落位。数据来得快就等淡出走完再落位，来得慢则中间是一段空屏。\n主页面切换：新页面淡入，只受进入倍率影响，时长比刷新短。\n倍率越大越快，1.0× 是默认速度。开启系统「减弱动效」后一律不播。")
+                Text("推荐与关注刷新：退出＝松手后旧卡片原地淡尽，与网络无关；进入＝新卡片从上方逐行落位。数据来得快就等淡出走完再落位，来得慢则中间是一段空屏。\n主页面切换：新页面淡入，只受进入倍率影响，时长比刷新短。\n倍率越大越快，1.0× 是默认速度。开启系统「减弱动效」后一律不播。")
             }
 
             Section {
@@ -263,5 +295,5 @@ struct SettingsView: View {
 
     /// 每次 UI 行为调整后手动更新。设置页可见 + 二进制里可 grep（长度必须
     /// 超过 15 字节，否则会被 Swift 小字符串优化内联进机器码导致搜不到）。
-    private static let uiRevision = "emote-flush-20260904"
+    private static let uiRevision = "following-top-inset-20260907"
 }
