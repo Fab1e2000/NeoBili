@@ -7,6 +7,7 @@ struct WatchLaterView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     @State private var items: [WatchLaterItem] = []
     @State private var isLoading = false
@@ -14,10 +15,17 @@ struct WatchLaterView: View {
     /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `remove`。
     @State private var removals = ListRemovalState<Int>()
     @State private var loadID = UUID()
+    @State private var entranceGeneration = 0
+
+    private var visibleItems: [WatchLaterItem] {
+        items.hidingKnownPortraitVideos(hidesPortraitVideos)
+    }
 
     var body: some View {
         Group {
-            if let errorMessage, items.isEmpty {
+            if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos) {
+                LoadingTaskAnchor()
+            } else if let errorMessage, items.isEmpty {
                 ContentUnavailableView {
                     Label("稍后再看加载失败", systemImage: "flag.slash")
                 } description: {
@@ -25,12 +33,15 @@ struct WatchLaterView: View {
                 } actions: {
                     Button("重试") { Task { await reload() } }
                 }
-            } else if !isLoading, items.isEmpty {
-                ContentUnavailableView("稍后再看是空的", systemImage: "flag.checkered")
+            } else if !isLoading, visibleItems.isEmpty {
+                ContentUnavailableView(
+                    items.isEmpty ? "稍后再看是空的" : "没有可显示的视频",
+                    systemImage: items.isEmpty ? "flag.checkered" : "rectangle.slash"
+                )
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(items) { item in
+                        ForEach(visibleItems) { item in
                             row(item)
                         }
                     }
@@ -43,10 +54,11 @@ struct WatchLaterView: View {
         .navigationTitle("稍后再看")
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
-            if isLoading, items.isEmpty { ProgressView() }
+            if isLoading, items.isEmpty { LoadingTaskAnchor() }
         }
         .refreshable { await reload() }
         .task { await loadIfNeeded() }
+        .resolvePortraitVideos(items, batchID: entranceGeneration)
     }
 
     private func row(_ item: WatchLaterItem) -> some View {
@@ -70,7 +82,8 @@ struct WatchLaterView: View {
                 title: item.title,
                 author: item.upper?.name ?? "",
                 playCount: -1,
-                durationText: summary?.formattedDuration ?? ""
+                durationText: summary?.formattedDuration ?? "",
+                animatesEntrance: false
             )
         }
         .buttonStyle(.plain)
@@ -116,6 +129,7 @@ struct WatchLaterView: View {
         do {
             let payload = try await BiliAPI.watchLaterList()
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
+            entranceGeneration += 1
             items = (payload.list ?? []).filter { $0.bvid?.isEmpty == false && !removals.hiddenIDs.contains($0.id) }
             errorMessage = nil
         } catch {

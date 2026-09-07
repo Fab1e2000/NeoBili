@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Observation
 
 /// 首页刷新动画的全部可调参数。
 ///
@@ -60,8 +61,7 @@ enum FeedRefreshTuning {
     static let dropPerspective: CGFloat = 0.55
     /// 相邻两行的落位间隔（倍率为 1 时）。
     static let staggerDuration: Double = 0.055
-    /// 只有首屏这几行做落位动画。再往下的行是懒加载出来的，
-    /// 给它们加动画会变成"滚到哪掉到哪"。
+    /// 限制行间错峰的最大延迟，不限制播放动画的卡片数量。
     static let staggerRows = 4
     /// 单行落位的基准时长。
     static let landingDuration: Double = 0.55
@@ -114,20 +114,17 @@ struct FeedDropInEffect: ViewModifier {
 struct FeedDropInRow<Content: View>: View {
     let index: Int
     let generation: Int
-    /// 落位窗口是否开着。只在创建的那一刻起作用，用来决定这一行要不要先藏起来。
+    /// 保留刷新调用方的窗口参数；新卡片入场不再受窗口或行数限制。
     let landing: Bool
     /// 落位速度倍率，来自设置页。
     let speed: Double
     let reduceMotion: Bool
     @ViewBuilder var content: Content
 
+    @Environment(\.videoEntranceID) private var videoID
+    @Environment(\.videoEntranceClocks) private var entranceClocks
     @State private var progress: Double
-    /// 这一行是不是"出生就藏着、等着播落位"的。
-    ///
-    /// 这个判断在 init 时定死，之后不再看 `landing` 的脸色。早先是每次播动画
-    /// 前重新读 `landing`，于是靠近首屏底边的那一行（懒加载出来得晚一点）
-    /// 可能在窗口关掉之后才轮到播——判断不通过，它就永远停在全透明上，
-    /// 表现就是刷新后第四行偶尔是一片空白。
+    /// 新卡片从隐藏状态开始；任务取消后保留等待状态，再出现时继续入场。
     @State private var awaitingLanding: Bool
     /// 已经为哪一代播过动画，避免同一代播两次。
     @State private var playedGeneration: Int?
@@ -146,7 +143,7 @@ struct FeedDropInRow<Content: View>: View {
         self.speed = speed
         self.reduceMotion = reduceMotion
         self.content = content()
-        let startsHidden = landing && !reduceMotion && index < FeedRefreshTuning.staggerRows
+        let startsHidden = !reduceMotion
         _progress = State(initialValue: startsHidden ? 0 : 1)
         _awaitingLanding = State(initialValue: startsHidden)
     }
@@ -154,21 +151,37 @@ struct FeedDropInRow<Content: View>: View {
     /// 沿用下来的行（id 没变）在换代时要不要重播。换代只发生在刷新那一刻，
     /// 那时窗口一定是开着的，所以这里不必再看 `landing`。
     private var animatable: Bool {
-        !reduceMotion && index < FeedRefreshTuning.staggerRows
+        !reduceMotion
     }
 
     var body: some View {
+        Group {
+            if let videoID {
+                // 起点来自整个列表的判断结果，卡片被懒加载回收也不会重置。
+                let scope = entranceClocks.first { $0.ids.contains(videoID) }
+                let start = scope?.start(for: videoID)
+                TimedVideoEntrance(start: start, speed: speed, reduceMotion: reduceMotion) {
+                    content
+                }
+            } else {
+                legacyEntrance
+            }
+        }
+        .environment(\.videoEntranceProvided, true)
+    }
+
+    private var legacyEntrance: some View {
         content
             .modifier(FeedDropInEffect(progress: progress))
             // 刷新后新建出来的行走这条。用结构化的 task 而不是自己起 Task：
             // 视图被回收重建时它会跟着取消，新实例按自己的 init 重新决定。
             .task {
                 guard awaitingLanding else { return }
+                // 隔一帧再启动：同一帧内改两次状态会被合并成"没有动画"。
+                do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
+                guard !Task.isCancelled else { return }
                 awaitingLanding = false
                 playedGeneration = generation
-                // 隔一帧再启动：同一帧内改两次状态会被合并成"没有动画"。
-                try? await Task.sleep(for: .milliseconds(16))
-                guard !Task.isCancelled else { return }
                 withAnimation(landingAnimation) { progress = 1 }
             }
             // id 没变、被沿用下来的行走这条（比如刷新没拿到新内容）。
@@ -181,17 +194,131 @@ struct FeedDropInRow<Content: View>: View {
                     withAnimation(landingAnimation) { progress = 1 }
                 }
             }
-            // 兜底：窗口都关了这一行还藏着，说明它的落位没能跑起来，直接显出来。
-            // 宁可少一次动画，也不能留一行空白。
-            .onChange(of: landing) { _, isLanding in
-                guard !isLanding, awaitingLanding else { return }
-                awaitingLanding = false
-                progress = 1
-            }
+
     }
 
     private var landingAnimation: Animation {
         FeedRefreshTuning.landing(speed: speed)
-            .delay(Double(index) * FeedRefreshTuning.stagger(speed: speed))
+            .delay(Double(min(index, FeedRefreshTuning.staggerRows - 1)) * FeedRefreshTuning.stagger(speed: speed))
     }
+}
+
+
+extension EnvironmentValues {
+    @Entry var videoEntranceProvided = false
+    @Entry var videoEntranceID: String? = nil
+    @Entry var videoEntranceClocks: [VideoEntranceScope] = []
+}
+
+private struct VideoCardEntrance: ViewModifier {
+    var enabled = true
+    @Environment(\.videoEntranceProvided) private var provided
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var speed = AnimationSpeedSettings.defaultSpeed
+
+    func body(content: Content) -> some View {
+        if provided || !enabled {
+            content
+        } else {
+            FeedDropInRow(index: 0, generation: 0, landing: true, speed: speed, reduceMotion: reduceMotion) {
+                content
+            }
+        }
+    }
+}
+
+extension View {
+    func videoCardEntrance(enabled: Bool = true) -> some View { modifier(VideoCardEntrance(enabled: enabled)) }
+
+    func videoEntranceIdentity(_ id: String?) -> some View {
+        environment(\.videoEntranceID, id)
+    }
+}
+
+
+/// 每个列表独立保存已通过判断的卡片起点，不依赖卡片视图是否存在。
+@MainActor @Observable
+final class VideoEntranceClock {
+    private(set) var starts: [String: TimeInterval] = [:]
+    private(set) var generation = 0
+
+    func prepare(ids: Set<String>, generation: Int, reset: Bool) {
+        self.generation = generation
+        starts = reset ? [:] : starts.filter { ids.contains($0.key) }
+    }
+
+    func admit(_ ids: [String]) {
+        let active = Set(ids)
+        let now = ProcessInfo.processInfo.systemUptime
+        var updated = starts.filter { active.contains($0.key) }
+        for id in ids where updated[id] == nil { updated[id] = now }
+        if updated != starts { starts = updated }
+    }
+}
+
+struct VideoEntranceScope {
+    let ids: Set<String>
+    let generation: Int
+    let clock: VideoEntranceClock
+
+    @MainActor func start(for id: String) -> TimeInterval? {
+        clock.generation == generation ? clock.starts[id] : nil
+    }
+}
+
+private struct TimedVideoEntrance<Content: View>: View {
+    let start: TimeInterval?
+    let speed: Double
+    let reduceMotion: Bool
+    @ViewBuilder var content: Content
+    @State private var finished = false
+
+    private var spring: Spring {
+        .snappy(duration: FeedRefreshTuning.landingDuration / AnimationSpeedSettings.clamped(speed),
+                extraBounce: FeedRefreshTuning.landingBounce)
+    }
+
+    private var elapsed: TimeInterval {
+        guard let start else { return 0 }
+        return max(0, ProcessInfo.processInfo.systemUptime - start)
+    }
+
+    var body: some View {
+        TimelineView(.animation(paused: reduceMotion || start == nil || finished || elapsed >= spring.settlingDuration)) { _ in
+            let progress = start == nil ? 0 : (reduceMotion || elapsed >= spring.settlingDuration
+                ? 1 : spring.value(target: 1.0, time: elapsed))
+            content.modifier(FeedDropInEffect(progress: progress))
+        }
+        .allowsHitTesting(start != nil)
+        // 这里只停止已完成的屏幕绘制；动画的起点、进度不由 task 或 onAppear 决定。
+        .task(id: start) {
+            finished = false
+            guard start != nil, !reduceMotion else { return }
+            let remaining = max(0, spring.settlingDuration - elapsed)
+            do { try await Task.sleep(for: .seconds(remaining)) } catch { return }
+            finished = true
+        }
+    }
+}
+
+
+/// 刷新分隔条沿用整批视频的入场起点，包括屏幕外的提示条。
+private struct VideoBatchEntrance: ViewModifier {
+    @Environment(\.videoEntranceClocks) private var scopes
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var speed = AnimationSpeedSettings.defaultSpeed
+
+    func body(content: Content) -> some View {
+        let scope = scopes.first
+        let start = scope.flatMap { scope in
+            scope.clock.generation == scope.generation ? scope.clock.starts.values.min() : nil
+        }
+        TimedVideoEntrance(start: start, speed: speed, reduceMotion: reduceMotion) {
+            content
+        }
+    }
+}
+
+extension View {
+    func videoBatchEntrance() -> some View { modifier(VideoBatchEntrance()) }
 }

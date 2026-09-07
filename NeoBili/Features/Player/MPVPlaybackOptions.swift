@@ -2,6 +2,7 @@ import Foundation
 
 struct VideoPlaybackConfiguration: Sendable, Equatable {
     var quality: Int = 64
+    var audioQuality: Int = 0
     var hardwareDecoding: Bool = true
     var initialBufferSeconds: Double = 3
     var maxBufferBytes: Int = 32 * 1024 * 1024
@@ -18,11 +19,15 @@ struct VideoPlaybackConfiguration: Sendable, Equatable {
         if let stored, Self.validQualities.contains(stored) {
             configuration.quality = stored
         }
+        let audio = UserDefaults.standard.integer(forKey: PlaybackQuality.audioStorageKey)
+        if PlaybackQuality.audioOptions.contains(where: { $0.id == audio }) {
+            configuration.audioQuality = audio
+        }
         return configuration
     }
 
     /// 设置页允许选择的清晰度集合，挡住随手写进 UserDefaults 的无效值。
-    static let validQualities: Set<Int> = [16, 32, 64, 80, 112]
+    static let validQualities = Set(PlaybackQuality.videoOptions.map(\.id))
 }
 
 /// Maps our own configuration onto the mpv option strings `mpv_set_option_string`

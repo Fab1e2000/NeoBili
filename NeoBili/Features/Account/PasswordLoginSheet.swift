@@ -37,11 +37,7 @@ struct PasswordLoginSheet: View {
                     Button(action: { Task { await startLogin() } }) {
                         HStack {
                             Spacer()
-                            if isSubmitting {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Text("登录").fontWeight(.semibold)
-                            }
+                            Text("登录").fontWeight(.semibold)
                             Spacer()
                         }
                     }
@@ -92,16 +88,16 @@ struct PasswordLoginSheet: View {
     private func startLogin() async {
         isSubmitting = true
         errorMessage = nil
-        statusText = "正在获取登录密钥…"
+        statusText = nil
         defer { if geetestRequest == nil { isSubmitting = false } }
         do {
             let key = try await BiliPassport.webKey()
             let encrypted = try PasswordCipher.encryptedPassword(password, salt: key.hash, publicKeyPEM: key.key)
-            statusText = "正在准备安全验证…"
+            statusText = nil
             let captcha = try await BiliPassport.captcha()
             guard !captcha.gt.isEmpty, !captcha.challenge.isEmpty else {
                 // 服务端没下发极验（少见）；直接不带验证提交，失败会显示原话。
-                statusText = "正在登录…"
+                statusText = nil
                 let cookies = try await BiliPassport.passwordLogin(
                     username: username,
                     passwordEncrypted: encrypted,
@@ -130,7 +126,7 @@ struct PasswordLoginSheet: View {
 
     private func submitLogin(request: GeetestRequest, result: GeetestView.Result) async {
         isSubmitting = true
-        statusText = "正在登录…"
+        statusText = nil
         defer { isSubmitting = false }
         do {
             let cookies = try await BiliPassport.passwordLogin(

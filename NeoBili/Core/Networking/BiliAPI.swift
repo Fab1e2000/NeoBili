@@ -566,9 +566,9 @@ enum BiliAPI {
     /// 按编码能力和画质优先选 DASH，durl 只在稿件不提供 DASH 时才用到。
     static func playURL(bvid: String, cid: Int) async throws -> PlayURLData {
         let formats: [[String: String]] = [
-            ["qn": "64", "fnval": "4048", "fnver": "0", "fourk": "0", "otype": "json", "platform": "pc"],
+            ["qn": "127", "fnval": "4048", "fnver": "0", "fourk": "1", "otype": "json", "platform": "pc"],
             // 某些稿件的网页端参数不接受 4048，仍请求完整 DASH 能力集。
-            ["qn": "64", "fnval": "16", "fnver": "0", "fourk": "0", "otype": "json", "platform": "pc"],
+            ["qn": "127", "fnval": "16", "fnver": "0", "fourk": "1", "otype": "json", "platform": "pc"],
             // 最后的兼容路径：服务端已经合并好的文件。
             ["qn": "64", "fnval": "1", "fnver": "0", "otype": "json", "platform": "html5", "high_quality": "1"]
         ]
@@ -691,6 +691,7 @@ private struct RelatedVideoItem: Decodable {
     let pubdate: Int?
     let owner: VideoOwner?
     let stat: RelatedVideoStat?
+    let dimension: VideoDimension?
 
     var asVideoSummary: VideoSummary? {
         guard let bvid, let aid, let cid, let title, let pic,
@@ -708,7 +709,8 @@ private struct RelatedVideoItem: Decodable {
                 coin: stat.coin ?? 0,
                 share: stat.share ?? 0,
                 reply: stat.reply ?? 0
-            )
+            ),
+            dimension: dimension
         )
     }
 }
@@ -738,11 +740,12 @@ private struct RecommendFeedItem: Decodable {
     let pubdate: Int?
     let owner: VideoOwner?
     let stat: RecommendFeedStat?
+    let dimension: VideoDimension?
 
     let trackID: String?
 
     enum CodingKeys: String, CodingKey {
-        case goto, bvid, cid, title, pic, desc, duration, pubdate, owner, stat
+        case goto, bvid, cid, title, pic, desc, duration, pubdate, owner, stat, dimension
         case aid = "id"
         case trackID = "track_id"
     }
@@ -765,6 +768,7 @@ private struct RecommendFeedItem: Decodable {
                 share: 0,
                 reply: 0
             ),
+            dimension: dimension,
             recommendationTrackID: trackID
         )
     }
@@ -783,13 +787,14 @@ private struct RecommendFeedPage: Decodable {
     let item: [RecommendFeedItem]
 }
 
-struct SearchResultItem: Decodable, Identifiable, Hashable {
+struct SearchResultItem: Decodable, Identifiable, Hashable, VideoDimensionProviding {
     let bvid: String
     let title: String
     let author: String
     let pic: String
     let duration: String
     let play: Int
+    var dimension: VideoDimension? = nil
 
     var id: String { bvid }
 

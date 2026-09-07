@@ -4,6 +4,7 @@ import SwiftUI
 /// time labels and a fullscreen toggle. The video itself stays unobscured;
 /// only the area behind the bottom controls receives a local dark gradient.
 struct PlayerControlsOverlay: View {
+    @Environment(ActionFeedback.self) private var feedback
     let viewModel: PlayerViewModel
     let isFullScreen: Bool
     let onToggleFullScreen: () -> Void
@@ -21,8 +22,16 @@ struct PlayerControlsOverlay: View {
         ZStack {
             // 透明手势区域接收轻点及分区竖向滑动，位于播放控件后面。
             PlayerVerticalGestureLayer(isFullScreen: isFullScreen,
+                                       currentTime: displayTime,
+                                       duration: viewModel.duration,
                                        onTap: toggleControls,
-                                       onToggleFullScreen: onToggleFullScreen)
+                                       onToggleFullScreen: onToggleFullScreen,
+                                       onSeekChanged: { time in
+                                           controlsVisible = true
+                                           scrub(to: time)
+                                       },
+                                       onSeekEnded: endScrub(at:),
+                                       onSeekCancelled: cancelScrub)
 
             // 播放时不显示“暂停”图标和圆形底色，但保留原位置的点击热区。
             // 点击后视频会暂停，此时只显示“播放”图标，方便恢复播放。
@@ -33,6 +42,8 @@ struct PlayerControlsOverlay: View {
             // 右上角的定时休眠按钮，跟着控件一起显隐。
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
+                    videoQualityMenu
+                    audioQualityMenu
                     Spacer(minLength: 0)
 
                     if let remaining = viewModel.sleepRemainingMinutes {
@@ -114,6 +125,62 @@ struct PlayerControlsOverlay: View {
             .contentShape(Circle())
         }
         .accessibilityLabel(viewModel.isPlaying ? "暂停" : "播放")
+    }
+
+    private var videoQualityMenu: some View {
+        Menu {
+            ForEach(viewModel.availableVideoQualities, id: \.self) { quality in
+                Button {
+                    changeQuality(video: quality)
+                } label: {
+                    if quality == viewModel.selectedVideoQuality {
+                        Label(PlaybackQuality.videoTitle(quality), systemImage: "checkmark")
+                    } else { Text(PlaybackQuality.videoTitle(quality)) }
+                }
+            }
+        } label: {
+            qualityLabel(viewModel.selectedVideoQuality.map(PlaybackQuality.videoTitle) ?? "分辨率")
+        }
+        .disabled(viewModel.availableVideoQualities.isEmpty || viewModel.isLoading || isScrubbing)
+        .accessibilityLabel("调整分辨率")
+    }
+
+    private var audioQualityMenu: some View {
+        Menu {
+            ForEach(viewModel.availableAudioQualities, id: \.self) { quality in
+                Button {
+                    changeQuality(audio: quality)
+                } label: {
+                    if quality == viewModel.selectedAudioQuality {
+                        Label(PlaybackQuality.audioTitle(quality), systemImage: "checkmark")
+                    } else { Text(PlaybackQuality.audioTitle(quality)) }
+                }
+            }
+        } label: {
+            qualityLabel(viewModel.selectedAudioQuality.map(PlaybackQuality.audioTitle) ?? "原始音质")
+        }
+        .disabled(viewModel.availableAudioQualities.isEmpty || viewModel.isLoading || isScrubbing)
+        .accessibilityLabel("调整音质")
+    }
+
+    private func qualityLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.medium))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .frame(minHeight: 44)
+            .foregroundStyle(.white)
+            .background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func changeQuality(video: Int? = nil, audio: Int? = nil) {
+        hideTask?.cancel()
+        Task {
+            if let message = await viewModel.selectQuality(video: video, audio: audio) {
+                feedback.show(message)
+            }
+            scheduleAutoHide()
+        }
     }
 
     private var sleepTimerMenu: some View {
@@ -200,6 +267,7 @@ struct PlayerControlsOverlay: View {
     private func scrub(to time: Double) {
         // 正在操作进度条时不能把控件收起来。
         hideTask?.cancel()
+        seekTask?.cancel()
         isScrubbing = true
         scrubTime = time
     }
@@ -219,6 +287,12 @@ struct PlayerControlsOverlay: View {
             isScrubbing = false
             scheduleAutoHide()
         }
+    }
+
+    private func cancelScrub() {
+        seekTask?.cancel()
+        isScrubbing = false
+        scheduleAutoHide()
     }
 
     private func toggleControls() {

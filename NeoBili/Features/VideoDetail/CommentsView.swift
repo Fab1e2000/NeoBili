@@ -50,7 +50,7 @@ struct CommentsList: View {
             }
 
             if viewModel.isLoadingMore {
-                ProgressView()
+                LoadingTaskAnchor()
                     .frame(maxWidth: .infinity)
                     .padding()
             }
@@ -113,7 +113,7 @@ struct CommentsPlaceholder: View {
 
     var body: some View {
         if viewModel.isLoading {
-            ProgressView()
+            LoadingTaskAnchor()
         } else if let message = viewModel.errorMessage, viewModel.comments.isEmpty {
             ContentUnavailableView {
                 Label("评论加载失败", systemImage: "exclamationmark.bubble")
@@ -332,7 +332,7 @@ struct CommentRow: View {
             }
 
             if viewModel.isLoadingReplies(comment) {
-                ProgressView()
+                LoadingTaskAnchor()
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

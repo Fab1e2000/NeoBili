@@ -57,7 +57,7 @@ struct VideoStat: Decodable, Hashable, Sendable {
 }
 
 /// A single entry in a video feed (popular / recommend lists).
-struct VideoSummary: Decodable, Identifiable, Hashable {
+struct VideoSummary: Decodable, Identifiable, Hashable, VideoDimensionProviding {
     let bvid: String
     let aid: Int
     let cid: Int
@@ -68,6 +68,9 @@ struct VideoSummary: Decodable, Identifiable, Hashable {
     let pubdate: Int
     let owner: VideoOwner
     let stat: VideoStat
+
+    /// 部分列表接口会直接返回画面尺寸；缺失时由内容过滤服务补查详情。
+    var dimension: VideoDimension? = nil
 
     /// 首页推荐反馈必须携带服务端返回的追踪标识。
     var recommendationTrackID: String? = nil
@@ -112,7 +115,7 @@ struct VideoPart: Decodable, Identifiable, Hashable, Sendable {
     }
 }
 
-struct VideoDetail: Decodable, Hashable, Sendable {
+struct VideoDetail: Decodable, Hashable, Sendable, VideoDimensionProviding {
     let bvid: String
     let aid: Int
     let cid: Int
@@ -124,6 +127,7 @@ struct VideoDetail: Decodable, Hashable, Sendable {
     let owner: VideoOwner
     let stat: VideoStat
     let pages: [VideoPart]
+    var dimension: VideoDimension? = nil
     /// 分区名（「单机游戏」这类）。
     let tname: String?
     /// 1 是自制，2 是转载。界面上据此显示「未经作者授权禁止转载」。
@@ -132,7 +136,7 @@ struct VideoDetail: Decodable, Hashable, Sendable {
     let ugcSeason: UgcSeason?
 
     enum CodingKeys: String, CodingKey {
-        case bvid, aid, cid, title, desc, pic, duration, pubdate, owner, stat, pages
+        case bvid, aid, cid, title, desc, pic, duration, pubdate, owner, stat, pages, dimension
         case tname, copyright
         case ugcSeason = "ugc_season"
     }
@@ -192,11 +196,16 @@ struct UgcSeasonEpisode: Decodable, Identifiable, Hashable, Sendable {
     var id: String { bvid ?? String(episodeId ?? aid ?? 0) }
 }
 
+extension UgcSeasonEpisode: VideoDimensionProviding {
+    var dimension: VideoDimension? { arc?.dimension }
+}
+
 /// 分集自带的稿件信息，封面和时长都在这里，不需要再逐条请求详情。
 struct UgcSeasonArchive: Decodable, Hashable, Sendable {
     let pic: String?
     let duration: Int?
     let stat: UgcSeasonStat?
+    let dimension: VideoDimension?
 }
 
 struct UgcSeasonStat: Decodable, Hashable, Sendable {
@@ -311,6 +320,15 @@ struct DashPayload: Decodable, Hashable, Sendable {
     let duration: Int
     let video: [DashStream]
     let audio: [DashStream]
+    var flac: LosslessAudio? = nil
+    var dolby: DolbyAudio? = nil
+
+    struct LosslessAudio: Decodable, Hashable, Sendable { let audio: DashStream? }
+    struct DolbyAudio: Decodable, Hashable, Sendable { let audio: [DashStream]? }
+
+    var allAudio: [DashStream] {
+        audio + (flac?.audio.map { [$0] } ?? []) + (dolby?.audio ?? [])
+    }
 }
 
 /// A legacy "progressive" (already muxed audio+video) stream. Requesting this

@@ -48,7 +48,7 @@ struct InlineVideoPlayer: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 if viewModel.isLoading || viewModel.isBuffering {
-                    ProgressView().tint(.white).allowsHitTesting(false)
+                    LoadingTaskAnchor().tint(.white).allowsHitTesting(false)
                 }
             }
         }

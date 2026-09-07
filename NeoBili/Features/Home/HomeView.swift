@@ -5,6 +5,7 @@ struct HomeView: View {
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @State private var viewModel = HomeViewModel()
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     /// 刷新动画的快慢，设置页可调。
@@ -13,10 +14,11 @@ struct HomeView: View {
     @State private var pullDistance: CGFloat = 0
     @State private var pullArmed = false
     @State private var feedOffset: CGFloat = 0
+    @State private var feedPosition = ScrollPosition(edge: .top)
     @State private var reselectCount = 0
     @State private var shortcutTask: Task<Void, Never>?
     @State private var isRefreshing = false
-    private static let topAnchor = "home-feed-top"
+    @State private var isSearchFocused = false
 
     /// 刷新的三段式可视化：旧卡片原地淡出，新卡片按行落位。
     /// 参数集中在 FeedRefreshTuning 里。
@@ -31,45 +33,43 @@ struct HomeView: View {
     /// 这一轮淡出的起点。数据回得比淡出还快时，靠它算出还要等多久才轮到落位。
     @State private var exitStartedAt: Date?
 
-    /// 搜索就在首页完成，不跳页：系统搜索框跟随大标题一起收放，
+    /// 搜索就在首页完成，不跳页：搜索框固定在紧凑工具栏内，
     /// 回车后这一页的内容换成结果，清空后回到推荐流。
     @State private var search = SearchViewModel()
 
     var body: some View {
+        #if DEBUG
+        let _ = SearchLatencyProbe.body("HomeView")
+        #endif
         NavigationStack {
             Group {
                 if search.hasSubmittedSearch {
                     SearchResultsView(viewModel: search)
                 } else {
                     feed
+                        // The keyboard covers recommendations; it does not need to resize the grid.
+                        .ignoresSafeArea(.keyboard, edges: .bottom)
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            // 搜索框直接占据导航工具栏，不再为已移除的大标题保留空白行。
-            // 导航栏自己的 Liquid Glass 会承接从下面滑过的内容。
-            // （退出搜索后偶发下坠不归位是 iOS 26 系统动画的 bug，官方
-            // App 也复现，这里维持 toolbarPrincipal 的紧凑形态不绕路。）
-            .searchable(
-                text: $search.query,
-                placement: .toolbarPrincipal,
-                prompt: "搜索视频"
-            )
-            // 系统原生的候选词浮层。点中一条由 searchCompletion 填回输入框
-            // 并触发下面的 onSubmit，不需要自己处理点击。
-            .searchSuggestions {
-                if search.isShowingSuggestions {
-                    ForEach(search.suggestions) { suggestion in
-                        // 就是一行黑字：放大镜图标去掉，只留一点左边距。
-                        Text(suggestion.value)
-                            .foregroundStyle(.primary)
-                            .padding(.leading, 6)
-                            .searchCompletion(suggestion.value)
+            .overlay {
+                if isSearchFocused {
+                    ZStack {
+                        // Extend the backdrop behind the search bar, status bar, and keyboard.
+                        // Keep suggestion content inside the safe area above the keyboard.
+                        Color(uiColor: .systemGroupedBackground)
+                            .ignoresSafeArea()
+                        if search.isShowingSuggestions {
+                            searchSuggestions
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .onSubmit(of: .search) { search.submit() }
+            .toolbarVisibility(.hidden, for: .navigationBar)
+            .toolbarVisibility(isSearchFocused ? .hidden : .automatic, for: .tabBar)
+            // 用固定的安全区栏承载搜索，不再让 toolbarPrincipal 在滚动边缘恢复为双层高度。
+            .safeAreaBar(edge: .top, spacing: 0) { homeSearchBar }
             // 输入一变就重新取候选词。上一次的任务会被 SwiftUI 取消，
             // 所以视图模型里那个 250 毫秒的等待就等于防抖。
             .task(id: search.trimmedQuery) { await search.loadSuggestions() }
@@ -91,133 +91,198 @@ struct HomeView: View {
         .background {
             HomeTabReselectionObserver {
                 guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented else { return }
-                if search.hasSubmittedSearch {
-                    search.query = ""
-                    search.reset()
+                if isSearchFocused || search.hasSubmittedSearch {
+                    cancelSearch()
                 } else {
                     reselectCount += 1
                 }
             }
             .frame(width: 0, height: 0)
         }
+        .resolvePortraitVideos(viewModel.videos, batchID: landingGeneration) {
+            await viewModel.loadReplacementPage()
+            return viewModel.videos
+        }
+        #if DEBUG
+        .task {
+            await SearchLatencyProbe.shared.run(focus: { isSearchFocused = $0 },
+                                               query: { search.query },
+                                               isSearching: { search.hasSubmittedSearch },
+                                               cancel: { cancelSearch() })
+        }
+        .onChange(of: isSearchFocused) { _, focused in SearchLatencyProbe.focusChanged(focused) }
+        #endif
+    }
+
+    private var homeSearchBar: some View {
+        HomeSearchBar(text: $search.query, isFocused: $isSearchFocused,
+                      onSubmit: { submitSearch() }, onCancel: { cancelSearch() })
+            // UISearchBar supplies its own icon and text padding; avoid doubling those insets.
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background {
+                if isSearchFocused {
+                    Color(uiColor: .systemGroupedBackground)
+                        .ignoresSafeArea(.container, edges: .top)
+                }
+            }
+    }
+
+    private var searchSuggestions: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(search.suggestions) { suggestion in
+                    Button {
+                        submitSearch(keyword: suggestion.value)
+                    } label: {
+                        Text(suggestion.value)
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider().padding(.leading, 22)
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private func submitSearch(keyword: String? = nil) {
+        search.submit(keyword: keyword)
+        guard search.hasSubmittedSearch else { return }
+        isSearchFocused = false
+    }
+
+    private func cancelSearch() {
+        isSearchFocused = false
+        search.query = ""
+        search.reset()
     }
 
     private var feed: some View {
         GeometryReader { geometry in
-            ScrollViewReader { proxy in
-                ScrollView {
-                    // 这是一个看不见的定位点。“上次看到这里”卡片被点击时，页面会回到这里再刷新。
-                    Color.clear
-                        .frame(height: 0)
-                        .id(Self.topAnchor)
-                        .background {
-                            ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing,
-                                             onProgress: { distance, armed in
-                                                 pullDistance = distance
-                                                 pullArmed = armed
-                                                 updatePullFade(distance)
-                                             }, onRefresh: { startRefresh() })
-                        }
+            #if DEBUG
+            let _ = SearchLatencyProbe.body("HomeFeed")
+            #endif
+            ScrollView {
+                Color.clear
+                    .frame(height: 0)
+                    .background {
+                        ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing,
+                                         onProgress: { distance, armed in
+                                             pullDistance = distance
+                                             pullArmed = armed
+                                             updatePullFade(distance)
+                                         }, onRefresh: { startRefresh() })
+                    }
 
-                    LazyVStack(spacing: HomeCardLayout.rowSpacing) {
-                        ForEach(Array(viewModel.feedRows.enumerated()), id: \.element.id) { index, row in
-                            FeedDropInRow(index: index,
-                                          generation: landingGeneration,
-                                          landing: landingWindow,
-                                          speed: enterSpeed,
-                                          reduceMotion: reduceMotion) {
-                                switch row {
-                                case .videos(let videos):
-                                    HStack(alignment: .top, spacing: HomeCardLayout.columnSpacing) {
-                                        ForEach(videos) { video in
-                                            FeedDropInRow(index: 0, generation: 0,
-                                                          landing: viewModel.replacementAnimationIDs.contains(video.bvid),
-                                                          speed: enterSpeed, reduceMotion: reduceMotion) {
-                                                videoCard(video, pageWidth: geometry.size.width)
-                                            }
-                                            .onAppear { viewModel.didShowReplacement(video.bvid) }
-                                            .frame(width: (geometry.size.width - HomeCardLayout.horizontalInset * 2 - HomeCardLayout.columnSpacing) / 2)
+                LazyVStack(spacing: HomeCardLayout.rowSpacing) {
+                    ForEach(Array(viewModel.feedRows(hidingKnownPortraitVideos: hidesPortraitVideos).enumerated()), id: \.element.id) { index, row in
+                        Group {
+                            switch row {
+                            case .videos(let videos):
+                                HStack(alignment: .top, spacing: HomeCardLayout.columnSpacing) {
+                                    ForEach(videos) { video in
+                                        FeedDropInRow(index: 0, generation: 0,
+                                                      landing: viewModel.replacementAnimationIDs.contains(video.bvid),
+                                                      speed: enterSpeed, reduceMotion: reduceMotion) {
+                                            videoCard(video, pageWidth: geometry.size.width)
                                         }
-                                        if videos.count == 1 { Spacer(minLength: 0) }
+                                        .videoEntranceIdentity(video.bvid)
+                                        .onAppear { viewModel.didShowReplacement(video.bvid) }
+                                        .frame(width: (geometry.size.width - HomeCardLayout.horizontalInset * 2 - HomeCardLayout.columnSpacing) / 2)
                                     }
-                                case .lastSeen:
-                                    Button {
-                                        Task {
-                                            // 与 PiliPlus 一致：点击提示卡先回到顶部，再请求一批新推荐。
-                                            withAnimation(.easeOut(duration: 0.25)) {
-                                                proxy.scrollTo(Self.topAnchor, anchor: .top)
-                                            }
-                                            await refreshFeed()
-                                        }
-                                    } label: {
-                                        LastSeenCard()
-                                    }
-                                    .buttonStyle(.plain)
+                                    if videos.count == 1 { Spacer(minLength: 0) }
                                 }
+                            case .lastSeen:
+                                Button {
+                                    startRefresh(scrollToTop: true)
+                                } label: {
+                                    LastSeenCard()
+                                }
+                                .buttonStyle(.plain)
+                                .videoBatchEntrance()
+                                .disabled(isRefreshing)
                             }
                         }
                     }
-                    .padding(.horizontal, HomeCardLayout.horizontalInset)
-                    .padding(.vertical, HomeCardLayout.verticalInset)
-                    .opacity(listOpacity)
+                }
+                .padding(.horizontal, HomeCardLayout.horizontalInset)
+                .padding(.vertical, HomeCardLayout.verticalInset)
+                .opacity(listOpacity)
 
                 // 刷新进度在顶部浮层显示，翻页进度单独放在列表底部。
                 if viewModel.isLoadingMore {
-                    ProgressView()
+                    LoadingTaskAnchor()
                         .padding()
                 }
-                }
-                // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
-                .scrollBounceBehavior(.always, axes: .vertical)
-                .scrollDisabled(isRefreshing)
-                // 卡片从搜索框下面滑过去时，顶部给一层渐隐，让搜索框浮在内容之上
-                // 而不是硬生生压着卡片（iOS 26 的 scroll edge effect）。
-                .scrollEdgeEffectStyle(.soft, for: .top)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, offset in feedOffset = offset }
-                .onChange(of: reselectCount) {
-                    guard shortcutTask == nil, !isRefreshing else { return }
-                    if feedOffset > 1 {
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            proxy.scrollTo(Self.topAnchor, anchor: .top)
-                        }
-                        // 回顶动画结束前忽略重复点击，避免误触发刷新。
-                        shortcutTask = Task {
-                            try? await Task.sleep(for: .milliseconds(300))
-                            shortcutTask = nil
-                        }
-                    } else {
-                        startRefresh()
-                    }
-                }
-                .onChange(of: isRefreshing) { _, refreshing in
-                    if refreshing {
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            proxy.scrollTo(Self.topAnchor, anchor: .top)
-                        }
-                    }
-                }
-                // Reduce Motion 下不做位移和 3D，只留一颗系统转圈。
-                .overlay(alignment: .top) {
-                    if reduceMotion, isRefreshing {
-                        ProgressView().controlSize(.small).padding(.top, 12)
-                    }
-                }
-                .accessibilityAction(named: "刷新推荐") { startRefresh() }
-                // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
-                .leftEdgeTapDeadZone()
             }
+            .scrollPosition($feedPosition)
+            // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
+            .scrollBounceBehavior(.always, axes: .vertical)
+            .scrollDisabled(isRefreshing)
+            // 卡片从搜索框下面滑过去时，顶部给一层渐隐，让搜索框浮在内容之上
+            // 而不是硬生生压着卡片（iOS 26 的 scroll edge effect）。
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, offset in feedOffset = offset }
+            .onChange(of: reselectCount) {
+                guard shortcutTask == nil, !isRefreshing else { return }
+                if feedOffset > 1 {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        feedPosition.scrollTo(edge: .top)
+                    }
+                    // 回顶动画结束前忽略重复点击，避免误触发刷新。
+                    shortcutTask = Task {
+                        try? await Task.sleep(for: .milliseconds(300))
+                        shortcutTask = nil
+                    }
+                } else {
+                    startRefresh()
+                }
+            }
+            .onChange(of: isRefreshing) { _, refreshing in
+                if refreshing {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        feedPosition.scrollTo(edge: .top)
+                    }
+                }
+            }
+            // Reduce Motion 下不做位移和 3D，只留一颗系统转圈。
+            .overlay(alignment: .top) {
+                if reduceMotion, isRefreshing {
+                    LoadingTaskAnchor().controlSize(.small).padding(.top, 12)
+                }
+            }
+            .accessibilityAction(named: "刷新推荐") { startRefresh() }
+            // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
+            .leftEdgeTapDeadZone()
         }
         .overlay {
-            if viewModel.isLoading, viewModel.videos.isEmpty {
-                ProgressView("正在加载推荐…")
+            if viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos),
+               !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
+                LoadingTaskAnchor()
+            } else if viewModel.isLoading, viewModel.videos.isEmpty {
+                LoadingTaskAnchor()
             } else if let message = viewModel.errorMessage, viewModel.videos.isEmpty {
                 ContentUnavailableView(
                     "加载失败",
                     systemImage: "wifi.slash",
                     description: Text(message)
                 )
+            } else if !viewModel.videos.isEmpty,
+                      !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
+                ContentUnavailableView {
+                    Label("没有可显示的视频", systemImage: "rectangle.slash")
+                } description: {
+                    Text("当前推荐中的视频都被内容过滤设置隐藏了。")
+                } actions: {
+                    Button("刷新推荐") { startRefresh() }
+                }
             }
         }
     }
@@ -232,21 +297,14 @@ struct HomeView: View {
         listOpacity = 1 - FeedRefreshTuning.pullFade * progress
     }
 
-    private func startRefresh() {
+    private func startRefresh(scrollToTop: Bool = false) {
         guard !isRefreshing else { return }
         // 同步锁住入口，防止同一帧内连续点击开启多个请求。
         beginRefresh()
         Task {
             await viewModel.refresh(staged: !reduceMotion)
-            finishRefresh()
+            finishRefresh(scrollToTop: scrollToTop)
         }
-    }
-
-    private func refreshFeed() async {
-        guard !isRefreshing else { return }
-        beginRefresh()
-        await viewModel.refresh(staged: !reduceMotion)
-        finishRefresh()
     }
 
     /// 退出段：旧卡片原地淡尽。不等网络，跑完就是跑完。
@@ -263,12 +321,13 @@ struct HomeView: View {
     ///
     /// 刷新失败或没有新内容时列表不变，这里仍然会重播落位——用户看到的是
     /// "重新发了一次牌"，而不是卡在半途。
-    private func finishRefresh() {
-        isRefreshing = false
+    private func finishRefresh(scrollToTop: Bool = false) {
         guard !reduceMotion else {
+            if scrollToTop { feedPosition.scrollTo(edge: .top) }
             viewModel.commitStagedRefresh()
             listOpacity = 1
             landingGeneration += 1
+            isRefreshing = false
             return
         }
 
@@ -279,16 +338,23 @@ struct HomeView: View {
 
         Task { @MainActor in
             if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
-            // 期间又开始了一次刷新的话，那一边正在自己淡出，别插手。
-            guard !isRefreshing else { return }
+            // 退出完成前继续锁住刷新入口，避免重复点击打断这一批。
+            guard isRefreshing else { return }
 
             // 以下几句必须同一帧生效。新数据到这一刻才合并进列表——旧卡片已经
             // 淡尽，所以看不到"半透明的旧卡突然变成新卡"。合并后首屏几行都是
             // 全新的视图，它们出生就是全透明的起始态，浓度恢复成 1 也不会闪。
+            // 旧列表完全淡出后回顶，不再让回顶与退出动画抢占同一段画面。
+            if scrollToTop {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { feedPosition.scrollTo(edge: .top) }
+            }
             landingWindow = true
             viewModel.commitStagedRefresh()
             listOpacity = 1
             landingGeneration += 1
+            isRefreshing = false
 
             try? await Task.sleep(for: .seconds(FeedRefreshTuning.landingWindow(speed: enterSpeed)))
             landingWindow = false
@@ -305,12 +371,14 @@ struct HomeView: View {
             } label: {
                 VStack(spacing: 10) {
                     if viewModel.replacingIDs.contains(video.bvid) {
-                        ProgressView()
+                        LoadingTaskAnchor()
                     } else {
                         Image(systemName: "eye.slash").font(.title2)
                     }
                     Text("已提交不感兴趣").font(.subheadline)
-                    Text(viewModel.replacingIDs.contains(video.bvid) ? "正在换一条…" : "点击重试换一条").font(.caption)
+                    if !viewModel.replacingIDs.contains(video.bvid) {
+                        Text("点击重试换一条").font(.caption)
+                    }
                 }
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
@@ -320,7 +388,7 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.replacingIDs.contains(video.bvid))
-            .task { await viewModel.loadMoreIfNeeded(current: video) }
+            .task { await viewModel.loadMoreIfNeeded(current: video, hidingKnownPortraitVideos: hidesPortraitVideos) }
         } else {
             Button {
                 nowPlaying.open(
@@ -344,7 +412,7 @@ struct HomeView: View {
                 .disabled(viewModel.reportingIDs.contains(video.bvid))
             }
             .videoTransitionSource(video.bvid, in: videoTransition)
-            .task { await viewModel.loadMoreIfNeeded(current: video) }
+            .task { await viewModel.loadMoreIfNeeded(current: video, hidingKnownPortraitVideos: hidesPortraitVideos) }
             .task {
                 await VideoPreparationCache.shared.prefetch(bvid: video.bvid, cid: video.cid)
             }
