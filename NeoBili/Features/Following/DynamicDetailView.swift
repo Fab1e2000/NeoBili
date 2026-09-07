@@ -71,6 +71,8 @@ struct DynamicDetailView: View {
         .toolbarVisibility(.hidden, for: .tabBar)
         .imageViewerHost()
         .leftEdgeTapDeadZone()
+        .commentComposer(viewModel: comments, enabled: entry.hasComments)
+        .environment(\.commentBottomInset, 0)
         .task {
             if entry.hasComments {
                 await comments.loadInitial()

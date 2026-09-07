@@ -54,6 +54,7 @@ final class HomeViewModel {
     private(set) var uninterestedIDs: Set<String> = []
     private(set) var reportingIDs: Set<String> = []
     private(set) var replacingIDs: Set<String> = []
+    private(set) var replacementAnimationIDs: Set<String> = []
     private let reportUninterested: (VideoSummary) async throws -> Void
 
     func markUninterested(_ video: VideoSummary) async -> String? {
@@ -63,12 +64,12 @@ final class HomeViewModel {
         do {
             try await reportUninterested(video)
             uninterestedIDs.insert(video.bvid)
-            return nil
+            return await replaceUninterested(video)
         } catch { return error.localizedDescription }
     }
 
     func replaceUninterested(_ video: VideoSummary) async -> String? {
-        guard uninterestedIDs.contains(video.bvid), replacingIDs.isEmpty else { return nil }
+        guard uninterestedIDs.contains(video.bvid), !replacingIDs.contains(video.bvid) else { return nil }
         replacingIDs.insert(video.bvid)
         defer { replacingIDs.remove(video.bvid) }
         do {
@@ -79,9 +80,14 @@ final class HomeViewModel {
             }
             // 等待网络期间刷新可能已改变列表，以原视频标识重新定位。
             guard let index = videos.firstIndex(where: { $0.bvid == video.bvid }) else { return nil }
+            replacementAnimationIDs.insert(replacement.bvid)
             videos[index] = replacement
             return nil
         } catch { return error.localizedDescription }
+    }
+
+    func didShowReplacement(_ id: String) {
+        replacementAnimationIDs.remove(id)
     }
 
     /// 这是页面真正显示的顺序。提示卡会被插在“本次刷新内容”和“上次内容”之间。

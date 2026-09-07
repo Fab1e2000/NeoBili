@@ -45,6 +45,8 @@ struct SettingsView: View {
                 Text("对之后打开的视频生效。可用画质还受账号等级和稿件本身的限制。")
             }
 
+            PlayerGestureSettingsSection()
+
             Section {
                 Picker("头像列表位置", selection: $followingSidebarSide) {
                     ForEach(FollowingSidebarSide.allCases) { side in
