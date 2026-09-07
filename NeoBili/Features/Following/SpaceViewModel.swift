@@ -13,6 +13,7 @@ final class SpaceViewModel {
     /// 关注状态单独存一份：点了关注按钮要立刻变，不能等名片接口重拉。
     private(set) var isFollowing = false
 
+    private(set) var videosGeneration = 0
     private(set) var videos: [SpaceVideo] = []
     private(set) var isLoadingVideos = false
     private(set) var isLoadingMoreVideos = false
@@ -80,6 +81,7 @@ final class SpaceViewModel {
         do {
             let result = try await BiliAPI.spaceVideos(mid: mid, page: 1)
             guard !Task.isCancelled else { return }
+            videosGeneration += 1
             videos = Self.removingDuplicates(result.videos)
             page = 1
             hasMoreVideos = result.hasMore(after: videos.count)
@@ -91,12 +93,21 @@ final class SpaceViewModel {
         }
     }
 
-    func loadMoreVideosIfNeeded(current video: SpaceVideo) async {
+    func loadMoreVideosIfNeeded(
+        current video: SpaceVideo,
+        hidingKnownPortraitVideos hidesPortraitVideos: Bool = false
+    ) async {
+        let visibleVideos = videos.hidingKnownPortraitVideos(hidesPortraitVideos)
         guard hasMoreVideos, !isLoadingVideos, !isLoadingMoreVideos,
-              let index = videos.firstIndex(of: video),
-              index >= videos.count - 5
+              let index = visibleVideos.firstIndex(of: video),
+              index >= visibleVideos.count - 5
         else { return }
 
+        await loadReplacementPage()
+    }
+
+    func loadReplacementPage() async {
+        guard hasMoreVideos, !isLoadingVideos, !isLoadingMoreVideos else { return }
         isLoadingMoreVideos = true
         defer { isLoadingMoreVideos = false }
 

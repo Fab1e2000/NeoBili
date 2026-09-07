@@ -6,6 +6,7 @@ struct FollowingView: View {
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = FollowingViewModel()
     @State private var path: [FollowedUp] = []
@@ -39,7 +40,7 @@ struct FollowingView: View {
                     if account.isLoggedIn {
                         feed
                     } else if account.isRestoringSession {
-                        ProgressView("正在检查登录状态…")
+                        LoadingTaskAnchor()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         loggedOutView
@@ -97,6 +98,11 @@ struct FollowingView: View {
             feedOpacity = 1
             listPosition.scrollTo(edge: .top)
             viewModel = FollowingViewModel()
+        }
+        .resolvePortraitVideos(viewModel.activeFeed.entries.compactMap(\.video), batchID: landingGeneration) {
+            let feed = viewModel.activeFeed
+            await feed.loadReplacementPage()
+            return feed.entries.compactMap(\.video)
         }
     }
 
@@ -175,7 +181,7 @@ struct FollowingView: View {
         .scrollDisabled(isRefreshing || pendingSelectionID != nil)
         .overlay(alignment: .top) {
             if pendingSelectionID != nil || (reduceMotion && isRefreshing) {
-                ProgressView().controlSize(.small).padding(.top, 12)
+                LoadingTaskAnchor().controlSize(.small).padding(.top, 12)
             }
         }
         .accessibilityAction(named: "刷新关注动态") { startRefresh() }
@@ -276,11 +282,21 @@ struct FollowingView: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: 300)
         } else {
-            ForEach(Array(feed.entries.enumerated()), id: \.element.id) { index, entry in
+            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos) ?? true }
+            if visibleEntries.isEmpty {
+                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos) {
+                    LoadingTaskAnchor().padding()
+                } else {
+                    Button("继续加载动态") { Task { await feed.loadReplacementPage() } }
+                        .padding()
+                }
+            }
+            ForEach(Array(visibleEntries.enumerated()), id: \.element.id) { index, entry in
                 FeedDropInRow(index: index, generation: landingGeneration,
                               landing: landingWindow, speed: enterSpeed, reduceMotion: reduceMotion) {
                     card(for: entry)
                 }
+                    .videoEntranceIdentity(entry.video?.bvid)
                     .onScrollVisibilityChange(threshold: 0.1) { visible in
                         if visible { FollowingReadStore.shared.markViewed(entry) }
                     }
@@ -289,14 +305,15 @@ struct FollowingView: View {
                     .task { await feed.loadMoreIfNeeded(current: entry) }
                     .task {
                         // 视频动态露面就先把播放地址取回来，点开时通常已经有结果了。
-                        if let video = entry.video {
+                        if let video = entry.video,
+                           video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
                             await VideoPreparationCache.shared.prefetch(bvid: video.bvid)
                         }
                     }
             }
 
             if feed.isLoadingMore {
-                ProgressView()
+                LoadingTaskAnchor()
                     .padding()
             }
         }
@@ -355,31 +372,7 @@ struct FollowingView: View {
     }
 
     private var loadingPlaceholder: some View {
-        VStack(spacing: 12) {
-            ForEach(0..<2, id: \.self) { _ in
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 10) {
-                        Circle()
-                            .frame(width: 38, height: 38)
-                        VStack(alignment: .leading, spacing: 7) {
-                            Capsule().frame(width: 96, height: 10)
-                            Capsule().frame(width: 60, height: 8)
-                        }
-                    }
-
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .frame(height: 138)
-                }
-                .foregroundStyle(.quaternary)
-                .padding(12)
-                .background(Color(uiColor: .systemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-        }
-        .padding(.horizontal, DynamicCardLayout.pageHorizontalInset)
-        .padding(.vertical, 14)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("正在加载动态")
+        LoadingTaskAnchor()
     }
 
     private func card(for entry: DynamicEntry) -> some View {
@@ -405,7 +398,8 @@ struct FollowingView: View {
         )
         .videoTransitionSource("following-dynamic-\(entry.id)", in: dynamicTransition)
         .contextMenu {
-            if let video = entry.video {
+            if let video = entry.video,
+               video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
                 WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
             }
         }

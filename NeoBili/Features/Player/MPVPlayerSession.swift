@@ -101,7 +101,7 @@ enum PlaybackSourceBuilder {
     static func makeSource(from payload: PlayURLData, configuration: VideoPlaybackConfiguration) throws -> PlaybackSource {
         if let dash = payload.dash,
            let video = bestVideoStream(dash.video, preferredQuality: configuration.quality),
-           let audio = dash.audio.max(by: { $0.bandwidth < $1.bandwidth }),
+           let audio = bestAudioStream(dash.allAudio, preferredQuality: configuration.audioQuality),
            let videoStream = makeStream(from: video),
            let audioStream = makeStream(from: audio) {
             return PlaybackSource(video: videoStream, audio: audioStream, duration: TimeInterval(dash.duration))
@@ -112,6 +112,19 @@ enum PlaybackSourceBuilder {
             return PlaybackSource(video: stream, audio: nil, duration: TimeInterval(durl.length ?? 0) / 1_000)
         }
         throw PlayerSessionError.invalidSource
+    }
+
+    static func bestAudioStream(_ streams: [DashStream], preferredQuality: Int) -> DashStream? {
+        let usable = streams.filter { URL(string: $0.baseUrl) != nil }
+        if let exact = usable.filter({ $0.id == preferredQuality }).max(by: { $0.bandwidth < $1.bandwidth }) {
+            return exact
+        }
+        let ceiling = preferredQuality == 0 ? Int.max : PlaybackQuality.audioRank(preferredQuality)
+        let lower = usable.filter { PlaybackQuality.audioRank($0.id) <= ceiling }
+        return (lower.isEmpty ? usable : lower).max {
+            let lhs = PlaybackQuality.audioRank($0.id), rhs = PlaybackQuality.audioRank($1.id)
+            return lhs == rhs ? $0.bandwidth < $1.bandwidth : lhs < rhs
+        }
     }
 
     static func bestVideoStream(_ streams: [DashStream], preferredQuality: Int) -> DashStream? {

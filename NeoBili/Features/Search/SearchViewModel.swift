@@ -7,6 +7,8 @@ final class SearchViewModel {
     /// 打字过程中的候选词。
     private(set) var suggestions: [SearchSuggestion] = []
     private(set) var results: [SearchResultItem] = []
+    /// 每次首批结果发布时递增，让相同关键词的重新搜索也能触发进入动画。
+    private(set) var resultsGeneration = 0
     private(set) var isLoading = false
     private(set) var errorMessage: String?
     /// 已经真正搜过的那个词。为空表示这一页还没搜过东西，页面停在提示状态。
@@ -96,6 +98,7 @@ final class SearchViewModel {
         var known = Set(results.map(\.bvid))
         let incoming = (page.result ?? []).filter { known.insert($0.bvid).inserted }
         results.append(contentsOf: incoming)
+        if number == 1 { resultsGeneration += 1 }
         pageNumber = number
         // 有总页数时以接口为准；缺失时在空页或整页重复时停止。
         hasMore = page.numPages.map { number < $0 } ?? !incoming.isEmpty

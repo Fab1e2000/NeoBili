@@ -15,22 +15,27 @@ struct RelatedVideosSection: View {
     let videos: [VideoSummary]
     let isLoading: Bool
     let onSelect: (VideoSummary) -> Void
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
+
+    private var visibleVideos: [VideoSummary] {
+        videos.hidingKnownPortraitVideos(hidesPortraitVideos)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if videos.isEmpty {
-                if isLoading {
-                    ProgressView()
+            if visibleVideos.isEmpty {
+                if isLoading || videos.hasPendingVideoDimensions(hidesPortraitVideos) {
+                    LoadingTaskAnchor()
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
                 } else {
-                    Text("暂时没有相关视频")
+                    Text(videos.isEmpty ? "暂时没有相关视频" : "相关视频已被内容过滤设置隐藏")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, Self.horizontalInset)
                 }
             } else {
-                ForEach(videos) { video in
+                ForEach(visibleVideos) { video in
                     // 相关视频自带 cid，所以点进去时和推荐页一样可以并行加载。
                     Button {
                         onSelect(video)
@@ -44,6 +49,7 @@ struct RelatedVideosSection: View {
                             showsCardChrome: false
                         )
                     }
+                    .videoEntranceIdentity(video.bvid)
                     .buttonStyle(.plain)
                     .contextMenu {
                         WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
@@ -60,12 +66,13 @@ struct RelatedVideosSection: View {
 
                     // 分隔线从封面右边起画，和评论列表那边的处理一致；
                     // 最后一条不画，列表末尾不该悬着一根线。
-                    if video.id != videos.last?.id {
+                    if video.id != visibleVideos.last?.id {
                         Divider()
                             .padding(.leading, Self.horizontalInset)
                     }
                 }
             }
         }
+        .resolvePortraitVideos(videos)
     }
 }

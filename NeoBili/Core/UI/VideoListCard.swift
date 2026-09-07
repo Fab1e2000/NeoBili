@@ -63,6 +63,7 @@ struct VideoListCard: View {
     /// 传 false 时仍会铺一层和页面同色的底：长按预览被系统抬起来时，
     /// 裸内容会像悬浮在列表上，有这层底才像一块完整的卡片。
     var showsCardChrome = true
+    var animatesEntrance = true
 
     var body: some View {
         HStack(alignment: .top, spacing: VideoListCardLayout.imageTextSpacing) {
@@ -134,5 +135,6 @@ struct VideoListCard: View {
             }
         }
         .contentShape(Rectangle())
+        .videoCardEntrance(enabled: animatesEntrance)
     }
 }

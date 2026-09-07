@@ -88,7 +88,7 @@ struct ImageViewer: View {
                 Image(systemName: "photo.badge.exclamationmark").font(.largeTitle)
                 Text(failureMessage).font(.subheadline)
             } else {
-                ProgressView().tint(.white)
+                LoadingTaskAnchor().tint(.white)
             }
 
             Button("关闭") { dismiss() }

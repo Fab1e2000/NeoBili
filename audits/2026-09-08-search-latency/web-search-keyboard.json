@@ -1,0 +1,291 @@
+[
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 1,
+      "HomeView" : 1
+    },
+    "event" : "probe_started",
+    "millisecondsSinceStart" : 0.11995833483524621,
+    "os" : "27.0",
+    "phase" : "idle"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 17,
+      "HomeView" : 16
+    },
+    "event" : "frame_gap",
+    "milliseconds" : 79.816749999736203,
+    "millisecondsSinceStart" : 579.1047916682146,
+    "phase" : "idle"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 17,
+      "HomeView" : 16
+    },
+    "event" : "frame_gap",
+    "milliseconds" : 53.498500001296634,
+    "millisecondsSinceStart" : 632.61124999917229,
+    "phase" : "idle"
+  },
+  {
+    "attempt" : 1,
+    "bodyCounts" : {
+      "HomeFeed" : 68,
+      "HomeView" : 50
+    },
+    "event" : "request_focus",
+    "millisecondsSinceStart" : 15618.358874999103,
+    "phase" : "focus_1"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 69,
+      "HomeView" : 51
+    },
+    "event" : "focus_changed",
+    "focused" : true,
+    "millisecondsSinceStart" : 15717.386625001382,
+    "phase" : "focus_1"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 69,
+      "HomeView" : 51
+    },
+    "event" : "UIKeyboardWillShowNotification",
+    "millisecondsSinceStart" : 15791.546791668225,
+    "phase" : "focus_1"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 69,
+      "HomeView" : 51
+    },
+    "event" : "frame_gap",
+    "milliseconds" : 176.55020833262824,
+    "millisecondsSinceStart" : 15795.220791667816,
+    "phase" : "focus_1"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 69,
+      "HomeView" : 51
+    },
+    "event" : "UIKeyboardDidShowNotification",
+    "millisecondsSinceStart" : 15825.492125000892,
+    "phase" : "focus_1"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 69,
+      "HomeView" : 51
+    },
+    "event" : "UIKeyboardWillShowNotification",
+    "millisecondsSinceStart" : 15825.925916666165,
+    "phase" : "focus_1"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 70,
+      "HomeView" : 51
+    },
+    "event" : "UIKeyboardDidShowNotification",
+    "millisecondsSinceStart" : 15859.662958333502,
+    "phase" : "focus_1"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 70,
+      "HomeView" : 51
+    },
+    "event" : "UIKeyboardWillShowNotification",
+    "millisecondsSinceStart" : 15860.687374999543,
+    "phase" : "focus_1"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 71,
+      "HomeView" : 51
+    },
+    "event" : "UIKeyboardDidShowNotification",
+    "millisecondsSinceStart" : 16187.499416668288,
+    "phase" : "focus_1"
+  },
+  {
+    "attempt" : 1,
+    "bodyCounts" : {
+      "HomeFeed" : 71,
+      "HomeView" : 51
+    },
+    "event" : "request_blur",
+    "millisecondsSinceStart" : 19784.255166665389,
+    "phase" : "focus_1"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 72,
+      "HomeView" : 51
+    },
+    "event" : "UIKeyboardWillHideNotification",
+    "millisecondsSinceStart" : 19848.116708333691,
+    "phase" : "focus_1"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 72,
+      "HomeView" : 51
+    },
+    "event" : "frame_gap",
+    "milliseconds" : 83.172958333307179,
+    "millisecondsSinceStart" : 19852.35666666631,
+    "phase" : "focus_1"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 73,
+      "HomeView" : 52
+    },
+    "event" : "focus_changed",
+    "focused" : false,
+    "millisecondsSinceStart" : 19855.210124998848,
+    "phase" : "focus_1"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 73,
+      "HomeView" : 52
+    },
+    "event" : "UIKeyboardDidHideNotification",
+    "millisecondsSinceStart" : 20261.267875001067,
+    "phase" : "focus_1"
+  },
+  {
+    "attempt" : 2,
+    "bodyCounts" : {
+      "HomeFeed" : 73,
+      "HomeView" : 52
+    },
+    "event" : "request_focus",
+    "millisecondsSinceStart" : 21881.463333334978,
+    "phase" : "focus_2"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 73,
+      "HomeView" : 52
+    },
+    "event" : "frame_gap",
+    "milliseconds" : 77.075875000446104,
+    "millisecondsSinceStart" : 21946.682750000036,
+    "phase" : "focus_2"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 74,
+      "HomeView" : 53
+    },
+    "event" : "focus_changed",
+    "focused" : true,
+    "millisecondsSinceStart" : 21950.28904166611,
+    "phase" : "focus_2"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 75,
+      "HomeView" : 53
+    },
+    "event" : "UIKeyboardWillShowNotification",
+    "millisecondsSinceStart" : 22003.151541666739,
+    "phase" : "focus_2"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 75,
+      "HomeView" : 53
+    },
+    "event" : "frame_gap",
+    "milliseconds" : 58.151166667812504,
+    "millisecondsSinceStart" : 22004.830500001844,
+    "phase" : "focus_2"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 75,
+      "HomeView" : 53
+    },
+    "event" : "UIKeyboardDidShowNotification",
+    "millisecondsSinceStart" : 22405.067625000811,
+    "phase" : "focus_2"
+  },
+  {
+    "attempt" : 2,
+    "bodyCounts" : {
+      "HomeFeed" : 75,
+      "HomeView" : 53
+    },
+    "event" : "request_blur",
+    "millisecondsSinceStart" : 26079.028000000108,
+    "phase" : "focus_2"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 76,
+      "HomeView" : 53
+    },
+    "event" : "UIKeyboardWillHideNotification",
+    "millisecondsSinceStart" : 26140.227166666591,
+    "phase" : "focus_2"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 76,
+      "HomeView" : 53
+    },
+    "event" : "frame_gap",
+    "milliseconds" : 73.336749999725726,
+    "millisecondsSinceStart" : 26143.668416665605,
+    "phase" : "focus_2"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 77,
+      "HomeView" : 54
+    },
+    "event" : "focus_changed",
+    "focused" : false,
+    "millisecondsSinceStart" : 26146.543166665651,
+    "phase" : "focus_2"
+  },
+  {
+    "animationSeconds" : 0.38329999999999997,
+    "bodyCounts" : {
+      "HomeFeed" : 77,
+      "HomeView" : 54
+    },
+    "event" : "UIKeyboardDidHideNotification",
+    "millisecondsSinceStart" : 26546.417375000601,
+    "phase" : "focus_2"
+  },
+  {
+    "bodyCounts" : {
+      "HomeFeed" : 77,
+      "HomeView" : 54
+    },
+    "event" : "probe_finished",
+    "millisecondsSinceStart" : 28084.808333333058,
+    "phase" : "done"
+  }
+]

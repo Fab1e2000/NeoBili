@@ -78,7 +78,7 @@ private struct DynamicVoteSheet: View {
                                 .disabled(selection.isEmpty || isSubmitting)
                         }
                     }
-                    if isLoading { ProgressView() }
+                    if isLoading { LoadingTaskAnchor() }
                     if let message {
                         Text(message).font(.footnote).foregroundStyle(.secondary)
                         if response == nil {

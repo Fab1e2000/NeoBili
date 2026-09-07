@@ -26,7 +26,7 @@ struct FavoriteFolderSheet: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    LoadingTaskAnchor().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let errorMessage {
                     ContentUnavailableView(
                         "加载失败",

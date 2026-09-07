@@ -43,19 +43,30 @@ struct UgcSeasonSheet: View {
     let onSelect: (UgcSeasonEpisode) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
+
+    private var visibleEpisodes: [UgcSeasonEpisode] {
+        season.episodes.hidingKnownPortraitVideos(hidesPortraitVideos)
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                Picker("选择分集", selection: selection) {
-                    ForEach(season.episodes) { episode in
-                        row(episode)
-                            .tag(Optional(episode.id))
+                if visibleEpisodes.isEmpty, season.episodes.hasPendingVideoDimensions(hidesPortraitVideos) {
+                    LoadingTaskAnchor()
+                } else if visibleEpisodes.isEmpty {
+                    ContentUnavailableView("没有可显示的分集", systemImage: "rectangle.slash")
+                } else {
+                    Picker("选择分集", selection: selection) {
+                        ForEach(visibleEpisodes) { episode in
+                            row(episode)
+                                .tag(Optional(episode.id))
+                        }
                     }
+                    .pickerStyle(.inline)
+                    .tint(.primary)
+                    .labelsHidden()
                 }
-                .pickerStyle(.inline)
-                .tint(.primary)
-                .labelsHidden()
             }
             .listStyle(.insetGrouped)
             // 左缘触控死区：防止边缘误触直接切了分集。
@@ -69,14 +80,15 @@ struct UgcSeasonSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .resolvePortraitVideos(season.episodes)
     }
 
     private var selection: Binding<String?> {
         Binding(get: {
             guard let currentBvid else { return nil }
-            return season.episodes.first(where: { $0.bvid == currentBvid })?.id
+            return visibleEpisodes.first(where: { $0.bvid == currentBvid })?.id
         }, set: { id in
-            guard let id, let episode = season.episodes.first(where: { $0.id == id }) else { return }
+            guard let id, let episode = visibleEpisodes.first(where: { $0.id == id }) else { return }
             onSelect(episode)
             dismiss()
         })
@@ -100,13 +112,11 @@ struct UgcSeasonSheet: View {
                         .padding(4)
                 }
             }
-
             Text(episode.title ?? "")
                 .font(.subheadline)
                 .foregroundStyle(.primary)
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
         }
         .contentShape(Rectangle())
     }

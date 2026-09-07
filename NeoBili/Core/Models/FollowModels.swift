@@ -7,7 +7,7 @@ import Foundation
 /// 动态接口和空间投稿接口返回的字段名、类型都不一样（动态的播放量是服务端
 /// 排好版的「1.2万」，空间接口给的是裸数字），所以两边各自转换成这一个模型，
 /// 卡片视图只认识它。
-struct FollowedVideo: Identifiable, Hashable, Sendable {
+struct FollowedVideo: Identifiable, Hashable, Sendable, VideoDimensionProviding {
     /// 列表标识。动态流用动态 id（同一个稿件可能被不同动态带出来），
     /// 空间投稿列表用 bvid。
     let id: String
@@ -24,6 +24,7 @@ struct FollowedVideo: Identifiable, Hashable, Sendable {
     let authorFace: String
     /// 「3小时前」这类相对时间。
     let publishedText: String
+    var dimension: VideoDimension? = nil
 
     var secureCoverURL: URL? { URL.biliSecure(cover) }
     var secureAvatarURL: URL? { URL.biliSecure(authorFace) }
@@ -453,9 +454,10 @@ struct DynamicItem: Decodable, Sendable {
         let cover: String?
         let durationText: String?
         let stat: Stat?
+        let dimension: VideoDimension?
 
         enum CodingKeys: String, CodingKey {
-            case aid, bvid, title, cover, stat
+            case aid, bvid, title, cover, stat, dimension
             case durationText = "duration_text"
         }
 
@@ -467,6 +469,7 @@ struct DynamicItem: Decodable, Sendable {
             cover = container.flexibleString(forKey: .cover)
             durationText = container.flexibleString(forKey: .durationText)
             stat = try? container.decodeIfPresent(Stat.self, forKey: .stat)
+            dimension = try? container.decodeIfPresent(VideoDimension.self, forKey: .dimension)
         }
 
         /// 播放量和弹幕数在动态接口里通常已经是「1.2万」这样的成品文字，
@@ -504,7 +507,8 @@ struct DynamicItem: Decodable, Sendable {
             authorMid: author?.mid ?? 0,
             authorName: author?.name ?? "",
             authorFace: author?.face ?? "",
-            publishedText: author?.pubTime ?? ""
+            publishedText: author?.pubTime ?? "",
+            dimension: archive.dimension
         )
     }
 
@@ -602,7 +606,7 @@ struct SpaceVideoPage: Decodable, Sendable {
 }
 
 /// 空间投稿列表里的一条视频。时长是 `12:34` 这样的字符串，播放量是裸数字。
-struct SpaceVideo: Decodable, Identifiable, Hashable, Sendable {
+struct SpaceVideo: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
     let aid: Int
     let bvid: String
     let title: String
@@ -612,11 +616,12 @@ struct SpaceVideo: Decodable, Identifiable, Hashable, Sendable {
     let author: String
     let mid: Int
     let created: Int
+    let dimension: VideoDimension?
 
     var id: String { bvid }
 
     enum CodingKeys: String, CodingKey {
-        case aid, bvid, title, pic, length, play, author, mid, created
+        case aid, bvid, title, pic, length, play, author, mid, created, dimension
     }
 
     init(from decoder: Decoder) throws {
@@ -631,6 +636,7 @@ struct SpaceVideo: Decodable, Identifiable, Hashable, Sendable {
         author = container.flexibleString(forKey: .author) ?? ""
         mid = container.flexibleInt(forKey: .mid) ?? 0
         created = container.flexibleInt(forKey: .created) ?? 0
+        dimension = try? container.decodeIfPresent(VideoDimension.self, forKey: .dimension)
     }
 
     func asFollowedVideo(avatar: String) -> FollowedVideo {
@@ -645,7 +651,8 @@ struct SpaceVideo: Decodable, Identifiable, Hashable, Sendable {
             authorMid: mid,
             authorName: author,
             authorFace: avatar,
-            publishedText: created > 0 ? created.biliRelativeTimeText : ""
+            publishedText: created > 0 ? created.biliRelativeTimeText : "",
+            dimension: dimension
         )
     }
 }

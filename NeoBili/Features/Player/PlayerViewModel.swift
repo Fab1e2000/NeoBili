@@ -173,7 +173,7 @@ actor VideoPreparationCache {
 final class PlayerViewModel {
     let bvid: String
     let cid: Int
-    let configuration: VideoPlaybackConfiguration
+    private(set) var configuration: VideoPlaybackConfiguration
     private(set) var session: MPVPlayerSession
 
     private(set) var isLoading = true
@@ -184,6 +184,60 @@ final class PlayerViewModel {
     /// 已经缓冲到的位置，进度条用它画出比播放位置更靠前的浅色区段。
     private(set) var bufferedTime: Double = 0
     private(set) var hasRenderedFirstFrame = false
+
+    private var playbackPayload: PlayURLData?
+    private(set) var isSwitchingQuality = false
+
+    var availableVideoQualities: [Int] {
+        Array(Set(playbackPayload?.dash?.video.filter { URL(string: $0.baseUrl) != nil }.map(\.id) ?? [])).sorted(by: >)
+    }
+
+    var availableAudioQualities: [Int] {
+        Array(Set(playbackPayload?.dash?.allAudio.filter { URL(string: $0.baseUrl) != nil }.map(\.id) ?? []))
+            .sorted { PlaybackQuality.audioRank($0) > PlaybackQuality.audioRank($1) }
+    }
+
+    var selectedVideoQuality: Int? {
+        guard let payload = playbackPayload else { return nil }
+        return payload.dash.flatMap { PlaybackSourceBuilder.bestVideoStream($0.video, preferredQuality: configuration.quality)?.id }
+            ?? payload.quality
+    }
+
+    var selectedAudioQuality: Int? {
+        playbackPayload?.dash.flatMap {
+            PlaybackSourceBuilder.bestAudioStream($0.allAudio, preferredQuality: configuration.audioQuality)?.id
+        }
+    }
+
+    /// 使用已获取的音视频轨道重新打开当前内核，不重新补查详情或丢失播放位置。
+    func selectQuality(video: Int? = nil, audio: Int? = nil) async -> String? {
+        guard !isStopped, !isLoading, !isSwitchingQuality, let payload = playbackPayload else { return nil }
+        if let video, !availableVideoQualities.contains(video) { return "当前视频不支持该分辨率" }
+        if let audio, !availableAudioQualities.contains(audio) { return "当前视频不支持该音质" }
+        var next = configuration
+        if let video { next.quality = video }
+        if let audio { next.audioQuality = audio }
+        guard next != configuration else { return nil }
+        do {
+            let source = try PlaybackSourceBuilder.makeSource(from: payload, configuration: next)
+            let position = currentTime
+            let playing = isPlaying
+            isSwitchingQuality = true
+            isLoading = true
+            recoveryTask?.cancel()
+            sourceCandidates = source.candidates
+            candidateIndex = 0
+            configuration = next
+            bufferedTime = position
+            try await session.open(source: sourceCandidates[0], startTime: position)
+            if playing { session.play() } else { session.pause() }
+            return nil
+        } catch {
+            isSwitchingQuality = false
+            isLoading = false
+            return error.isCancellation ? nil : error.localizedDescription
+        }
+    }
 
     private var isStopped = false
     private var isFetchingSource = false
@@ -323,6 +377,7 @@ final class PlayerViewModel {
             let payload = try await playbackURLLoader(bvid, cid)
             try Task.checkCancellation()
             guard !isStopped else { return }
+            playbackPayload = payload
             let source = try PlaybackSourceBuilder.makeSource(from: payload, configuration: configuration)
             sourceCandidates = source.candidates
             candidateIndex = 0
@@ -371,6 +426,7 @@ final class PlayerViewModel {
     }
 
     private func showPlaybackError(_ message: String) {
+        isSwitchingQuality = false
         errorMessage = message
         isPlaying = false
         isLoading = false
@@ -466,6 +522,7 @@ final class PlayerViewModel {
 
         switch event {
         case .firstFrame:
+            isSwitchingQuality = false
             hasRenderedFirstFrame = true
             isLoading = false
             isBuffering = false
@@ -482,7 +539,7 @@ final class PlayerViewModel {
             isBuffering = buffering
             if !hasRenderedFirstFrame { isLoading = true }
         case .position(let position):
-            guard hasRenderedFirstFrame else { return }
+            guard hasRenderedFirstFrame, !isSwitchingQuality else { return }
             currentTime = position
             // 观看进度心跳：距离上次上报前进超过 5 秒才发，对齐官方
             // 网页播放器的节奏。

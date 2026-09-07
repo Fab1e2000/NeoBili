@@ -80,7 +80,7 @@ struct QRLoginSheet: View {
 
             switch phase {
             case .generating:
-                ProgressView()
+                LoadingTaskAnchor()
             case .expired:
                 expiredPrompt
             case .succeeded:
@@ -139,7 +139,7 @@ struct QRLoginSheet: View {
 
     private var statusLabel: some View {
         switch phase {
-        case .generating: Text("正在生成二维码…")
+        case .generating: Text("")
         case .waiting: Text("打开「哔哩哔哩」App 扫一扫")
         case .scanned: Text("已扫码，请在手机上确认登录")
         case .expired: Text("二维码有效期约 3 分钟")

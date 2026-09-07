@@ -11,6 +11,7 @@ struct SpaceView: View {
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @State private var viewModel: SpaceViewModel
     @State private var tab: Tab = .videos
     @Namespace private var dynamicTransition
@@ -98,6 +99,7 @@ struct SpaceView: View {
                 .actionFeedbackOverlay()
                 .navigationTransition(.zoom(sourceID: "space-dynamic-\(entry.id)", in: dynamicTransition))
         }
+
     }
 
     /// 分页始终占据同一个视口；头部覆盖其上，列表预留完整头部的空间。
@@ -108,8 +110,17 @@ struct SpaceView: View {
                 switch pageTab {
                 case .videos:
                     videoList
+                        .resolvePortraitVideos(viewModel.videos, batchID: viewModel.videosGeneration) {
+                            await viewModel.loadReplacementPage()
+                            return viewModel.videos
+                        }
                 case .dynamics:
                     dynamicList
+                        .resolvePortraitVideos(viewModel.dynamics.entries.compactMap(\.video),
+                                               batchID: viewModel.dynamics.entriesGeneration) {
+                            await viewModel.dynamics.loadReplacementPage()
+                            return viewModel.dynamics.entries.compactMap(\.video)
+                        }
                 }
             }
             .frame(maxWidth: .infinity)
@@ -313,16 +324,28 @@ struct SpaceView: View {
 
     @ViewBuilder
     private var videoList: some View {
-        if viewModel.isLoadingVideos, viewModel.videos.isEmpty {
-            ProgressView().padding(.vertical, 40)
+        let visibleVideos = viewModel.videos.hidingKnownPortraitVideos(hidesPortraitVideos)
+
+        if visibleVideos.isEmpty, viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos) {
+            LoadingTaskAnchor().padding(.vertical, 40)
+        } else if viewModel.isLoadingVideos, viewModel.videos.isEmpty {
+            LoadingTaskAnchor().padding(.vertical, 40)
         } else if let message = viewModel.videosError, viewModel.videos.isEmpty {
             ContentUnavailableView("加载失败", systemImage: "wifi.slash", description: Text(message))
                 .padding(.vertical, 20)
-        } else if viewModel.videos.isEmpty {
-            ContentUnavailableView("没有投稿", systemImage: "video.slash", description: Text("这位 UP 主还没有公开的视频稿件。"))
+        } else if visibleVideos.isEmpty {
+            ContentUnavailableView(
+                viewModel.videos.isEmpty ? "没有投稿" : "没有可显示的视频",
+                systemImage: "video.slash",
+                description: Text(
+                    viewModel.videos.isEmpty
+                        ? "这位 UP 主还没有公开的视频稿件。"
+                        : "当前加载的投稿都被内容过滤设置隐藏了。"
+                )
+            )
                 .padding(.vertical, 20)
         } else {
-            ForEach(viewModel.videos) { video in
+            ForEach(visibleVideos) { video in
                 Button {
                     nowPlaying.open(
                         VideoDetailRoute(
@@ -347,16 +370,22 @@ struct SpaceView: View {
                 .contextMenu {
                     WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
                 }
+                .videoEntranceIdentity(video.bvid)
                 .videoTransitionSource(video.bvid, in: videoTransition)
                 .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
                 .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
-                .task { await viewModel.loadMoreVideosIfNeeded(current: video) }
+                .task {
+                    await viewModel.loadMoreVideosIfNeeded(
+                        current: video,
+                        hidingKnownPortraitVideos: hidesPortraitVideos
+                    )
+                }
                 // 空间投稿列表里没有 cid，预取要先取一次详情再取播放地址。
                 .task { await VideoPreparationCache.shared.prefetch(bvid: video.bvid) }
             }
 
             if viewModel.isLoadingMoreVideos {
-                ProgressView().padding()
+                LoadingTaskAnchor().padding()
             }
         }
     }
@@ -368,7 +397,7 @@ struct SpaceView: View {
         let feed = viewModel.dynamics
 
         if feed.isLoading, feed.entries.isEmpty {
-            ProgressView().padding(.vertical, 40)
+            LoadingTaskAnchor().padding(.vertical, 40)
         } else if let message = feed.errorMessage, feed.entries.isEmpty {
             ContentUnavailableView("加载失败", systemImage: "wifi.slash", description: Text(message))
                 .padding(.vertical, 20)
@@ -376,7 +405,16 @@ struct SpaceView: View {
             ContentUnavailableView("还没有动态", systemImage: "bell.slash", description: Text("这位 UP 主还没有发过动态。"))
                 .padding(.vertical, 20)
         } else {
-            ForEach(feed.entries) { entry in
+            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos) ?? true }
+            if visibleEntries.isEmpty {
+                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos) {
+                    LoadingTaskAnchor().padding()
+                } else {
+                    Button("继续加载动态") { Task { await feed.loadReplacementPage() } }
+                        .padding()
+                }
+            }
+            ForEach(visibleEntries) { entry in
                 DynamicCard(
                     entry: entry,
                     isLiked: feed.isLiked(entry),
@@ -387,12 +425,15 @@ struct SpaceView: View {
                     onLike: { like(entry) },
                     onOpenDetail: { detailEntry = entry }
                 )
+                .videoCardEntrance()
+                .videoEntranceIdentity(entry.video?.bvid)
                 .videoTransitionSource("space-dynamic-\(entry.id)", in: dynamicTransition)
                 .onScrollVisibilityChange(threshold: 0.1) { visible in
                     if visible { FollowingReadStore.shared.markViewed(entry) }
                 }
                 .contextMenu {
-                    if let video = entry.video {
+                    if let video = entry.video,
+                       video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
                         WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
                     }
                 }
@@ -400,14 +441,15 @@ struct SpaceView: View {
                 .padding(.vertical, DynamicCardLayout.cardVerticalSpacing)
                 .task { await feed.loadMoreIfNeeded(current: entry) }
                 .task {
-                    if let video = entry.video {
+                    if let video = entry.video,
+                       video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
                         await VideoPreparationCache.shared.prefetch(bvid: video.bvid)
                     }
                 }
             }
 
             if feed.isLoadingMore {
-                ProgressView().padding()
+                LoadingTaskAnchor().padding()
             }
         }
     }

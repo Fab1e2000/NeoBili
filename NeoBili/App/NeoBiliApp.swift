@@ -5,6 +5,8 @@ struct NeoBiliApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
+        // 保留系统下拉刷新手势，隐藏其加载指示器。
+        UIRefreshControl.appearance().tintColor = .clear
         // stdout is fully buffered off a terminal, so `print()` debug logs
         // just sit unflushed instead of reaching `devicectl --console`.
         setvbuf(stdout, nil, _IONBF, 0)

@@ -107,7 +107,7 @@ private struct CommentComposerHost: ViewModifier {
 
                 Button(action: send) {
                     Group {
-                        if sending { ProgressView() } else { Image(systemName: "arrow.up").font(.headline) }
+                        Image(systemName: "arrow.up").font(.headline)
                     }
                     .frame(width: 24, height: 24)
                 }

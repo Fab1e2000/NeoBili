@@ -296,7 +296,7 @@ struct VideoPage: View {
                         .aspectRatio(contentMode: .fit)
                 }
 
-                ProgressView().tint(.white)
+                LoadingTaskAnchor().tint(.white)
             }
         }
     }
@@ -377,7 +377,7 @@ struct VideoPage: View {
                          collapseConsume: consumePausedScroll, collapseEnd: finishVideoCollapse,
                          canCollapse: canConsumePausedScroll, collapseCanContinue: canContinueCollapseMomentum)
         } else {
-            ProgressView()
+            LoadingTaskAnchor()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
