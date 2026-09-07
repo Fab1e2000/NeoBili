@@ -73,6 +73,9 @@ struct VideoPage: View {
     /// 简介区左右留白。tag 那一行要用同样的值才能和正文对齐。
     private static let contentInset: CGFloat = 16
 
+    @State private var collapseTravel: CGFloat = 160
+    @State private var videoCollapse: CGFloat = 0
+    @State private var collapsePink: Double = 0
     @State private var isShowingSeason = false
     @State private var isShowingParts = false
     @State private var isShowingFavoriteFolders = false
@@ -96,59 +99,113 @@ struct VideoPage: View {
         @Bindable var store = store
 
         return GeometryReader { geometry in
+            // 相比原始位置上移最多 9pt，仅压缩较高的顶部安全区。
+            let topOverlap: CGFloat = isFullScreen ? 0 : min(9, max(0, geometry.safeAreaInsets.top - 47))
             VStack(spacing: 0) {
-                videoArea
-                    // 左缘触控死区先盖在视频画面上；关闭按钮的 overlay 挂在
-                    // 它后面、层级更高，视频页唯一的出口不会被死区挡住。
-                    .leftEdgeTapDeadZone()
-                    // 全屏时这个按钮让位给播放控件里的缩小按钮。
-                    .overlay(alignment: .topLeading) {
-                        if !isFullScreen {
-                            closeButton
-                        }
+                let fullHeight = Self.inlineVideoHeight(for: geometry.size)
+                let progress = isFullScreen ? 0 : videoCollapse
+                ZStack {
+                    videoArea
+                        .frame(width: geometry.size.width, height: isFullScreen ? geometry.size.height : fullHeight)
+                        // 原画面保持尺寸，随顶部容器缩短向上退出，不把视频压成方形。
+                        .offset(y: -(fullHeight - 56) * progress / 2)
+                        .allowsHitTesting(progress == 0)
+                        .accessibilityHidden(progress > 0)
+
+                }
+                .frame(width: geometry.size.width,
+                       height: isFullScreen ? geometry.size.height : fullHeight + (56 - fullHeight) * progress)
+                .overlay {
+                    // 在最终可见区域上直接染色，完整盖住播放器的原生渲染层与边缘。
+                    if !isFullScreen {
+                        Color.accentColor
+                            .opacity(collapsePink)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
                     }
-                    // `.aspectRatio(nil, .fit)` asks the child for its ideal
-                    // ratio; it does not remove the aspect-ratio constraint. A
-                    // pause changes the controls' intrinsic content and caused
-                    // that ratio to be measured again, briefly resizing the
-                    // fullscreen video. Explicit bounds keep playback updates
-                    // from participating in the outer layout.
-                    .frame(
-                        width: geometry.size.width,
-                        height: isFullScreen
-                            ? geometry.size.height
-                            : Self.inlineVideoHeight(for: geometry.size)
-                    )
+                }
+                .overlay {
+                    if !isFullScreen {
+                        Button {
+                            videoCollapse = 0
+                            store.player?.play()
+                        } label: {
+                            Image(systemName: "play.fill")
+                                .font(.title3)
+                                .foregroundStyle(.white)
+                                .frame(width: 56, height: 56)
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(collapsePink)
+                        .allowsHitTesting(progress > 0)
+                        .accessibilityHidden(progress == 0)
+                        .accessibilityLabel("展开视频并继续播放")
+                    }
+                }
+                .clipped()
+                .leftEdgeTapDeadZone()
+                .overlay(alignment: .topLeading) {
+                    if !isFullScreen { closeButton }
+                }
 
                 if !isFullScreen {
-                    // 选项栏在最下面：视频下方整块都留给内容，切换控件落到屏幕底边，
-                    // 拇指够得到，也不再有一条直角分隔线压在圆角控件下面。
-                    VStack(spacing: 0) {
-                        sectionPages
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            // 黑色只属于上方视频区域；下面的内容用普通页面底色。
-                            // 详情还没返回时也先铺好，否则进入视频页会闪一下黑。
-                            .background(Color(uiColor: .systemBackground))
+                    collapseFill.frame(height: 10)
+                }
 
+                if !isFullScreen {
+                    // 选择器固定在播放器下方，简介和评论在其下方切页。
+                    VStack(spacing: 0) {
                         VideoSectionBar(
                             selection: $store.section,
-                            // 用详情里的 `stat.reply`，而不是评论列表的总数：后者要等
-                            // 用户真的划到评论页、列表发出第一次请求之后才有值，
-                            // 于是标签上的数字迟迟不出现。详情一回来这里就有了。
                             commentCount: viewModel?.detail?.stat.reply ?? 0
                         )
+
+                        sectionPages
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .background(Color(uiColor: .systemBackground))
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))
+                    .background {
+                        // 顶角外露出页面黑底，底部安全区仍延续内容底色。
+                        UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12)
+                            .fill(Color(uiColor: .systemBackground))
+                            .ignoresSafeArea(edges: .bottom)
                     }
                     // 简介和相关视频、评论区与视频画面盖同一条左缘死区，
                     // 防止边缘误触点开相关视频。
                     .leftEdgeTapDeadZone()
                 }
             }
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+            .frame(width: geometry.size.width, height: geometry.size.height + topOverlap, alignment: .top)
+            .offset(y: -topOverlap)
+            .onAppear { collapseTravel = max(1, Self.inlineVideoHeight(for: geometry.size) - 56) }
+            .onChange(of: geometry.size) { _, size in
+                collapseTravel = max(1, Self.inlineVideoHeight(for: size) - 56)
+            }
         }
         // 顶部导航栏隐藏后，状态栏安全区会露出最外层背景。设为黑色后，它会和视频画面连成一体。
-        .background(Color.black)
+        .background {
+            Group {
+                if isFullScreen { Color.black } else { collapseFill }
+            }
+            // 自定义背景不会自动延伸到状态栏，显式覆盖顶部安全区。
+            .ignoresSafeArea(edges: .top)
+        }
         .ignoresSafeArea(isFullScreen ? .all : [], edges: .all)
         .statusBarHidden(isFullScreen)
+        .onChange(of: videoCollapse > 0) { _, collapsing in
+            // 颜色只在开始/退出收缩时触发，持续拖动不会重新启动渐变。
+            withAnimation(.linear(duration: 0.5)) {
+                collapsePink = collapsing ? 1 : 0
+            }
+        }
+        .onChange(of: store.route?.id) { videoCollapse = 0 }
+        .onChange(of: store.player?.isPlaying) { _, playing in
+            if playing == true { videoCollapse = 0 }
+        }
+        .onChange(of: isFullScreen) { _, fullScreen in
+            if fullScreen { videoCollapse = 0 }
+        }
         // 评论里的配图点开看大图。视频页本身就是 fullScreenCover，
         // 查看器挂在它内部而不是根视图上。
         .imageViewerHost()
@@ -252,6 +309,38 @@ struct VideoPage: View {
         }
     }
 
+    /// 染色使用独立的时间进度，不影响由手指控制的收缩高度。
+    private var collapseFill: some View {
+        Color.black.overlay {
+            Color.accentColor.opacity(collapsePink)
+        }
+    }
+
+    private func canConsumePausedScroll() -> Bool {
+        guard !isFullScreen, let player = store.player else { return false }
+        return !player.isPlaying && player.hasRenderedFirstFrame && player.errorMessage == nil && videoCollapse < 1
+    }
+
+    private func canContinueCollapseMomentum() -> Bool {
+        !isFullScreen && store.player?.isPlaying == false && videoCollapse > 0
+    }
+
+    private func consumePausedScroll(_ distance: CGFloat) -> CGFloat {
+        guard canConsumePausedScroll() else { return 0 }
+        let travel = collapseTravel
+        let old = videoCollapse
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            videoCollapse = min(max(old + distance / travel, 0), 1)
+        }
+        return (videoCollapse - old) * travel
+    }
+
+    private func finishVideoCollapse() {
+        // 松手后的距离由滚动桥接器按列表减速率继续消费，不做端点吸附。
+    }
+
     /// 简介和评论并排放在一个横向分页容器里。
     ///
     /// 这里特意不用 `.page` 样式的 TabView：`indexDisplayMode` 设成 `.never`
@@ -292,7 +381,9 @@ struct VideoPage: View {
         @Bindable var store = store
 
         if let commentsViewModel = store.commentsViewModel {
-            CommentsView(viewModel: commentsViewModel, scrollPosition: $store.commentsScroll)
+            CommentsView(viewModel: commentsViewModel, scrollPosition: $store.commentsScroll,
+                         collapseConsume: consumePausedScroll, collapseEnd: finishVideoCollapse,
+                         canCollapse: canConsumePausedScroll, collapseCanContinue: canContinueCollapseMomentum)
         } else {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -318,7 +409,13 @@ struct VideoPage: View {
                 .padding(.top, 14)
                 .padding(.bottom, 16)
             }
+            .background {
+                PausedVideoCollapseScroll(consume: consumePausedScroll, end: finishVideoCollapse, canConsume: canConsumePausedScroll,
+                                          canContinue: canContinueCollapseMomentum)
+                    .allowsHitTesting(false)
+            }
         }
+        .scrollBounceBehavior(.always, axes: .vertical)
         // 收起再展开时回到原来的滚动位置。
         .scrollPosition($store.descriptionScroll)
         // 简介和相关视频共用普通页面底色。

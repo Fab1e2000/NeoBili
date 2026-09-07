@@ -82,11 +82,24 @@ struct CommentsView: View {
     let viewModel: CommentsViewModel
     /// 切换简介和评论时保留评论列表的滚动位置。
     @Binding var scrollPosition: ScrollPosition
+    var collapseConsume: ((CGFloat) -> CGFloat)? = nil
+    var collapseEnd: (() -> Void)? = nil
+    var canCollapse: (() -> Bool)? = nil
+    var collapseCanContinue: (() -> Bool)? = nil
 
     var body: some View {
         ScrollView {
             CommentsList(viewModel: viewModel)
+                .background {
+                    if let collapseConsume {
+                        PausedVideoCollapseScroll(consume: collapseConsume, end: { collapseEnd?() },
+                                                  canConsume: { canCollapse?() ?? false },
+                                                  canContinue: { collapseCanContinue?() ?? false })
+                            .allowsHitTesting(false)
+                    }
+                }
         }
+        .scrollBounceBehavior(.always, axes: .vertical)
         .scrollPosition($scrollPosition)
         .overlay {
             CommentsPlaceholder(viewModel: viewModel)
