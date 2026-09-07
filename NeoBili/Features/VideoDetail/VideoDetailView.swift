@@ -152,7 +152,10 @@ struct VideoPage: View {
                     }
                 }
                 .clipped()
-                .leftEdgeTapDeadZone()
+                .background {
+                    PlayerReturnGestureGuard(enabled: spacePath.isEmpty)
+                        .allowsHitTesting(false)
+                }
 
                 if !isFullScreen {
                     collapseFill.frame(height: 10)
