@@ -16,8 +16,41 @@ final class CommentsViewModel {
     private(set) var errorMessage: String?
     private(set) var hasMore = true
 
+    private(set) var submittedReplies: [Int: [Comment]] = [:]
+    @ObservationIgnored private var drafts: [Int: CommentDraft] = [:]
+
+    func commentDraft(root: Int) -> CommentDraft {
+        if let draft = drafts[root] { return draft }
+        let draft = CommentDraft()
+        drafts[root] = draft
+        return draft
+    }
+
+    func clearCommentDrafts() {
+        for draft in drafts.values {
+            draft.text = ""
+            draft.target = nil
+        }
+    }
+
     private var nextPage = 1
     private let fetchComments: @MainActor (Int, Int, Int) async throws -> CommentPage
+
+    /// 只显示服务器确认返回的新评论，不构造虚假的本地发送成功记录。
+    func acceptSubmission(_ comment: Comment?, root: Int?) {
+        guard let comment else { return }
+        if let root {
+            if submittedReplies[root]?.contains(where: { $0.rpid == comment.rpid }) != true {
+                submittedReplies[root, default: []].insert(comment, at: 0)
+            }
+            var replies = loadedReplies[root] ?? comments.first(where: { $0.rpid == root })?.replies ?? []
+            if !replies.contains(where: { $0.rpid == comment.rpid }) { replies.insert(comment, at: 0) }
+            loadedReplies[root] = replies
+        } else if !comments.contains(where: { $0.rpid == comment.rpid }) {
+            comments.insert(comment, at: 0)
+            totalCount += 1
+        }
+    }
 
     // MARK: - 评论点赞
 
@@ -124,7 +157,9 @@ final class CommentsViewModel {
         if isExpanded(comment), let loaded = loadedReplies[comment.id] {
             return loaded
         }
-        return comment.replies ?? []
+        var known: Set<Int> = []
+        return ((submittedReplies[comment.id] ?? []) + (comment.replies ?? []))
+            .filter { known.insert($0.rpid).inserted }
     }
 
     /// 仅供间距测试：跳过网络直接把楼中楼置为展开状态。
@@ -158,7 +193,7 @@ final class CommentsViewModel {
 
     /// 单独页面第一次打开时把第一页回复取回来。已经取过就直接返回。
     func loadRepliesIfNeeded(for comment: Comment) async {
-        guard loadedReplies[comment.id] == nil else { return }
+        guard replyNextPage[comment.id] == nil else { return }
         await loadMoreReplies(for: comment)
     }
 

@@ -47,6 +47,19 @@ struct SearchResultsView: View {
                     // 详情会一起缓存下来，进入视频页时不会重复请求。
                     .task { await VideoPreparationCache.shared.prefetch(bvid: item.bvid) }
                 }
+                if let message = viewModel.loadMoreError {
+                    VStack(spacing: 8) {
+                        Text(message).font(.caption).foregroundStyle(.secondary)
+                        Button("重试加载") { Task { await viewModel.loadMore() } }
+                            .buttonStyle(.bordered)
+                    }
+                    .padding()
+                } else if viewModel.hasMore {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .task(id: viewModel.pageNumber) { await viewModel.loadMore() }
+                }
             }
         }
         .scrollDismissesKeyboard(.immediately)

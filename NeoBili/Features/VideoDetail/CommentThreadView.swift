@@ -25,6 +25,7 @@ private struct CommentThreadHost: ViewModifier {
             .environment(\.openCommentThread) { root = $0 }
             .sheet(item: $root) { comment in
                 CommentThreadView(root: comment, viewModel: viewModel)
+                    .environment(\.commentBottomInset, 0)
             }
     }
 }
@@ -71,6 +72,7 @@ struct CommentThreadView: View {
                     footer
                 }
             }
+            .commentComposer(viewModel: viewModel, root: root)
             .navigationTitle("回复")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
