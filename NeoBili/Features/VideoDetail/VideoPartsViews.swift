@@ -10,31 +10,18 @@ struct VideoPartsRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 8) {
-                Text("分P · \(currentPartName)")
-                    .font(.subheadline.weight(.medium))
+            HStack {
+                Label("分P · \(currentPartName)", systemImage: "list.number")
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "list.bullet")
-                    .font(.caption)
-
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Text(progressText)
-                    .font(.caption)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
+        .controlSize(.large)
         .accessibilityLabel("分P，\(progressText)，展开分P列表")
     }
 
@@ -52,7 +39,7 @@ struct VideoPartsRow: View {
     }
 }
 
-/// 分P列表弹层。当前这一P高亮并带播放标记，点其它P就地切换，
+/// 分P列表弹层。当前这一P由原生 Picker 显示选中标记，点其它P就地切换，
 /// 和合集分集列表（`UgcSeasonSheet`）一个交互。
 struct VideoPartsSheet: View {
     let parts: [VideoPart]
@@ -64,18 +51,17 @@ struct VideoPartsSheet: View {
 
     var body: some View {
         NavigationStack {
-            List(parts) { part in
-                let isCurrent = part.cid == currentCid
-                Button {
-                    onSelect(part)
-                    dismiss()
-                } label: {
-                    row(part, isCurrent: isCurrent)
+            List {
+                Picker("选择分P", selection: selection) {
+                    ForEach(parts) { part in
+                        row(part)
+                            .tag(Optional(part.cid))
+                    }
                 }
-                .buttonStyle(.plain)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .pickerStyle(.inline)
+                .labelsHidden()
             }
-            .listStyle(.plain)
+            .listStyle(.insetGrouped)
             // 左缘触控死区：防止边缘误触直接切了分P。
             .leftEdgeTapDeadZone()
             .navigationTitle("分P")
@@ -89,11 +75,19 @@ struct VideoPartsSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    private func row(_ part: VideoPart, isCurrent: Bool) -> some View {
+    private var selection: Binding<Int?> {
+        Binding(get: { currentCid }, set: { cid in
+            guard let part = parts.first(where: { $0.cid == cid }) else { return }
+            onSelect(part)
+            dismiss()
+        })
+    }
+
+    private func row(_ part: VideoPart) -> some View {
         HStack(spacing: 12) {
             Text(part.part)
                 .font(.subheadline)
-                .foregroundStyle(isCurrent ? Color.accentColor : Color.primary)
+                .foregroundStyle(.primary)
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -104,11 +98,6 @@ struct VideoPartsSheet: View {
                     .foregroundStyle(.secondary)
             }
 
-            if isCurrent {
-                Image(systemName: "play.fill")
-                    .font(.caption)
-                    .foregroundStyle(Color.accentColor)
-            }
         }
         .contentShape(Rectangle())
     }

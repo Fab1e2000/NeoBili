@@ -30,13 +30,6 @@ struct RelatedVideosSection: View {
                         .padding(.horizontal, Self.horizontalInset)
                 }
             } else {
-                // 一行小标题，让白底上的这段内容有个明确的开头。
-                Text("相关视频")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, Self.horizontalInset)
-                    .padding(.bottom, 8)
-
                 ForEach(videos) { video in
                     // 相关视频自带 cid，所以点进去时和推荐页一样可以并行加载。
                     Button {

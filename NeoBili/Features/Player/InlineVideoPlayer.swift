@@ -28,22 +28,28 @@ struct InlineVideoPlayer: View {
                     .aspectRatio(contentMode: .fit)
             }
 
-            if viewModel.hasRenderedFirstFrame {
-                PlayerControlsOverlay(
-                    viewModel: viewModel,
-                    isFullScreen: isFullScreen,
-                    onToggleFullScreen: onToggleFullScreen
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if viewModel.isLoading {
-                ProgressView().tint(.white)
-            } else if let message = viewModel.errorMessage {
-                ContentUnavailableView(
-                    "无法播放",
-                    systemImage: "play.slash",
-                    description: Text(message)
-                )
+            if let message = viewModel.errorMessage {
+                ContentUnavailableView {
+                    Label("无法播放", systemImage: "play.slash")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("重试播放") { Task { await viewModel.retry() } }
+                        .disabled(viewModel.isLoading)
+                }
                 .foregroundStyle(.white)
+            } else {
+                if viewModel.hasRenderedFirstFrame {
+                    PlayerControlsOverlay(
+                        viewModel: viewModel,
+                        isFullScreen: isFullScreen,
+                        onToggleFullScreen: onToggleFullScreen
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                if viewModel.isLoading || viewModel.isBuffering {
+                    ProgressView().tint(.white).allowsHitTesting(false)
+                }
             }
         }
     }
