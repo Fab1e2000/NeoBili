@@ -16,6 +16,8 @@ final class DynamicFeedModel {
     }
 
     let source: Source
+    private let likeStore: VideoLikeStore
+    private let accountSessionID: UUID
 
     private(set) var entries: [DynamicEntry] = []
     private(set) var isLoading = false
@@ -26,7 +28,11 @@ final class DynamicFeedModel {
     private var offset = ""
     private var page = 1
     private var hasMore = true
+    private var pendingRefresh: DynamicFeedPage?
+    private var pendingRefreshID: UUID?
     private var reloadTask: Task<Void, Never>?
+    private var loadGeneration = UUID()
+    private let fetchFeed: @MainActor (Source, Int, String?) async throws -> DynamicFeedPage
 
     /// 本地叠加的点赞状态：动态 id -> 是否已赞。
     /// 点一下就把整页重拉一遍太贵，所以这里只记差量，展示时和接口回报的状态叠加。
@@ -34,68 +40,99 @@ final class DynamicFeedModel {
     /// 正在请求中的动态，用来防连点。
     private var likingIDs: Set<String> = []
 
-    init(source: Source) {
+    init(source: Source, likeStore: VideoLikeStore = .shared,
+         fetchFeed: @escaping @MainActor (Source, Int, String?) async throws -> DynamicFeedPage = { source, page, offset in
+             switch source {
+             case .following: try await BiliAPI.followedDynamics(page: page, offset: offset)
+             case .space(let mid): try await BiliAPI.spaceDynamics(hostMid: mid, offset: offset)
+             }
+         }) {
         self.source = source
+        self.likeStore = likeStore
+        self.accountSessionID = likeStore.sessionID
+        self.fetchFeed = fetchFeed
     }
 
     // MARK: - 加载
 
     func loadInitial() async {
-        guard entries.isEmpty else { return }
+        guard entries.isEmpty, !isLoading else { return }
         await reload()
     }
 
-    func refresh() async {
-        await reload()
+    func refresh(staged: Bool = false, stagingID: UUID? = nil) async {
+        await reload(staged: staged, stagingID: stagingID)
     }
 
-    private func reload() async {
+    private func reload(staged: Bool = false, stagingID: UUID? = nil) async {
+        guard likeStore.sessionID == accountSessionID else { return }
+        pendingRefresh = nil
         reloadTask?.cancel()
+        let generation = UUID()
+        loadGeneration = generation
+        isLoading = true
+        isLoadingMore = false
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.performReload()
+            await self.performReload(generation: generation, staged: staged, stagingID: stagingID)
         }
         reloadTask = task
         await task.value
+        if loadGeneration == generation { reloadTask = nil }
     }
 
-    private func performReload() async {
+    private func performReload(generation: UUID, staged: Bool, stagingID: UUID?) async {
+        guard likeStore.sessionID == accountSessionID, loadGeneration == generation, !Task.isCancelled else { return }
         isLoading = true
         errorMessage = nil
         defer {
-            isLoading = false
-            isLoadingMore = false
+            if loadGeneration == generation {
+                isLoading = false
+                isLoadingMore = false
+            }
         }
 
         do {
             let feed = try await fetch(page: 1, offset: nil)
-            guard !Task.isCancelled else { return }
-            entries = Self.removingDuplicates(feed.entries)
-            FollowingReadStore.shared.observe(entries)
-            offset = feed.offset
-            hasMore = feed.hasMore && !feed.offset.isEmpty
-            page = 1
+            guard likeStore.sessionID == accountSessionID, loadGeneration == generation, !Task.isCancelled else { return }
+            if staged { pendingRefresh = feed; pendingRefreshID = stagingID }
+            else { applyRefresh(feed) }
         } catch {
-            guard !Task.isCancelled, !error.isCancellation else { return }
-            entries = []
-            hasMore = false
+            guard likeStore.sessionID == accountSessionID, loadGeneration == generation, !error.isCancellation else { return }
             errorMessage = error.localizedDescription
         }
     }
 
+    func commitStagedRefresh(id: UUID? = nil) {
+        guard id == nil || id == pendingRefreshID else { return }
+        guard let feed = pendingRefresh else { return }
+        pendingRefresh = nil
+        guard likeStore.sessionID == accountSessionID else { return }
+        applyRefresh(feed)
+    }
+
+    private func applyRefresh(_ feed: DynamicFeedPage) {
+        entries = Self.removingDuplicates(feed.entries)
+        FollowingReadStore.shared.observe(entries)
+        offset = feed.offset
+        hasMore = feed.hasMore && !feed.offset.isEmpty
+        page = 1
+    }
+
     /// 滚到列表尾部附近时取下一页。失败就静默收手，再滚一次会自动重试。
     func loadMoreIfNeeded(current entry: DynamicEntry) async {
-        guard hasMore, !isLoading, !isLoadingMore,
+        guard likeStore.sessionID == accountSessionID, hasMore, !isLoading, !isLoadingMore, pendingRefresh == nil,
               let index = entries.firstIndex(of: entry),
               index >= entries.count - 4
         else { return }
 
+        let generation = loadGeneration
         isLoadingMore = true
-        defer { isLoadingMore = false }
+        defer { if loadGeneration == generation { isLoadingMore = false } }
 
         do {
             let feed = try await fetch(page: page + 1, offset: offset)
-            guard !Task.isCancelled else { return }
+            guard likeStore.sessionID == accountSessionID, loadGeneration == generation, !Task.isCancelled else { return }
             page += 1
             offset = feed.offset
             hasMore = feed.hasMore && !feed.offset.isEmpty && !feed.items.isEmpty
@@ -108,12 +145,7 @@ final class DynamicFeedModel {
     }
 
     private func fetch(page: Int, offset: String?) async throws -> DynamicFeedPage {
-        switch source {
-        case .following:
-            try await BiliAPI.followedDynamics(page: page, offset: offset)
-        case .space(let hostMid):
-            try await BiliAPI.spaceDynamics(hostMid: hostMid, offset: offset)
-        }
+        try await fetchFeed(source, page, offset)
     }
 
     /// 合集更新会让同一个稿件在一页里出现两次，重复的 id 会打乱 SwiftUI 的列表标识。
@@ -128,7 +160,7 @@ final class DynamicFeedModel {
         // 视频动态的点赞就是稿件点赞，走全 App 共享的差量，
         // 这样视频详情页点完赞回到列表（或反过来）状态一致。
         if let aid = entry.video?.aid {
-            return VideoLikeStore.shared.isLiked(aid: aid, serverValue: entry.isLikedByServer)
+            return likeStore.isLiked(aid: aid, serverValue: entry.isLikedByServer)
         }
         return likeOverrides[entry.id] ?? entry.isLikedByServer
     }
@@ -146,15 +178,16 @@ final class DynamicFeedModel {
     /// 视频动态点的是稿件本身（`archive/like`），和视频详情页同一个对象；
     /// 文字/图文动态点的是动态（`dyn/thumb`）。
     func toggleLike(_ entry: DynamicEntry, isLoggedIn: Bool) async -> String? {
-        guard isLoggedIn else { return "请先登录" }
+        guard isLoggedIn, likeStore.sessionID == accountSessionID else { return "请先登录" }
         guard !likingIDs.contains(entry.id) else { return nil }
         likingIDs.insert(entry.id)
         defer { likingIDs.remove(entry.id) }
 
+        let sessionID = likeStore.sessionID
         let wasLiked = isLiked(entry)
         let willBeLiked = !wasLiked
         if let aid = entry.video?.aid {
-            VideoLikeStore.shared.setOverride(aid: aid, liked: willBeLiked)
+            likeStore.setOverride(aid: aid, liked: willBeLiked, sessionID: sessionID)
         } else {
             likeOverrides[entry.id] = willBeLiked
         }
@@ -167,8 +200,9 @@ final class DynamicFeedModel {
             }
             return nil
         } catch {
+            guard likeStore.sessionID == sessionID else { return nil }
             if let aid = entry.video?.aid {
-                VideoLikeStore.shared.setOverride(aid: aid, liked: wasLiked)
+                likeStore.setOverride(aid: aid, liked: wasLiked, sessionID: sessionID)
             } else {
                 likeOverrides[entry.id] = wasLiked
             }

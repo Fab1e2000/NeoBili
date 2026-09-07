@@ -17,6 +17,7 @@ final class CommentsViewModel {
     private(set) var hasMore = true
 
     private var nextPage = 1
+    private let fetchComments: @MainActor (Int, Int, Int) async throws -> CommentPage
 
     // MARK: - 评论点赞
 
@@ -62,9 +63,13 @@ final class CommentsViewModel {
         }
     }
 
-    init(oid: Int, type: Int) {
+    init(oid: Int, type: Int,
+         fetchComments: @escaping @MainActor (Int, Int, Int) async throws -> CommentPage = {
+             try await BiliAPI.comments(oid: $0, type: $1, page: $2)
+         }) {
         self.oid = oid
         self.type = type
+        self.fetchComments = fetchComments
     }
 
     /// 视频评论区的便利入口：`type` 固定是 1。
@@ -83,7 +88,7 @@ final class CommentsViewModel {
 
     /// 快滚到列表末尾时翻下一页。
     func loadMoreIfNeeded(current comment: Comment) async {
-        guard hasMore, !isLoading, !isLoadingMore else { return }
+        guard hasMore, !isLoading, !isLoadingMore, errorMessage == nil else { return }
         // 只有接近末尾的那几条才触发翻页，中间的评论滚过时不会重复请求。
         guard comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
         isLoadingMore = true
@@ -132,11 +137,28 @@ final class CommentsViewModel {
         replyErrors[comment.id] != nil || (!isExpanded(comment) && comment.rcount > replies(for: comment).count)
     }
 
-    /// 楼中楼只展开，不跟随主评论正文的展开状态，也不提供收起入口。
+    /// 就地展开楼中楼。
+    ///
+    /// 界面上已经没有入口了——「查看全部回复」和点击楼中楼区块现在都走单独页面。
+    /// 保留它是因为 `DynamicFeatureTests` 还在覆盖"重复展开不会收起"这条行为。
     func expandReplies(for comment: Comment) async {
         expandedCommentIDs.insert(comment.id)
         guard comment.rcount > (comment.replies ?? []).count || replyErrors[comment.id] != nil else { return }
         guard loadedReplies[comment.id] == nil || replyErrors[comment.id] != nil else { return }
+        await loadMoreReplies(for: comment)
+    }
+
+    /// 单独页面用的完整回复列表。
+    ///
+    /// 和 `replies(for:)` 不同，它不看展开状态：卡片上那一小块预览仍然只显示
+    /// 接口跟着一级评论一起返回的那几条，不会因为进过一次单独页面就变长。
+    func allReplies(for comment: Comment) -> [Comment] {
+        loadedReplies[comment.id] ?? comment.replies ?? []
+    }
+
+    /// 单独页面第一次打开时把第一页回复取回来。已经取过就直接返回。
+    func loadRepliesIfNeeded(for comment: Comment) async {
+        guard loadedReplies[comment.id] == nil else { return }
         await loadMoreReplies(for: comment)
     }
 
@@ -170,14 +192,21 @@ final class CommentsViewModel {
     }
 
     func retry() async {
+        guard !isLoading, !isLoadingMore else { return }
         errorMessage = nil
-        hasMore = true
-        await loadInitial()
+        if comments.isEmpty {
+            await loadInitial()
+        } else {
+            isLoadingMore = true
+            defer { isLoadingMore = false }
+            await loadNextPage()
+        }
     }
 
     private func loadNextPage() async {
         do {
-            let page = try await BiliAPI.comments(oid: oid, type: type, page: nextPage)
+            let page = try await fetchComments(oid, type, nextPage)
+            try Task.checkCancellation()
             totalCount = page.page.count
             let newComments = page.replies ?? []
             guard !newComments.isEmpty else {
@@ -186,15 +215,15 @@ final class CommentsViewModel {
                 return
             }
             // 热门排序下相邻两页偶尔会返回同一条评论，重复的会让 ForEach 的 id 冲突。
-            let existingIDs = Set(comments.map(\.id))
-            comments.append(contentsOf: newComments.filter { !existingIDs.contains($0.id) })
+            var existingIDs = Set(comments.map(\.id))
+            comments.append(contentsOf: newComments.filter { existingIDs.insert($0.id).inserted })
             nextPage += 1
             if comments.count >= totalCount {
                 hasMore = false
             }
         } catch {
+            guard !error.isCancellation else { return }
             errorMessage = error.localizedDescription
-            hasMore = false
         }
     }
 }

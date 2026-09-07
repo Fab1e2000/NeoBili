@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 import UIKit
 
@@ -34,7 +35,7 @@ extension View {
     /// `@Environment(\.openImageViewer)` 打开它。
     ///
     /// 每一屏各挂各的，而不是全 App 共用一个：视频页本身就是从根视图
-    /// present 出来的，同一处再叠第二个 fullScreenCover 是presenting冲突。
+    /// present 出来的，同一处再叠第二个 fullScreenCover 会冲突。
     func imageViewerHost() -> some View {
         modifier(ImageViewerHost())
     }
@@ -50,322 +51,229 @@ private struct ImageViewerHost: ViewModifier {
     }
 }
 
-/// 全屏图片查看器：双指缩放、拖动、双击缩放、左右翻页、下滑关闭、保存/分享。
+/// 全屏图片查看器。
 ///
-/// 三种拖动（翻页、平移、下滑关闭）共用同一个 `DragGesture`，按当前缩放级别和
-/// 起手方向分派。分成多个手势的话它们会互相抢，缩放状态下尤其容易误翻页。
+/// 交互整套交给系统的 QuickLook：捏合缩放、双击定点放大、左右翻页、
+/// 顶部「1 / 9」计数、分享面板（自带「存储图像」）、标记，都不用自己写。
+///
+/// 代价是 QuickLook 只认**本地文件**，所以先把图下到磁盘缓存里再交给它。
 struct ImageViewer: View {
     let payload: ImageViewerPayload
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var index: Int
-    /// 已经取到的原图，保存和分享要用。键是图片下标。
-    @State private var loaded: [Int: UIImage] = [:]
-
-    @State private var scale: CGFloat = 1
-    @State private var committedScale: CGFloat = 1
-    @State private var offset: CGSize = .zero
-    @State private var committedOffset: CGSize = .zero
-
-    /// 翻页和下滑关闭的实时位移。同一次拖动只会有一个非零。
-    @State private var pageDrag: CGFloat = 0
-    @State private var dismissDrag: CGFloat = 0
-    @State private var dragAxis: DragAxis?
-
-    @State private var saveMessage: String?
-
-    private enum DragAxis { case paging, dismissing, panning }
-
-    private static let maxScale: CGFloat = 4
-    private static let doubleTapScale: CGFloat = 2.5
-    private static let dismissThreshold: CGFloat = 120
-    private static let pageSpacing: CGFloat = 24
-
-    init(payload: ImageViewerPayload) {
-        self.payload = payload
-        _index = State(initialValue: payload.startIndex)
-    }
-
-    private var currentImage: UIImage? { loaded[index] }
+    @State private var files: [URL]?
+    /// 有图片下载失败时，起始下标要按剩下的重新对齐。
+    @State private var start = 0
+    @State private var failureMessage: String?
 
     var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
+        ZStack {
+            Color.black.ignoresSafeArea()
 
-            ZStack {
-                Color.black
-                    .opacity(backgroundOpacity)
+            if let files {
+                QuickLookViewer(files: files, startIndex: start) { dismiss() }
                     .ignoresSafeArea()
-
-                pages(width: width)
-            }
-            .contentShape(Rectangle())
-            .gesture(drag(width: width))
-            .simultaneousGesture(magnify)
-            .onTapGesture(count: 2) { toggleZoom() }
-            .overlay(alignment: .top) { chrome }
-            .overlay(alignment: .bottom) { toast }
-        }
-        .statusBarHidden()
-        // 背景自己画，系统的 cover 背景留白会在下滑关闭时露出来。
-        .presentationBackground(.clear)
-    }
-
-    // MARK: - 内容
-
-    private func pages(width: CGFloat) -> some View {
-        HStack(spacing: Self.pageSpacing) {
-            ForEach(Array(payload.images.enumerated()), id: \.element.id) { position, image in
-                ViewerPage(url: image.url) { loaded[position] = $0 }
-                    .frame(width: width)
-                    // 缩放和平移只作用在当前这一张上。
-                    .scaleEffect(position == index ? scale : 1)
-                    .offset(position == index ? offset : .zero)
+            } else {
+                loadingOrFailure
             }
         }
-        .offset(x: -CGFloat(index) * (width + Self.pageSpacing) + pageDrag)
-        .offset(y: dismissDrag)
-        // 下滑时整体跟着缩小，松手回弹或关闭。
-        .scaleEffect(dismissProgress > 0 ? 1 - dismissProgress * 0.2 : 1)
-    }
-
-    private var chrome: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 32, height: 32)
-            }
-            .accessibilityLabel("关闭")
-
-            Spacer()
-
-            if payload.images.count > 1 {
-                Text("\(index + 1) / \(payload.images.count)")
-                    .font(.subheadline.weight(.medium)).monospacedDigit()
-            }
-
-            Spacer()
-
-            Menu {
-                Button("保存到相册", systemImage: "square.and.arrow.down") { saveCurrent() }
-                if let currentImage {
-                    ShareLink(
-                        item: Image(uiImage: currentImage),
-                        preview: SharePreview("图片", image: Image(uiImage: currentImage))
-                    ) {
-                        Label("分享", systemImage: "square.and.arrow.up")
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 32, height: 32)
-            }
-            .disabled(currentImage == nil)
-            .accessibilityLabel("更多操作")
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        // 下滑关闭时一起淡掉，别让工具条孤零零挂在半透明画面上。
-        .opacity(1 - dismissProgress * 2.5)
+        .task(id: payload.id) { await prepare() }
     }
 
     @ViewBuilder
-    private var toast: some View {
-        if let saveMessage {
-            Text(saveMessage)
-                .font(.subheadline)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(.black.opacity(0.6), in: Capsule())
-                .padding(.bottom, 40)
-                .transition(.opacity)
-        }
-    }
-
-    // MARK: - 手势
-
-    /// 0（没拖）到 1（拖满一个关闭阈值）。背景透明度和缩小幅度都跟它走。
-    private var dismissProgress: CGFloat {
-        min(abs(dismissDrag) / (Self.dismissThreshold * 2), 1)
-    }
-
-    private var backgroundOpacity: Double {
-        1 - Double(dismissProgress) * 0.7
-    }
-
-    private var magnify: some Gesture {
-        MagnifyGesture()
-            .onChanged { value in
-                scale = min(max(committedScale * value.magnification, 0.6), Self.maxScale)
-            }
-            .onEnded { _ in
-                if scale < 1 {
-                    resetZoom()
-                } else {
-                    committedScale = scale
-                    committedOffset = offset
-                }
-            }
-    }
-
-    private func drag(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                if dragAxis == nil {
-                    dragAxis = axis(for: value.translation)
-                }
-                switch dragAxis {
-                case .panning:
-                    offset = CGSize(
-                        width: committedOffset.width + value.translation.width,
-                        height: committedOffset.height + value.translation.height
-                    )
-                case .paging:
-                    pageDrag = rubberBanded(value.translation.width, width: width)
-                case .dismissing:
-                    dismissDrag = value.translation.height
-                case nil:
-                    break
-                }
-            }
-            .onEnded { value in
-                switch dragAxis {
-                case .panning:
-                    committedOffset = offset
-                case .paging:
-                    endPaging(translation: value.translation.width,
-                              predicted: value.predictedEndTranslation.width,
-                              width: width)
-                case .dismissing:
-                    endDismissing(translation: value.translation.height,
-                                  predicted: value.predictedEndTranslation.height)
-                case nil:
-                    break
-                }
-                dragAxis = nil
-            }
-    }
-
-    /// 放大状态下一律当作平移；否则按起手方向分给翻页或关闭。
-    private func axis(for translation: CGSize) -> DragAxis {
-        if scale > 1.01 { return .panning }
-        return abs(translation.width) > abs(translation.height) ? .paging : .dismissing
-    }
-
-    /// 第一张往右拖、最后一张往左拖时加阻尼：拖不过去，但手上有反馈。
-    private func rubberBanded(_ raw: CGFloat, width: CGFloat) -> CGFloat {
-        let atStart = index == 0 && raw > 0
-        let atEnd = index == payload.images.count - 1 && raw < 0
-        return (atStart || atEnd) ? raw * 0.35 : raw
-    }
-
-    private func endPaging(translation: CGFloat, predicted: CGFloat, width: CGFloat) {
-        // 甩得够快也算翻页，不必真的拖过三分之一。
-        let shouldAdvance = abs(translation) > width / 3 || abs(predicted) > width / 2
-        var target = index
-        if shouldAdvance {
-            target = translation < 0 ? index + 1 : index - 1
-        }
-        target = min(max(target, 0), payload.images.count - 1)
-
-        withAnimation(.snappy(duration: 0.28)) {
-            index = target
-            pageDrag = 0
-        }
-        resetZoom()
-    }
-
-    private func endDismissing(translation: CGFloat, predicted: CGFloat) {
-        if abs(translation) > Self.dismissThreshold || abs(predicted) > Self.dismissThreshold * 2 {
-            dismiss()
-        } else {
-            withAnimation(.snappy(duration: 0.28)) { dismissDrag = 0 }
-        }
-    }
-
-    private func toggleZoom() {
-        withAnimation(.snappy(duration: 0.28)) {
-            if scale > 1.01 {
-                scale = 1
-                offset = .zero
-            } else {
-                scale = Self.doubleTapScale
-            }
-            committedScale = scale
-            committedOffset = offset
-        }
-    }
-
-    private func resetZoom() {
-        withAnimation(.snappy(duration: 0.28)) {
-            scale = 1
-            offset = .zero
-        }
-        committedScale = 1
-        committedOffset = .zero
-    }
-
-    // MARK: - 保存
-
-    private func saveCurrent() {
-        guard let currentImage else { return }
-        UIImageWriteToSavedPhotosAlbum(currentImage, nil, nil, nil)
-        show("已保存到相册")
-    }
-
-    private func show(_ message: String) {
-        withAnimation(.easeOut(duration: 0.2)) { saveMessage = message }
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.6))
-            withAnimation(.easeOut(duration: 0.2)) { saveMessage = nil }
-        }
-    }
-}
-
-/// 查看器里的一张图。自己取图，取到之后把原图回传给查看器备用（保存/分享）。
-private struct ViewerPage: View {
-    let url: URL?
-    let onLoad: (UIImage) -> Void
-
-    @State private var image: UIImage?
-    @State private var failed = false
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else if failed {
-                VStack(spacing: 10) {
-                    Image(systemName: "photo.badge.exclamationmark").font(.largeTitle)
-                    Text("图片加载失败").font(.subheadline)
-                }
-                .foregroundStyle(.white.opacity(0.7))
+    private var loadingOrFailure: some View {
+        VStack(spacing: 16) {
+            if let failureMessage {
+                Image(systemName: "photo.badge.exclamationmark").font(.largeTitle)
+                Text(failureMessage).font(.subheadline)
             } else {
                 ProgressView().tint(.white)
             }
+
+            Button("关闭") { dismiss() }
+                .font(.subheadline)
+                .padding(.top, 8)
         }
-        .task(id: url) {
-            guard let url else {
-                failed = true
-                return
-            }
-            do {
-                let loaded = try await BiliImageLoader.load(url)
-                guard !Task.isCancelled else { return }
-                image = loaded
-                onLoad(loaded)
-            } catch {
-                if !Task.isCancelled { failed = true }
-            }
+        .foregroundStyle(.white.opacity(0.8))
+    }
+
+    /// 把这一组图都落到磁盘再交给 QuickLook。
+    ///
+    /// 全部就绪才展示：QuickLook 的数据源是按需回调的，某一张还没落地时
+    /// 那一页会直接显示成"无法预览"，而且不会自己重试。图片一般不超过九张，
+    /// 命中缓存时这一步没有任何等待。
+    private func prepare() async {
+        failureMessage = nil
+        let remotes = payload.images.compactMap(\.url)
+        guard !remotes.isEmpty else {
+            failureMessage = "没有可显示的图片"
+            return
         }
+
+        // 并发下，不然九张图要一张接一张地等。
+        let downloaded = await withTaskGroup(of: (Int, URL?).self) { group in
+            for (position, remote) in remotes.enumerated() {
+                group.addTask {
+                    (position, try? await ImageFileCache.shared.localFile(for: remote))
+                }
+            }
+            var result: [Int: URL] = [:]
+            for await (position, local) in group { result[position] = local }
+            return result
+        }
+
+        var located: [URL] = []
+        var adjustedStart = 0
+        for position in remotes.indices {
+            // 落在起始那一张之前的失败图会让下标前移，这里跟着对齐。
+            if position == payload.startIndex { adjustedStart = located.count }
+            if let local = downloaded[position] { located.append(local) }
+        }
+
+        guard !located.isEmpty else {
+            failureMessage = "图片加载失败"
+            return
+        }
+        start = min(adjustedStart, located.count - 1)
+        files = located
+    }
+}
+
+/// 包一层 QuickLook。外面再套一个导航控制器，才有顶部那条工具栏
+/// （标题是「1 / 9」，右边是分享）；关闭按钮得自己加，嵌入式的
+/// QLPreviewController 不会自带"完成"。
+private struct QuickLookViewer: UIViewControllerRepresentable {
+    let files: [URL]
+    let startIndex: Int
+    let onClose: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(files: files, onClose: onClose)
+    }
+
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let preview = QLPreviewController()
+        preview.dataSource = context.coordinator
+        preview.currentPreviewItemIndex = min(max(startIndex, 0), max(files.count - 1, 0))
+        preview.navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .close,
+            target: context.coordinator,
+            action: #selector(Coordinator.close)
+        )
+        return UINavigationController(rootViewController: preview)
+    }
+
+    func updateUIViewController(_ controller: UINavigationController, context: Context) {
+        context.coordinator.files = files
+        context.coordinator.onClose = onClose
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        var files: [URL]
+        var onClose: () -> Void
+
+        init(files: [URL], onClose: @escaping () -> Void) {
+            self.files = files
+            self.onClose = onClose
+        }
+
+        nonisolated func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+            MainActor.assumeIsolated { files.count }
+        }
+
+        nonisolated func previewController(
+            _ controller: QLPreviewController,
+            previewItemAt index: Int
+        ) -> any QLPreviewItem {
+            MainActor.assumeIsolated { files[index] as NSURL }
+        }
+
+        @objc func close() { onClose() }
+    }
+}
+
+/// 图片的磁盘缓存。
+///
+/// QuickLook 只认本地文件，所以查看大图前要先把原始字节落盘。放在 Caches 下：
+/// 这些文件随时可以重新下载，系统空间紧张时自己清掉就行，不需要我们管理容量。
+///
+/// 存的是**原始字节**而不是重新编码的位图，动图因此还能动，体积也不会被放大。
+actor ImageFileCache {
+    static let shared = ImageFileCache()
+
+    private let directory: URL
+    /// 同一张图并发请求时只下载一次。
+    private var inFlight: [URL: Task<URL, Error>] = [:]
+
+    /// QuickLook 靠扩展名认格式，所以按字节头判断真实格式，不信 URL 上的后缀
+    /// ——B 站的图片地址常带 `@1e_1c.webp` 这类后缀，和实际内容未必一致。
+    private static let knownExtensions = ["jpg", "png", "gif", "webp", "heic"]
+
+    init() {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        directory = caches.appending(path: "ImageViewer", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    func localFile(for remote: URL) async throws -> URL {
+        if let cached = cachedFile(for: remote) { return cached }
+
+        if let existing = inFlight[remote] { return try await existing.value }
+
+        let task = Task<URL, Error> { try await download(remote) }
+        inFlight[remote] = task
+        defer { inFlight[remote] = nil }
+        return try await task.value
+    }
+
+    private func cachedFile(for remote: URL) -> URL? {
+        let name = Self.digest(of: remote)
+        for ext in Self.knownExtensions {
+            let candidate = directory.appending(path: "\(name).\(ext)")
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return nil
+    }
+
+    private func download(_ remote: URL) async throws -> URL {
+        var request = URLRequest(url: remote)
+        request.timeoutInterval = 15
+        request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        guard !data.isEmpty else { throw BiliAPIError.invalidURL }
+
+        let file = directory.appending(path: "\(Self.digest(of: remote)).\(Self.fileExtension(of: data))")
+        try data.write(to: file, options: .atomic)
+        return file
+    }
+
+    /// 用地址算一个稳定的文件名。地址本身有斜杠和查询串，不能直接当文件名。
+    private static func digest(of remote: URL) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in Data(remote.absoluteString.utf8) {
+            hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01b3
+        }
+        return String(hash, radix: 16)
+    }
+
+    /// 按字节头认格式。认不出就当 JPEG——B 站的图绝大多数是 JPEG，
+    /// 而且 QuickLook 自己还会再嗅一次，扩展名只是给它的第一个提示。
+    private static func fileExtension(of data: Data) -> String {
+        let head = [UInt8](data.prefix(12))
+        guard head.count >= 12 else { return "jpg" }
+
+        if head[0] == 0xFF, head[1] == 0xD8, head[2] == 0xFF { return "jpg" }
+        if head[0] == 0x89, head[1] == 0x50, head[2] == 0x4E, head[3] == 0x47 { return "png" }
+        if head[0] == 0x47, head[1] == 0x49, head[2] == 0x46 { return "gif" }
+        // RIFF....WEBP
+        if head[0] == 0x52, head[1] == 0x49, head[2] == 0x46, head[3] == 0x46,
+           head[8] == 0x57, head[9] == 0x45, head[10] == 0x42, head[11] == 0x50 { return "webp" }
+        // ....ftyp（HEIC 及同族）
+        if head[4] == 0x66, head[5] == 0x74, head[6] == 0x79, head[7] == 0x70 { return "heic" }
+        return "jpg"
     }
 }

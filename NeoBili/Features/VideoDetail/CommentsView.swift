@@ -56,7 +56,17 @@ struct CommentsList: View {
                     .frame(maxWidth: .infinity)
                     .padding()
             }
+            if let message = viewModel.errorMessage, !viewModel.comments.isEmpty {
+                VStack(spacing: 8) {
+                    Text(message).font(.footnote).foregroundStyle(.secondary)
+                    Button("重试加载评论") { Task { await viewModel.retry() } }
+                        .disabled(viewModel.isLoading || viewModel.isLoadingMore)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+            }
         }
+        .commentThreadHost(viewModel: viewModel)
         // 和视频页一样走非模态浮层，别用 alert 去和 fullScreenCover 抢 present。
         .onChange(of: viewModel.actionMessage) { _, message in
             guard let message else { return }
@@ -113,8 +123,12 @@ struct CommentsPlaceholder: View {
 struct CommentRow: View {
     let comment: Comment
     let viewModel: CommentsViewModel
+    /// 楼中楼那一块要不要画。单独页面里根评论和回复都不需要，它下面接的
+    /// 就是全部回复，再画一块会套娃。
+    var showsReplies = true
 
     @Environment(AccountStore.self) private var account
+    @Environment(\.openCommentThread) private var openCommentThread
 
     /// 正文是否已经展开。每条评论各自记住自己的状态。
     @State private var isMessageExpanded = false
@@ -148,7 +162,7 @@ struct CommentRow: View {
                 metaRow
                     .padding(.top, CommentLayout.textVerticalSpacing)
 
-                if comment.rcount > 0 {
+                if showsReplies, comment.rcount > 0 {
                     replySection
                         .padding(.top, CommentLayout.replyBlockGap)
                 }
@@ -277,13 +291,9 @@ struct CommentRow: View {
             }
 
             if viewModel.shouldShowAllReplies(comment) {
-                Button("查看全部回复") {
-                    Task { await viewModel.expandReplies(for: comment) }
-                }
-                .font(.caption.weight(.medium))
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
-                .disabled(viewModel.isLoadingReplies(comment))
+                Text("查看全部回复")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Color.accentColor)
             }
 
         }
@@ -294,5 +304,12 @@ struct CommentRow: View {
             Color(uiColor: .secondarySystemBackground),
             in: RoundedRectangle(cornerRadius: CommentLayout.replyCornerRadius, style: .continuous)
         )
+        // 整块都是进单独页面的入口，「查看全部回复」只是块内的一行文字提示，
+        // 不再是独立按钮——两个可点的东西叠在一起，点哪儿都一样反而费解。
+        .contentShape(RoundedRectangle(cornerRadius: CommentLayout.replyCornerRadius, style: .continuous))
+        .onTapGesture { openCommentThread(comment) }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("查看全部 \(comment.rcount) 条回复")
     }
 }

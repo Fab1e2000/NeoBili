@@ -10,6 +10,7 @@ struct DynamicDetailView: View {
     /// 列表、或在列表点完再进详情，两边看到的是同一份本地叠加状态。
     let feed: DynamicFeedModel
 
+    @Environment(\.dismiss) private var dismiss
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
@@ -58,6 +59,14 @@ struct DynamicDetailView: View {
         .background(Color(uiColor: .systemBackground))
         .navigationTitle("动态")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .accessibilityLabel("关闭动态")
+            }
+        }
         // 详情页整屏都留给内容，底部标签栏收起来。
         .toolbarVisibility(.hidden, for: .tabBar)
         .imageViewerHost()

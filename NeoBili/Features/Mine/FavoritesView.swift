@@ -90,7 +90,7 @@ struct FavoritesView: View {
     }
 
     private func load() async {
-        guard let mid = account.profile?.mid else {
+        guard let mid = account.accountID else {
             errorMessage = "登录状态已失效，请重新登录"
             return
         }
@@ -123,7 +123,8 @@ struct FavoriteFolderView: View {
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
     /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `remove`。
-    @State private var removingIDs: Set<Int> = []
+    @State private var removals = ListRemovalState<Int>()
+    @State private var loadID = UUID()
 
     var body: some View {
         Group {
@@ -146,6 +147,14 @@ struct FavoriteFolderView: View {
                         if isLoadingMore {
                             ProgressView()
                                 .padding(.vertical, 12)
+                        }
+                        if let errorMessage, !videos.isEmpty {
+                            VStack(spacing: 8) {
+                                Text(errorMessage).font(.footnote).foregroundStyle(.secondary)
+                                Button("重试加载") { Task { await loadNextPage() } }
+                                    .disabled(isLoading || isLoadingMore)
+                            }
+                            .padding()
                         }
                     }
                 }
@@ -202,7 +211,7 @@ struct FavoriteFolderView: View {
         // 同一视频的转场源在共享命名空间里撞 id。
         .videoTransitionSource("fav-\(summary?.bvid ?? "")", in: videoTransition)
         // 移除动效第一段：原地淡出、占位不变，列表此时不动。
-        .cardFadeOut(isRemoving: removingIDs.contains(media.id))
+        .cardFadeOut(isRemoving: removals.hiddenIDs.contains(media.id))
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
@@ -227,48 +236,59 @@ struct FavoriteFolderView: View {
     /// 而点「重试」是另起一个不受牵连的任务，所以反而能成功。改成拿到数据
     /// 之后再整体替换，顺带也没有了刷新过程中的白屏。
     private func reload() async {
-        isLoading = videos.isEmpty
-        defer { isLoading = false }
+        let requestID = UUID()
+        loadID = requestID
+        let revision = removals.revision
+        isLoading = true
+        isLoadingMore = false
+        defer { if loadID == requestID { isLoading = false } }
         do {
             let payload = try await BiliAPI.favoriteVideos(folderID: folder.id, page: 1)
+            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = (payload.medias ?? []).filter(\.isVideo)
-            videos = incoming
+            videos = incoming.filter { !removals.hiddenIDs.contains($0.id) }
             page = 2
             hasMore = incoming.count >= 20
             errorMessage = nil
         } catch {
-            guard !error.isCancellation else { return }
+            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
             if videos.isEmpty { errorMessage = error.localizedDescription }
         }
     }
 
     private func loadMoreIfNeeded(current media: FavMedia) async {
-        guard hasMore, !isLoadingMore, !isLoading else { return }
+        guard hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
         guard videos.suffix(5).contains(where: { $0.id == media.id }) else { return }
         await loadNextPage()
     }
 
     private func loadNextPage() async {
-        guard !isLoadingMore else { return }
+        guard !isLoadingMore, !isLoading else { return }
+        let requestID = UUID()
+        loadID = requestID
+        let revision = removals.revision
+        errorMessage = nil
         isLoading = videos.isEmpty
         isLoadingMore = !videos.isEmpty
         defer {
-            isLoading = false
-            isLoadingMore = false
+            if loadID == requestID {
+                isLoading = false
+                isLoadingMore = false
+            }
         }
         do {
             let payload = try await BiliAPI.favoriteVideos(folderID: folder.id, page: page)
+            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = (payload.medias ?? []).filter(\.isVideo)
             let existing = Set(videos.map(\.id))
-            videos.append(contentsOf: incoming.filter { !existing.contains($0.id) })
+            videos.append(contentsOf: incoming.filter { !existing.contains($0.id) && !removals.hiddenIDs.contains($0.id) })
             // 不足一页说明到底了。
             hasMore = incoming.count >= 20
             page += 1
             errorMessage = nil
         } catch {
-            guard !error.isCancellation else { return }
-            if videos.isEmpty { errorMessage = error.localizedDescription }
-            hasMore = false
+            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -278,25 +298,25 @@ struct FavoriteFolderView: View {
     /// 动效拆成两段顺序执行（`CardRemovalAnimation`）：先原地淡出，完全
     /// 看不见后空位才收拢、下方卡片上移补位——两段同时进行会出现叠影。
     private func remove(_ media: FavMedia) async {
-        guard let index = videos.firstIndex(where: { $0.id == media.id }) else { return }
-
-        // 先等长按菜单退场快照掀开，否则淡出被盖在快照后面看不见。
-        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
-        withAnimation(CardRemovalAnimation.fade) { removingIDs.insert(media.id) }
-        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
-
-        withAnimation(CardRemovalAnimation.collapse) { videos.remove(at: index) }
-
+        guard videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
+        defer { removals.finish(media.id) }
+        var removedIndex: Int?
         do {
+            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
+            withAnimation(CardRemovalAnimation.fade) { removals.hide(media.id) }
+            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
+            withAnimation(CardRemovalAnimation.collapse) {
+                removedIndex = removals.remove(media.id, from: &videos)
+            }
             try await BiliAPI.removeFavorite(folderID: folder.id, aid: media.id)
-            // 等退出转场走完再清标记，避免同 id 的卡片被残留标记隐藏。
+            // 同时完成的刷新也不能留下同 ID 的旧条目。
+            withAnimation { videos.removeAll { $0.id == media.id } }
             try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.collapseMilliseconds))
-            removingIDs.remove(media.id)
         } catch {
-            removingIDs.remove(media.id)
-            withAnimation { videos.insert(media, at: min(index, videos.count)) }
-            // 以前这里静默吞掉了错误，接口早就在报「参数错误」也看不出来。
-            feedback.show(error.localizedDescription)
+            if let removedIndex {
+                withAnimation { removals.restore(media, at: removedIndex, in: &videos) }
+            }
+            if !error.isCancellation { feedback.show(error.localizedDescription) }
         }
     }
 }

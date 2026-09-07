@@ -12,7 +12,8 @@ struct WatchLaterView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `remove`。
-    @State private var removingIDs: Set<Int> = []
+    @State private var removals = ListRemovalState<Int>()
+    @State private var loadID = UUID()
 
     var body: some View {
         Group {
@@ -88,7 +89,7 @@ struct WatchLaterView: View {
         // A。应用侧无法分辨菜单归属，只能等菜单完全收起再长按下一张卡。
         .videoTransitionSource("wl-\(summary?.bvid ?? "")", in: videoTransition)
         // 移除动效第一段：原地淡出、占位不变，列表此时不动。
-        .cardFadeOut(isRemoving: removingIDs.contains(item.id))
+        .cardFadeOut(isRemoving: removals.hiddenIDs.contains(item.id))
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
@@ -107,14 +108,18 @@ struct WatchLaterView: View {
     }
 
     private func reload() async {
+        let requestID = UUID()
+        loadID = requestID
+        let revision = removals.revision
         isLoading = true
-        defer { isLoading = false }
+        defer { if loadID == requestID { isLoading = false } }
         do {
             let payload = try await BiliAPI.watchLaterList()
-            items = (payload.list ?? []).filter { $0.bvid?.isEmpty == false }
+            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
+            items = (payload.list ?? []).filter { $0.bvid?.isEmpty == false && !removals.hiddenIDs.contains($0.id) }
             errorMessage = nil
         } catch {
-            guard !error.isCancellation else { return }
+            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
             if items.isEmpty { errorMessage = error.localizedDescription }
         }
     }
@@ -124,26 +129,26 @@ struct WatchLaterView: View {
     /// 动效拆成两段顺序执行（`CardRemovalAnimation`）：先原地淡出，完全
     /// 看不见后空位才收拢、下方卡片上移补位——两段同时进行会出现叠影。
     private func remove(_ item: WatchLaterItem) async {
-        guard let aid = item.aid,
-              let index = items.firstIndex(where: { $0.id == item.id })
-        else { return }
-
-        // 先等长按菜单退场快照掀开，否则淡出被盖在快照后面看不见。
-        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
-        withAnimation(CardRemovalAnimation.fade) { removingIDs.insert(item.id) }
-        try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
-
-        withAnimation(CardRemovalAnimation.collapse) { items.remove(at: index) }
-
+        guard let aid = item.aid else { return }
+        guard items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
+        defer { removals.finish(item.id) }
+        var removedIndex: Int?
         do {
+            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
+            withAnimation(CardRemovalAnimation.fade) { removals.hide(item.id) }
+            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
+            withAnimation(CardRemovalAnimation.collapse) {
+                removedIndex = removals.remove(item.id, from: &items)
+            }
             try await BiliAPI.removeWatchLater(aid: aid)
-            // 等退出转场走完再清标记，避免同 id 的卡片被残留标记隐藏。
+            // 同时完成的刷新也不能留下同 ID 的旧条目。
+            withAnimation { items.removeAll { $0.id == item.id } }
             try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.collapseMilliseconds))
-            removingIDs.remove(item.id)
         } catch {
-            removingIDs.remove(item.id)
-            withAnimation { items.insert(item, at: min(index, items.count)) }
-            feedback.show(error.localizedDescription)
+            if let removedIndex {
+                withAnimation { removals.restore(item, at: removedIndex, in: &items) }
+            }
+            if !error.isCancellation { feedback.show(error.localizedDescription) }
         }
     }
 }

@@ -13,6 +13,7 @@ struct SpaceView: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @State private var viewModel: SpaceViewModel
     @State private var tab: Tab = .videos
+    @Namespace private var dynamicTransition
     @State private var detailEntry: DynamicEntry?
     @State private var headerHeight: CGFloat = 0
     @State private var pageOffsets: [Tab: CGFloat] = [:]
@@ -79,8 +80,13 @@ struct SpaceView: View {
             }
         }
         .onAppear { OrientationController.enterPortrait() }
-        .navigationDestination(item: $detailEntry) { entry in
-            DynamicDetailView(entry: entry, feed: viewModel.dynamics)
+        .fullScreenCover(item: $detailEntry) { entry in
+            NavigationStack {
+                    DynamicDetailView(entry: entry, feed: viewModel.dynamics)
+                }
+                .appTextSize()
+                .actionFeedbackOverlay()
+                .navigationTransition(.zoom(sourceID: "space-dynamic-\(entry.id)", in: dynamicTransition))
         }
     }
 
@@ -264,21 +270,33 @@ struct SpaceView: View {
     }
 
     private var followButton: some View {
-        Button {
-            Task {
-                if let message = await viewModel.toggleFollow(isLoggedIn: account.isLoggedIn) {
-                    feedback.show(message)
+        glassFollowStyle(
+            Button {
+                Task {
+                    if let message = await viewModel.toggleFollow(isLoggedIn: account.isLoggedIn) {
+                        feedback.show(message)
+                    }
                 }
-            }
-        } label: {
-            Text(viewModel.isFollowing ? "已关注" : "关注")
-                .font(.footnote.weight(.medium))
-                .frame(minWidth: 56)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(viewModel.isFollowing ? Color(uiColor: .systemFill) : .accentColor)
-        .foregroundStyle(viewModel.isFollowing ? Color.primary : Color.white)
+            } label: {
+                Text(viewModel.isFollowing ? "已关注" : "关注")
+                    .font(.footnote.weight(.medium))
+                    .frame(minWidth: 56)
+            },
+            isActive: viewModel.isFollowing
+        )
         .controlSize(.small)
+    }
+
+    /// 关注按钮用系统液态玻璃样式：未关注是实底玻璃（吸引点击），已关注退成
+    /// 清透玻璃配灰字（不再抢注意力）。两种样式类型不同，没法用三目表达式
+    /// 带过，和视频操作栏的按钮走同一个分支写法。
+    @ViewBuilder
+    private func glassFollowStyle(_ button: some View, isActive: Bool) -> some View {
+        if isActive {
+            button.buttonStyle(.glass).foregroundStyle(.secondary)
+        } else {
+            button.buttonStyle(.glassProminent).tint(.accentColor)
+        }
     }
 
     // MARK: - 投稿
@@ -359,6 +377,7 @@ struct SpaceView: View {
                     onLike: { like(entry) },
                     onOpenDetail: { detailEntry = entry }
                 )
+                .videoTransitionSource("space-dynamic-\(entry.id)", in: dynamicTransition)
                 .onScrollVisibilityChange(threshold: 0.1) { visible in
                     if visible { FollowingReadStore.shared.markViewed(entry) }
                 }

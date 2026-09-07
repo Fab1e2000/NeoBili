@@ -103,6 +103,11 @@ actor VideoPreparationCache {
         playbackRequestIDs[key] = nil
     }
 
+    func invalidatePlaybackURL(bvid: String, cid: Int) {
+        cancelPlaybackURL(bvid: bvid, cid: cid)
+        playbackURLs[PlaybackKey(bvid: bvid, cid: cid)] = nil
+    }
+
     /// 卡片出现在屏幕上时调用。推荐卡已经有 cid；搜索卡没有，所以先取一次详情。
     func prefetch(bvid: String, cid: Int? = nil) async {
         removeExpiredValues()
@@ -169,7 +174,7 @@ final class PlayerViewModel {
     let bvid: String
     let cid: Int
     let configuration: VideoPlaybackConfiguration
-    let session: MPVPlayerSession
+    private(set) var session: MPVPlayerSession
 
     private(set) var isLoading = true
     private(set) var errorMessage: String?
@@ -181,7 +186,15 @@ final class PlayerViewModel {
     private(set) var hasRenderedFirstFrame = false
 
     private var isStopped = false
+    private var isFetchingSource = false
+    private var engineID = UUID()
+    private var sourceCandidates: [PlaybackSource] = []
+    private var candidateIndex = 0
+    private var recoveryTask: Task<Void, Never>?
+    private var metadata: SystemMediaMetadata?
+    private(set) var isBuffering = false
     private let playbackURLLoader: PlaybackURLLoader
+    private let watchProgressReporter: @Sendable (String, Int, Double) async -> Void
     private let systemMediaSessionID = UUID()
     /// 上次心跳已上报到的秒数。播放中每前进 5 秒报一次；暂停、换页、
     /// 看完时再补一次，保证历史记录里的进度停在最后看的位置。
@@ -255,18 +268,20 @@ final class PlayerViewModel {
         configuration: VideoPlaybackConfiguration = .fastStart,
         playbackURLLoader: @escaping PlaybackURLLoader = { bvid, cid in
             try await VideoPreparationCache.shared.playbackURL(bvid: bvid, cid: cid)
+        },
+        watchProgressReporter: @escaping @Sendable (String, Int, Double) async -> Void = { bvid, cid, time in
+            try? await BiliAPI.reportWatchProgress(bvid: bvid, cid: cid, playedTime: time)
         }
     ) {
         self.bvid = bvid
         self.cid = cid
         self.configuration = configuration
         self.playbackURLLoader = playbackURLLoader
+        self.watchProgressReporter = watchProgressReporter
         let session = MPVPlayerSession(configuration: configuration)
         self.session = session
 
-        session.onEvent = { [weak self] event in
-            self?.handle(event)
-        }
+        bindEvents()
     }
 
     deinit {
@@ -277,6 +292,7 @@ final class PlayerViewModel {
     }
 
     func updateSystemMediaMetadata(title: String, artist: String, artworkURL: URL?) {
+        metadata = SystemMediaMetadata(identifier: bvid, title: title, artist: artist, artworkURL: artworkURL)
         SystemNowPlayingCenter.shared.activate(
             sessionID: systemMediaSessionID,
             metadata: SystemMediaMetadata(
@@ -295,29 +311,87 @@ final class PlayerViewModel {
     }
 
     func load() async {
-        guard !isStopped else { return }
+        guard !isStopped, !isFetchingSource else { return }
+        isFetchingSource = true
+        defer { isFetchingSource = false }
         isLoading = true
         errorMessage = nil
         hasRenderedFirstFrame = false
+        isBuffering = false
 
         do {
             let payload = try await playbackURLLoader(bvid, cid)
             try Task.checkCancellation()
             guard !isStopped else { return }
-
-            let source = try PlaybackSourceBuilder.makeSource(
-                from: payload,
-                configuration: configuration
-            )
+            let source = try PlaybackSourceBuilder.makeSource(from: payload, configuration: configuration)
+            sourceCandidates = source.candidates
+            candidateIndex = 0
             duration = source.duration
-            try await session.open(source: source)
-        } catch is CancellationError {
-            // 离开页面时取消加载属于正常情况，不显示为播放错误。
+            try await session.open(source: sourceCandidates[0], startTime: currentTime)
         } catch {
-            if !isStopped {
-                errorMessage = error.localizedDescription
-                isLoading = false
-            }
+            guard !isStopped else { return }
+            isLoading = false
+            if !error.isCancellation { showPlaybackError(error.localizedDescription) }
+        }
+    }
+
+    /// 用户重试时刷新签名地址，并从最后的播放位置重新打开内核。
+    func retry() async {
+        guard !isStopped, !isFetchingSource, !isLoading else { return }
+        isLoading = true
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        replaceSession()
+        await VideoPreparationCache.shared.invalidatePlaybackURL(bvid: bvid, cid: cid)
+        guard !isStopped, !Task.isCancelled else { isLoading = false; return }
+        if let metadata {
+            updateSystemMediaMetadata(title: metadata.title, artist: metadata.artist, artworkURL: metadata.artworkURL)
+        }
+        await load()
+    }
+
+    private func bindEvents() {
+        let id = engineID
+        session.onEvent = { [weak self] event in
+            guard let self, self.engineID == id else { return }
+            self.handle(event)
+        }
+    }
+
+    private func replaceSession() {
+        engineID = UUID()
+        session.onEvent = nil
+        session.stop()
+        session = MPVPlayerSession(configuration: configuration)
+        bindEvents()
+        hasRenderedFirstFrame = false
+        isPlaying = false
+        isBuffering = false
+        bufferedTime = currentTime
+    }
+
+    private func showPlaybackError(_ message: String) {
+        errorMessage = message
+        isPlaying = false
+        isLoading = false
+        isBuffering = false
+        SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
+    }
+
+    private func recoverFromSourceFailure(_ message: String) {
+        guard candidateIndex + 1 < sourceCandidates.count else {
+            showPlaybackError(message)
+            return
+        }
+        candidateIndex += 1
+        let source = sourceCandidates[candidateIndex]
+        isLoading = true
+        errorMessage = nil
+        replaceSession()
+        recoveryTask = Task { [weak self] in
+            guard let self, !isStopped, !Task.isCancelled else { return }
+            do { try await session.open(source: source, startTime: currentTime) }
+            catch { if !isStopped { showPlaybackError(error.localizedDescription) } }
         }
     }
 
@@ -325,6 +399,8 @@ final class PlayerViewModel {
     func stop() {
         guard !isStopped else { return }
         isStopped = true
+        recoveryTask?.cancel()
+        recoveryTask = nil
         cancelSleepTimer()
         Task {
             await VideoPreparationCache.shared.cancelPlaybackURL(bvid: bvid, cid: cid)
@@ -349,7 +425,7 @@ final class PlayerViewModel {
     }
 
     func play() {
-        guard hasRenderedFirstFrame else { return }
+        guard !isStopped, errorMessage == nil, hasRenderedFirstFrame else { return }
         session.play()
         isPlaying = true
         SystemNowPlayingCenter.shared.updatePlaybackState(
@@ -359,7 +435,7 @@ final class PlayerViewModel {
     }
 
     func togglePlayPause() {
-        guard hasRenderedFirstFrame else { return }
+        guard !isStopped, errorMessage == nil, hasRenderedFirstFrame else { return }
         if isPlaying {
             session.pause()
         } else {
@@ -386,12 +462,13 @@ final class PlayerViewModel {
     }
 
     private func handle(_ event: PlayerPlaybackEvent) {
-        guard !isStopped else { return }
+        guard !isStopped, errorMessage == nil else { return }
 
         switch event {
         case .firstFrame:
             hasRenderedFirstFrame = true
             isLoading = false
+            isBuffering = false
             // mpv 的音频输出已经建好，这里是重试音频会话激活的安全窗口：
             // 启动时那次可能失败，失败的会话不会出现在系统的「正在播放」里。
             PlaybackAudioSession.activateOnce()
@@ -402,10 +479,10 @@ final class PlayerViewModel {
                 sessionID: systemMediaSessionID
             )
         case .buffering(let buffering):
-            if buffering, !hasRenderedFirstFrame {
-                isLoading = true
-            }
+            isBuffering = buffering
+            if !hasRenderedFirstFrame { isLoading = true }
         case .position(let position):
+            guard hasRenderedFirstFrame else { return }
             currentTime = position
             // 观看进度心跳：距离上次上报前进超过 5 秒才发，对齐官方
             // 网页播放器的节奏。
@@ -439,10 +516,7 @@ final class PlayerViewModel {
                 sessionID: systemMediaSessionID
             )
         case .error(let message):
-            errorMessage = message
-            isPlaying = false
-            isLoading = false
-            SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
+            recoverFromSourceFailure(message)
         }
     }
 
@@ -455,8 +529,9 @@ final class PlayerViewModel {
         }
         let bvid = self.bvid
         let cid = self.cid
+        let reporter = watchProgressReporter
         Task.detached(priority: .utility) {
-            try? await BiliAPI.reportWatchProgress(bvid: bvid, cid: cid, playedTime: playedTime)
+            await reporter(bvid, cid, playedTime)
         }
     }
 }

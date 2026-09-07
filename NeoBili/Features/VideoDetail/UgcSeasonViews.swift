@@ -12,31 +12,18 @@ struct UgcSeasonRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 8) {
-                Text("合集 · \(season.title ?? "")")
-                    .font(.subheadline.weight(.medium))
+            HStack {
+                Label("合集 · \(season.title ?? "")", systemImage: "rectangle.stack")
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "list.bullet")
-                    .font(.caption)
-
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Text(progressText)
-                    .font(.caption)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
+        .controlSize(.large)
         .accessibilityLabel("合集 \(season.title ?? "")，\(progressText)，展开分集列表")
     }
 
@@ -47,7 +34,7 @@ struct UgcSeasonRow: View {
     }
 }
 
-/// 合集分集列表。当前这一集高亮并带播放标记，点其它集就地换片。
+/// 合集分集列表。当前这一集由原生 Picker 显示选中标记，点其它集就地换片。
 struct UgcSeasonSheet: View {
     let season: UgcSeason
     /// 当前播放的稿件 bvid，用来高亮。
@@ -58,18 +45,17 @@ struct UgcSeasonSheet: View {
 
     var body: some View {
         NavigationStack {
-            List(season.episodes) { episode in
-                let isCurrent = episode.bvid == currentBvid
-                Button {
-                    onSelect(episode)
-                    dismiss()
-                } label: {
-                    row(episode, isCurrent: isCurrent)
+            List {
+                Picker("选择分集", selection: selection) {
+                    ForEach(season.episodes) { episode in
+                        row(episode)
+                            .tag(Optional(episode.id))
+                    }
                 }
-                .buttonStyle(.plain)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .pickerStyle(.inline)
+                .labelsHidden()
             }
-            .listStyle(.plain)
+            .listStyle(.insetGrouped)
             // 左缘触控死区：防止边缘误触直接切了分集。
             .leftEdgeTapDeadZone()
             .navigationTitle(season.title ?? "合集")
@@ -83,7 +69,18 @@ struct UgcSeasonSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    private func row(_ episode: UgcSeasonEpisode, isCurrent: Bool) -> some View {
+    private var selection: Binding<String?> {
+        Binding(get: {
+            guard let currentBvid else { return nil }
+            return season.episodes.first(where: { $0.bvid == currentBvid })?.id
+        }, set: { id in
+            guard let id, let episode = season.episodes.first(where: { $0.id == id }) else { return }
+            onSelect(episode)
+            dismiss()
+        })
+    }
+
+    private func row(_ episode: UgcSeasonEpisode) -> some View {
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
                 BiliImage(url: episode.secureCoverURL)
@@ -104,15 +101,10 @@ struct UgcSeasonSheet: View {
 
             Text(episode.title ?? "")
                 .font(.subheadline)
-                .foregroundStyle(isCurrent ? Color.accentColor : Color.primary)
+                .foregroundStyle(.primary)
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if isCurrent {
-                Image(systemName: "play.fill")
-                    .font(.caption)
-                    .foregroundStyle(Color.accentColor)
-            }
         }
         .contentShape(Rectangle())
     }

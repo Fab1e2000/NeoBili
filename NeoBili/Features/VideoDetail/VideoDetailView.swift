@@ -76,8 +76,23 @@ struct VideoPage: View {
     @State private var isShowingSeason = false
     @State private var isShowingParts = false
     @State private var isShowingFavoriteFolders = false
+    /// 头像点开的 UP 主空间页。视频页本身是 fullScreenCover，不在任何
+    /// 导航栈里，所以自己带一个栈来推空间页。
+    @State private var spaceEntry: FollowedUp?
 
     var body: some View {
+        NavigationStack {
+            videoPageRoot
+                // 视频页自己不显示导航栏；推入 UP 主空间页后由那一页显示。
+                .toolbarVisibility(.hidden, for: .navigationBar)
+                .navigationDestination(item: $spaceEntry) { up in
+                    SpaceView(up: up)
+                }
+        }
+    }
+
+    /// 视频页的完整内容：播放区、选项栏、简介与评论。
+    private var videoPageRoot: some View {
         @Bindable var store = store
 
         return GeometryReader { geometry in
@@ -106,7 +121,15 @@ struct VideoPage: View {
                     )
 
                 if !isFullScreen {
+                    // 选项栏在最下面：视频下方整块都留给内容，切换控件落到屏幕底边，
+                    // 拇指够得到，也不再有一条直角分隔线压在圆角控件下面。
                     VStack(spacing: 0) {
+                        sectionPages
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            // 黑色只属于上方视频区域；下面的内容用普通页面底色。
+                            // 详情还没返回时也先铺好，否则进入视频页会闪一下黑。
+                            .background(Color(uiColor: .systemBackground))
+
                         VideoSectionBar(
                             selection: $store.section,
                             // 用详情里的 `stat.reply`，而不是评论列表的总数：后者要等
@@ -114,12 +137,6 @@ struct VideoPage: View {
                             // 于是标签上的数字迟迟不出现。详情一回来这里就有了。
                             commentCount: viewModel?.detail?.stat.reply ?? 0
                         )
-
-                        sectionPages
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            // 黑色只属于上方视频区域；下面的内容用普通页面底色。
-                            // 详情还没返回时也先铺好，否则进入视频页会闪一下黑。
-                            .background(Color(uiColor: .systemBackground))
                     }
                     // 简介和相关视频、评论区与视频画面盖同一条左缘死区，
                     // 防止边缘误触点开相关视频。
@@ -291,9 +308,6 @@ struct VideoPage: View {
                     infoBlock(detail)
                         .padding(.vertical, 14)
                         .frame(maxWidth: .infinity, alignment: .leading)
-
-                    // 简介和推流之间用一条分隔线分段，代替原来的换底色。
-                    Divider()
                 }
 
                 RelatedVideosSection(
@@ -307,9 +321,7 @@ struct VideoPage: View {
         }
         // 收起再展开时回到原来的滚动位置。
         .scrollPosition($store.descriptionScroll)
-        // 整页统一用普通页面底色。相关视频那段已经改成白底 + 分隔线，
-        // 不再需要靠一层分组灰底去衬托白卡片；两段同色之后，
-        // 简介和推流之间也就没有那道生硬的色块交界了。
+        // 简介和相关视频共用普通页面底色。
         .background(Color(uiColor: .systemBackground))
     }
 
@@ -324,6 +336,14 @@ struct VideoPage: View {
                 isFollowing: viewModel?.relation?.isFollowing ?? false,
                 onToggleFollow: {
                     Task { await viewModel?.toggleFollow(isLoggedIn: account.isLoggedIn) }
+                },
+                onOpenSpace: {
+                    spaceEntry = FollowedUp(
+                        mid: detail.owner.mid,
+                        uname: detail.owner.name,
+                        face: detail.owner.face,
+                        hasUpdate: false
+                    )
                 }
             )
             .padding(.horizontal, Self.contentInset)

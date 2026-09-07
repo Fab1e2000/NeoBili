@@ -3,92 +3,62 @@ import SwiftUI
 /// 视频下方选项栏的排版参数都集中在这里。
 /// 如果只想微调界面，修改下面的数字即可，不需要改程序逻辑。
 private enum VideoSectionBarLayout {
-    /// 文字上方的留白。
-    static let topPadding: CGFloat = 10
-    /// 文字和下方指示条之间的距离。
-    static let textIndicatorSpacing: CGFloat = 7
-    /// 指示条的粗细。
-    static let indicatorHeight: CGFloat = 3
-    /// 指示条的宽度。它比文字窄，看起来才像重点标记而不是下划线。
-    static let indicatorWidth: CGFloat = 18
-    /// 指示条下方的留白。
+    /// 分段控件与屏幕左右边缘的距离。
+    static let horizontalPadding: CGFloat = 16
+    /// 分段控件上方的留白。
+    static let topPadding: CGFloat = 8
+    /// 分段控件下方的留白。安全区之外还要留一点，控件不至于贴着屏幕底边。
     static let bottomPadding: CGFloat = 6
 }
 
-/// 视频正下方的选项栏，切换简介和评论。
+/// 视频页最下方的选项栏，切换简介和评论。
 ///
-/// 这是 B 站官方客户端和 PiliPlus 的做法：选项栏跟着视频走，不去占用屏幕底部，
-/// 也就不会和首页那条系统标签栏产生任何关系。
-/// 选中项下方有一条会滑动的指示条，滑动切换页面时它跟着一起动。
+/// 用系统的分段控件（`Picker` + `.pickerStyle(.segmented)`）：选中态、按下态、
+/// 深浅色、动态字体、无障碍全部跟着系统走，iOS 26 上还自带 Liquid Glass 的观感。
+///
+/// 它落在视频页的最底边，上方整块都留给简介/评论。视频页是从根视图 present
+/// 出来的 fullScreenCover，屏幕底部没有系统标签栏，不会撞车。
+///
+/// 不画卡片、不画分隔线：控件直接坐在页面底色上，周围没有任何直角边框
+/// 去和它的圆角对比。
 struct VideoSectionBar: View {
     @Binding var selection: VideoPageSection
     /// 评论总数，跟在「评论」后面显示。还没加载出来（为 0）时不显示，
     /// 免得先出现一个 0 再跳成真实数字。
     var commentCount: Int = 0
 
-    /// 指示条靠它在两个选项之间做滑动动画，而不是在旧位置消失、新位置出现。
-    @Namespace private var indicatorNamespace
-
     var body: some View {
-        // 每一项各占一半宽度并居中，两个标签因此左右对称。
-        HStack(spacing: 0) {
+        Picker("视频内容", selection: animatedSelection) {
             ForEach(VideoPageSection.allCases) { section in
-                item(section)
-                    .frame(maxWidth: .infinity)
+                Text(title(for: section)).tag(section)
             }
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .padding(.horizontal, VideoSectionBarLayout.horizontalPadding)
         .padding(.top, VideoSectionBarLayout.topPadding)
         .padding(.bottom, VideoSectionBarLayout.bottomPadding)
-        .background(Color(uiColor: .systemBackground))
-        .overlay(alignment: .bottom) { Divider() }
+        // 和上方内容同一个底色，连成一片。要漫过 Home 指示条那条安全区，
+        // 否则栏下面会露出最外层那层黑。
+        .background {
+            Color(uiColor: .systemBackground).ignoresSafeArea(edges: .bottom)
+        }
     }
 
-    private func item(_ section: VideoPageSection) -> some View {
-        let isSelected = selection == section
-
-        return Button {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                selection = section
+    /// 分段控件改选中项时要带上动画，下面那对分页才是滑过去而不是瞬间跳过去。
+    /// 反过来手指滑动分页时是外部改这个绑定，不经过这里的 setter，不会打架。
+    private var animatedSelection: Binding<VideoPageSection> {
+        Binding(
+            get: { selection },
+            set: { newValue in
+                guard newValue != selection else { return }
+                withAnimation(.easeInOut(duration: 0.25)) { selection = newValue }
             }
-        } label: {
-            VStack(spacing: VideoSectionBarLayout.textIndicatorSpacing) {
-                Text(title(for: section))
-                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-
-                // 未选中的那一项也占着同样高度的空位，切换时文字不会上下跳动。
-                Capsule()
-                    .fill(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.clear))
-                    .frame(
-                        width: VideoSectionBarLayout.indicatorWidth,
-                        height: VideoSectionBarLayout.indicatorHeight
-                    )
-                    .modifier(SlidingIndicator(isSelected: isSelected, namespace: indicatorNamespace))
-            }
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title(for: section))
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        )
     }
 
     private func title(for section: VideoPageSection) -> String {
         guard section == .comments, commentCount > 0 else { return section.title }
         return "\(section.title) \(commentCount.biliCountText)"
-    }
-}
-
-/// 只给选中的那一条指示条挂上共享标识，SwiftUI 就会把它从旧位置滑到新位置。
-private struct SlidingIndicator: ViewModifier {
-    let isSelected: Bool
-    let namespace: Namespace.ID
-
-    func body(content: Content) -> some View {
-        if isSelected {
-            content.matchedGeometryEffect(id: "video-section-indicator", in: namespace)
-        } else {
-            content
-        }
     }
 }

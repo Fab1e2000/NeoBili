@@ -24,6 +24,16 @@ struct MineView: View {
                     loggedInView(profile)
                 } else if account.isRestoringSession {
                     ProgressView("正在检查登录状态…")
+                } else if account.isLoggedIn {
+                    ContentUnavailableView {
+                        Label("账号信息暂未加载", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text(account.sessionError ?? "登录信息已保留，可以重试加载。")
+                    } actions: {
+                        Button("重试") { Task { await account.refreshProfile() } }
+                            .disabled(account.isRefreshingProfile)
+                        Button("退出登录", role: .destructive) { Task { await account.logout() } }
+                    }
                 } else {
                     loggedOutView
                 }
@@ -39,9 +49,7 @@ struct MineView: View {
             MineServiceSheet(service: service)
                 .appTextSize()
         }
-        .onChange(of: account.isLoggedIn) { _, loggedIn in
-            if !loggedIn { serviceSheet = nil }
-        }
+        .onChange(of: account.sessionID) { serviceSheet = nil }
         .sheet(item: $loginSheet) { sheet in
             switch sheet {
             // sheet 有自己的 UIHostingController，文字档位要在根部重新注入。
@@ -82,6 +90,13 @@ struct MineView: View {
 
     private func loggedInView(_ profile: AccountStore.Profile) -> some View {
         List {
+            if let message = account.sessionError {
+                Section {
+                    Text(message).font(.footnote).foregroundStyle(.secondary)
+                    Button("重新连接") { Task { await account.refreshProfile() } }
+                        .disabled(account.isRefreshingProfile)
+                }
+            }
             Section {
                 profileCard(profile)
             }

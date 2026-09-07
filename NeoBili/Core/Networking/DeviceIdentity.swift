@@ -35,6 +35,16 @@ actor DeviceIdentity {
         cachedAccessKey = KeychainStore.string(for: Self.accessKeyKeychainKey)
     }
 
+    func accountSnapshot() -> AccountCredentialsSnapshot {
+        AccountCredentialsSnapshot(hasCredentials: cachedSessdata != nil,
+                                   accountID: cachedDedeUserID.flatMap(Int.init))
+    }
+
+    func saveLogin(_ cookies: BiliPassport.LoginCookies, accessKey: String?) {
+        setLoginCookies(sessdata: cookies.sessdata, biliJct: cookies.biliJct, dedeUserID: cookies.dedeUserID)
+        setAccessKey(accessKey)
+    }
+
     /// 当前是否带着可用的登录凭据（只看本地有没有 Cookie，不验证有效性）。
     var isLoggedIn: Bool {
         cachedSessdata != nil
