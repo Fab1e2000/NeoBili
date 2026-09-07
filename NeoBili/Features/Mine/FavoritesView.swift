@@ -40,7 +40,8 @@ struct FavoritesView: View {
                             }
                         }
                         // 和「取消收藏」同一种交互：长按弹菜单。
-                        .contextMenu {
+                        .buttonStyle(.plain)
+        .contextMenu {
                             Button(role: .destructive) {
                                 folderPendingDeletion = folder
                             } label: {
@@ -56,7 +57,7 @@ struct FavoritesView: View {
         .navigationTitle("收藏")
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
-            if isLoading, folders.isEmpty { ProgressView() }
+            if isLoading, folders.isEmpty { LoadingTaskAnchor() }
         }
         .task { await load() }
         .refreshable { await load() }
@@ -115,6 +116,7 @@ struct FavoriteFolderView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     @State private var videos: [FavMedia] = []
     @State private var page = 1
@@ -125,10 +127,17 @@ struct FavoriteFolderView: View {
     /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `remove`。
     @State private var removals = ListRemovalState<Int>()
     @State private var loadID = UUID()
+    @State private var entranceGeneration = 0
+
+    private var visibleVideos: [FavMedia] {
+        videos.hidingKnownPortraitVideos(hidesPortraitVideos)
+    }
 
     var body: some View {
         Group {
-            if let errorMessage, videos.isEmpty {
+            if visibleVideos.isEmpty, videos.hasPendingVideoDimensions(hidesPortraitVideos) {
+                LoadingTaskAnchor()
+            } else if let errorMessage, videos.isEmpty {
                 ContentUnavailableView {
                     Label("内容加载失败", systemImage: "star.slash")
                 } description: {
@@ -136,16 +145,24 @@ struct FavoriteFolderView: View {
                 } actions: {
                     Button("重试") { Task { await reload() } }
                 }
-            } else if !isLoading, !hasMore, videos.isEmpty {
-                ContentUnavailableView("收藏夹是空的", systemImage: "star")
+            } else if !isLoading, !hasMore, visibleVideos.isEmpty {
+                ContentUnavailableView(
+                    videos.isEmpty ? "收藏夹是空的" : "没有可显示的视频",
+                    systemImage: videos.isEmpty ? "star" : "rectangle.slash"
+                )
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(videos) { media in
+                        ForEach(visibleVideos) { media in
                             row(media)
                         }
+                        if visibleVideos.isEmpty, hasMore, !isLoadingMore {
+                            Button("继续加载") { Task { await loadNextPage() } }
+                                .padding(.vertical, 12)
+                                .disabled(isLoading)
+                        }
                         if isLoadingMore {
-                            ProgressView()
+                            LoadingTaskAnchor()
                                 .padding(.vertical, 12)
                         }
                         if let errorMessage, !videos.isEmpty {
@@ -166,10 +183,15 @@ struct FavoriteFolderView: View {
         .navigationTitle(folder.title)
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
-            if isLoading, videos.isEmpty { ProgressView() }
+            if isLoading, videos.isEmpty { LoadingTaskAnchor() }
         }
         .refreshable { await reload() }
         .task { await loadIfNeeded() }
+        .resolvePortraitVideos(videos, batchID: entranceGeneration) {
+            guard hasMore, errorMessage == nil else { return videos }
+            await loadNextPage()
+            return videos
+        }
     }
 
     private func row(_ media: FavMedia) -> some View {
@@ -194,7 +216,8 @@ struct FavoriteFolderView: View {
                 title: media.title,
                 author: media.upper?.name ?? "",
                 playCount: media.cntInfo?.play ?? -1,
-                durationText: summary?.formattedDuration ?? ""
+                durationText: summary?.formattedDuration ?? "",
+                animatesEntrance: false
             )
         }
         .buttonStyle(.plain)
@@ -246,6 +269,7 @@ struct FavoriteFolderView: View {
             let payload = try await BiliAPI.favoriteVideos(folderID: folder.id, page: 1)
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = (payload.medias ?? []).filter(\.isVideo)
+            entranceGeneration += 1
             videos = incoming.filter { !removals.hiddenIDs.contains($0.id) }
             page = 2
             hasMore = incoming.count >= 20
@@ -258,7 +282,7 @@ struct FavoriteFolderView: View {
 
     private func loadMoreIfNeeded(current media: FavMedia) async {
         guard hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
-        guard videos.suffix(5).contains(where: { $0.id == media.id }) else { return }
+        guard visibleVideos.suffix(5).contains(where: { $0.id == media.id }) else { return }
         await loadNextPage()
     }
 

@@ -39,6 +39,7 @@ struct DynamicCard: View {
     var showsAuthor = true
 
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @State private var isTextExpanded = false
 
     var body: some View {
@@ -75,8 +76,11 @@ struct DynamicCard: View {
                     .padding(.top, 12)
             }
 
-            if let video = entry.video {
+            if let video = entry.video,
+               video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
                 videoBlock(video)
+                    .videoCardEntrance()
+                    .videoEntranceIdentity(video.bvid)
             }
 
             actionBar
@@ -89,6 +93,7 @@ struct DynamicCard: View {
                         .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
                 }
         )
+        .resolvePortraitVideos([entry.video].compactMap { $0 })
     }
 
     // MARK: - UP 主

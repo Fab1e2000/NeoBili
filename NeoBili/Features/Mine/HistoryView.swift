@@ -8,6 +8,7 @@ struct HistoryView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     @State private var items: [HistoryItem] = []
     @State private var cursorMax = 0
@@ -19,10 +20,17 @@ struct HistoryView: View {
     /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `delete`。
     @State private var removals = ListRemovalState<String>()
     @State private var loadID = UUID()
+    @State private var entranceGeneration = 0
+
+    private var visibleItems: [HistoryItem] {
+        items.hidingKnownPortraitVideos(hidesPortraitVideos)
+    }
 
     var body: some View {
         Group {
-            if let errorMessage, items.isEmpty {
+            if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos) {
+                LoadingTaskAnchor()
+            } else if let errorMessage, items.isEmpty {
                 ContentUnavailableView {
                     Label("历史加载失败", systemImage: "clock.arrow.circlepath")
                 } description: {
@@ -30,16 +38,24 @@ struct HistoryView: View {
                 } actions: {
                     Button("重试") { Task { await reload() } }
                 }
-            } else if !hasMore, items.isEmpty {
-                ContentUnavailableView("还没有观看记录", systemImage: "clock.arrow.circlepath")
+            } else if !hasMore, visibleItems.isEmpty {
+                ContentUnavailableView(
+                    items.isEmpty ? "还没有观看记录" : "没有可显示的视频",
+                    systemImage: items.isEmpty ? "clock.arrow.circlepath" : "rectangle.slash"
+                )
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(items) { item in
+                        ForEach(visibleItems) { item in
                             row(item)
                         }
+                        if visibleItems.isEmpty, hasMore, !isLoadingMore {
+                            Button("继续加载") { Task { await loadNextPage() } }
+                                .padding(.vertical, 12)
+                                .disabled(isLoading)
+                        }
                         if isLoadingMore {
-                            ProgressView()
+                            LoadingTaskAnchor()
                                 .padding(.vertical, 12)
                         }
                         if let errorMessage, !items.isEmpty {
@@ -60,10 +76,15 @@ struct HistoryView: View {
         .navigationTitle("历史记录")
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
-            if isLoading, items.isEmpty { ProgressView() }
+            if isLoading, items.isEmpty { LoadingTaskAnchor() }
         }
         .refreshable { await reload() }
         .task { await loadIfNeeded() }
+        .resolvePortraitVideos(items, batchID: entranceGeneration) {
+            guard hasMore, errorMessage == nil else { return items }
+            await loadNextPage()
+            return items
+        }
     }
 
     private func row(_ item: HistoryItem) -> some View {
@@ -88,7 +109,8 @@ struct HistoryView: View {
                 title: item.displayTitle,
                 author: item.authorName ?? "",
                 playCount: -1,
-                durationText: summary?.formattedDuration ?? ""
+                durationText: summary?.formattedDuration ?? "",
+                animatesEntrance: false
             )
         }
         .buttonStyle(.plain)
@@ -140,6 +162,7 @@ struct HistoryView: View {
             let payload = try await BiliAPI.historyPage(max: 0, viewAt: 0)
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = payload.allItems.filter(\.isVideo)
+            entranceGeneration += 1
             items = incoming.filter { !removals.hiddenIDs.contains($0.id) }
 
             if let cursor = payload.cursor, let nextMax = cursor.max, nextMax > 0, !incoming.isEmpty {
@@ -158,7 +181,7 @@ struct HistoryView: View {
 
     private func loadMoreIfNeeded(current item: HistoryItem) async {
         guard hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
-        guard items.suffix(5).contains(where: { $0.id == item.id }) else { return }
+        guard visibleItems.suffix(5).contains(where: { $0.id == item.id }) else { return }
         await loadNextPage()
     }
 

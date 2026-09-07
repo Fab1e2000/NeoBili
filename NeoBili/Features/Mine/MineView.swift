@@ -23,7 +23,7 @@ struct MineView: View {
                 if let profile = account.profile {
                     loggedInView(profile)
                 } else if account.isRestoringSession {
-                    ProgressView("正在检查登录状态…")
+                    LoadingTaskAnchor()
                 } else if account.isLoggedIn {
                     ContentUnavailableView {
                         Label("账号信息暂未加载", systemImage: "wifi.exclamationmark")

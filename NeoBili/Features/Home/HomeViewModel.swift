@@ -104,6 +104,19 @@ final class HomeViewModel {
     /// 按行惰性布局，刷新分界独占两列，不与旧视频混在同一行。
     var feedRows: [HomeFeedRow] { HomeFeedRow.group(feedItems) }
 
+    /// 保留原始列表，设置变化时只重算页面内容，关闭过滤后无需重新请求。
+    func feedRows(hidingKnownPortraitVideos hidesPortraitVideos: Bool) -> [HomeFeedRow] {
+        let visibleItems = feedItems.filter { item in
+            guard case .video(let video) = item else { return true }
+            return video.canDisplayVideo(hidingPortrait: hidesPortraitVideos)
+        }
+        return HomeFeedRow.group(visibleItems)
+    }
+
+    func hasVisibleVideos(hidingKnownPortraitVideos hidesPortraitVideos: Bool) -> Bool {
+        videos.contains { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos) }
+    }
+
     private static let freshIndexKey = "neobili.recommendFreshIndex"
     private static let popularPageKey = "neobili.popularFallbackPage"
 
@@ -153,11 +166,16 @@ final class HomeViewModel {
         applyRefresh(batch)
     }
 
-    func loadMoreIfNeeded(current video: VideoSummary) async {
-        guard let index = videos.firstIndex(of: video) else { return }
-        if index >= videos.count - 5, !isLoading {
+    func loadMoreIfNeeded(current video: VideoSummary, hidingKnownPortraitVideos hidesPortraitVideos: Bool = false) async {
+        let visibleVideos = videos.hidingKnownPortraitVideos(hidesPortraitVideos)
+        guard let index = visibleVideos.firstIndex(of: video) else { return }
+        if index >= visibleVideos.count - 5, !isLoading {
             await startLoad(reason: .loadMore, replacingActiveLoad: false)
         }
+    }
+
+    func loadReplacementPage() async {
+        await startLoad(reason: .loadMore, replacingActiveLoad: false)
     }
 
     /// 网络任务由 ViewModel 自己持有，不再依附某一张正在滚动的卡片。

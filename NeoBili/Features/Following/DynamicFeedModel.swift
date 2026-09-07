@@ -19,6 +19,7 @@ final class DynamicFeedModel {
     private let likeStore: VideoLikeStore
     private let accountSessionID: UUID
 
+    private(set) var entriesGeneration = 0
     private(set) var entries: [DynamicEntry] = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
@@ -112,6 +113,7 @@ final class DynamicFeedModel {
     }
 
     private func applyRefresh(_ feed: DynamicFeedPage) {
+        entriesGeneration += 1
         entries = Self.removingDuplicates(feed.entries)
         FollowingReadStore.shared.observe(entries)
         offset = feed.offset
@@ -126,6 +128,12 @@ final class DynamicFeedModel {
               index >= entries.count - 4
         else { return }
 
+        await loadReplacementPage()
+    }
+
+    func loadReplacementPage() async {
+        guard likeStore.sessionID == accountSessionID, hasMore, !isLoading, !isLoadingMore,
+              pendingRefresh == nil else { return }
         let generation = loadGeneration
         isLoadingMore = true
         defer { if loadGeneration == generation { isLoadingMore = false } }

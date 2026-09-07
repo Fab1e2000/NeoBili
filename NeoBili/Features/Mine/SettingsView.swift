@@ -3,11 +3,14 @@ import SwiftUI
 /// 系统设置。当前仅包含播放偏好与账号管理，后续设置项都加进这里。
 struct SettingsView: View {
     @Environment(AccountStore.self) private var account
+    @Bindable private var durationFilter = VideoDurationFilterSettings.shared
 
     /// 与 `VideoPlaybackConfiguration.current` 共用的键。改动对之后新打开的视频生效。
     @AppStorage("neobili.preferredQuality") private var preferredQuality = 64
+    @AppStorage(PlaybackQuality.audioStorageKey) private var preferredAudioQuality = 0
     /// 文字大小档位。根视图读同一个键，拖完滑杆全 App 立刻跟着变。
     @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
+    @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
     /// 左缘触控死区宽度。各页面的死区都读这同一个键。
     @AppStorage(LeftEdgeTapDeadZone.storageKey) private var edgeDeadZoneWidth = LeftEdgeTapDeadZone.defaultWidth
     /// 拖动死区滑杆期间在屏幕左缘亮起的实时遮罩，停手后自动淡出。
@@ -23,29 +26,38 @@ struct SettingsView: View {
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var feedEnterSpeed = AnimationSpeedSettings.defaultSpeed
 
     /// 清晰度选项的展示名。实际可用上限取决于账号等级与稿件本身。
-    private static let qualityOptions: [(qn: Int, label: String)] = [
-        (16, "360P 流畅"),
-        (32, "480P 清晰"),
-        (64, "720P 高清"),
-        (80, "1080P 高清"),
-        (112, "1080P 高码率")
-    ]
 
     var body: some View {
         Form {
             Section {
-                Picker("默认清晰度", selection: $preferredQuality) {
-                    ForEach(Self.qualityOptions, id: \.qn) { option in
-                        Text(option.label).tag(option.qn)
+                Picker("默认分辨率", selection: $preferredQuality) {
+                    ForEach(PlaybackQuality.videoOptions, id: \.id) { option in
+                        Text(option.title).tag(option.id)
+                    }
+                }
+                Picker("默认音质", selection: $preferredAudioQuality) {
+                    ForEach(PlaybackQuality.audioOptions, id: \.id) { option in
+                        Text(option.title).tag(option.id)
                     }
                 }
             } header: {
                 Text("播放")
             } footer: {
-                Text("对之后打开的视频生效。可用画质还受账号等级和稿件本身的限制。")
+                Text("对之后打开的视频生效。分辨率和音质取决于视频提供的档位及账号权限；不可用时使用可用档位。")
             }
 
             PlayerGestureSettingsSection()
+
+            Section {
+                Toggle("隐藏竖屏视频", isOn: $hidesPortraitVideos)
+                Stepper(value: $durationFilter.minimumMinutes, in: 0...1440) {
+                    Text("隐藏 \(durationFilter.minimumMinutes) 分钟以下的视频")
+                }
+            } header: {
+                Text("内容过滤")
+            } footer: {
+                Text("时长设为 0 表示不过滤；恰好达到所设分钟数的视频会保留。缺少尺寸或时长时自动补查详情并缓存，整批判断完成后统一显示。直接链接或已打开的视频不受影响。")
+            }
 
             Section {
                 Picker("头像列表位置", selection: $followingSidebarSide) {

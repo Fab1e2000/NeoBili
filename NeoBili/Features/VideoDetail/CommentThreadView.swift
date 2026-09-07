@@ -105,7 +105,7 @@ struct CommentThreadView: View {
     @ViewBuilder
     private var footer: some View {
         if viewModel.isLoadingReplies(root) {
-            ProgressView()
+            LoadingTaskAnchor()
                 .frame(maxWidth: .infinity)
                 .padding()
         } else if let error = viewModel.replyErrors[root.id] {

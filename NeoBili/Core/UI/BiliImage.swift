@@ -167,7 +167,7 @@ struct BiliImage: View {
                 }
             } else {
                 Rectangle().fill(.quaternary)
-                    .overlay(ProgressView().controlSize(.small))
+                    .overlay(LoadingTaskAnchor().controlSize(.small))
             }
         }
         .task(id: url) {

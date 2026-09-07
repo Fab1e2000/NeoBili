@@ -72,7 +72,7 @@ struct FavResourceList: Decodable, Sendable {
 
 /// 收藏夹里的一条内容。`type == 2` 才是普通视频稿件；课程、合集等其它类型
 /// 字段缺失、详情页打不开，统一在列表层过滤掉。
-struct FavMedia: Decodable, Identifiable, Hashable, Sendable {
+struct FavMedia: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
     let id: Int
     let bvid: String?
     let type: Int?
@@ -81,9 +81,10 @@ struct FavMedia: Decodable, Identifiable, Hashable, Sendable {
     let duration: Int?
     let cntInfo: CntInfo?
     let upper: Upper?
+    var dimension: VideoDimension? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, bvid, type, title, cover, duration, upper
+        case id, bvid, type, title, cover, duration, upper, dimension
         case cntInfo = "cnt_info"
     }
 
@@ -111,7 +112,8 @@ struct FavMedia: Decodable, Identifiable, Hashable, Sendable {
                 coin: 0,
                 share: 0,
                 reply: 0
-            )
+            ),
+            dimension: dimension
         )
     }
 
@@ -163,7 +165,7 @@ struct HistoryCursorPage: Decodable, Sendable {
 }
 
 /// 一条观看历史。真正的视频定位信息在 `history` 节点里。
-struct HistoryItem: Decodable, Identifiable, Hashable, Sendable {
+struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
     let title: String
     let longTitle: String?
     let cover: String?
@@ -174,6 +176,7 @@ struct HistoryItem: Decodable, Identifiable, Hashable, Sendable {
     let history: HistoryNode
     /// 接口在条目上直接给出 kid（archive 类型就是 aid），删除时优先用它。
     let kid: Int?
+    var dimension: VideoDimension? = nil
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -181,7 +184,7 @@ struct HistoryItem: Decodable, Identifiable, Hashable, Sendable {
         case cover, duration
         case authorName = "author_name"
         case viewAt = "view_at"
-        case progress, history, kid
+        case progress, history, kid, dimension
     }
 
     struct HistoryNode: Decodable, Hashable, Sendable {
@@ -226,7 +229,8 @@ struct HistoryItem: Decodable, Identifiable, Hashable, Sendable {
             duration: duration ?? 0,
             pubdate: 0,
             owner: VideoOwner(mid: 0, name: authorName ?? "", face: ""),
-            stat: VideoStat(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0)
+            stat: VideoStat(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0),
+            dimension: dimension
         )
     }
 }
@@ -238,7 +242,7 @@ struct WatchLaterPage: Decodable, Sendable {
     let list: [WatchLaterItem]?
 }
 
-struct WatchLaterItem: Decodable, Identifiable, Hashable, Sendable {
+struct WatchLaterItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
     let aid: Int?
     let bvid: String?
     let cid: Int?
@@ -248,9 +252,10 @@ struct WatchLaterItem: Decodable, Identifiable, Hashable, Sendable {
     let addAt: Int?
     /// toview/web 变体返回 `owner`（与视频详情一致），老接口是 `upper`，两者都解。
     let upper: Upper?
+    let dimension: VideoDimension?
 
     enum CodingKeys: String, CodingKey {
-        case aid, bvid, cid, title, pic, duration, upper, owner
+        case aid, bvid, cid, title, pic, duration, upper, owner, dimension
         case addAt = "add_at"
     }
 
@@ -263,6 +268,7 @@ struct WatchLaterItem: Decodable, Identifiable, Hashable, Sendable {
         pic = try container.decodeIfPresent(String.self, forKey: .pic)
         duration = try container.decodeIfPresent(Int.self, forKey: .duration)
         addAt = try container.decodeIfPresent(Int.self, forKey: .addAt)
+        dimension = try? container.decodeIfPresent(VideoDimension.self, forKey: .dimension)
         if let owner = try container.decodeIfPresent(Upper.self, forKey: .owner) {
             upper = owner
         } else {
@@ -288,7 +294,8 @@ struct WatchLaterItem: Decodable, Identifiable, Hashable, Sendable {
                 name: upper?.name ?? "",
                 face: upper?.face ?? ""
             ),
-            stat: VideoStat(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0)
+            stat: VideoStat(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0),
+            dimension: dimension
         )
     }
 

@@ -32,6 +32,8 @@ struct RootView: View {
 
     /// 设置页那根滑杆选的档位。写在根视图上，改完立刻全 App 生效。
     @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
+    /// 内容过滤同样在根视图转成环境值，所有列表即时响应设置变化。
+    @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
 
     /// 主页面切换特效：新页面淡入，快慢用设置页那条「进入」滑杆。
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -81,6 +83,7 @@ struct RootView: View {
         .environment(account)
         .environment(feedback)
         .environment(\.videoTransitionNamespace, videoTransition)
+        .environment(\.hidesPortraitVideos, hidesPortraitVideos)
         // 全 App 的文字大小由设置页那根滑杆决定，不跟随系统的动态字体——
         // 两套缩放同时生效的话，同一个界面在不同设备上会被叠加缩放两次。
         // 在这里注入等于把系统档位整个覆盖掉。
