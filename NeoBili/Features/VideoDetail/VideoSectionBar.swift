@@ -7,17 +7,14 @@ private enum VideoSectionBarLayout {
     static let horizontalPadding: CGFloat = 16
     /// 分段控件上方的留白。
     static let topPadding: CGFloat = 8
-    /// 分段控件下方的留白。安全区之外还要留一点，控件不至于贴着屏幕底边。
+    /// 分段控件与下方内容的间距。
     static let bottomPadding: CGFloat = 6
 }
 
-/// 视频页最下方的选项栏，切换简介和评论。
+/// 播放器下方、内容区上方的选项栏，切换简介和评论。
 ///
 /// 用系统的分段控件（`Picker` + `.pickerStyle(.segmented)`）：选中态、按下态、
 /// 深浅色、动态字体、无障碍全部跟着系统走，iOS 26 上还自带 Liquid Glass 的观感。
-///
-/// 它落在视频页的最底边，上方整块都留给简介/评论。视频页是从根视图 present
-/// 出来的 fullScreenCover，屏幕底部没有系统标签栏，不会撞车。
 ///
 /// 不画卡片、不画分隔线：控件直接坐在页面底色上，周围没有任何直角边框
 /// 去和它的圆角对比。
@@ -38,11 +35,7 @@ struct VideoSectionBar: View {
         .padding(.horizontal, VideoSectionBarLayout.horizontalPadding)
         .padding(.top, VideoSectionBarLayout.topPadding)
         .padding(.bottom, VideoSectionBarLayout.bottomPadding)
-        // 和上方内容同一个底色，连成一片。要漫过 Home 指示条那条安全区，
-        // 否则栏下面会露出最外层那层黑。
-        .background {
-            Color(uiColor: .systemBackground).ignoresSafeArea(edges: .bottom)
-        }
+        .background(Color(uiColor: .systemBackground))
     }
 
     /// 分段控件改选中项时要带上动画，下面那对分页才是滑过去而不是瞬间跳过去。
