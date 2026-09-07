@@ -130,8 +130,13 @@ struct HomeView: View {
                                 case .videos(let videos):
                                     HStack(alignment: .top, spacing: HomeCardLayout.columnSpacing) {
                                         ForEach(videos) { video in
-                                            videoCard(video, pageWidth: geometry.size.width)
-                                                .frame(width: (geometry.size.width - HomeCardLayout.horizontalInset * 2 - HomeCardLayout.columnSpacing) / 2)
+                                            FeedDropInRow(index: 0, generation: 0,
+                                                          landing: viewModel.replacementAnimationIDs.contains(video.bvid),
+                                                          speed: enterSpeed, reduceMotion: reduceMotion) {
+                                                videoCard(video, pageWidth: geometry.size.width)
+                                            }
+                                            .onAppear { viewModel.didShowReplacement(video.bvid) }
+                                            .frame(width: (geometry.size.width - HomeCardLayout.horizontalInset * 2 - HomeCardLayout.columnSpacing) / 2)
                                         }
                                         if videos.count == 1 { Spacer(minLength: 0) }
                                     }
@@ -305,7 +310,7 @@ struct HomeView: View {
                         Image(systemName: "eye.slash").font(.title2)
                     }
                     Text("已提交不感兴趣").font(.subheadline)
-                    Text("点击换一条").font(.caption)
+                    Text(viewModel.replacingIDs.contains(video.bvid) ? "正在换一条…" : "点击重试换一条").font(.caption)
                 }
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
@@ -314,7 +319,7 @@ struct HomeView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(!viewModel.replacingIDs.isEmpty)
+            .disabled(viewModel.replacingIDs.contains(video.bvid))
             .task { await viewModel.loadMoreIfNeeded(current: video) }
         } else {
             Button {

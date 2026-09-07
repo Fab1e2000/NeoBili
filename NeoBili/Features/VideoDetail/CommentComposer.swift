@@ -20,8 +20,13 @@ extension EnvironmentValues {
 }
 
 extension View {
-    func commentComposer(viewModel: CommentsViewModel, root: Comment? = nil) -> some View {
-        modifier(CommentComposerHost(viewModel: viewModel, root: root))
+    @ViewBuilder
+    func commentComposer(viewModel: CommentsViewModel, root: Comment? = nil, enabled: Bool = true) -> some View {
+        if enabled {
+            modifier(CommentComposerHost(viewModel: viewModel, root: root))
+        } else {
+            self
+        }
     }
 }
 

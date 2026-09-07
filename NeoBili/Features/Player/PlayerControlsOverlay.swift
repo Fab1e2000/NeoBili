@@ -19,11 +19,10 @@ struct PlayerControlsOverlay: View {
 
     var body: some View {
         ZStack {
-            // 这是覆盖整个视频的透明点击区域，只用来接收轻点操作。
-            // Color.clear 不会改变画面亮度，所以显示控件时不再整体变暗。
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { toggleControls() }
+            // 透明手势区域接收轻点及分区竖向滑动，位于播放控件后面。
+            PlayerVerticalGestureLayer(isFullScreen: isFullScreen,
+                                       onTap: toggleControls,
+                                       onToggleFullScreen: onToggleFullScreen)
 
             // 播放时不显示“暂停”图标和圆形底色，但保留原位置的点击热区。
             // 点击后视频会暂停，此时只显示“播放”图标，方便恢复播放。
