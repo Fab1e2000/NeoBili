@@ -37,11 +37,20 @@ struct SpaceView: View {
 
     var body: some View {
         GeometryReader { viewport in
-            TabView(selection: $tab) {
-                page(for: .videos, viewportHeight: viewport.size.height).tag(Tab.videos)
-                page(for: .dynamics, viewportHeight: viewport.size.height).tag(Tab.dynamics)
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 0) {
+                    ForEach(Tab.allCases) { pageTab in
+                        page(for: pageTab, viewportHeight: viewport.size.height)
+                            .containerRelativeFrame(.horizontal)
+                            .frame(height: viewport.size.height)
+                            .id(pageTab)
+                    }
+                }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .scrollPosition(id: Binding<Tab?>(get: { tab }, set: { if let value = $0 { tab = value } }))
+            .scrollTargetBehavior(.paging)
+            .scrollIndicators(.hidden)
             .overlay(alignment: .top) {
                 VStack(spacing: 0) {
                     header
@@ -65,6 +74,7 @@ struct SpaceView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(viewModel.card?.name ?? up.uname)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarVisibility(.visible, for: .navigationBar)
         // 顶栏改成实底。半透明时内容从导航栏背后滑过去，会和吸顶的分段控件
         // 叠成两层深浅不一的模糊，看起来像没对齐。
         .toolbarBackground(.visible, for: .navigationBar)

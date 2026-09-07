@@ -13,6 +13,11 @@ final class SearchViewModel {
     private(set) var submittedKeyword = ""
 
     private var searchTask: Task<Void, Never>?
+    private var generation = UUID()
+    private(set) var pageNumber = 0
+    private(set) var isLoadingMore = false
+    private(set) var hasMore = false
+    private(set) var loadMoreError: String?
 
     var trimmedQuery: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -33,6 +38,11 @@ final class SearchViewModel {
     func reset() {
         searchTask?.cancel()
         searchTask = nil
+        generation = UUID()
+        pageNumber = 0
+        isLoadingMore = false
+        hasMore = false
+        loadMoreError = nil
         submittedKeyword = ""
         results = []
         suggestions = []
@@ -46,33 +56,49 @@ final class SearchViewModel {
             query = keyword
         }
         let trimmed = trimmedQuery
-        searchTask?.cancel()
-        suggestions = []
-
-        guard !trimmed.isEmpty else {
-            submittedKeyword = ""
-            results = []
-            errorMessage = nil
-            return
-        }
-
+        reset()
+        guard !trimmed.isEmpty else { return }
         submittedKeyword = trimmed
+        isLoading = true
+        let request = generation
         searchTask = Task {
-            isLoading = true
-            errorMessage = nil
+            defer { if generation == request { isLoading = false } }
             do {
                 let page = try await BiliAPI.searchVideos(keyword: trimmed, page: 1)
-                if !Task.isCancelled {
-                    results = page.result ?? []
-                }
+                guard !Task.isCancelled, generation == request else { return }
+                append(page, number: 1)
             } catch {
-                if !Task.isCancelled {
-                    results = []
-                    errorMessage = error.localizedDescription
-                }
+                guard !Task.isCancelled, generation == request else { return }
+                errorMessage = error.localizedDescription
             }
-            isLoading = false
         }
+    }
+
+    func loadMore() async {
+        guard !isLoading, !isLoadingMore, hasMore, !submittedKeyword.isEmpty else { return }
+        let request = generation
+        let keyword = submittedKeyword
+        let next = pageNumber + 1
+        isLoadingMore = true
+        loadMoreError = nil
+        defer { if generation == request { isLoadingMore = false } }
+        do {
+            let page = try await BiliAPI.searchVideos(keyword: keyword, page: next)
+            guard !Task.isCancelled, generation == request else { return }
+            append(page, number: next)
+        } catch {
+            guard !Task.isCancelled, generation == request else { return }
+            loadMoreError = error.localizedDescription
+        }
+    }
+
+    private func append(_ page: SearchResultPage, number: Int) {
+        var known = Set(results.map(\.bvid))
+        let incoming = (page.result ?? []).filter { known.insert($0.bvid).inserted }
+        results.append(contentsOf: incoming)
+        pageNumber = number
+        // 有总页数时以接口为准；缺失时在空页或整页重复时停止。
+        hasMore = page.numPages.map { number < $0 } ?? !incoming.isEmpty
     }
 
     /// 取当前输入的联想词。

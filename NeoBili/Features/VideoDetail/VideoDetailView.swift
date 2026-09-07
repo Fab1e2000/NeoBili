@@ -81,16 +81,25 @@ struct VideoPage: View {
     @State private var isShowingFavoriteFolders = false
     /// 头像点开的 UP 主空间页。视频页本身是 fullScreenCover，不在任何
     /// 导航栈里，所以自己带一个栈来推空间页。
-    @State private var spaceEntry: FollowedUp?
+    @State private var spacePath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $spacePath) {
             videoPageRoot
                 // 视频页自己不显示导航栏；推入 UP 主空间页后由那一页显示。
                 .toolbarVisibility(.hidden, for: .navigationBar)
-                .navigationDestination(item: $spaceEntry) { up in
+                .navigationDestination(for: FollowedUp.self) { up in
                     SpaceView(up: up)
                 }
+                .navigationDestination(for: VideoTagSearchRoute.self) { route in
+                    VideoTagSearchPage(keyword: route.keyword)
+                }
+        }
+        .onDisappear {
+            // 系统手势关闭时负责清理；若用户已点开下一张卡片，则不能让旧页面
+            // 延迟到达的 onDisappear 把新页面的 route 和 player 一起清掉。
+            store.finishDismissal()
+            OrientationController.enterPortrait()
         }
     }
 
@@ -144,9 +153,6 @@ struct VideoPage: View {
                 }
                 .clipped()
                 .leftEdgeTapDeadZone()
-                .overlay(alignment: .topLeading) {
-                    if !isFullScreen { closeButton }
-                }
 
                 if !isFullScreen {
                     collapseFill.frame(height: 10)
@@ -161,6 +167,7 @@ struct VideoPage: View {
                         )
 
                         sectionPages
+                            .environment(\.commentBottomInset, geometry.safeAreaInsets.bottom)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .background(Color(uiColor: .systemBackground))
@@ -169,14 +176,16 @@ struct VideoPage: View {
                         // 顶角外露出页面黑底，底部安全区仍延续内容底色。
                         UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12)
                             .fill(Color(uiColor: .systemBackground))
-                            .ignoresSafeArea(edges: .bottom)
                     }
                     // 简介和相关视频、评论区与视频画面盖同一条左缘死区，
                     // 防止边缘误触点开相关视频。
                     .leftEdgeTapDeadZone()
                 }
             }
-            .frame(width: geometry.size.width, height: geometry.size.height + topOverlap, alignment: .top)
+            // 内容真正延伸到下边缘；输入栏用实测安全区抬高，不留整条不透明底栏。
+            .frame(width: geometry.size.width,
+                   height: geometry.size.height + topOverlap + (isFullScreen ? 0 : geometry.safeAreaInsets.bottom),
+                   alignment: .top)
             .offset(y: -topOverlap)
             .onAppear { collapseTravel = max(1, Self.inlineVideoHeight(for: geometry.size) - 56) }
             .onChange(of: geometry.size) { _, size in
@@ -191,6 +200,7 @@ struct VideoPage: View {
             // 自定义背景不会自动延伸到状态栏，显式覆盖顶部安全区。
             .ignoresSafeArea(edges: .top)
         }
+        // 竖屏保留底部安全区，评论输入栏位于 Home 指示条和屏幕圆角上方。
         .ignoresSafeArea(isFullScreen ? .all : [], edges: .all)
         .statusBarHidden(isFullScreen)
         .onChange(of: videoCollapse > 0) { _, collapsing in
@@ -199,7 +209,10 @@ struct VideoPage: View {
                 collapsePink = collapsing ? 1 : 0
             }
         }
-        .onChange(of: store.route?.id) { videoCollapse = 0 }
+        .onChange(of: store.route?.id) {
+            videoCollapse = 0
+            spacePath = NavigationPath()
+        }
         .onChange(of: store.player?.isPlaying) { _, playing in
             if playing == true { videoCollapse = 0 }
         }
@@ -209,12 +222,6 @@ struct VideoPage: View {
         // 评论里的配图点开看大图。视频页本身就是 fullScreenCover，
         // 查看器挂在它内部而不是根视图上。
         .imageViewerHost()
-        .onDisappear {
-            // 系统手势关闭时负责清理；若用户已点开下一张卡片，则不能让旧页面
-            // 延迟到达的 onDisappear 把新页面的 route 和 player 一起清掉。
-            store.finishDismissal()
-            OrientationController.enterPortrait()
-        }
         .sheet(isPresented: $isShowingSeason) {
             if let season = viewModel?.detail?.ugcSeason {
                 UgcSeasonSheet(
@@ -258,24 +265,6 @@ struct VideoPage: View {
         }
         // 视频页盖在根视图上面，根视图那层浮层在它下面看不见，得自己再挂一层。
         .actionFeedbackOverlay()
-    }
-
-    /// 视频页没有导航栏，所以关闭入口自己画在画面左上角。
-    /// 它不跟着播放控件一起隐藏——控件默认是收起的，藏起来就没有出口了。
-    private var closeButton: some View {
-        Button {
-            store.goBack()
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(.black.opacity(0.35)))
-                .contentShape(Circle())
-        }
-        .padding(.leading, 6)
-        .padding(.top, 6)
-        .accessibilityLabel(store.canGoBack ? "上一个视频" : "关闭视频")
     }
 
     @ViewBuilder
@@ -435,12 +424,12 @@ struct VideoPage: View {
                     Task { await viewModel?.toggleFollow(isLoggedIn: account.isLoggedIn) }
                 },
                 onOpenSpace: {
-                    spaceEntry = FollowedUp(
+                    spacePath.append(FollowedUp(
                         mid: detail.owner.mid,
                         uname: detail.owner.name,
                         face: detail.owner.face,
                         hasUpdate: false
-                    )
+                    ))
                 }
             )
             .padding(.horizontal, Self.contentInset)
@@ -449,7 +438,9 @@ struct VideoPage: View {
                 .padding(.horizontal, Self.contentInset)
 
             if let tags = viewModel?.tags, !tags.isEmpty {
-                VideoTagsRow(tags: tags, horizontalInset: Self.contentInset)
+                VideoTagsRow(tags: tags, horizontalInset: Self.contentInset) { tag in
+                    spacePath.append(VideoTagSearchRoute(keyword: tag.tagName))
+                }
             }
 
             actionBar(detail)
@@ -520,26 +511,13 @@ struct VideoPage: View {
         }
     }
 
-    /// 播放量、弹幕数、发布时间那一行，以及下面的 BV 号与转载声明。
+    /// 视频信息仅保留播放量、弹幕数与发布时间。
     private func metadataLine(_ detail: VideoDetail) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(
-                [
-                    "\(detail.stat.view.biliCountText)播放",
-                    "\(detail.stat.danmaku.biliCountText)弹幕",
-                    detail.pubdate.biliPubdateText
-                ].joined(separator: "  ")
-            )
-
-            HStack(spacing: 6) {
-                Text(detail.bvid)
-
-                // copyright 为 1 是自制稿件，只有它才带这条声明；2 是转载。
-                if detail.copyright == 1 {
-                    Label("未经作者授权禁止转载", systemImage: "nosign")
-                }
-            }
-        }
+        Text([
+            "\(detail.stat.view.biliCountText)播放",
+            "\(detail.stat.danmaku.biliCountText)弹幕",
+            detail.pubdate.biliPubdateText
+        ].joined(separator: "  "))
         .font(.caption)
         .foregroundStyle(.secondary)
         .lineLimit(1)
