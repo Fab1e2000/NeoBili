@@ -322,7 +322,9 @@ struct FollowingView: View {
     private func updatePullFade(_ distance: CGFloat) {
         guard !isRefreshing, !reduceMotion else { return }
         let progress = Double(min(max(distance, 0) / CGFloat(HomeRefreshSettings.clamped(refreshDistance)), 1))
-        refreshOpacity = 1 - FeedRefreshTuning.pullFade * progress
+        let faded = 1 - FeedRefreshTuning.pullFade * progress
+        // 值没变就不写状态：写 @State 会让整页 body 重算。
+        if refreshOpacity != faded { refreshOpacity = faded }
     }
 
     private func startRefresh() {

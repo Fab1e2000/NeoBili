@@ -116,7 +116,8 @@ struct RootView: View {
 
         tabSwitchTask?.cancel()
 
-        guard !reduceMotion else {
+        // 关注页由动态卡片负责入场，避免整页先淡入、数据就绪后卡片再入场。
+        guard !reduceMotion, tab != .following else {
             tabContentOpacity = 1
             displayedTab = tab
             return

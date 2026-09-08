@@ -11,9 +11,7 @@ struct HomeView: View {
     /// 刷新动画的快慢，设置页可调。
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
-    @State private var pullDistance: CGFloat = 0
-    @State private var pullArmed = false
-    @State private var feedOffset: CGFloat = 0
+    @State private var hasScrolledAwayFromTop = false
     @State private var feedPosition = ScrollPosition(edge: .top)
     @State private var reselectCount = 0
     @State private var shortcutTask: Task<Void, Never>?
@@ -172,9 +170,7 @@ struct HomeView: View {
                     .frame(height: 0)
                     .background {
                         ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing,
-                                         onProgress: { distance, armed in
-                                             pullDistance = distance
-                                             pullArmed = armed
+                                         onProgress: { distance, _ in
                                              updatePullFade(distance)
                                          }, onRefresh: { startRefresh() })
                     }
@@ -227,12 +223,14 @@ struct HomeView: View {
             // 卡片从搜索框下面滑过去时，顶部给一层渐隐，让搜索框浮在内容之上
             // 而不是硬生生压着卡片（iOS 26 的 scroll edge effect）。
             .scrollEdgeEffectStyle(.soft, for: .top)
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, offset in feedOffset = offset }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                // 只在「离开顶部 / 回到顶部」这两个瞬间更新状态：滚动过程中
+                // 每帧都写 CGFloat 会让整个 body（含 feedRows 分组）跟着重算。
+                (geometry.contentOffset.y + geometry.contentInsets.top) > 1
+            } action: { _, away in hasScrolledAwayFromTop = away }
             .onChange(of: reselectCount) {
                 guard shortcutTask == nil, !isRefreshing else { return }
-                if feedOffset > 1 {
+                if hasScrolledAwayFromTop {
                     withAnimation(.easeOut(duration: 0.25)) {
                         feedPosition.scrollTo(edge: .top)
                     }
@@ -294,7 +292,9 @@ struct HomeView: View {
         guard !isRefreshing, !reduceMotion else { return }
         let threshold = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
         let progress = Double(min(max(distance, 0) / threshold, 1))
-        listOpacity = 1 - FeedRefreshTuning.pullFade * progress
+        let faded = 1 - FeedRefreshTuning.pullFade * progress
+        // 值没变就不写状态：写 @State 会让整页 body 重算。
+        if listOpacity != faded { listOpacity = faded }
     }
 
     private func startRefresh(scrollToTop: Bool = false) {

@@ -17,7 +17,9 @@ struct SpaceView: View {
     @Namespace private var dynamicTransition
     @State private var detailEntry: DynamicEntry?
     @State private var headerHeight: CGFloat = 0
-    @State private var pageOffsets: [Tab: CGFloat] = [:]
+    /// 各分页的最新滚动位置。body 不读它，所以放进引用盒子保存：
+    /// 消除此字典写入造成的状态失效；头部折叠等其它状态仍可能更新视图。
+    @State private var pageOffsets = PageOffsetBox()
     @State private var headerCollapse: CGFloat = 0
     @State private var pickerHeight: CGFloat = 0
     @State private var scrollingPages: Set<Tab> = []
@@ -29,6 +31,11 @@ struct SpaceView: View {
         case dynamics = "动态"
 
         var id: String { rawValue }
+    }
+
+    /// 滚动位置的引用盒子，见 `pageOffsets` 的说明。
+    private final class PageOffsetBox {
+        var storage: [Tab: CGFloat] = [:]
     }
 
     init(up: FollowedUp) {
@@ -140,7 +147,7 @@ struct SpaceView: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, offset in
-            pageOffsets[pageTab] = max(offset, 0)
+            pageOffsets.storage[pageTab] = max(offset, 0)
             // 只有纵向手势更新共享头部；分页切换和程序同步产生的回调不参与。
             guard pageTab == tab, scrollingPages.contains(pageTab) else { return }
             let collapse = min(max(offset, 0), headerHeight)
@@ -158,11 +165,11 @@ struct SpaceView: View {
     /// 头部完全收起时保留各页更深的阅读位置；展开时两页共同露出头部。
     private func synchronizeHeader(in pageTab: Tab) {
         let offset = SpaceHeaderLayout.synchronizedOffset(
-            pageOffset: pageOffsets[pageTab] ?? 0,
+            pageOffset: pageOffsets.storage[pageTab] ?? 0,
             collapse: headerCollapse,
             headerHeight: headerHeight
         )
-        pageOffsets[pageTab] = offset
+        pageOffsets.storage[pageTab] = offset
         if pageTab == .videos {
             videoPosition.scrollTo(y: offset)
         } else {

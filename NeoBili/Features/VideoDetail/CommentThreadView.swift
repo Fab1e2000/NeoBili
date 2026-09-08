@@ -1,8 +1,14 @@
 import SwiftUI
 
+/// @Entry 的默认值在每次读取时都会求值，类类型会因此被反复分配；
+/// 兜底动作共用这一个全局实例（没有 host 接住时的空操作）。
+/// 实例本身从不被改写（真正的动作都在 host 各自的盒子上），按非隔离常量处理。
+nonisolated(unsafe) private let unhostedCommentThreadAction = EnvironmentAction<Comment> { _ in }
+
 extension EnvironmentValues {
     /// 打开某条评论的单独页面。由最近的一个 `commentThreadHost(viewModel:)` 接住。
-    @Entry var openCommentThread: (Comment) -> Void = { _ in }
+    /// 用引用盒子而不是裸闭包，见 `EnvironmentAction` 的说明。
+    @Entry var openCommentThread = unhostedCommentThreadAction
 }
 
 extension View {
@@ -19,10 +25,12 @@ extension View {
 private struct CommentThreadHost: ViewModifier {
     let viewModel: CommentsViewModel
     @State private var root: Comment?
+    @State private var openAction = EnvironmentAction<Comment> { _ in }
 
     func body(content: Content) -> some View {
-        content
-            .environment(\.openCommentThread) { root = $0 }
+        openAction.setHandler { [root = $root] in root.wrappedValue = $0 }
+        return content
+            .environment(\.openCommentThread, openAction)
             .sheet(item: $root) { comment in
                 CommentThreadView(root: comment, viewModel: viewModel)
                     .environment(\.commentBottomInset, 0)

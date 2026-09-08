@@ -16,7 +16,8 @@ struct CommentReplyTarget {
 
 extension EnvironmentValues {
     @Entry var commentBottomInset: CGFloat = 0
-    @Entry var replyToComment: ((Comment) -> Void)? = nil
+    /// 用引用盒子而不是裸闭包，见 `EnvironmentAction` 的说明。
+    @Entry var replyToComment: EnvironmentAction<Comment>? = nil
 }
 
 extension View {
@@ -41,6 +42,7 @@ private struct CommentComposerHost: ViewModifier {
     @State private var sending = false
     @State private var sendError: String?
     @FocusState private var focused: Bool
+    @State private var replyAction = EnvironmentAction<Comment> { _ in }
 
     // 键盘收起时适当进入底部安全区；编辑时恢复避让，不侵入键盘。
     private var inputBottomInset: CGFloat {
@@ -52,13 +54,15 @@ private struct CommentComposerHost: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        content
-            .environment(\.replyToComment) { comment in
-                guard !sending else { return }
-                savedDraft.target = CommentReplyTarget(root: root?.rpid ?? comment.rpid,
-                                            parent: comment.rpid, name: comment.member.uname)
-                focused = true
-            }
+        replyAction.setHandler { [sending = $sending, draft = savedDraft,
+                                  rootID = root?.rpid, focused = $focused] comment in
+            guard !sending.wrappedValue else { return }
+            draft.target = CommentReplyTarget(root: rootID ?? comment.rpid,
+                                             parent: comment.rpid, name: comment.member.uname)
+            focused.wrappedValue = true
+        }
+        return content
+            .environment(\.replyToComment, replyAction)
             .contentMargins(.bottom, barHeight + inputBottomInset, for: .scrollContent)
             .overlay(alignment: .bottom) {
                 inputBar

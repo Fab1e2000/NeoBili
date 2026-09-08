@@ -34,9 +34,34 @@ final class PortraitVideoStore {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let loader: @MainActor (String) async throws -> Metadata
-    @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
+    /// 取消标志由 cancellation handler 同步设置，排队出列时不会错过取消信号。
+    private final class CancellationFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+        func cancel() { lock.lock(); cancelled = true; lock.unlock() }
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return cancelled
+        }
+    }
+
+    private struct Subscriber {
+        let flag: CancellationFlag
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    private final class SharedRequest {
+        var subscribers: [UUID: Subscriber] = [:]
+        var task: Task<Void, Never>?
+    }
+
+    @ObservationIgnored private var requests: [String: SharedRequest] = [:]
+    @ObservationIgnored private var queue: [String] = []
     @ObservationIgnored private var activeRequests = 0
-    @ObservationIgnored private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    var queuedRequestCount: Int { requests.values.filter { $0.task == nil }.count }
+    func subscriberCount(for bvid: String) -> Int { requests[bvid]?.subscribers.count ?? 0 }
 
     convenience init(defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init,
                      loader: @escaping @MainActor (String) async throws -> VideoDimension?) {
@@ -109,30 +134,67 @@ final class PortraitVideoStore {
 
     private func resolveOne(_ bvid: String, requiringDuration: Bool) async {
         guard !Task.isCancelled, !hasFreshAttempt(bvid: bvid, requiringDuration: requiringDuration) else { return }
-        if let task = tasks[bvid] {
-            await task.value
-            return
+        let subscriberID = UUID()
+        let flag = CancellationFlag()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                guard !flag.isCancelled, !Task.isCancelled else {
+                    continuation.resume()
+                    return
+                }
+                let request: SharedRequest
+                if let existing = requests[bvid] { request = existing }
+                else {
+                    request = SharedRequest()
+                    requests[bvid] = request
+                    queue.append(bvid)
+                }
+                request.subscribers[subscriberID] = Subscriber(flag: flag, continuation: continuation)
+                startQueuedRequests()
+            }
+        } onCancel: {
+            flag.cancel()
+            Task { @MainActor in self.cancelSubscriber(subscriberID, bvid: bvid) }
         }
-        // MainActor 上原子登记，跨列表同一个 BV 仍只补查一次。
-        let task = Task {
-            await self.fetch(bvid)
-            self.tasks[bvid] = nil
+    }
+
+    private func cancelSubscriber(_ id: UUID, bvid: String) {
+        guard let request = requests[bvid], let subscriber = request.subscribers.removeValue(forKey: id) else { return }
+        subscriber.continuation.resume()
+        // 已开始的共享请求照常缓存结果；还在排队且无人等待的请求直接移除。
+        if request.task == nil, request.subscribers.isEmpty {
+            requests[bvid] = nil
+            queue.removeAll { $0 == bvid }
         }
-        tasks[bvid] = task
-        await task.value
+    }
+
+    private func startQueuedRequests() {
+        while activeRequests < Self.maximumConcurrentRequests, !queue.isEmpty {
+            let bvid = queue.removeFirst()
+            guard let request = requests[bvid], request.task == nil else { continue }
+            let cancelled = request.subscribers.filter { $0.value.flag.isCancelled }.map(\.key)
+            for id in cancelled {
+                request.subscribers.removeValue(forKey: id)?.continuation.resume()
+            }
+            guard !request.subscribers.isEmpty else {
+                requests[bvid] = nil
+                continue
+            }
+            activeRequests += 1
+            request.task = Task {
+                await self.fetch(bvid)
+                let subscribers = request.subscribers.values
+                request.subscribers.removeAll()
+                self.requests[bvid] = nil
+                request.task = nil
+                self.activeRequests -= 1
+                subscribers.forEach { $0.continuation.resume() }
+                self.startQueuedRequests()
+            }
+        }
     }
 
     private func fetch(_ bvid: String) async {
-        if activeRequests >= Self.maximumConcurrentRequests {
-            await withCheckedContinuation { waiters.append($0) }
-        } else {
-            activeRequests += 1
-        }
-        defer {
-            if waiters.isEmpty { activeRequests -= 1 }
-            else { waiters.removeFirst().resume() }
-        }
-
         let metadata = try? await loader(bvid)
         let portrait = metadata?.dimension.flatMap { $0.isValid ? $0.isPortrait : nil }
         // 已知结果保留七天；失败或详情也无尺寸时冷却五分钟，不能永久当作横屏。
