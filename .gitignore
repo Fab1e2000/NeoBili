@@ -7,3 +7,10 @@ DerivedData/
 
 # Swift Package Manager
 .build/
+
+# 本地凭据和签名文件
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision

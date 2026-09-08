@@ -119,31 +119,104 @@ struct VideoCoverThumbnail: View {
 /// In-memory image cache. Bilibili's image CDN (hdslb.com) is hotlink-protected
 /// on some resources, so every request needs the same Referer/User-Agent as the
 /// rest of the app - plain `AsyncImage` can't attach those headers.
+///
+/// 容量按张数封顶；满了以后逐出**最旧**的条目而不是整罐清空——整罐清空会让
+/// 回滚列表时所有封面同时重新下载。系统发出内存警告时清空位图（在途下载保留，
+/// 结果照常入缓存），先把内存让给前台，正在显示的单元格也不会因此变成裂图。
 actor BiliImageCache {
     static let shared = BiliImageCache()
+
+    private struct Entry {
+        let image: UIImage
+        let savedAt: Date
+    }
+
     /// 存 `UIImage` 而不是 SwiftUI 的 `Image`：图片查看器要拿原图去保存和分享，
     /// `Image` 取不回底层位图。展示端再包一层 `Image(uiImage:)` 就是了。
-    private var storage: [URL: UIImage] = [:]
+    private var storage: [URL: Entry] = [:]
+    /// 同一地址正在进行的下载。列表快速滚动时，同一个封面（同一 UP 头像）
+    /// 会同时出现在多张卡片上，这里保证只发一次请求。
+    private var inFlight: [URL: Task<UIImage, Error>] = [:]
+    /// 观察者令牌只在 init 注册、deinit 注销，中间不被任何隔离域读写；
+    /// NotificationCenter 返回的协议类型不是 Sendable，所以按非隔离存储处理。
+    nonisolated(unsafe) private var memoryPressureObserver: (any NSObjectProtocol)?
 
-    func image(for url: URL) -> UIImage? { storage[url] }
-    func insert(_ image: UIImage, for url: URL) {
-        if storage.count > 300 { storage.removeAll() } // crude cap, good enough for a feed
-        storage[url] = image
+    private init() {
+        memoryPressureObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            Task { await self?.handleMemoryPressure() }
+        }
     }
+
+    deinit {
+        if let memoryPressureObserver {
+            NotificationCenter.default.removeObserver(memoryPressureObserver)
+        }
+    }
+
+    /// 系统内存告急时丢掉全部位图。在途下载不打断：取消会让正在等结果的
+    /// 单元格直接显示失败态，而让下载跑完只是晚一点把图放回（此时已清空的）缓存。
+    private func handleMemoryPressure() {
+        storage.removeAll()
+    }
+
+    func cachedImage(for url: URL) -> UIImage? {
+        storage[url]?.image
+    }
+
+    func insert(_ image: UIImage, for url: URL) {
+        if storage.count >= Self.capacity {
+            evictOldest()
+        }
+        storage[url] = Entry(image: image, savedAt: Date())
+    }
+
+    /// 命中缓存直接返回；否则并入同一地址的在途下载（没有就发起一次），
+    /// 下载成功后自动入缓存。调用方取消自己的任务不影响共享下载。
+    func image(
+        for url: URL,
+        downloader: @escaping @Sendable () async throws -> UIImage
+    ) async throws -> UIImage {
+        if let cached = storage[url]?.image { return cached }
+        if let existing = inFlight[url] {
+            return try await existing.value
+        }
+        let task = Task { try await downloader() }
+        inFlight[url] = task
+        defer { inFlight[url] = nil }
+        let image = try await task.value
+        insert(image, for: url)
+        return image
+    }
+
+    private func evictOldest() {
+        let oldestFirst = storage.sorted { $0.value.savedAt < $1.value.savedAt }
+        // 一次淘汰一小批，避免连续插入时每次插入都触发整罐排序。
+        let target = Self.capacity - Self.evictionBatch
+        for (url, _) in oldestFirst {
+            guard storage.count > target else { break }
+            storage[url] = nil
+        }
+    }
+
+    /// 缓存张数上限。与旧实现的量级一致，只是满了以后改成逐出最旧条目。
+    private static let capacity = 300
+    private static let evictionBatch = 30
 }
 
 /// 带 B 站必需请求头的取图。命中缓存直接返回，不发请求。
 enum BiliImageLoader {
     static func load(_ url: URL) async throws -> UIImage {
-        if let cached = await BiliImageCache.shared.image(for: url) { return cached }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 8
-        request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-        let (data, _) = try await URLSession.shared.data(for: request)
-        guard let image = UIImage(data: data) else { throw BiliAPIError.invalidURL }
-        await BiliImageCache.shared.insert(image, for: url)
-        return image
+        try await BiliImageCache.shared.image(for: url) {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 8
+            request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard let image = UIImage(data: data) else { throw BiliAPIError.invalidURL }
+            return image
+        }
     }
 }
 
