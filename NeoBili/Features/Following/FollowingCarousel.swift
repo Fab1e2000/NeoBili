@@ -313,6 +313,7 @@ private struct FollowingHandleTouchSurface: UIViewRepresentable {
         view.isUserInteractionEnabled = enabled
     }
 
+    @MainActor
     final class Coordinator: NSObject {
         var parent: FollowingHandleTouchSurface
         var startY: CGFloat = 0
@@ -416,8 +417,9 @@ private final class FollowingAvatarGlassView: UIView {
         CATransaction.commit()
     }
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        // presentation() 在 CAShapeLayer 上返回的就是 CAShapeLayer?，无需再向下转型。
         guard super.point(inside: point, with: event),
-              let visible = (outline.presentation() as? CAShapeLayer)?.path ?? outline.path else { return false }
+              let visible = outline.presentation()?.path ?? outline.path else { return false }
         return visible.contains(point)
     }
 
@@ -431,7 +433,7 @@ private final class FollowingAvatarGlassView: UIView {
         let shape = FollowingSidebarShape(side: side, focusY: bounds.midY - rect.minY,
                                           spineWidth: mix(60, 56), bulge: 32 * progress)
         let path = shape.path(in: rect).cgPath
-        let old = (outline.presentation() as? CAShapeLayer)?.path ?? outline.path
+        let old = outline.presentation()?.path ?? outline.path
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if interactive { outline.removeAnimation(forKey: "expansion") }
