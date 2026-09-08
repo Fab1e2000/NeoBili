@@ -4,13 +4,6 @@ extension EnvironmentValues {
     @Entry var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
 }
 
-private struct VideoResolutionBatch: Equatable {
-    let ids: [String]
-    let generation: Int
-    let enabled: Bool
-    let minimumSeconds: Int
-}
-
 /// 列表持有整批判断和补页；全部完成后才发布统一的动画起点。
 private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModifier {
     @Environment(\.hidesPortraitVideos) private var enabled
@@ -47,15 +40,17 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
                 let current = batch
                 let currentIDs = Set(current.ids)
                 let previousIDs = Set(previousBatch?.ids ?? [])
-                let reset = previousBatch == nil || previousBatch?.generation != batchID
-                    || previousBatch?.enabled != enabled || previousBatch?.minimumSeconds != current.minimumSeconds
-                    || !previousIDs.isSubset(of: currentIDs)
+                let reset = current.resetsEntrance(comparedTo: previousBatch)
                 if reset {
                     targetCount = videos.count
                     replacementPages = 0
-                } else if !replacing {
-                    targetCount += currentIDs.subtracting(previousIDs).count
-                    replacementPages = 0
+                } else {
+                    // 单卡替换/删除不重置整批动画，也不把已删除卡片继续计入补页目标。
+                    targetCount = max(0, targetCount - previousIDs.subtracting(currentIDs).count)
+                    if !replacing {
+                        targetCount += currentIDs.subtracting(previousIDs).count
+                        replacementPages = 0
+                    }
                 }
                 previousBatch = current
                 replacing = false
