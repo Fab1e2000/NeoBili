@@ -45,3 +45,10 @@ swiftc -swift-version 6 -parse-as-library \
     "$HARNESS/src/EnvironmentActionLifetime.swift" \
     -o "$BUILD_DIR/action-lifetime"
 "$BUILD_DIR/action-lifetime"
+
+# 验证真实入场状态逻辑，不创建窗口或启动设备。
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Core/Models/VideoEntranceClock.swift" \
+    "$HARNESS/src/VideoEntranceRegression.swift" \
+    -o "$BUILD_DIR/video-entrance"
+"$BUILD_DIR/video-entrance"
