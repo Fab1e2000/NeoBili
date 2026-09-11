@@ -2,12 +2,14 @@ import SwiftUI
 
 /// 「关注」Tab：动态流与可收起的侧边关注选择器。
 struct FollowingView: View {
+    var onOpenLiveRoom: (LiveRoom) -> Void = { _ in }
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = FollowingViewModel()
     @State private var path: [FollowedUp] = []
     /// 正在看哪条动态的详情。有值时推入详情页。
@@ -18,11 +20,14 @@ struct FollowingView: View {
     @AppStorage(FollowingSidebarSide.storageKey) private var sidebarSide: FollowingSidebarSide = .left
     @AppStorage(FollowingSidebarDwellSettings.storageKey) private var sidebarDwellDuration = FollowingSidebarDwellSettings.defaultDuration
     @State private var isSidebarExpanded = false
-    @State private var openingSwipeProgress: CGFloat?
+    @State private var sidebarMotion = FollowingSidebarMotion()
     @State private var listPosition = ScrollPosition(edge: .top)
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = true
+    @AppStorage(CardAnimationSettings.dynamicEnterKey) private var dynamicEnterEnabled = true
+    @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = true
     @State private var isRefreshing = false
     @State private var refreshOpacity = 1.0
     @State private var landingGeneration = 0
@@ -32,6 +37,14 @@ struct FollowingView: View {
     @State private var selectionTransitionTask: Task<Void, Never>?
     @State private var pendingSelectionID: FollowingSelection.ID?
     @State private var isFollowingVisible = false
+    @State private var isAvatarMenuPresented = false
+    @State private var liveRefreshGeneration = 0
+
+    private struct LiveRefreshContext: Hashable {
+        let isActive: Bool
+        let accountID: Int?
+        let generation: Int
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -49,17 +62,15 @@ struct FollowingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // 用同一张页面底板覆盖上下安全区，侧边凹口在内容中线对齐头像。
                 .background(alignment: .top) {
-                    FollowingPageEdgeShape(
+                    FollowingPageBackground(
+                        motion: sidebarMotion,
                         side: sidebarSide,
-                        progress: sidebarExpansionProgress,
                         topInset: geometry.safeAreaInsets.top,
                         bottomInset: geometry.safeAreaInsets.bottom
                     )
-                    .fill(Color(uiColor: .systemBackground))
                     .frame(width: geometry.size.width,
                            height: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
                     .offset(y: -geometry.safeAreaInsets.top)
-                    .animation(sidebarTransition, value: isSidebarExpanded)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
                 }
@@ -94,12 +105,14 @@ struct FollowingView: View {
             path = []
             detailEntry = nil
             isSidebarExpanded = false
+            isAvatarMenuPresented = false
+            sidebarMotion.reset()
             focusedTargetID = .all
             feedOpacity = 1
             listPosition.scrollTo(edge: .top)
             viewModel = FollowingViewModel()
         }
-        .resolvePortraitVideos(viewModel.activeFeed.entries.compactMap(\.video), batchID: landingGeneration) {
+        .resolvePortraitVideos(viewModel.activeFeed.entries.compactMap(\.video), batchID: landingGeneration, animationCategory: .dynamic) {
             let feed = viewModel.activeFeed
             await feed.loadReplacementPage()
             return feed.entries.compactMap(\.video)
@@ -125,17 +138,8 @@ struct FollowingView: View {
 
     }
 
-    private var sidebarExpansionProgress: CGFloat {
-        openingSwipeProgress ?? (isSidebarExpanded ? 1 : 0)
-    }
-
-    private var contentDisplacement: CGFloat {
-        sidebarExpansionProgress * FollowingSidebarLayout.contentDisplacement * (sidebarSide == .left ? 1 : -1)
-    }
-
-    private var sidebarTransition: Animation? {
-        reduceMotion || openingSwipeProgress != nil ? nil : .timingCurve(0.42, 0, 0.58, 1, duration: FollowingSidebarLayout.transitionDuration)
-    }
+    private var animatesCardEntrance: Bool { cardAnimationsEnabled && dynamicEnterEnabled && !reduceMotion }
+    private var animatesCardExit: Bool { cardAnimationsEnabled && dynamicExitEnabled && !reduceMotion }
 
     private var list: some View {
         ScrollView {
@@ -153,19 +157,14 @@ struct FollowingView: View {
                 )
                 .overlay {
                     FollowingPageSwipeObserver(
-                        enabled: !isSidebarExpanded || openingSwipeProgress != nil,
+                        enabled: !isSidebarExpanded || sidebarMotion.isDragging,
+                        side: sidebarSide,
                         onMove: { translation in
-                            openingSwipeProgress = min(max(translation / FollowingSidebarLayout.contentDisplacement, 0), 1)
+                            sidebarMotion.drag(translation: translation)
                             if !isSidebarExpanded { isSidebarExpanded = true }
                         },
                         onEnd: { velocity in
-                            guard let progress = openingSwipeProgress else { return }
-                            let expanded = velocity.map { progress + $0 * 0.12 / FollowingSidebarLayout.contentDisplacement >= 0.5 } ?? false
-                            let animation: Animation? = reduceMotion ? nil : .timingCurve(0.42, 0, 0.58, 1, duration: FollowingSidebarLayout.transitionDuration)
-                            withAnimation(animation) {
-                                openingSwipeProgress = nil
-                                isSidebarExpanded = expanded
-                            }
+                            isSidebarExpanded = sidebarMotion.endDrag(velocity: velocity, reduceMotion: reduceMotion)
                         }
                     )
                 }
@@ -180,14 +179,13 @@ struct FollowingView: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         .scrollDisabled(isRefreshing || pendingSelectionID != nil)
         .overlay(alignment: .top) {
-            if pendingSelectionID != nil || (reduceMotion && isRefreshing) {
+            if pendingSelectionID != nil || (!animatesCardExit && isRefreshing) {
                 LoadingTaskAnchor().controlSize(.small).padding(.top, 12)
             }
         }
         .accessibilityAction(named: "刷新关注动态") { startRefresh() }
-        // 保持动态原有宽度和滚动位置，展开时整页为侧栏让出空间。
-        .offset(x: contentDisplacement)
-        .animation(sidebarTransition, value: isSidebarExpanded)
+        // 卡片保持原始排版，再按剩余屏宽等比缩小；视口补偿使上下边缘仍与安全区衔接。
+        .modifier(FollowingFeedPresentation(motion: sidebarMotion, side: sidebarSide))
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
         // 入口在死区外层，仍能从屏幕边缘直接点击和滑动。
@@ -202,24 +200,46 @@ struct FollowingView: View {
                     if !isSidebarExpanded { settleSelection(id) }
                 },
                 onOpenUp: { path.append($0) },
-                interactiveProgress: openingSwipeProgress,
+                onOpenLive: { up in
+                    guard let room = viewModel.liveRoom(for: up) else {
+                        feedback.show("这位 UP 主已结束直播")
+                        return
+                    }
+                    onOpenLiveRoom(room)
+                },
+                onContextMenuChange: { presented in
+                    isAvatarMenuPresented = presented
+                    if presented {
+                        selectionTransitionTask?.cancel()
+                        selectionTransitionTask = nil
+                        pendingSelectionID = nil
+                        feedOpacity = 1
+                    }
+                },
+                motion: sidebarMotion,
                 onCloseSwipe: { translation in
-                    openingSwipeProgress = min(max(1 + translation / FollowingSidebarLayout.contentDisplacement, 0), 1)
+                    sidebarMotion.drag(translation: translation)
                 },
                 onCloseSwipeEnd: { velocity in
-                    let progress = openingSwipeProgress ?? 1
-                    let expanded = progress + velocity * 0.12 / FollowingSidebarLayout.contentDisplacement >= 0.5
-                    let animation: Animation? = reduceMotion ? nil : .timingCurve(0.42, 0, 0.58, 1, duration: FollowingSidebarLayout.transitionDuration)
-                    withAnimation(animation) {
-                        openingSwipeProgress = nil
-                        isSidebarExpanded = expanded
-                    }
+                    isSidebarExpanded = sidebarMotion.endDrag(velocity: velocity, reduceMotion: reduceMotion)
                 }
             )
         }
         .onAppear { isFollowingVisible = true }
-        .task(id: isSidebarExpanded ? focusedTargetID : nil) {
-            guard isSidebarExpanded else { return }
+        .onChange(of: viewModel.carouselItems) { _, _ in
+            viewModel.reconcileCarouselSelection()
+        }
+        .task(id: LiveRefreshContext(isActive: isFollowingVisible && scenePhase == .active,
+                                     accountID: account.accountID, generation: liveRefreshGeneration)) {
+            guard isFollowingVisible, scenePhase == .active, account.isLoggedIn else { return }
+            let directory = viewModel.liveDirectory
+            while !Task.isCancelled {
+                await directory.refresh(force: liveRefreshGeneration > 0)
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+            }
+        }
+        .task(id: isSidebarExpanded && !isAvatarMenuPresented ? focusedTargetID : nil) {
+            guard isSidebarExpanded, !isAvatarMenuPresented else { return }
             let targetID = focusedTargetID
             if targetID == viewModel.selectedTarget.id {
                 // 原头像不计时刷新；滑回原头像时取消尚未完成的切换。
@@ -231,17 +251,35 @@ struct FollowingView: View {
             } catch {
                 return
             }
-            guard !Task.isCancelled, isSidebarExpanded, focusedTargetID == targetID else { return }
+            guard !Task.isCancelled, isSidebarExpanded, !isAvatarMenuPresented, focusedTargetID == targetID else { return }
             settleSelection(targetID, refresh: true)
         }
         .onChange(of: isSidebarExpanded) { _, expanded in
+            sidebarMotion.settle(expanded: expanded, reduceMotion: reduceMotion)
             if !expanded, isFollowingVisible {
                 settleSelection(focusedTargetID)
             }
         }
+        .onChange(of: sidebarSide) { _, _ in
+            isSidebarExpanded = false
+            sidebarMotion.reset()
+        }
+        .onChange(of: reduceMotion) { _, enabled in
+            if enabled { sidebarMotion.settle(expanded: isSidebarExpanded, reduceMotion: true) }
+        }
+        .onChange(of: animatesCardExit) { _, enabled in
+            if !enabled {
+                refreshOpacity = 1
+                feedOpacity = 1
+            }
+        }
+        .onChange(of: animatesCardEntrance) { _, enabled in
+            if !enabled { landingWindow = false }
+        }
         .onDisappear {
             isFollowingVisible = false
-            openingSwipeProgress = nil
+            isAvatarMenuPresented = false
+            sidebarMotion.reset()
             cancelRefreshAnimation()
             isSidebarExpanded = false
             focusedTargetID = viewModel.selectedTarget.id
@@ -293,7 +331,7 @@ struct FollowingView: View {
             }
             ForEach(Array(visibleEntries.enumerated()), id: \.element.id) { index, entry in
                 FeedDropInRow(index: index, generation: landingGeneration,
-                              landing: landingWindow, speed: enterSpeed, reduceMotion: reduceMotion) {
+                              landing: landingWindow, speed: enterSpeed, reduceMotion: reduceMotion, category: .dynamic) {
                     card(for: entry)
                 }
                     .videoEntranceIdentity(entry.video?.bvid)
@@ -320,7 +358,7 @@ struct FollowingView: View {
     }
 
     private func updatePullFade(_ distance: CGFloat) {
-        guard !isRefreshing, !reduceMotion else { return }
+        guard !isRefreshing, animatesCardExit else { return }
         let progress = Double(min(max(distance, 0) / CGFloat(HomeRefreshSettings.clamped(refreshDistance)), 1))
         let faded = 1 - FeedRefreshTuning.pullFade * progress
         // 值没变就不写状态：写 @State 会让整页 body 重算。
@@ -329,6 +367,7 @@ struct FollowingView: View {
 
     private func startRefresh() {
         guard !isRefreshing, !isSidebarExpanded else { return }
+        liveRefreshGeneration += 1
         refreshTask?.cancel()
         selectionTransitionTask?.cancel()
         pendingSelectionID = nil
@@ -337,26 +376,29 @@ struct FollowingView: View {
         landingWindow = false
         let model = viewModel
         let feed = model.activeFeed
-        let duration = reduceMotion ? 0 : FeedRefreshTuning.fadeExit(speed: exitSpeed)
+        let duration = animatesCardExit ? FeedRefreshTuning.fadeExit(speed: exitSpeed) : 0
         let stagingID = UUID()
         let started = Date.now
         withAnimation(.easeOut(duration: 0.25)) { listPosition.scrollTo(edge: .top) }
-        if !reduceMotion {
+        if animatesCardExit {
             withAnimation(.easeOut(duration: duration)) { refreshOpacity = 0 }
         }
         refreshTask = Task { @MainActor in
             await model.refresh(staged: true, stagingID: stagingID)
             let remaining = max(0, duration - Date.now.timeIntervalSince(started))
-            if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
+            if remaining > 0 {
+                try? await CardAnimationSettings.waitWhileEnabled(for: remaining, category: .dynamic, phase: .exit)
+            }
             // 离页或切换 UP 后只完成原数据源的提交，不改新页面的动画状态。
             guard !Task.isCancelled else { feed.commitStagedRefresh(id: stagingID); return }
-            landingWindow = !reduceMotion
+            landingWindow = animatesCardEntrance
             feed.commitStagedRefresh(id: stagingID)
             refreshOpacity = 1
             landingGeneration += 1
             isRefreshing = false
             if landingWindow {
-                try? await Task.sleep(for: .seconds(FeedRefreshTuning.landingWindow(speed: enterSpeed)))
+                try? await CardAnimationSettings.waitWhileEnabled(for: FeedRefreshTuning.landingWindow(speed: enterSpeed),
+                                                                 category: .dynamic, phase: .enter)
                 guard !Task.isCancelled else { return }
                 landingWindow = false
             }
@@ -435,10 +477,10 @@ struct FollowingView: View {
                 targetFeed.commitStagedRefresh(id: stagingID)
                 return
             }
-            if !reduceMotion {
+            if animatesCardExit {
                 withAnimation(.easeOut(duration: 0.07)) { feedOpacity = 0 }
                 do {
-                    try await Task.sleep(for: .milliseconds(70))
+                    try await CardAnimationSettings.waitWhileEnabled(for: 0.07, category: .dynamic, phase: .exit)
                 } catch {
                     targetFeed.commitStagedRefresh(id: stagingID)
                     return
@@ -456,13 +498,14 @@ struct FollowingView: View {
 
             // 缓存命中和首次网络加载都在内容就绪后触发同一套卡片落位。
             // 不提前淡入整页，否则数据稍后到达时会直接出现而没有动效。
-            landingWindow = !reduceMotion
+            landingWindow = animatesCardEntrance
             landingGeneration += 1
             feedOpacity = 1
 
             if landingWindow {
                 do {
-                    try await Task.sleep(for: .seconds(FeedRefreshTuning.landingWindow(speed: enterSpeed)))
+                    try await CardAnimationSettings.waitWhileEnabled(for: FeedRefreshTuning.landingWindow(speed: enterSpeed),
+                                                                    category: .dynamic, phase: .enter)
                 } catch {
                     return
                 }
@@ -493,6 +536,20 @@ struct FollowingView: View {
                 feedback.show(message)
             }
         }
+    }
+}
+
+/// 独立观察展开进度，整份动态数据不参与逐帧背景重绘。
+private struct FollowingPageBackground: View {
+    let motion: FollowingSidebarMotion
+    let side: FollowingSidebarSide
+    let topInset: CGFloat
+    let bottomInset: CGFloat
+
+    var body: some View {
+        FollowingPageEdgeShape(side: side, progress: motion.progress,
+                               topInset: topInset, bottomInset: bottomInset)
+            .fill(Color(uiColor: .systemBackground))
     }
 }
 

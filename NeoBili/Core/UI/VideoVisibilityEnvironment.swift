@@ -7,8 +7,11 @@ extension EnvironmentValues {
 /// 列表持有整批判断和补页；全部完成后才发布统一的动画起点。
 private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModifier {
     @Environment(\.hidesPortraitVideos) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var animations = CardAnimationPreferences()
     let videos: [Video]
     let batchID: Int
+    let animationCategory: CardAnimationCategory
     let loadReplacementPage: (@MainActor () async -> [Video])?
     @State private var entranceClock = VideoEntranceClock()
     @State private var previousBatch: VideoResolutionBatch?
@@ -26,6 +29,10 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
                              minimumSeconds: VideoDurationFilterSettings.shared.minimumSeconds)
     }
 
+    private var animatesEntrance: Bool {
+        !reduceMotion && animations.isEnabled(category: animationCategory, phase: .enter)
+    }
+
     func body(content: Content) -> some View {
         content
             .transformEnvironment(\.videoEntranceClocks) {
@@ -35,6 +42,9 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
                 if preparing, entranceClock.starts.isEmpty, !videos.isEmpty {
                     LoadingTaskAnchor()
                 }
+            }
+            .onChange(of: animatesEntrance) { _, enabled in
+                if !enabled { entranceClock.finishAnimations() }
             }
             .task(id: batch) {
                 let current = batch
@@ -75,7 +85,7 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
                     if identifiers(updated) != current.ids { return }
                     replacing = false
                 }
-                entranceClock.admit(approved.compactMap(\.dimensionLookupBVID))
+                entranceClock.admit(approved.compactMap(\.dimensionLookupBVID), animated: animatesEntrance)
                 preparing = false
             }
     }
@@ -85,9 +95,11 @@ extension View {
     func resolvePortraitVideos<S: Sequence>(
         _ videos: S,
         batchID: Int = 0,
+        animationCategory: CardAnimationCategory = .video,
         loadReplacementPage: (@MainActor () async -> [S.Element])? = nil
     ) -> some View where S.Element: VideoDimensionProviding {
         modifier(PortraitVideoResolution(videos: Array(videos), batchID: batchID,
+                                         animationCategory: animationCategory,
                                          loadReplacementPage: loadReplacementPage))
     }
 }

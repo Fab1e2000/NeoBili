@@ -101,6 +101,8 @@ struct VideoPart: Decodable, Identifiable, Hashable, Sendable {
     let page: Int
     let part: String
     let duration: Int
+    /// 各分P可能采用不同画幅，不能一直沿用稿件第一P的尺寸。
+    var dimension: VideoDimension? = nil
     var id: Int { cid }
 
     var formattedDuration: String {
@@ -359,9 +361,8 @@ extension DurlItem {
 }
 
 struct PlayURLData: Decodable, Hashable, Sendable {
-    /// 这三个字段界面上并没有用到，而且被风控拦下时接口根本不返回它们。
-    /// 设成可选之后，风控响应能正常解码，播放流程就还有机会去试其它格式，
-    /// 而不是在第一步就抛出「数据解析失败」。
+    /// 返回档位和声明列表。风控响应可能缺少它们，保留可选解码才能
+    /// 将服务端挑战准确呈现为风控错误，而不是误报「数据解析失败」。
     let quality: Int?
     let acceptQuality: [Int]?
     let acceptDescription: [String]?
@@ -370,6 +371,36 @@ struct PlayURLData: Decodable, Hashable, Sendable {
     /// 风控挑战。B 站拦下请求时 `code` 仍然是 0，
     /// 但 `data` 里只有这一个字段，没有任何播放地址。
     let vVoucher: String?
+    var supportFormats: [PlayURLSupportFormat]? = nil
+
+    /// 服务端声明的画质列表不等于当前账号已取得的轨道；选择缺失档位时仍需按 qn 取流。
+    var declaredVideoQualities: [Int] {
+        var values = Set(acceptQuality ?? [])
+        values.formUnion(supportFormats?.map(\.quality) ?? [])
+        values.formUnion(dash?.video.filter { Self.isMediaURL($0.baseUrl) }.map(\.id) ?? [])
+        if let quality, durl?.contains(where: { Self.isMediaURL($0.url) }) == true { values.insert(quality) }
+        return values.filter { $0 > 0 }.sorted(by: >)
+    }
+
+    func hasVideoStream(quality: Int) -> Bool {
+        if dash?.video.contains(where: { $0.id == quality && Self.isMediaURL($0.baseUrl) }) == true { return true }
+        return self.quality == quality && durl?.contains(where: { Self.isMediaURL($0.url) }) == true
+    }
+
+    func preservingDeclaredQualities(from previous: PlayURLData) -> PlayURLData {
+        var merged = PlayURLData(quality: quality,
+            acceptQuality: Array(Set((acceptQuality ?? []) + (previous.acceptQuality ?? []))).sorted(by: >),
+            acceptDescription: acceptDescription, durl: durl, dash: dash, vVoucher: vVoucher)
+        var seen = Set<Int>()
+        merged.supportFormats = ((supportFormats ?? []) + (previous.supportFormats ?? []))
+            .filter { seen.insert($0.quality).inserted }
+        return merged
+    }
+
+    private static func isMediaURL(_ value: String) -> Bool {
+        guard let url = URL(string: value), let scheme = url.scheme?.lowercased() else { return false }
+        return ["https", "http"].contains(scheme) && url.host?.isEmpty == false
+    }
 
     /// 这次返回是被风控拦下的，不是视频本身不支持播放。
     var isRiskControlled: Bool {
@@ -385,5 +416,33 @@ struct PlayURLData: Decodable, Hashable, Sendable {
         case acceptQuality = "accept_quality"
         case acceptDescription = "accept_description"
         case vVoucher = "v_voucher"
+        case supportFormats = "support_formats"
+    }
+}
+
+struct PlayURLSupportFormat: Decodable, Hashable, Sendable {
+    let quality: Int
+    let description: String?
+    let needsVIP: Bool?
+    let needsLogin: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case quality
+        case description = "new_description"
+        case needsVIP = "need_vip"
+        case needsLogin = "need_login"
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        quality = try values.decode(Int.self, forKey: .quality)
+        description = try values.decodeIfPresent(String.self, forKey: .description)
+        func flag(_ key: CodingKeys) -> Bool? {
+            if let value = try? values.decode(Bool.self, forKey: key) { return value }
+            if let value = try? values.decode(Int.self, forKey: key) { return value != 0 }
+            return nil
+        }
+        needsVIP = flag(.needsVIP)
+        needsLogin = flag(.needsLogin)
     }
 }

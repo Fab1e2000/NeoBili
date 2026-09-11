@@ -7,16 +7,14 @@ import XCTest
 /// 纯文字场景由 `CommentSpacingTests` 覆盖；这里的场景是**末行带行内表情**：
 /// 表情图探到基线以下多深，决定了含表情的行是否比纯文字行更高——一旦更高，
 /// 楼中楼展开/收起时末行内容在「表情行」和「按钮行」之间切换，灰块底部到
-/// 分隔线的视觉间距就会漂移。这里把表情图片直接注入缓存，渲染后量像素。
+/// 分隔线的视觉间距就会漂移。这里直接注入表情缓存，以布局标记定位边界，
+/// 仅在正文锚点内部测墨迹，排除玻璃轮廓和阴影。
+#if DEBUG
 @MainActor
 final class CommentSpacingEmoteTests: XCTestCase {
     private static let width: CGFloat = 390
     /// 与注入的表情图同一个 URL。
     private static let emoteURLString = "https://i0.hdslb.com/bfs/emote/test-emote.png"
-
-    private func isReplyBlock(_ pixel: (r: Int, g: Int, b: Int)) -> Bool {
-        abs(pixel.r - 242) <= 3 && abs(pixel.g - 242) <= 3 && abs(pixel.b - 247) <= 3
-    }
 
     override func setUp() {
         super.setUp()
@@ -40,6 +38,7 @@ final class CommentSpacingEmoteTests: XCTestCase {
 
             Divider()
                 .padding(.leading, CommentLayout.pageHorizontalInset)
+                .anchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { [.divider: $0] }
 
             Color.white.frame(height: 40)
         }
@@ -47,57 +46,18 @@ final class CommentSpacingEmoteTests: XCTestCase {
         .background(Color.white)
         .environment(AccountStore())
         .environment(\.colorScheme, .light)
+        .commentReplyLayoutMarkers()
 
         let renderer = ImageRenderer(content: content)
         renderer.scale = 1
         return try XCTUnwrap(renderer.cgImage, "渲染失败")
     }
 
-    private func rowSummaries(of image: CGImage) throws -> [(hasInk: Bool, isBlock: Bool)] {
-        let width = image.width
-        let height = image.height
-
-        var buffer = [UInt8](repeating: 0, count: width * height * 4)
-        let context = try XCTUnwrap(CGContext(
-            data: &buffer,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: width * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ))
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        return (0..<height).map { y in
-            var hasInk = false
-            var isBlock = false
-            for x in 0..<width {
-                let offset = (y * width + x) * 4
-                let pixel = (r: Int(buffer[offset]), g: Int(buffer[offset + 1]), b: Int(buffer[offset + 2]))
-                if isReplyBlock(pixel) { isBlock = true }
-                // 墨迹门限取 235：比灰块底色（242）深才算，这样灰块与白底之间
-                // 的抗锯齿过渡行不会被误认成墨迹；灰块上的文字/表情本身带深色
-                // 像素，照样能算进来。
-                if pixel.r < 235 || pixel.g < 235 || pixel.b < 235 { hasInk = true }
-            }
-            return (hasInk, isBlock)
-        }
-    }
-
-    /// 返回（灰块底 → 分隔线，末行墨迹 → 分隔线）。
+    /// 返回（容器底 → 分隔线，末行正文墨迹 → 分隔线）。
     private func measure(comment: Comment, viewModel: CommentsViewModel) throws -> (blockGap: CGFloat, inkGap: CGFloat) {
-        let rows = try rowSummaries(of: render(comment, viewModel: viewModel))
-        let blockBottom = try XCTUnwrap(rows.indices.last { rows[$0].isBlock }, "没找到灰块")
-        let dividerRow = try XCTUnwrap(
-            rows.indices.first { $0 > blockBottom && rows[$0].hasInk },
-            "没找到分隔线"
-        )
-        let lastInk = try XCTUnwrap(
-            rows.indices.last(where: { $0 < dividerRow && rows[$0].hasInk }),
-            "灰块里没有墨迹"
-        )
-        return (CGFloat(dividerRow - blockBottom), CGFloat(dividerRow - lastInk - 1))
+        let snapshot = try CommentReplyLayoutSnapshot(image: render(comment, viewModel: viewModel))
+        let lastInk = try XCTUnwrap(snapshot.lastContentInk, "回复正文内没有墨迹")
+        return (snapshot.blockGap, CGFloat(snapshot.dividerTop - lastInk - 1))
     }
 
     /// rcount 与预览条数相等的小楼中楼：收起时没有「查看全部」按钮，
@@ -171,3 +131,4 @@ final class CommentSpacingEmoteTests: XCTestCase {
         )
     }
 }
+#endif

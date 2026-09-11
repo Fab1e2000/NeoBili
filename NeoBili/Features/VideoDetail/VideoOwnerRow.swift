@@ -1,9 +1,6 @@
 import SwiftUI
 
-/// 简介顶部的 UP 主一行：头像、名字、粉丝与投稿数，右侧是关注按钮。
-///
-/// 官方客户端把它放在标题**上方**，而不是像旧版这里那样夹在标题和简介之间；
-/// 这样一进页面第一眼看到的是「谁发的」，和列表卡片的信息顺序也对得上。
+/// 简介顶部的 UP 主胶囊。两个独立动作共享一层玻璃背景。
 struct VideoOwnerRow: View {
     let owner: VideoOwner
     let avatarURL: URL?
@@ -15,17 +12,17 @@ struct VideoOwnerRow: View {
     let onOpenSpace: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Button(action: onOpenSpace) {
                 HStack(spacing: 10) {
                     BiliImage(url: avatarURL)
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 2) {
                         Text(owner.name)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
                             .lineLimit(1)
                         if let subtitle {
                             Text(subtitle)
@@ -35,16 +32,21 @@ struct VideoOwnerRow: View {
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(owner.name)的个人空间")
-
-            Spacer(minLength: 8)
+            .accessibilityValue(subtitle ?? "")
+            .accessibilityIdentifier("video.owner.open")
 
             followButton
         }
+        .padding(.leading, 10)
+        .padding(.trailing, 12)
+        .padding(.vertical, 8)
+        .glassEffect(.regular, in: Capsule())
     }
 
     private var subtitle: String? {
@@ -60,15 +62,19 @@ struct VideoOwnerRow: View {
 
     private var followButton: some View {
         Button(action: onToggleFollow) {
-            Text(isFollowing ? "已关注" : "+ 关注")
+            Text(isFollowing ? "已关注" : "关注")
                 .font(.footnote.weight(.medium))
-                .foregroundStyle(isFollowing ? Color.secondary : Color.primary)
-                .padding(.horizontal, 6)
+                .foregroundStyle(isFollowing ? Color.primary : Color.white)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 36)
+                .background(isFollowing ? Color.primary.opacity(0.08) : Color.accentColor, in: Capsule())
+                .frame(minHeight: 48)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.capsule)
-        .controlSize(.regular)
-        .tint(.primary)
+        .buttonStyle(.plain)
         .accessibilityLabel(isFollowing ? "取消关注 \(owner.name)" : "关注 \(owner.name)")
+        .accessibilityIdentifier("video.owner.follow")
     }
 }

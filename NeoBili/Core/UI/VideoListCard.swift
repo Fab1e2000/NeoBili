@@ -58,10 +58,7 @@ struct VideoListCard: View {
     let durationText: String
     /// 是否画出卡片本身的外观（浅色底、圆角、边线）。
     ///
-    /// 视频页的相关视频推流传 false：那一页整体是白底 + 分隔线的样子，
-    /// 卡片外观会在白底上多出一层看不清又挡路的方框。其余页面保持默认。
-    /// 传 false 时仍会铺一层和页面同色的底：长按预览被系统抬起来时，
-    /// 裸内容会像悬浮在列表上，有这层底才像一块完整的卡片。
+    /// 详情页传 false，由推荐列表的共享玻璃容器提供背景。
     var showsCardChrome = true
     var animatesEntrance = true
 
@@ -128,10 +125,6 @@ struct VideoListCard: View {
                                 lineWidth: VideoListCardLayout.borderWidth
                             )
                     }
-            } else {
-                // 和视频页整页背景同色：平时叠在页面上看不出来，
-                // 只在系统抬起长按预览时提供一块实底。
-                Color(uiColor: .systemBackground)
             }
         }
         .contentShape(Rectangle())

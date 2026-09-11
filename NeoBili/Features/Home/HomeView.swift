@@ -11,6 +11,8 @@ struct HomeView: View {
     /// 刷新动画的快慢，设置页可调。
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
+    private var animations = VideoCardAnimationPreferences(source: .recommendation)
+    @State private var refreshTask: Task<Void, Never>?
     @State private var hasScrolledAwayFromTop = false
     @State private var feedPosition = ScrollPosition(edge: .top)
     @State private var reselectCount = 0
@@ -26,14 +28,16 @@ struct HomeView: View {
     @State private var listOpacity: Double = 1
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
-    /// 落位窗口。开着时新建出来的行才播动画，关掉后滚动新建的行保持原样。
-    @State private var landingWindow = false
     /// 这一轮淡出的起点。数据回得比淡出还快时，靠它算出还要等多久才轮到落位。
     @State private var exitStartedAt: Date?
 
     /// 搜索就在首页完成，不跳页：搜索框固定在紧凑工具栏内，
     /// 回车后这一页的内容换成结果，清空后回到推荐流。
     @State private var search = SearchViewModel()
+
+    private var animatesExit: Bool {
+        !reduceMotion && animations.isEnabled(phase: .exit)
+    }
 
     var body: some View {
         #if DEBUG
@@ -100,6 +104,14 @@ struct HomeView: View {
         .resolvePortraitVideos(viewModel.videos, batchID: landingGeneration) {
             await viewModel.loadReplacementPage()
             return viewModel.videos
+        }
+        .videoCardAnimationSource(.recommendation)
+        .onChange(of: animatesExit) { _, enabled in
+            guard !enabled else { return }
+            // A settings change must also restore an already fading feed while
+            // its request remains in flight.
+            withAnimation(nil) { listOpacity = 1 }
+            exitStartedAt = nil
         }
         #if DEBUG
         .task {
@@ -208,7 +220,7 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, HomeCardLayout.horizontalInset)
                 .padding(.vertical, HomeCardLayout.verticalInset)
-                .opacity(listOpacity)
+                .opacity(animatesExit ? listOpacity : 1)
 
                 // 刷新进度在顶部浮层显示，翻页进度单独放在列表底部。
                 if viewModel.isLoadingMore {
@@ -252,7 +264,7 @@ struct HomeView: View {
             }
             // Reduce Motion 下不做位移和 3D，只留一颗系统转圈。
             .overlay(alignment: .top) {
-                if reduceMotion, isRefreshing {
+                if !animatesExit, isRefreshing {
                     LoadingTaskAnchor().controlSize(.small).padding(.top, 12)
                 }
             }
@@ -289,7 +301,7 @@ struct HomeView: View {
     /// ShortPullRefresh 在真的要刷新时不会把距离清零，所以松手那一帧
     /// 浓度就停在这里的值上，接着由 beginRefresh 往下淡，中间没有跳变。
     private func updatePullFade(_ distance: CGFloat) {
-        guard !isRefreshing, !reduceMotion else { return }
+        guard !isRefreshing, animatesExit else { return }
         let threshold = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
         let progress = Double(min(max(distance, 0) / threshold, 1))
         let faded = 1 - FeedRefreshTuning.pullFade * progress
@@ -299,65 +311,52 @@ struct HomeView: View {
 
     private func startRefresh(scrollToTop: Bool = false) {
         guard !isRefreshing else { return }
-        // 同步锁住入口，防止同一帧内连续点击开启多个请求。
         beginRefresh()
-        Task {
-            await viewModel.refresh(staged: !reduceMotion)
-            finishRefresh(scrollToTop: scrollToTop)
+        refreshTask = Task { @MainActor in
+            // Keep existing content until the request is ready, including when
+            // animation settings change in the middle of the request.
+            await viewModel.refresh(staged: true)
+            guard !Task.isCancelled else { return }
+            await finishRefresh(scrollToTop: scrollToTop)
+            refreshTask = nil
         }
     }
 
-    /// 退出段：旧卡片原地淡尽。不等网络，跑完就是跑完。
     private func beginRefresh() {
         isRefreshing = true
-        guard !reduceMotion else { return }
+        guard animatesExit else {
+            listOpacity = 1
+            exitStartedAt = nil
+            return
+        }
         exitStartedAt = .now
         withAnimation(.easeOut(duration: FeedRefreshTuning.fadeExit(speed: exitSpeed))) {
             listOpacity = 0
         }
     }
 
-    /// 第三段：残影淡尽，新卡逐行落位。
-    ///
-    /// 刷新失败或没有新内容时列表不变，这里仍然会重播落位——用户看到的是
-    /// "重新发了一次牌"，而不是卡在半途。
-    private func finishRefresh(scrollToTop: Bool = false) {
-        guard !reduceMotion else {
+    private func finishRefresh(scrollToTop: Bool) async {
+        if animatesExit {
+            let duration = FeedRefreshTuning.fadeExit(speed: exitSpeed)
+            let elapsed = exitStartedAt.map { Date.now.timeIntervalSince($0) } ?? duration
+            do {
+                try await CardAnimationSettings.waitWhileEnabled(
+                    for: max(duration - elapsed, 0), category: .video, phase: .exit, source: .recommendation
+                )
+            } catch {
+                return
+            }
+        }
+        guard !Task.isCancelled else { return }
+        // Commit data and restore opacity in one transaction. The individual
+        // rows own their entry clocks; refreshing never waits for those clocks.
+        withAnimation(nil) {
             if scrollToTop { feedPosition.scrollTo(edge: .top) }
             viewModel.commitStagedRefresh()
             listOpacity = 1
             landingGeneration += 1
             isRefreshing = false
-            return
-        }
-
-        // 数据回得比淡出还快时，先把淡出走完再落位，不然旧卡片是被硬切掉的。
-        let total = FeedRefreshTuning.fadeExit(speed: exitSpeed)
-        let elapsed = exitStartedAt.map { Date.now.timeIntervalSince($0) } ?? total
-        let remaining = max(total - elapsed, 0)
-
-        Task { @MainActor in
-            if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
-            // 退出完成前继续锁住刷新入口，避免重复点击打断这一批。
-            guard isRefreshing else { return }
-
-            // 以下几句必须同一帧生效。新数据到这一刻才合并进列表——旧卡片已经
-            // 淡尽，所以看不到"半透明的旧卡突然变成新卡"。合并后首屏几行都是
-            // 全新的视图，它们出生就是全透明的起始态，浓度恢复成 1 也不会闪。
-            // 旧列表完全淡出后回顶，不再让回顶与退出动画抢占同一段画面。
-            if scrollToTop {
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) { feedPosition.scrollTo(edge: .top) }
-            }
-            landingWindow = true
-            viewModel.commitStagedRefresh()
-            listOpacity = 1
-            landingGeneration += 1
-            isRefreshing = false
-
-            try? await Task.sleep(for: .seconds(FeedRefreshTuning.landingWindow(speed: enterSpeed)))
-            landingWindow = false
+            exitStartedAt = nil
         }
     }
 

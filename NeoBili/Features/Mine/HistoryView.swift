@@ -85,6 +85,7 @@ struct HistoryView: View {
             await loadNextPage()
             return items
         }
+        .videoCardAnimationSource(.history)
     }
 
     private func row(_ item: HistoryItem) -> some View {
@@ -235,19 +236,19 @@ struct HistoryView: View {
         defer { removals.finish(item.id) }
         var removedIndex: Int?
         do {
-            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
-            withAnimation(CardRemovalAnimation.fade) { removals.hide(item.id) }
-            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
-            withAnimation(CardRemovalAnimation.collapse) {
+            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.menuDismissWaitMilliseconds, source: .history)
+            withAnimation(CardRemovalAnimation.fade(source: .history)) { removals.hide(item.id) }
+            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.fadeMilliseconds, source: .history)
+            withAnimation(CardRemovalAnimation.collapse(source: .history)) {
                 removedIndex = removals.remove(item.id, from: &items)
             }
             try await BiliAPI.deleteHistory(kid: item.kidParam)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
-            withAnimation { items.removeAll { $0.id == item.id } }
-            try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.collapseMilliseconds))
+            withAnimation(CardRemovalAnimation.collapse(source: .history)) { items.removeAll { $0.id == item.id } }
+            try? await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.collapseMilliseconds, source: .history)
         } catch {
             if let removedIndex {
-                withAnimation { removals.restore(item, at: removedIndex, in: &items) }
+                withAnimation(CardRemovalAnimation.collapse(source: .history)) { removals.restore(item, at: removedIndex, in: &items) }
             }
             if !error.isCancellation { feedback.show(error.localizedDescription) }
         }

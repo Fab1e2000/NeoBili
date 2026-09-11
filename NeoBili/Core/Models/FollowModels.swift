@@ -39,6 +39,8 @@ struct FollowedUp: Decodable, Identifiable, Hashable, Sendable {
     let face: String
     /// 有没有未读更新。头像上的小红点就是它。
     let hasUpdate: Bool
+    /// 由关注直播列表补充；动态 portal 自身不保证包含开播状态。
+    var liveRoomID: Int? = nil
 
     var id: Int { mid }
     var secureAvatarURL: URL? { URL.biliSecure(face) }
@@ -63,11 +65,22 @@ struct FollowedUp: Decodable, Identifiable, Hashable, Sendable {
         hasUpdate = container.flexibleBool(forKey: .hasUpdate) ?? false
     }
 
-    init(mid: Int, uname: String, face: String, hasUpdate: Bool) {
+    init(mid: Int, uname: String, face: String, hasUpdate: Bool, liveRoomID: Int? = nil) {
         self.mid = mid
         self.uname = uname
         self.face = face
         self.hasUpdate = hasUpdate
+        self.liveRoomID = liveRoomID.flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    static func orderedForSidebar(_ ups: [FollowedUp], keepsPriority: (FollowedUp) -> Bool) -> [FollowedUp] {
+        var live: [FollowedUp] = [], updated: [FollowedUp] = [], remaining: [FollowedUp] = []
+        for up in ups {
+            if up.liveRoomID != nil { live.append(up) }
+            else if keepsPriority(up) { updated.append(up) }
+            else { remaining.append(up) }
+        }
+        return live + updated + remaining
     }
 }
 

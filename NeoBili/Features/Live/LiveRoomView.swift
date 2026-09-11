@@ -1,0 +1,206 @@
+import SwiftUI
+
+struct LiveRoomView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AccountStore.self) private var account
+    @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @State private var player: LivePlayerModel
+    @State private var following = LiveRoomFollowModel()
+    @State private var isIntroductionExpanded = false
+    @State private var isFullScreen = false
+    @State private var controlsVisible = false
+    @State private var controlsSafeArea = EdgeInsets()
+    @State private var reloadID = 0
+    @State private var requestedQuality: Int?
+    @State private var hideTask: Task<Void, Never>?
+    @State private var keepsControlsForMenu = false
+
+    init(room: LiveRoom) { _player = State(initialValue: LivePlayerModel(room: room)) }
+    init(player: LivePlayerModel) { _player = State(initialValue: player) }
+
+    private var followContext: LiveRoomFollowModel.Context {
+        .init(mid: player.room.uid, sessionID: account.sessionID,
+              isLoggedIn: account.isLoggedIn, accountID: account.accountID)
+    }
+
+    private var shareURL: URL { URL(string: "https://live.bilibili.com/\(player.room.roomID)")! }
+    private var showsControls: Bool {
+        controlsVisible || player.errorMessage != nil || player.isOffline
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let screenSize = CGSize(width: geometry.size.width,
+                                    height: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
+            let ratio = player.errorMessage != nil || player.isOffline ? nil : player.displayAspectRatio
+            let playerHeight = isFullScreen ? geometry.size.height : InlineVideoLayout.height(for: screenSize, aspectRatio: ratio)
+            VStack(spacing: 0) {
+                videoSurface
+                    .frame(width: geometry.size.width, height: playerHeight)
+                    .clipped()
+                if !isFullScreen {
+                    roomDetails
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+        }
+        .background(Color.black.ignoresSafeArea())
+        .ignoresSafeArea(isFullScreen ? .all : [], edges: .all)
+        .statusBarHidden(isFullScreen)
+        .background { PlayerSafeAreaReader { controlsSafeArea = $0 }.allowsHitTesting(false) }
+        .task(id: reloadID) { await player.load(quality: requestedQuality) }
+        .task(id: followContext) { await following.load(followContext) }
+        .actionFeedbackOverlay()
+        .onChange(of: player.isPlaying) { scheduleHide(afterInteraction: false) }
+        .onChange(of: voiceOverEnabled) { scheduleHide(afterInteraction: false) }
+        .onChange(of: player.displayAspectRatio) { if isFullScreen { applyFullScreenOrientation() } }
+        .onDisappear {
+            hideTask?.cancel()
+            player.stop()
+            OrientationController.enterPortrait()
+        }
+    }
+
+    private var videoSurface: some View {
+        ZStack {
+            Color.black
+            PlayerSurface(session: player.session)
+                .allowsHitTesting(false)
+            if !player.hasRenderedFirstFrame, let cover = player.room.coverURL {
+                BiliImage(url: cover).aspectRatio(contentMode: .fit)
+            }
+            Color.clear.contentShape(Rectangle())
+                .onTapGesture {
+                    controlsVisible.toggle()
+                    scheduleHide()
+                }
+            if (player.isLoading || player.isBuffering), !showsControls {
+                ProgressView().tint(.white).allowsHitTesting(false)
+            }
+            if player.isOffline || player.errorMessage != nil {
+                VStack(spacing: 8) {
+                    Label(player.isOffline ? "主播暂未开播" : "直播连接中断",
+                          systemImage: player.isOffline ? "moon.zzz" : "wifi.exclamationmark")
+                        .font(.headline)
+                    Button("重新连接", systemImage: "arrow.clockwise", action: reconnect)
+                        .buttonStyle(.glass)
+                        .controlSize(.regular)
+                }
+                .foregroundStyle(.white)
+                .environment(\.colorScheme, .dark)
+            }
+            if showsControls {
+                PlayerGlassChrome(
+                    title: player.room.title, subtitle: player.room.username, shareURL: shareURL,
+                    videoQualityControl: qualityControl,
+                    isPlaying: player.isPlaying,
+                    canControlPlayback: player.hasRenderedFirstFrame && player.errorMessage == nil && !player.isOffline,
+                    isWaiting: player.isLoading || player.isBuffering,
+                    isLive: true, isFullScreen: isFullScreen,
+                    hasError: player.errorMessage != nil || player.isOffline,
+                    safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
+                    onBack: { if isFullScreen { toggleFullScreen() } else { dismiss() } },
+                    onTogglePlayback: { player.togglePlayback(); scheduleHide() },
+                    onToggleFullScreen: toggleFullScreen,
+                    onMenuInteraction: { hideTask?.cancel(); keepsControlsForMenu = true; controlsVisible = true }
+                ) {
+                    Button("重新连接", systemImage: "arrow.clockwise", action: reconnect)
+                    ShareLink(item: shareURL) { Label("分享直播间", systemImage: "square.and.arrow.up") }
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showsControls)
+        .accessibilityIdentifier("live.player")
+    }
+
+    private var qualityControl: PlayerQualityControl {
+        PlayerQualityControl(
+            title: player.qualities.first { $0.id == player.selectedQuality }?.name ?? "清晰度",
+            accessibilityLabel: "清晰度",
+            options: player.qualities.map { .init(id: $0.id, title: $0.name) },
+            selectedID: player.selectedQuality,
+            isEnabled: !player.qualities.isEmpty && !player.isLoading && !player.isOffline,
+            onSelect: { requestedQuality = $0; reconnect() }
+        )
+    }
+
+    private var roomDetails: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                LiveRoomOwnerRow(room: player.room, card: following.card, isFollowing: following.isFollowing,
+                                 isLoading: following.isLoading, isToggling: following.isToggling,
+                                 isOwnAccount: followContext.isOwnAccount, onToggleFollow: toggleFollow)
+                LiveRoomIntroductionCard(room: player.room, isOffline: player.isOffline,
+                                         isExpanded: $isIntroductionExpanded)
+                if let error = player.errorMessage {
+                    Label(error, systemImage: "wifi.exclamationmark")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollEdgeEffectStyle(.soft, for: .all)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14))
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14)
+                .fill(Color(uiColor: .systemBackground))
+                .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    private func toggleFollow() {
+        let context = followContext
+        Task {
+            guard context.isLoggedIn else { feedback.show("请先登录"); return }
+            if following.isFollowing == nil {
+                await following.load(context, force: true)
+                if let message = following.errorMessage { feedback.show(message) }
+            } else if let message = await following.toggleFollow(context) {
+                feedback.show(message)
+            }
+        }
+    }
+
+    private func reconnect() {
+        keepsControlsForMenu = false
+        controlsVisible = true
+        reloadID += 1
+    }
+
+    private func toggleFullScreen() {
+        isFullScreen.toggle()
+        if isFullScreen { applyFullScreenOrientation() }
+        else { OrientationController.enterPortrait() }
+        controlsVisible = true
+        scheduleHide()
+    }
+
+    private func applyFullScreenOrientation() {
+        if VideoFullscreenOrientation.preferred(for: player.displayAspectRatio) == .portrait {
+            OrientationController.enterPortrait()
+        } else { OrientationController.enterLandscape() }
+    }
+
+    private func scheduleHide(afterInteraction: Bool = true) {
+        hideTask?.cancel()
+        if afterInteraction { keepsControlsForMenu = false }
+        guard !keepsControlsForMenu, controlsVisible, player.isPlaying, !voiceOverEnabled else { return }
+        hideTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            controlsVisible = false
+        }
+    }
+
+}

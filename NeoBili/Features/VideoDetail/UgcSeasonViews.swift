@@ -81,6 +81,7 @@ struct UgcSeasonSheet: View {
         }
         .presentationDetents([.medium, .large])
         .resolvePortraitVideos(season.episodes)
+        .videoCardAnimationSource(.collection)
     }
 
     private var selection: Binding<String?> {

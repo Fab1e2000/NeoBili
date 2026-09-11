@@ -192,6 +192,7 @@ struct FavoriteFolderView: View {
             await loadNextPage()
             return videos
         }
+        .videoCardAnimationSource(.favorites)
     }
 
     private func row(_ media: FavMedia) -> some View {
@@ -326,19 +327,19 @@ struct FavoriteFolderView: View {
         defer { removals.finish(media.id) }
         var removedIndex: Int?
         do {
-            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
-            withAnimation(CardRemovalAnimation.fade) { removals.hide(media.id) }
-            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
-            withAnimation(CardRemovalAnimation.collapse) {
+            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.menuDismissWaitMilliseconds, source: .favorites)
+            withAnimation(CardRemovalAnimation.fade(source: .favorites)) { removals.hide(media.id) }
+            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.fadeMilliseconds, source: .favorites)
+            withAnimation(CardRemovalAnimation.collapse(source: .favorites)) {
                 removedIndex = removals.remove(media.id, from: &videos)
             }
             try await BiliAPI.removeFavorite(folderID: folder.id, aid: media.id)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
-            withAnimation { videos.removeAll { $0.id == media.id } }
-            try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.collapseMilliseconds))
+            withAnimation(CardRemovalAnimation.collapse(source: .favorites)) { videos.removeAll { $0.id == media.id } }
+            try? await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.collapseMilliseconds, source: .favorites)
         } catch {
             if let removedIndex {
-                withAnimation { removals.restore(media, at: removedIndex, in: &videos) }
+                withAnimation(CardRemovalAnimation.collapse(source: .favorites)) { removals.restore(media, at: removedIndex, in: &videos) }
             }
             if !error.isCancellation { feedback.show(error.localizedDescription) }
         }

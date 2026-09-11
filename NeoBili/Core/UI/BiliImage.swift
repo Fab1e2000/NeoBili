@@ -116,32 +116,33 @@ struct VideoCoverThumbnail: View {
     }
 }
 
-/// In-memory image cache. Bilibili's image CDN (hdslb.com) is hotlink-protected
-/// on some resources, so every request needs the same Referer/User-Agent as the
-/// rest of the app - plain `AsyncImage` can't attach those headers.
-///
-/// 容量按张数封顶；满了以后逐出**最旧**的条目而不是整罐清空——整罐清空会让
-/// 回滚列表时所有封面同时重新下载。系统发出内存警告时清空位图（在途下载保留，
-/// 结果照常入缓存），先把内存让给前台，正在显示的单元格也不会因此变成裂图。
+/// Shared decoded bitmap cache. Its budget is in decoded bytes, so a few large
+/// photos cannot silently turn a 300-image limit into several gigabytes.
 actor BiliImageCache {
     static let shared = BiliImageCache()
 
-    private struct Entry {
-        let image: UIImage
-        let savedAt: Date
+    private struct Key: Hashable {
+        let url: URL
+        let pixelSize: ImagePixelSize?
     }
 
-    /// 存 `UIImage` 而不是 SwiftUI 的 `Image`：图片查看器要拿原图去保存和分享，
-    /// `Image` 取不回底层位图。展示端再包一层 `Image(uiImage:)` 就是了。
-    private var storage: [URL: Entry] = [:]
-    /// 同一地址正在进行的下载。列表快速滚动时，同一个封面（同一 UP 头像）
-    /// 会同时出现在多张卡片上，这里保证只发一次请求。
-    private var inFlight: [URL: Task<UIImage, Error>] = [:]
-    /// 观察者令牌只在 init 注册、deinit 注销，中间不被任何隔离域读写；
-    /// NotificationCenter 返回的协议类型不是 Sendable，所以按非隔离存储处理。
+    private struct Entry {
+        let image: UIImage
+        let byteCount: Int
+        var lastAccess: UInt64
+    }
+
+    private let maximumBytes: Int
+    private let maximumEntries: Int
+    private var storage: [Key: Entry] = [:]
+    private var inFlight: [Key: Task<UIImage, Error>] = [:]
+    private var accessSequence: UInt64 = 0
+    private(set) var cachedByteCount = 0
     nonisolated(unsafe) private var memoryPressureObserver: (any NSObjectProtocol)?
 
-    private init() {
+    init(maximumBytes: Int = 64 * 1_024 * 1_024, maximumEntries: Int = 300) {
+        self.maximumBytes = max(0, maximumBytes)
+        self.maximumEntries = max(1, maximumEntries)
         memoryPressureObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil
         ) { [weak self] _ in
@@ -150,83 +151,118 @@ actor BiliImageCache {
     }
 
     deinit {
-        if let memoryPressureObserver {
-            NotificationCenter.default.removeObserver(memoryPressureObserver)
-        }
+        if let memoryPressureObserver { NotificationCenter.default.removeObserver(memoryPressureObserver) }
     }
 
-    /// 系统内存告急时丢掉全部位图。在途下载不打断：取消会让正在等结果的
-    /// 单元格直接显示失败态，而让下载跑完只是晚一点把图放回（此时已清空的）缓存。
     private func handleMemoryPressure() {
         storage.removeAll()
+        cachedByteCount = 0
     }
 
-    func cachedImage(for url: URL) -> UIImage? {
-        storage[url]?.image
+    func cachedImage(for url: URL, pixelSize: ImagePixelSize? = nil) -> UIImage? {
+        let key = Key(url: url, pixelSize: pixelSize)
+        guard var entry = storage[key] else { return nil }
+        accessSequence &+= 1
+        entry.lastAccess = accessSequence
+        storage[key] = entry
+        return entry.image
     }
 
-    func insert(_ image: UIImage, for url: URL) {
-        if storage.count >= Self.capacity {
-            evictOldest()
+    func insert(_ image: UIImage, for url: URL, pixelSize: ImagePixelSize? = nil) {
+        let key = Key(url: url, pixelSize: pixelSize)
+        if let replaced = storage.removeValue(forKey: key) { cachedByteCount -= replaced.byteCount }
+        let byteCount = image.cgImage.map { $0.bytesPerRow * $0.height }
+            ?? Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+        // Still return oversized images to the caller; retaining them here would
+        // immediately evict every feed thumbnail for a single full-size image.
+        guard byteCount <= maximumBytes else { return }
+        while cachedByteCount + byteCount > maximumBytes || storage.count >= maximumEntries {
+            guard let oldest = storage.min(by: { $0.value.lastAccess < $1.value.lastAccess }) else { break }
+            cachedByteCount -= oldest.value.byteCount
+            storage[oldest.key] = nil
         }
-        storage[url] = Entry(image: image, savedAt: Date())
+        accessSequence &+= 1
+        storage[key] = Entry(image: image, byteCount: byteCount, lastAccess: accessSequence)
+        cachedByteCount += byteCount
     }
 
-    /// 命中缓存直接返回；否则并入同一地址的在途下载（没有就发起一次），
-    /// 下载成功后自动入缓存。调用方取消自己的任务不影响共享下载。
+    /// Identical URL/size requests share both download and decode. Cancelling a
+    /// disappearing cell must not cancel another visible cell's shared request.
     func image(
         for url: URL,
+        pixelSize: ImagePixelSize? = nil,
         downloader: @escaping @Sendable () async throws -> UIImage
     ) async throws -> UIImage {
-        if let cached = storage[url]?.image { return cached }
-        if let existing = inFlight[url] {
-            return try await existing.value
-        }
+        if let cached = cachedImage(for: url, pixelSize: pixelSize) { return cached }
+        // Explicitly supplied originals (for example preloaded avatars) are
+        // suitable for every smaller presentation of that URL.
+        if pixelSize != nil, let original = cachedImage(for: url) { return original }
+        let key = Key(url: url, pixelSize: pixelSize)
+        if let existing = inFlight[key] { return try await existing.value }
         let task = Task { try await downloader() }
-        inFlight[url] = task
-        defer { inFlight[url] = nil }
+        inFlight[key] = task
+        defer { inFlight[key] = nil }
         let image = try await task.value
-        insert(image, for: url)
+        insert(image, for: url, pixelSize: pixelSize)
         return image
     }
-
-    private func evictOldest() {
-        let oldestFirst = storage.sorted { $0.value.savedAt < $1.value.savedAt }
-        // 一次淘汰一小批，避免连续插入时每次插入都触发整罐排序。
-        let target = Self.capacity - Self.evictionBatch
-        for (url, _) in oldestFirst {
-            guard storage.count > target else { break }
-            storage[url] = nil
-        }
-    }
-
-    /// 缓存张数上限。与旧实现的量级一致，只是满了以后改成逐出最旧条目。
-    private static let capacity = 300
-    private static let evictionBatch = 30
 }
 
-/// 带 B 站必需请求头的取图。命中缓存直接返回，不发请求。
-enum BiliImageLoader {
-    static func load(_ url: URL) async throws -> UIImage {
-        try await BiliImageCache.shared.image(for: url) {
+/// Different visible sizes still share a single concurrent HTTP transfer. The
+/// URLSession HTTP cache retains compressed responses; this actor only keeps
+/// transfers while they are in flight, without a second unbounded data cache.
+private actor BiliImageDataLoader {
+    static let shared = BiliImageDataLoader()
+    private var inFlight: [URL: Task<Data, Error>] = [:]
+
+    func data(for url: URL) async throws -> Data {
+        if let existing = inFlight[url] { return try await existing.value }
+        let task = Task {
             var request = URLRequest(url: url)
             request.timeoutInterval = 8
             request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
             request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard let image = UIImage(data: data) else { throw BiliAPIError.invalidURL }
-            return image
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let response = response as? HTTPURLResponse, !(200..<300).contains(response.statusCode) {
+                throw BiliAPIError.httpStatus(response.statusCode)
+            }
+            return data
+        }
+        inFlight[url] = task
+        defer { inFlight[url] = nil }
+        return try await task.value
+    }
+}
+
+enum BiliImageLoader {
+    /// nil requests an original; on-screen cards always supply physical pixels.
+    static func load(_ url: URL, pixelSize: ImagePixelSize? = nil) async throws -> UIImage {
+        try await BiliImageCache.shared.image(for: url, pixelSize: pixelSize) {
+            let data = try await BiliImageDataLoader.shared.data(for: url)
+            return try await Task.detached(priority: .userInitiated) {
+                guard let decoded = ImageDownsampling.decode(data, fitting: pixelSize) else {
+                    throw BiliAPIError.invalidURL
+                }
+                return UIImage(cgImage: decoded)
+            }.value
         }
     }
 }
 
-/// Drop-in replacement for `AsyncImage` that sends Bilibili's required headers
-/// and caches decoded images in memory so re-appearing cells (scroll up/down)
-/// don't re-fetch.
+/// Headers, request coalescing and a decoded bitmap sized to the actual view.
+/// Geometry observation leaves the caller's aspect ratio and layout untouched.
 struct BiliImage: View {
     let url: URL?
+    @Environment(\.displayScale) private var displayScale
     @State private var image: Image?
+    @State private var loadedURL: URL?
     @State private var failed = false
+    @State private var pixelSize: ImagePixelSize?
+
+    private struct Request: Hashable {
+        let url: URL?
+        let pixelSize: ImagePixelSize?
+    }
 
     var body: some View {
         Group {
@@ -243,20 +279,27 @@ struct BiliImage: View {
                     .overlay(LoadingTaskAnchor().controlSize(.small))
             }
         }
-        .task(id: url) {
+        .onGeometryChange(for: ImagePixelSize?.self) { [displayScale] proxy in
+            ImagePixelSize(points: proxy.size, scale: displayScale)
+        } action: { pixelSize = $0 }
+        .task(id: Request(url: url, pixelSize: pixelSize)) {
             await load()
         }
     }
 
     private func load() async {
-        image = nil
+        if loadedURL != url {
+            image = nil
+            loadedURL = url
+        }
         failed = false
         guard let url else {
             failed = true
             return
         }
+        guard let pixelSize else { return }
         do {
-            let loaded = try await BiliImageLoader.load(url)
+            let loaded = try await BiliImageLoader.load(url, pixelSize: pixelSize)
             if !Task.isCancelled { image = Image(uiImage: loaded) }
         } catch {
             if !Task.isCancelled { failed = true }

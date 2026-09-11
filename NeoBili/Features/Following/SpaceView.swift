@@ -121,10 +121,11 @@ struct SpaceView: View {
                             await viewModel.loadReplacementPage()
                             return viewModel.videos
                         }
+                        .videoCardAnimationSource(.space)
                 case .dynamics:
                     dynamicList
                         .resolvePortraitVideos(viewModel.dynamics.entries.compactMap(\.video),
-                                               batchID: viewModel.dynamics.entriesGeneration) {
+                                               batchID: viewModel.dynamics.entriesGeneration, animationCategory: .dynamic) {
                             await viewModel.dynamics.loadReplacementPage()
                             return viewModel.dynamics.entries.compactMap(\.video)
                         }
@@ -432,7 +433,7 @@ struct SpaceView: View {
                     onLike: { like(entry) },
                     onOpenDetail: { detailEntry = entry }
                 )
-                .videoCardEntrance()
+                .videoCardEntrance(category: .dynamic)
                 .videoEntranceIdentity(entry.video?.bvid)
                 .videoTransitionSource("space-dynamic-\(entry.id)", in: dynamicTransition)
                 .onScrollVisibilityChange(threshold: 0.1) { visible in

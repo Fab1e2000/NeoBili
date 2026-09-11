@@ -6,6 +6,7 @@ struct SystemMediaMetadata: Equatable, Sendable {
     let title: String
     let artist: String
     let artworkURL: URL?
+    var isLiveStream: Bool = false
 }
 
 /// 把 mpv 的播放状态桥接到锁屏、控制中心、耳机和车载系统。
@@ -83,6 +84,7 @@ final class SystemNowPlayingCenter {
             infoCenter.playbackState = .paused
         }
         setCommandsEnabled(true)
+        commandCenter.changePlaybackPositionCommand.isEnabled = !newMetadata.isLiveStream
         // 纯 SwiftUI 生命周期里没有 viewController 做第一响应者，必须显式
         // 打开远程控制事件，系统才会把本 App 登记为「正在播放」的媒体应用
         // （灵动岛 / 锁屏 / 控制中心的卡片都挂在这个登记上）。
@@ -115,6 +117,15 @@ final class SystemNowPlayingCenter {
         playbackRate = isPlaying ? 1 : 0
         infoCenter.playbackState = isPlaying ? .playing : .paused
         publish()
+    }
+
+    /// 手势退出的提交帧上不要立刻刷锁屏：`playbackState` 和 `nowPlayingInfo`
+    /// 各是一次同步 IPC，偶尔要几十毫秒，会砸在退出动画的第一帧上。晚一个
+    /// runloop 再刷，用户无感。
+    func updatePlaybackStateAfterNextRunloop(isPlaying: Bool, sessionID: UUID) {
+        DispatchQueue.main.async { [weak self] in
+            self?.updatePlaybackState(isPlaying: isPlaying, sessionID: sessionID)
+        }
     }
 
     func deactivate(sessionID: UUID) {
@@ -151,7 +162,10 @@ final class SystemNowPlayingCenter {
         if !metadata.artist.isEmpty {
             info[MPMediaItemPropertyArtist] = metadata.artist
         }
-        if duration.isFinite, duration > 0 {
+        if metadata.isLiveStream {
+            info[MPNowPlayingInfoPropertyIsLiveStream] = true
+            info.removeValue(forKey: MPNowPlayingInfoPropertyElapsedPlaybackTime)
+        } else if duration.isFinite, duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = duration
         }
         return info

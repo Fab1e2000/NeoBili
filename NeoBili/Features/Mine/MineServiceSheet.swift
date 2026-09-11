@@ -26,14 +26,19 @@ struct MineServiceSheet: View {
         }
         .environment(\.videoTransitionNamespace, videoTransition)
         .actionFeedbackOverlay()
+        .miniPlayerHost(isActive: { nowPlaying.isServiceSheetPresented }, transitionNamespace: videoTransition)
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(32)
-        .fullScreenCover(isPresented: $nowPlaying.isExpanded) {
+        .fullScreenCover(isPresented: Binding(
+            get: { nowPlaying.isExpanded },
+            set: { if $0 { nowPlaying.isExpanded = true } else { nowPlaying.dismissVideoPage() } }
+        ), onDismiss: nowPlaying.finishDismissal) {
             VideoPage()
                 .appTextSize()
                 .environment(\.videoTransitionNamespace, videoTransition)
                 .navigationTransition(.zoom(sourceID: nowPlaying.transitionSourceID, in: videoTransition))
+                .background { VideoPagePresentationObserver(onDidAppear: nowPlaying.videoPageDidAppear) }
         }
     }
 

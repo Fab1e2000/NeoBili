@@ -80,6 +80,13 @@ struct CommentThreadView: View {
                     footer
                 }
             }
+            .scrollEdgeEffectStyle(.soft, for: .all)
+            .clipShape(RoundedRectangle(cornerRadius: 24))
+            // 背景只覆盖滚动视口，回复再长也不会创建同等高度的玻璃表面。
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(uiColor: .systemGroupedBackground))
             .commentComposer(viewModel: viewModel, root: root)
             .navigationTitle("回复")
             .navigationBarTitleDisplayMode(.inline)

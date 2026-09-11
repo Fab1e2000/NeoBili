@@ -564,23 +564,21 @@ enum BiliAPI {
     /// 输入，见 `PlaybackSourceBuilder.edlURL`），不需要像 AVFoundation 那样
     /// 先探测再拼 composition，所以 DASH 和 durl 对首帧速度没有区别——直接
     /// 按编码能力和画质优先选 DASH，durl 只在稿件不提供 DASH 时才用到。
-    static func playURL(bvid: String, cid: Int) async throws -> PlayURLData {
+    static func playURL(bvid: String, cid: Int, quality: Int = 127) async throws -> PlayURLData {
+        let quality = String(max(1, quality))
         let formats: [[String: String]] = [
-            ["qn": "127", "fnval": "4048", "fnver": "0", "fourk": "1", "otype": "json", "platform": "pc"],
+            ["qn": quality, "fnval": "4048", "fnver": "0", "fourk": "1", "otype": "json", "platform": "pc"],
             // 某些稿件的网页端参数不接受 4048，仍请求完整 DASH 能力集。
-            ["qn": "127", "fnval": "16", "fnver": "0", "fourk": "1", "otype": "json", "platform": "pc"],
+            ["qn": quality, "fnval": "16", "fnver": "0", "fourk": "1", "otype": "json", "platform": "pc"],
             // 最后的兼容路径：服务端已经合并好的文件。
             ["qn": "64", "fnval": "1", "fnver": "0", "otype": "json", "platform": "html5", "high_quality": "1"]
         ]
 
-        var wasRiskControlled = false
         for extraParams in formats {
             do {
                 let payload = try await requestPlayURL(bvid: bvid, cid: cid, extraParams: extraParams)
                 if payload.isRiskControlled {
-                    // 风控是针对这次请求的，换个格式仍有可能被放行，所以继续往下试。
-                    wasRiskControlled = true
-                    continue
+                    throw BiliAPIError.riskControlled
                 }
                 if payload.hasPlayableStream {
                     return payload
@@ -592,10 +590,6 @@ enum BiliAPI {
             }
         }
 
-        // 三种格式都被拦下时要说清楚是风控，不能报成「该视频不支持播放」误导用户。
-        if wasRiskControlled {
-            throw BiliAPIError.riskControlled
-        }
         throw BiliAPIError.apiError(code: -1, message: "该视频暂不支持播放")
     }
 
@@ -607,7 +601,8 @@ enum BiliAPI {
         var params = extraParams
         params["bvid"] = bvid
         params["cid"] = String(cid)
-        params.merge(riskControlParams()) { current, _ in current }
+        let isLoggedIn = await DeviceIdentity.shared.isLoggedIn
+        params.merge(playbackContextParams(isLoggedIn: isLoggedIn)) { current, _ in current }
         return try await APIClient.shared.get(
             path: "x/player/wbi/playurl",
             params: params,
@@ -615,29 +610,19 @@ enum BiliAPI {
         )
     }
 
-    /// 绕开 B 站风控（内部代号 Gaia）所需的参数，取自 PiliPlus 的实现。
-    ///
-    /// 不带这些参数时，取流请求会被拦下：`code` 仍然是 0，但 `data` 里只有一个
-    /// `v_voucher` 挑战串，没有任何播放地址。实测同一批视频，裸参数全部被拦，
-    /// 补上这组参数后全部正常返回。
-    ///
-    /// `gaia_source` 和 `isGaiaAvoided` 直接对应风控系统；三个 `dm_` 字段是网页
-    /// 播放器上报的浏览器指纹，网页端每次都会带上随机值，缺了就不像真实浏览器。
-    private static func riskControlParams() -> [String: String] {
+    /// 正常网页播放上下文。已登录请求完整权限，访客才启用接口提供的试看。
+    /// 不伪造设备指纹，服务端返回风控挑战时直接呈现错误。
+    static func playbackContextParams(isLoggedIn: Bool) -> [String: String] {
         var params = [
             "gaia_source": "pre-load",
-            "isGaiaAvoided": "true",
             "web_location": "1315873",
-            // 未登录也能拿到较高画质。
-            "try_look": "1",
             "voice_balance": "0"
         ]
-        params.merge(fingerprintParams()) { current, _ in current }
+        if !isLoggedIn { params["try_look"] = "1" }
         return params
     }
 
-    /// 网页播放器上报的那几个浏览器指纹字段。取流和空间投稿列表都要带，
-    /// 所以单独拆出来共用。
+    /// 其他网页列表接口沿用的旧请求字段；播放取流不使用这些合成值。
     private static func fingerprintParams() -> [String: String] {
         [
             "dm_img_list": "[]",

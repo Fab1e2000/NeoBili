@@ -1,7 +1,22 @@
 import XCTest
+import UIKit
 @testable import NeoBili
 
 final class PlayerPlaybackTests: XCTestCase {
+    @MainActor
+    func testPlayerReturnGuardDoesNotInterceptUnderlyingControlTouches() {
+        let canvas = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 120))
+        let button = UIButton(type: .system)
+        button.frame = CGRect(x: 40, y: 40, width: 48, height: 48)
+        canvas.addSubview(button)
+        canvas.addSubview(PlayerReturnGestureGuard.RegionView(frame: canvas.bounds))
+
+        for point in [CGPoint(x: 41, y: 41), CGPoint(x: 64, y: 64), CGPoint(x: 87, y: 87)] {
+            XCTAssertTrue(canvas.hitTest(point, with: nil) === button,
+                          "The nonvisual return-gesture observer must pass through a control's full hit region")
+        }
+    }
+
     func testFastStartConfigurationUsesThreeSecondBuffer() {
         let configuration = VideoPlaybackConfiguration.fastStart
 

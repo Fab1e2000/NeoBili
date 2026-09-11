@@ -27,11 +27,18 @@ final class VideoEntranceClock {
         starts = reset ? [:] : starts.filter { ids.contains($0.key) }
     }
 
-    func admit(_ ids: [String]) {
+    func admit(_ ids: [String], animated: Bool = true) {
         let active = Set(ids)
-        let now = ProcessInfo.processInfo.systemUptime
+        // A completed monotonic origin keeps skipped entries settled even if
+        // their lazy views are recycled and animations are enabled afterward.
+        let now = animated ? ProcessInfo.processInfo.systemUptime : 0
         var updated = starts.filter { active.contains($0.key) }
         for id in ids where updated[id] == nil { updated[id] = now }
         if updated != starts { starts = updated }
+    }
+
+    func finishAnimations() {
+        guard starts.values.contains(where: { $0 != 0 }) else { return }
+        starts = starts.mapValues { _ in 0 }
     }
 }
