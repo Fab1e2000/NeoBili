@@ -2,171 +2,8 @@ import Foundation
 import SwiftUI
 
 typealias PlaybackURLLoader = @Sendable (String, Int) async throws -> PlayURLData
-
-/// 提前保存视频详情和播放地址，点进卡片时就不必重复等待相同请求。
-/// 这里只缓存接口返回的小段文字数据，不会提前下载整段视频。
-actor VideoPreparationCache {
-    static let shared = VideoPreparationCache()
-
-    private struct PlaybackKey: Hashable, Sendable {
-        let bvid: String
-        let cid: Int
-    }
-
-    private struct CachedValue<Value: Sendable>: Sendable {
-        let value: Value
-        let savedAt: Date
-    }
-
-    private let lifetime: TimeInterval = 5 * 60
-    private let maximumEntries = 8
-    /// 同时最多预取几个视频。数字越大越占用带宽，会拖慢用户真正点开的那个。
-    private let maximumConcurrentPrefetches = 2
-    /// 等待队列的上限。超过这个数量说明用户在快速滑动，多余的卡片直接放弃预取。
-    private let maximumQueuedPrefetches = 4
-
-    private var details: [String: CachedValue<VideoDetail>] = [:]
-    private var playbackURLs: [PlaybackKey: CachedValue<PlayURLData>] = [:]
-    private var detailTasks: [String: Task<VideoDetail, Error>] = [:]
-    private var playbackTasks: [PlaybackKey: Task<PlayURLData, Error>] = [:]
-    private var playbackRequestIDs: [PlaybackKey: UUID] = [:]
-    private var activePrefetchCount = 0
-    private var prefetchWaiters: [CheckedContinuation<Void, Never>] = []
-
-    /// 用户真正点开视频时走这里，不受预取名额限制；如果同一个请求正在预取，直接复用它。
-    func detail(for bvid: String) async throws -> VideoDetail {
-        removeExpiredValues()
-        if let cached = details[bvid] {
-            return cached.value
-        }
-        if let existingTask = detailTasks[bvid] {
-            return try await existingTask.value
-        }
-
-        let task = Task { try await BiliAPI.videoDetail(bvid: bvid) }
-        detailTasks[bvid] = task
-        do {
-            let detail = try await task.value
-            detailTasks[bvid] = nil
-            details[bvid] = CachedValue(value: detail, savedAt: Date())
-            trimIfNeeded()
-            return detail
-        } catch {
-            detailTasks[bvid] = nil
-            throw error
-        }
-    }
-
-    func playbackURL(bvid: String, cid: Int) async throws -> PlayURLData {
-        removeExpiredValues()
-        let key = PlaybackKey(bvid: bvid, cid: cid)
-        if let cached = playbackURLs[key] {
-            return cached.value
-        }
-        if let existingTask = playbackTasks[key] {
-            if existingTask.isCancelled {
-                playbackTasks[key] = nil
-                playbackRequestIDs[key] = nil
-            } else {
-                return try await existingTask.value
-            }
-        }
-
-        let requestID = UUID()
-        let task = Task { try await BiliAPI.playURL(bvid: bvid, cid: cid) }
-        playbackTasks[key] = task
-        playbackRequestIDs[key] = requestID
-        do {
-            let payload = try await task.value
-            if playbackRequestIDs[key] == requestID {
-                playbackTasks[key] = nil
-                playbackRequestIDs[key] = nil
-                playbackURLs[key] = CachedValue(value: payload, savedAt: Date())
-            }
-            trimIfNeeded()
-            return payload
-        } catch {
-            if playbackRequestIDs[key] == requestID {
-                playbackTasks[key] = nil
-                playbackRequestIDs[key] = nil
-            }
-            throw error
-        }
-    }
-
-    /// A page-owned playback request is no longer useful after its player is
-    /// closed. Cancel the shared in-flight task as well as the caller's wait.
-    func cancelPlaybackURL(bvid: String, cid: Int) {
-        let key = PlaybackKey(bvid: bvid, cid: cid)
-        playbackTasks[key]?.cancel()
-        playbackTasks[key] = nil
-        playbackRequestIDs[key] = nil
-    }
-
-    func invalidatePlaybackURL(bvid: String, cid: Int) {
-        cancelPlaybackURL(bvid: bvid, cid: cid)
-        playbackURLs[PlaybackKey(bvid: bvid, cid: cid)] = nil
-    }
-
-    /// 卡片出现在屏幕上时调用。推荐卡已经有 cid；搜索卡没有，所以先取一次详情。
-    func prefetch(bvid: String, cid: Int? = nil) async {
-        removeExpiredValues()
-        if let cid, playbackURLs[PlaybackKey(bvid: bvid, cid: cid)] != nil { return }
-        if cid == nil, let detail = details[bvid]?.value,
-           playbackURLs[PlaybackKey(bvid: bvid, cid: detail.cid)] != nil { return }
-
-        guard await acquirePrefetchSlot() else { return }
-        defer { releasePrefetchSlot() }
-        guard !Task.isCancelled else { return }
-
-        do {
-            let resolvedCid: Int
-            if let cid {
-                resolvedCid = cid
-            } else {
-                resolvedCid = try await detail(for: bvid).cid
-            }
-            _ = try await playbackURL(bvid: bvid, cid: resolvedCid)
-        } catch {
-            // 预取失败不能影响列表使用；用户真正点开时仍会正常重试并显示错误。
-        }
-    }
-
-    private func acquirePrefetchSlot() async -> Bool {
-        if activePrefetchCount < maximumConcurrentPrefetches {
-            activePrefetchCount += 1
-            return true
-        }
-        guard prefetchWaiters.count < maximumQueuedPrefetches else { return false }
-        await withCheckedContinuation { prefetchWaiters.append($0) }
-        return true
-    }
-
-    private func releasePrefetchSlot() {
-        if prefetchWaiters.isEmpty {
-            activePrefetchCount = max(activePrefetchCount - 1, 0)
-        } else {
-            prefetchWaiters.removeFirst().resume()
-        }
-    }
-
-    private func removeExpiredValues() {
-        let cutoff = Date().addingTimeInterval(-lifetime)
-        details = details.filter { $0.value.savedAt >= cutoff }
-        playbackURLs = playbackURLs.filter { $0.value.savedAt >= cutoff }
-    }
-
-    private func trimIfNeeded() {
-        if details.count > maximumEntries,
-           let oldest = details.min(by: { $0.value.savedAt < $1.value.savedAt })?.key {
-            details[oldest] = nil
-        }
-        if playbackURLs.count > maximumEntries,
-           let oldest = playbackURLs.min(by: { $0.value.savedAt < $1.value.savedAt })?.key {
-            playbackURLs[oldest] = nil
-        }
-    }
-}
+typealias QualityPlaybackURLLoader = @Sendable (String, Int, Int) async throws -> PlayURLData
+typealias PlaybackSourceOpener = @MainActor (MPVPlayerSession, PlaybackSource, TimeInterval) async throws -> Void
 
 @MainActor
 @Observable
@@ -184,59 +21,148 @@ final class PlayerViewModel {
     /// 已经缓冲到的位置，进度条用它画出比播放位置更靠前的浅色区段。
     private(set) var bufferedTime: Double = 0
     private(set) var hasRenderedFirstFrame = false
+    private(set) var displayAspectRatio: Double?
+    private(set) var decodedVideoWidth: Int?
+    private(set) var decodedVideoHeight: Int?
+    private(set) var selectedVideoWidth: Int?
+    private(set) var selectedVideoHeight: Int?
+    private var hasDecodedAspectRatio = false
 
     private var playbackPayload: PlayURLData?
     private(set) var isSwitchingQuality = false
 
-    var availableVideoQualities: [Int] {
-        Array(Set(playbackPayload?.dash?.video.filter { URL(string: $0.baseUrl) != nil }.map(\.id) ?? [])).sorted(by: >)
-    }
+    var availableVideoQualities: [Int] { playbackPayload?.declaredVideoQualities ?? [] }
 
     var availableAudioQualities: [Int] {
         Array(Set(playbackPayload?.dash?.allAudio.filter { URL(string: $0.baseUrl) != nil }.map(\.id) ?? []))
             .sorted { PlaybackQuality.audioRank($0) > PlaybackQuality.audioRank($1) }
     }
 
-    var selectedVideoQuality: Int? {
-        guard let payload = playbackPayload else { return nil }
-        return payload.dash.flatMap { PlaybackSourceBuilder.bestVideoStream($0.video, preferredQuality: configuration.quality)?.id }
-            ?? payload.quality
+    private(set) var selectedVideoQuality: Int?
+    private(set) var selectedAudioQuality: Int?
+    private var qualityRequestID = UUID()
+    private var qualityFetchTask: Task<PlayURLData, Error>?
+    private var isFetchingQuality = false
+    /// 换源期间保留最后一次播放/暂停意图，防止新内核默认播放覆盖用户暂停。
+    private var qualityPlaybackIntent: Bool?
+
+    func videoQualityTitle(_ quality: Int) -> String {
+        let title = PlaybackQuality.videoTitle(quality)
+        guard playbackPayload?.hasVideoStream(quality: quality) != true,
+              let format = playbackPayload?.supportFormats?.first(where: { $0.quality == quality }) else { return title }
+        if format.needsVIP == true { return title + "（需大会员）" }
+        if format.needsLogin == true { return title + "（需登录）" }
+        return title
     }
 
-    var selectedAudioQuality: Int? {
-        playbackPayload?.dash.flatMap {
-            PlaybackSourceBuilder.bestAudioStream($0.allAudio, preferredQuality: configuration.audioQuality)?.id
-        }
-    }
-
-    /// 使用已获取的音视频轨道重新打开当前内核，不重新补查详情或丢失播放位置。
+    /// 已有轨道直接切换；服务端声明但未下发的画质按所选 qn 正常补取，不能把降级响应当成成功。
     func selectQuality(video: Int? = nil, audio: Int? = nil) async -> String? {
-        guard !isStopped, !isLoading, !isSwitchingQuality, let payload = playbackPayload else { return nil }
+        guard !isStopped, !isLoading, !isFetchingSource, !isSwitchingQuality,
+              let originalPayload = playbackPayload else { return nil }
         if let video, !availableVideoQualities.contains(video) { return "当前视频不支持该分辨率" }
         if let audio, !availableAudioQualities.contains(audio) { return "当前视频不支持该音质" }
+        guard video.map({ $0 != selectedVideoQuality }) == true || audio.map({ $0 != selectedAudioQuality }) == true else { return nil }
+        let requestID = UUID()
+        let initialEngineID = engineID
+        qualityRequestID = requestID
+        isSwitchingQuality = true
+        var didBeginOpening = false
+        defer {
+            if qualityRequestID == requestID {
+                qualityFetchTask = nil
+                isFetchingQuality = false
+                if !didBeginOpening { isSwitchingQuality = false }
+            }
+        }
         var next = configuration
         if let video { next.quality = video }
         if let audio { next.audioQuality = audio }
-        guard next != configuration else { return nil }
         do {
+            var payload = originalPayload
+            if let video, !payload.hasVideoStream(quality: video) {
+                isFetchingQuality = true
+                let loader = qualityPlaybackURLLoader
+                let bvid = self.bvid, cid = self.cid
+                let task = Task { try await loader(bvid, cid, video) }
+                qualityFetchTask = task
+                payload = try await task.value
+                try Task.checkCancellation()
+                guard !isStopped, qualityRequestID == requestID, engineID == initialEngineID else { return nil }
+                isFetchingQuality = false
+                if !payload.hasVideoStream(quality: video) {
+                    return unavailableQualityMessage(video, response: payload, previous: originalPayload)
+                }
+            }
             let source = try PlaybackSourceBuilder.makeSource(from: payload, configuration: next)
+            if let video, actualVideoQuality(in: payload, source: source, configuration: next) != video {
+                return unavailableQualityMessage(video, response: payload, previous: originalPayload)
+            }
+            guard !isStopped, qualityRequestID == requestID, engineID == initialEngineID else { return nil }
             let position = currentTime
             let playing = isPlaying
-            isSwitchingQuality = true
-            isLoading = true
-            recoveryTask?.cancel()
+            savePlaybackProgress()
+            resumeState.prepareForOpen(at: position)
+            configuration = next
+            playbackPayload = payload.preservingDeclaredQualities(from: originalPayload)
+            selectedVideoQuality = actualVideoQuality(in: payload, source: source, configuration: next)
+            updateSelectedVideoSize(in: payload, source: source, configuration: next)
+            selectedAudioQuality = source.audio == nil ? nil : payload.dash.flatMap {
+                PlaybackSourceBuilder.bestAudioStream($0.allAudio, preferredQuality: next.audioQuality)?.id
+            }
             sourceCandidates = source.candidates
             candidateIndex = 0
-            configuration = next
-            bufferedTime = position
-            try await session.open(source: sourceCandidates[0], startTime: position)
-            if playing { session.play() } else { session.pause() }
+            recoveryTask?.cancel()
+            recoveryTask = nil
+            qualityPlaybackIntent = playing
+            isLoading = true
+            didBeginOpening = true
+            // 换独立内核，使旧轨道的 position/firstFrame/error 无法落到新画质。
+            replaceSession()
+            seedDisplayAspectRatio(from: payload)
+            let openedSession = session
+            let openedEngineID = engineID
+            do {
+                try await sourceOpener(openedSession, sourceCandidates[0], position)
+                try Task.checkCancellation()
+                guard !isStopped, qualityRequestID == requestID, engineID == openedEngineID else { return nil }
+                let shouldPlay = qualityPlaybackIntent ?? isPlaying
+                if shouldPlay { openedSession.play() } else { openedSession.pause() }
+                isPlaying = shouldPlay
+            } catch {
+                guard !isStopped, qualityRequestID == requestID, engineID == openedEngineID else { return nil }
+                if !error.isCancellation { recoverFromSourceFailure(error.localizedDescription) }
+                else { showPlaybackError("画质切换已取消，请重试") }
+            }
             return nil
         } catch {
-            isSwitchingQuality = false
-            isLoading = false
+            guard !isStopped, qualityRequestID == requestID, engineID == initialEngineID else { return nil }
             return error.isCancellation ? nil : error.localizedDescription
         }
+    }
+
+    private func actualVideoQuality(in payload: PlayURLData, source: PlaybackSource,
+                                    configuration: VideoPlaybackConfiguration) -> Int? {
+        source.audio == nil ? payload.quality : payload.dash.flatMap {
+            PlaybackSourceBuilder.bestVideoStream($0.video, preferredQuality: configuration.quality)?.id
+        }
+    }
+
+    private func updateSelectedVideoSize(in payload: PlayURLData, source: PlaybackSource,
+                                         configuration: VideoPlaybackConfiguration) {
+        let stream = source.audio == nil ? nil : payload.dash.flatMap {
+            PlaybackSourceBuilder.bestVideoStream($0.video, preferredQuality: configuration.quality)
+        }
+        selectedVideoWidth = stream?.width
+        selectedVideoHeight = stream?.height
+    }
+
+    private func unavailableQualityMessage(_ quality: Int, response: PlayURLData, previous: PlayURLData) -> String {
+        let format = response.supportFormats?.first { $0.quality == quality }
+            ?? previous.supportFormats?.first { $0.quality == quality }
+        let title = PlaybackQuality.videoTitle(quality)
+        if format?.needsVIP == true { return "未取得\(title)播放地址，该档位需要大会员权限；已保留当前画质" }
+        if format?.needsLogin == true { return "未取得\(title)播放地址，请确认登录状态；已保留当前画质" }
+        return "服务器未提供\(title)播放地址，已保留当前画质"
     }
 
     private var isStopped = false
@@ -248,7 +174,13 @@ final class PlayerViewModel {
     private var metadata: SystemMediaMetadata?
     private(set) var isBuffering = false
     private let playbackURLLoader: PlaybackURLLoader
+    private let qualityPlaybackURLLoader: QualityPlaybackURLLoader
+    private let sourceOpener: PlaybackSourceOpener
     private let watchProgressReporter: @Sendable (String, Int, Double) async -> Void
+    private let progressStore: PlaybackProgressStore
+    private var resumeState: PlaybackResumeState
+    private var hasPreparedInitialSource = false
+    private var lastSavedPosition: TimeInterval
     private let systemMediaSessionID = UUID()
     /// 上次心跳已上报到的秒数。播放中每前进 5 秒报一次；暂停、换页、
     /// 看完时再补一次，保证历史记录里的进度停在最后看的位置。
@@ -323,15 +255,29 @@ final class PlayerViewModel {
         playbackURLLoader: @escaping PlaybackURLLoader = { bvid, cid in
             try await VideoPreparationCache.shared.playbackURL(bvid: bvid, cid: cid)
         },
+        qualityPlaybackURLLoader: @escaping QualityPlaybackURLLoader = { bvid, cid, quality in
+            try await BiliAPI.playURL(bvid: bvid, cid: cid, quality: quality)
+        },
         watchProgressReporter: @escaping @Sendable (String, Int, Double) async -> Void = { bvid, cid, time in
             try? await BiliAPI.reportWatchProgress(bvid: bvid, cid: cid, playedTime: time)
+        },
+        progressStore: PlaybackProgressStore = .shared,
+        sourceOpener: @escaping PlaybackSourceOpener = { session, source, position in
+            try await session.open(source: source, startTime: position)
         }
     ) {
         self.bvid = bvid
         self.cid = cid
         self.configuration = configuration
         self.playbackURLLoader = playbackURLLoader
+        self.qualityPlaybackURLLoader = qualityPlaybackURLLoader
+        self.sourceOpener = sourceOpener
         self.watchProgressReporter = watchProgressReporter
+        self.progressStore = progressStore
+        let savedPosition = progressStore.resumePosition(bvid: bvid, cid: cid)
+        self.currentTime = savedPosition
+        self.resumeState = PlaybackResumeState(position: savedPosition)
+        self.lastSavedPosition = savedPosition
         let session = MPVPlayerSession(configuration: configuration)
         self.session = session
 
@@ -340,6 +286,7 @@ final class PlayerViewModel {
 
     deinit {
         MainActor.assumeIsolated {
+            savePlaybackProgress()
             SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
             session.stop()
         }
@@ -371,6 +318,8 @@ final class PlayerViewModel {
         isLoading = true
         errorMessage = nil
         hasRenderedFirstFrame = false
+        decodedVideoWidth = nil
+        decodedVideoHeight = nil
         isBuffering = false
 
         do {
@@ -378,11 +327,24 @@ final class PlayerViewModel {
             try Task.checkCancellation()
             guard !isStopped else { return }
             playbackPayload = payload
+            seedDisplayAspectRatio(from: payload)
             let source = try PlaybackSourceBuilder.makeSource(from: payload, configuration: configuration)
             sourceCandidates = source.candidates
             candidateIndex = 0
+            selectedVideoQuality = actualVideoQuality(in: payload, source: source, configuration: configuration)
+            updateSelectedVideoSize(in: payload, source: source, configuration: configuration)
+            selectedAudioQuality = source.audio == nil ? nil : payload.dash.flatMap {
+                PlaybackSourceBuilder.bestAudioStream($0.allAudio, preferredQuality: configuration.audioQuality)?.id
+            }
             duration = source.duration
-            try await session.open(source: sourceCandidates[0], startTime: currentTime)
+            if !hasPreparedInitialSource {
+                if !resumeState.hasUpdatedPosition {
+                    currentTime = progressStore.resumePosition(bvid: bvid, cid: cid, duration: duration)
+                }
+                hasPreparedInitialSource = true
+            }
+            resumeState.prepareForOpen(at: currentTime)
+            try await sourceOpener(session, sourceCandidates[0], currentTime)
         } catch {
             guard !isStopped else { return }
             isLoading = false
@@ -393,6 +355,7 @@ final class PlayerViewModel {
     /// 用户重试时刷新签名地址，并从最后的播放位置重新打开内核。
     func retry() async {
         guard !isStopped, !isFetchingSource, !isLoading else { return }
+        savePlaybackProgress()
         isLoading = true
         recoveryTask?.cancel()
         recoveryTask = nil
@@ -414,12 +377,17 @@ final class PlayerViewModel {
     }
 
     private func replaceSession() {
+        let surfacePresentation = session.surfacePresentation
+        resumeState.prepareForOpen(at: currentTime)
         engineID = UUID()
         session.onEvent = nil
         session.stop()
         session = MPVPlayerSession(configuration: configuration)
+        session.surfacePresentation = surfacePresentation
         bindEvents()
         hasRenderedFirstFrame = false
+        decodedVideoWidth = nil
+        decodedVideoHeight = nil
         isPlaying = false
         isBuffering = false
         bufferedTime = currentTime
@@ -427,6 +395,7 @@ final class PlayerViewModel {
 
     private func showPlaybackError(_ message: String) {
         isSwitchingQuality = false
+        qualityPlaybackIntent = nil
         errorMessage = message
         isPlaying = false
         isLoading = false
@@ -435,6 +404,14 @@ final class PlayerViewModel {
     }
 
     private func recoverFromSourceFailure(_ message: String) {
+        if isFetchingQuality {
+            qualityRequestID = UUID()
+            qualityFetchTask?.cancel()
+            qualityFetchTask = nil
+            isFetchingQuality = false
+            isSwitchingQuality = false
+        }
+        savePlaybackProgress()
         guard candidateIndex + 1 < sourceCandidates.count else {
             showPlaybackError(message)
             return
@@ -444,36 +421,83 @@ final class PlayerViewModel {
         isLoading = true
         errorMessage = nil
         replaceSession()
+        let recoverySession = session
+        let recoveryEngineID = engineID
         recoveryTask = Task { [weak self] in
-            guard let self, !isStopped, !Task.isCancelled else { return }
-            do { try await session.open(source: source, startTime: currentTime) }
-            catch { if !isStopped { showPlaybackError(error.localizedDescription) } }
+            guard let self, !isStopped, !Task.isCancelled, engineID == recoveryEngineID else { return }
+            do {
+                try await sourceOpener(recoverySession, source, currentTime)
+                guard !isStopped, !Task.isCancelled, engineID == recoveryEngineID else { return }
+                if let playing = qualityPlaybackIntent {
+                    if playing { recoverySession.play() } else { recoverySession.pause() }
+                    isPlaying = playing
+                }
+            } catch {
+                guard !isStopped, !Task.isCancelled, engineID == recoveryEngineID else { return }
+                if !error.isCancellation { showPlaybackError(error.localizedDescription) }
+            }
         }
     }
 
     /// 真正离开视频页时立即释放播放器、观察器和网络缓冲，保证声音立刻停止。
     func stop() {
         guard !isStopped else { return }
+        savePlaybackProgress()
         isStopped = true
+        qualityRequestID = UUID()
+        qualityFetchTask?.cancel()
+        qualityFetchTask = nil
+        qualityPlaybackIntent = nil
+        isFetchingQuality = false
+        isSwitchingQuality = false
         recoveryTask?.cancel()
         recoveryTask = nil
         cancelSleepTimer()
         Task {
             await VideoPreparationCache.shared.cancelPlaybackURL(bvid: bvid, cid: cid)
         }
-        reportWatchProgress(currentTime)
+        reportWatchProgress(resumeState.isCompleted ? -1 : currentTime)
         session.stop()
         SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
         isPlaying = false
         isLoading = false
     }
 
+    /// 退出动画期间保留渲染表面，同时阻止迟到的切源任务重新开播。
+    ///
+    /// 这个调用发生在手势提交的同一帧：UIKit 正要开始原生 zoom 退出动画，
+    /// 主线程上任何同步的内核暂停（要抢 mpv 核心锁）或锁屏刷新（同步 IPC）
+    /// 都会让动画的第一帧迟到，表现就是松手瞬间的停顿。所以这里只翻状态位：
+    /// 内核暂停排队执行，锁屏状态晚一个 runloop 再刷；进度已由
+    /// `dismissVideoPage` 顶部落盘，不在这里重复写 UserDefaults。
+    func pauseForDismissal() {
+        qualityRequestID = UUID()
+        qualityFetchTask?.cancel()
+        qualityFetchTask = nil
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        let wasAudible = isPlaying || qualityPlaybackIntent != nil
+        if qualityPlaybackIntent != nil { qualityPlaybackIntent = false }
+        isPlaying = false
+        // 首帧尚未到达时 isPlaying 可能为 false，仍须暂停内核。
+        session.pauseAsync()
+        if wasAudible {
+            reportWatchProgress(resumeState.isCompleted ? -1 : currentTime)
+            SystemNowPlayingCenter.shared.updatePlaybackStateAfterNextRunloop(
+                isPlaying: false,
+                sessionID: systemMediaSessionID
+            )
+        }
+    }
+
     /// 被另一个视频页盖住时调用。只停声音和画面，不释放播放项目。
     func pause() {
-        guard isPlaying else { return }
+        savePlaybackProgress()
+        guard isPlaying || qualityPlaybackIntent != nil else { return }
+        if qualityPlaybackIntent != nil { qualityPlaybackIntent = false }
         session.pause()
         isPlaying = false
-        reportWatchProgress(currentTime)
+        reportWatchProgress(resumeState.isCompleted ? -1 : currentTime)
         SystemNowPlayingCenter.shared.updatePlaybackState(
             isPlaying: false,
             sessionID: systemMediaSessionID
@@ -481,8 +505,38 @@ final class PlayerViewModel {
     }
 
     func play() {
-        guard !isStopped, errorMessage == nil, hasRenderedFirstFrame else { return }
-        session.play()
+        guard !isStopped, errorMessage == nil else { return }
+        if qualityPlaybackIntent != nil, !hasRenderedFirstFrame {
+            qualityPlaybackIntent = true
+            return
+        }
+        guard hasRenderedFirstFrame else { return }
+        if resumeState.isCompleted {
+            // EOF 会卸载文件，必须重新打开当前地址，单纯 seek/play 不会重播。
+            resumeState.seek(to: 0)
+            currentTime = 0
+            savePlaybackProgress()
+            isLoading = true
+            hasRenderedFirstFrame = false
+            bufferedTime = 0
+            recoveryTask?.cancel()
+            recoveryTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    if sourceCandidates.indices.contains(candidateIndex) {
+                        try await sourceOpener(session, sourceCandidates[candidateIndex], 0)
+                    } else {
+                        await load()
+                    }
+                    guard !isStopped, !Task.isCancelled else { return }
+                    session.play()
+                } catch {
+                    if !isStopped, !error.isCancellation { showPlaybackError(error.localizedDescription) }
+                }
+            }
+        } else {
+            session.play()
+        }
         isPlaying = true
         SystemNowPlayingCenter.shared.updatePlaybackState(
             isPlaying: true,
@@ -492,29 +546,63 @@ final class PlayerViewModel {
 
     func togglePlayPause() {
         guard !isStopped, errorMessage == nil, hasRenderedFirstFrame else { return }
-        if isPlaying {
-            session.pause()
-        } else {
-            session.play()
-        }
-        isPlaying.toggle()
-        SystemNowPlayingCenter.shared.updatePlaybackState(
-            isPlaying: isPlaying,
-            sessionID: systemMediaSessionID
-        )
+        if isPlaying { pause() } else { play() }
     }
 
     /// 手指抬起后只调用一次，播放器负责精确到关键帧附近的跳转。
     func seek(to seconds: Double) async {
+        guard !isStopped, seconds.isFinite else { return }
+        let needsReopen = resumeState.isCompleted
+        let wasPlaying = isPlaying
         let upperBound = duration > 0 ? duration : max(seconds, 0)
         let target = min(max(seconds, 0), upperBound)
         currentTime = target
+        resumeState.seek(to: target)
+        savePlaybackProgress()
+        reportWatchProgress(target)
         SystemNowPlayingCenter.shared.updateElapsed(
             target,
             sessionID: systemMediaSessionID,
             force: true
         )
-        await session.seek(to: target)
+        if needsReopen {
+            // 播完后拖动也要重新加载文件；清除 completed 后再点播放已经无法
+            // 判断文件曾被 EOF 卸载，因此在这次 seek 内完成重开并保持暂停。
+            isLoading = true
+            hasRenderedFirstFrame = false
+            bufferedTime = target
+            do {
+                if sourceCandidates.indices.contains(candidateIndex) {
+                    try await sourceOpener(session, sourceCandidates[candidateIndex], target)
+                } else {
+                    await load()
+                }
+                guard !isStopped, !Task.isCancelled else { return }
+                if wasPlaying { session.play() } else { session.pause() }
+            } catch {
+                if !isStopped, !error.isCancellation { showPlaybackError(error.localizedDescription) }
+            }
+        } else {
+            await session.seek(to: target)
+        }
+    }
+
+    /// 暂停、退出、切后台时同步落盘；尚未真正播放过的加载页不能覆盖旧记录。
+    func savePlaybackProgress() {
+        guard !isStopped else { return }
+        if resumeState.isCompleted {
+            progressStore.remove(bvid: bvid, cid: cid)
+        } else if resumeState.hasUpdatedPosition {
+            progressStore.save(bvid: bvid, cid: cid, position: resumeState.position, duration: duration)
+            lastSavedPosition = resumeState.position
+        }
+    }
+
+    private func seedDisplayAspectRatio(from payload: PlayURLData) {
+        guard !hasDecodedAspectRatio, let dash = payload.dash,
+              let stream = PlaybackSourceBuilder.bestVideoStream(dash.video, preferredQuality: configuration.quality),
+              let width = stream.width, let height = stream.height, width > 0, height > 0 else { return }
+        displayAspectRatio = Double(width) / Double(height)
     }
 
     private func handle(_ event: PlayerPlaybackEvent) {
@@ -526,11 +614,22 @@ final class PlayerViewModel {
             hasRenderedFirstFrame = true
             isLoading = false
             isBuffering = false
+            if let playing = qualityPlaybackIntent {
+                if playing { session.play() } else { session.pause() }
+                isPlaying = playing
+                qualityPlaybackIntent = nil
+            }
             // mpv 的音频输出已经建好，这里是重试音频会话激活的安全窗口：
             // 启动时那次可能失败，失败的会话不会出现在系统的「正在播放」里。
             PlaybackAudioSession.activateOnce()
         case .playing(let playing):
+            if qualityPlaybackIntent == false, playing {
+                session.pause()
+                isPlaying = false
+                return
+            }
             isPlaying = playing
+            if !playing { savePlaybackProgress() }
             SystemNowPlayingCenter.shared.updatePlaybackState(
                 isPlaying: playing,
                 sessionID: systemMediaSessionID
@@ -539,8 +638,10 @@ final class PlayerViewModel {
             isBuffering = buffering
             if !hasRenderedFirstFrame { isLoading = true }
         case .position(let position):
-            guard hasRenderedFirstFrame, !isSwitchingQuality else { return }
+            guard hasRenderedFirstFrame, !isLoading, (!isSwitchingQuality || isFetchingQuality),
+                  resumeState.accept(position: position) else { return }
             currentTime = position
+            if abs(position - lastSavedPosition) >= 5 { savePlaybackProgress() }
             // 观看进度心跳：距离上次上报前进超过 5 秒才发，对齐官方
             // 网页播放器的节奏。
             if isPlaying, position - lastReportedWatchTime >= 5 {
@@ -550,8 +651,14 @@ final class PlayerViewModel {
                 position,
                 sessionID: systemMediaSessionID
             )
+        case .seekCompleted(let position):
+            guard hasRenderedFirstFrame, !isLoading, (!isSwitchingQuality || isFetchingQuality),
+                  resumeState.confirm(position: position) else { return }
+            currentTime = position
+            savePlaybackProgress()
+            SystemNowPlayingCenter.shared.updateElapsed(position, sessionID: systemMediaSessionID, force: true)
         case .duration(let duration):
-            if duration > 0 {
+            if duration.isFinite, duration > 0 {
                 self.duration = duration
                 SystemNowPlayingCenter.shared.updateDuration(
                     duration,
@@ -560,9 +667,22 @@ final class PlayerViewModel {
             }
         case .buffered(let buffered):
             bufferedTime = max(currentTime + buffered, currentTime)
+        case .displayAspectRatio(let ratio):
+            if ratio.isFinite, ratio > 0 {
+                displayAspectRatio = ratio
+                hasDecodedAspectRatio = true
+            }
+        case .decodedVideoSize(let width, let height):
+            if width > 0, height > 0 {
+                decodedVideoWidth = width
+                decodedVideoHeight = height
+            }
         case .ended:
+            guard hasRenderedFirstFrame, !isLoading, !isSwitchingQuality else { return }
             isPlaying = false
             isLoading = false
+            resumeState.complete()
+            savePlaybackProgress()
             // 看完时 played_time 传 -1，服务端会把它记成「已看完」。
             reportWatchProgress(-1)
             if sleepsAfterVideoEnd {
@@ -581,9 +701,7 @@ final class PlayerViewModel {
     /// 不能因为上报失败打断或提示播放。
     private func reportWatchProgress(_ playedTime: Double) {
         guard playedTime != lastReportedWatchTime, playedTime > 0 || currentTime > 0 else { return }
-        if playedTime > 0 {
-            lastReportedWatchTime = playedTime
-        }
+        lastReportedWatchTime = playedTime
         let bvid = self.bvid
         let cid = self.cid
         let reporter = watchProgressReporter

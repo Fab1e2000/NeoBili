@@ -52,3 +52,68 @@ swiftc -swift-version 6 -parse-as-library \
     "$HARNESS/src/VideoEntranceRegression.swift" \
     -o "$BUILD_DIR/video-entrance"
 "$BUILD_DIR/video-entrance"
+
+# 续播存储和 mpv 事件顺序、内联画幅与固定渲染表面的真实逻辑。
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/Player/PlaybackProgressStore.swift" \
+    "$HARNESS/src/PlaybackResumeRegression.swift" \
+    -o "$BUILD_DIR/playback-resume"
+"$BUILD_DIR/playback-resume"
+
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/VideoDetail/InlineVideoLayout.swift" \
+    "$HARNESS/src/InlineVideoLayoutRegression.swift" \
+    -o "$BUILD_DIR/inline-video-layout"
+"$BUILD_DIR/inline-video-layout"
+
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/Player/PlayerSurfaceGeometry.swift" \
+    "$HARNESS/src/PlayerSurfaceAspectRegression.swift" \
+    -o "$BUILD_DIR/player-surface-aspect"
+"$BUILD_DIR/player-surface-aspect"
+
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/VideoDetail/InlineVideoCollapseLayout.swift" \
+    "$HARNESS/src/InlineVideoCollapseRegression.swift" \
+    -o "$BUILD_DIR/inline-video-collapse"
+"$BUILD_DIR/inline-video-collapse"
+
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Core/Models/CardAnimationSettings.swift" \
+    "$HARNESS/src/CardAnimationRegression.swift" \
+    -o "$BUILD_DIR/card-animation"
+"$BUILD_DIR/card-animation"
+
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/Following/FollowingSidebarPhysics.swift" \
+    "$HARNESS/src/FollowingSidebarPhysicsRegression.swift" \
+    -o "$BUILD_DIR/following-sidebar-physics"
+"$BUILD_DIR/following-sidebar-physics"
+
+# Already-mounted mini windows must receive new-session handoffs without layout.
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/Player/PlayerSurfaceOwnership.swift" \
+    "$HARNESS/src/PlayerSurfaceOwnershipRegression.swift" \
+    -o "$BUILD_DIR/player-surface-ownership"
+"$BUILD_DIR/player-surface-ownership"
+
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Core/Models/LiveModels.swift" \
+    "$APP/Features/Following/FollowedLiveDirectory.swift" \
+    "$HARNESS/src/FollowedLiveDirectoryRegression.swift" \
+    -o "$BUILD_DIR/followed-live-directory"
+"$BUILD_DIR/followed-live-directory"
+
+# 直播关注直接编译生产状态模型；资料和写接口均为离线桩。
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/Live/LiveRoomFollowModel.swift" \
+    "$HARNESS/src/LiveRoomFollowRegression.swift" \
+    -o "$BUILD_DIR/live-room-follow"
+"$BUILD_DIR/live-room-follow"
+
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Core/Models/LiveModels.swift" \
+    "$APP/Features/Live/LiveFeedModel.swift" \
+    "$HARNESS/src/LiveFeedRegression.swift" \
+    -o "$BUILD_DIR/live-feed"
+"$BUILD_DIR/live-feed"

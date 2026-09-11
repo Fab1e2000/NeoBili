@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 列表里移除一张卡片的动效参数。
 ///
@@ -14,17 +15,47 @@ enum CardRemovalAnimation {
     /// 250ms 实测不够（新式菜单退场更慢），先用 500ms。
     static let menuDismissWaitMilliseconds: UInt64 = 500
     /// 第一段：卡片原地淡出。
-    static let fade: Animation = .easeOut(duration: 0.28)
+    @MainActor static func fade(source: VideoCardAnimationSource? = nil) -> Animation? {
+        enabled(source: source) ? .easeOut(duration: 0.28) : nil
+    }
     /// 第一段的时长（毫秒）。等它走完再收拢空位。
     static let fadeMilliseconds: UInt64 = 300
     /// 第二段：收拢空位，下方卡片上移补位。
     ///
     /// 用带一点点回弹的弹簧而不是固定曲线：补位的卡片轻轻落定，
     /// 比匀速滑动更有「卡进了位置」的感觉。
-    static let collapse: Animation = .spring(duration: 0.4, bounce: 0.12)
+    @MainActor static func collapse(source: VideoCardAnimationSource? = nil) -> Animation? {
+        enabled(source: source) ? .spring(duration: 0.4, bounce: 0.12) : nil
+    }
     /// 第二段走完后延迟多久清理「正在移除」标记（毫秒）。标记要活过退出
     /// 转场，否则同一条目的残影会在半途重新显形。
     static let collapseMilliseconds: UInt64 = 450
+
+    @MainActor private static func enabled(source: VideoCardAnimationSource?) -> Bool {
+        !UIAccessibility.isReduceMotionEnabled
+            && CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: source)
+    }
+
+    @MainActor static func wait(milliseconds: UInt64, source: VideoCardAnimationSource? = nil) async throws {
+        guard enabled(source: source) else { return }
+        try await CardAnimationSettings.waitWhileEnabled(
+            for: Double(milliseconds) / 1_000, category: .video, phase: .exit, source: source
+        )
+    }
+}
+
+private struct CardFadeOut: ViewModifier {
+    let isRemoving: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.videoCardAnimationSource) private var source
+    private var animations = CardAnimationPreferences()
+
+    func body(content: Content) -> some View {
+        let enabled = !reduceMotion && animations.isEnabled(category: .video, phase: .exit)
+        content
+            .opacity(isRemoving && enabled ? 0 : 1)
+            .animation(enabled ? CardRemovalAnimation.fade(source: source) : nil, value: isRemoving)
+    }
 }
 
 extension View {
@@ -37,7 +68,6 @@ extension View {
     /// `withAnimation`：长按菜单退场附近的事务经常被系统吞掉，
     /// 事务驱动的动画会直接跳到终态。
     func cardFadeOut(isRemoving: Bool) -> some View {
-        opacity(isRemoving ? 0 : 1)
-            .animation(CardRemovalAnimation.fade, value: isRemoving)
+        modifier(CardFadeOut(isRemoving: isRemoving))
     }
 }

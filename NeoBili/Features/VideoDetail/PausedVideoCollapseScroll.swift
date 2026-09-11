@@ -5,7 +5,7 @@ import UIKit
 struct PausedVideoCollapseScroll: UIViewRepresentable {
     let consume: (CGFloat) -> CGFloat
     let end: () -> Void
-    let canConsume: () -> Bool
+    let canConsume: (CGFloat) -> Bool
     var canContinue: () -> Bool = { true }
 
     func makeUIView(context: Context) -> Observer { Observer() }
@@ -15,7 +15,7 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
         view.canContinue = canContinue
         if !canContinue() { view.cancelMomentum() }
         view.canConsume = canConsume
-        if !canConsume() { view.releaseScroll() }
+        if !canConsume(1), !canConsume(-1) { view.releaseScroll() }
         view.attach()
     }
     static func dismantleUIView(_ view: Observer, coordinator: ()) { view.detach() }
@@ -23,7 +23,7 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
     final class Observer: UIView {
         var consume: ((CGFloat) -> CGFloat)?
         var end: (() -> Void)?
-        var canConsume: (() -> Bool)?
+        var canConsume: ((CGFloat) -> Bool)?
         var canContinue: (() -> Bool)?
         private weak var scroll: UIScrollView?
         private var observation: NSKeyValueObservation?
@@ -32,6 +32,8 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
         private var blocking = false
         private var lockedOffset = CGPoint.zero
         private var lastTranslation: CGFloat = 0
+        private var lastOffset = CGPoint.zero
+        private var verticalDrag = false
         private var displayLink: CADisplayLink?
         private var lastTimestamp: CFTimeInterval = 0
         private var momentum: CGFloat = 0
@@ -75,32 +77,50 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
         }
 
         @objc private func panned(_ gesture: UIPanGestureRecognizer) {
+            handlePan(state: gesture.state, translation: gesture.translation(in: scroll?.window),
+                      velocity: gesture.velocity(in: scroll?.window))
+        }
+
+        func handlePan(state: UIGestureRecognizer.State, translation: CGPoint, velocity: CGPoint) {
             guard let scroll else { return }
-            let translation = gesture.translation(in: scroll.window)
-            switch gesture.state {
+            switch state {
             case .began:
                 stopMomentum()
                 consumed = false
+                blocking = false
                 lastTranslation = translation.y
-                let velocity = gesture.velocity(in: scroll.window)
-                blocking = canConsume?() == true && velocity.y < 0 && abs(velocity.y) > abs(velocity.x)
-                lockedOffset = scroll.contentOffset
+                lastOffset = scroll.contentOffset
+                verticalDrag = abs(velocity.y) > abs(velocity.x)
             case .changed:
                 let delta = lastTranslation - translation.y
                 lastTranslation = translation.y
-                guard blocking else { return }
-                let used = consume?(delta) ?? 0
+                defer { lastOffset = scroll.contentOffset }
+                guard verticalDrag, abs(delta) > 0.001 else { return }
+                let minimum = -scroll.adjustedContentInset.top
+                let previousOffset = blocking ? lockedOffset : lastOffset
+                // 下拉先让列表回顶，只有跨过顶部的剩余手指距离用于展开。
+                let requested = VideoScrollHandoff.playerDelta(delta, offset: previousOffset.y, minimum: minimum)
+                guard abs(requested) > 0.001, canConsume?(requested) == true else {
+                    if blocking {
+                        blocking = false
+                        scroll.contentOffset.y = max(minimum, previousOffset.y + delta)
+                    }
+                    return
+                }
+                blocking = true
+                lockedOffset = CGPoint(x: previousOffset.x, y: delta < 0 ? minimum : previousOffset.y)
+                let used = consume?(requested) ?? 0
                 consumed = consumed || abs(used) > 0
-                if canConsume?() != true {
+                if canConsume?(requested) != true || abs(used - requested) > 0.01 {
                     blocking = false
-                    // 达到收缩终点后，当前这次手势的剩余距离直接交给列表。
-                    scroll.contentOffset.y = lockedOffset.y + max(0, delta - used)
+                    // 到达任一端点后，剩余位移归还给原生列表。
+                    scroll.contentOffset.y = max(minimum, lockedOffset.y + requested - used)
                 } else {
                     moved(scroll, old: lockedOffset)
                 }
             case .ended:
                 if blocking, consumed {
-                    momentum = -gesture.velocity(in: scroll.window).y
+                    momentum = -velocity.y
                     lastTimestamp = 0
                     let link = CADisplayLink(target: ticker, selector: #selector(WeakTicker.tick(_:)))
                     displayLink = link
@@ -181,5 +201,13 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
             blocking = false
             consumed = false
         }
+    }
+}
+
+/// 正值上滑收缩；负值下拉只有越过列表顶部的部分才能展开播放器。
+enum VideoScrollHandoff {
+    static func playerDelta(_ delta: CGFloat, offset: CGFloat, minimum: CGFloat) -> CGFloat {
+        guard delta.isFinite, offset.isFinite, minimum.isFinite else { return 0 }
+        return delta < 0 ? min(0, delta + max(0, offset - minimum)) : delta
     }
 }

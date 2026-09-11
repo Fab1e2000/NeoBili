@@ -8,8 +8,19 @@ struct VideoPlaybackConfiguration: Sendable, Equatable {
     var maxBufferBytes: Int = 32 * 1024 * 1024
     var maxBackBufferBytes: Int = 8 * 1024 * 1024
     var networkTimeoutSeconds: Int = 10
+    var referer: String = BiliHeaders.referer
 
     static let fastStart = VideoPlaybackConfiguration()
+
+    static func live(roomID: Int) -> VideoPlaybackConfiguration {
+        var configuration = VideoPlaybackConfiguration()
+        configuration.referer = "https://live.bilibili.com/\(roomID)"
+        configuration.initialBufferSeconds = 1
+        // 与 PiliPlus initLiveBuffer 默认预算一致，直播只留前向缓存。
+        configuration.maxBufferBytes = 8 * 1024 * 1024
+        configuration.maxBackBufferBytes = 0
+        return configuration
+    }
 
     /// 系统设置里的「默认清晰度」。每次新建播放器都重新读取，改动即时生效，
     /// 不必重启应用；已打开的视频页保持原来的配置不受影响。

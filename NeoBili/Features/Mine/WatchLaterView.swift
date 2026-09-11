@@ -59,6 +59,7 @@ struct WatchLaterView: View {
         .refreshable { await reload() }
         .task { await loadIfNeeded() }
         .resolvePortraitVideos(items, batchID: entranceGeneration)
+        .videoCardAnimationSource(.watchLater)
     }
 
     private func row(_ item: WatchLaterItem) -> some View {
@@ -148,19 +149,19 @@ struct WatchLaterView: View {
         defer { removals.finish(item.id) }
         var removedIndex: Int?
         do {
-            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.menuDismissWaitMilliseconds))
-            withAnimation(CardRemovalAnimation.fade) { removals.hide(item.id) }
-            try await Task.sleep(for: .milliseconds(CardRemovalAnimation.fadeMilliseconds))
-            withAnimation(CardRemovalAnimation.collapse) {
+            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.menuDismissWaitMilliseconds, source: .watchLater)
+            withAnimation(CardRemovalAnimation.fade(source: .watchLater)) { removals.hide(item.id) }
+            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.fadeMilliseconds, source: .watchLater)
+            withAnimation(CardRemovalAnimation.collapse(source: .watchLater)) {
                 removedIndex = removals.remove(item.id, from: &items)
             }
             try await BiliAPI.removeWatchLater(aid: aid)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
-            withAnimation { items.removeAll { $0.id == item.id } }
-            try? await Task.sleep(for: .milliseconds(CardRemovalAnimation.collapseMilliseconds))
+            withAnimation(CardRemovalAnimation.collapse(source: .watchLater)) { items.removeAll { $0.id == item.id } }
+            try? await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.collapseMilliseconds, source: .watchLater)
         } catch {
             if let removedIndex {
-                withAnimation { removals.restore(item, at: removedIndex, in: &items) }
+                withAnimation(CardRemovalAnimation.collapse(source: .watchLater)) { removals.restore(item, at: removedIndex, in: &items) }
             }
             if !error.isCancellation { feedback.show(error.localizedDescription) }
         }

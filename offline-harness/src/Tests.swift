@@ -109,6 +109,7 @@ struct Harness {
         await testEnvironmentAction()
         await testWBICacheFreshness()
         await testLenientDynamicDecoding()
+        await testFollowedUpLivePriority()
 
         if failures == 0 {
             print("ALL PASS")
@@ -117,6 +118,23 @@ struct Harness {
             exit(1)
         }
         exit(0)
+    }
+
+    static func testFollowedUpLivePriority() {
+        let input = [
+            FollowedUp(mid: 1, uname: "read", face: "", hasUpdate: false),
+            FollowedUp(mid: 2, uname: "updated", face: "", hasUpdate: true),
+            FollowedUp(mid: 3, uname: "live", face: "", hasUpdate: false, liveRoomID: 30),
+            FollowedUp(mid: 4, uname: "live and updated", face: "", hasUpdate: true, liveRoomID: 40),
+            FollowedUp(mid: 5, uname: "updated next", face: "", hasUpdate: true),
+            FollowedUp(mid: 6, uname: "read next", face: "", hasUpdate: false)
+        ]
+        let ordered = FollowedUp.orderedForSidebar(input) { $0.hasUpdate }
+        expect(ordered.map(\.mid) == [3, 4, 2, 5, 1, 6], "关注选择器：直播优先，其次未读，组内保持原顺序")
+        let heldPriority = FollowedUp.orderedForSidebar(input) { $0.mid == 1 || $0.hasUpdate }
+        expect(heldPriority.map(\.mid) == [3, 4, 1, 2, 5, 6], "直播排序保留既有读取动画的优先级判定")
+        let invalid = FollowedUp(mid: 7, uname: "invalid", face: "", hasUpdate: false, liveRoomID: 0)
+        expect(invalid.liveRoomID == nil, "无效直播间编号不能获得直播优先级")
     }
 
     // MARK: 时长解析

@@ -6,16 +6,25 @@ import UIKit
 /// UIViewController，不会因 SwiftUI 重新布局而重建播放内核。
 struct PlayerSurface: UIViewControllerRepresentable {
     let session: MPVPlayerSession
+    var presentation: PlayerSurfacePresentation = .page
+    var isHostActive: () -> Bool = { true }
 
     func makeUIViewController(context: Context) -> PlayerSurfaceContainerController {
-        let container = PlayerSurfaceContainerController(content: session.viewController)
+        let container = PlayerSurfaceContainerController(content: session.viewController, canPresent: { false })
+        container.configure(content: session.viewController, ownership: session.surfaceOwnership,
+                            presentation: presentation, isHostActive: isHostActive)
         return container
     }
 
     func updateUIViewController(_ uiViewController: PlayerSurfaceContainerController, context: Context) {
         // session 换了（切分P、切相关视频）时把新的渲染控制器接过来。
         // 播放命令仍旧全部由 session 发出。
-        uiViewController.adopt(session.viewController)
+        uiViewController.configure(content: session.viewController, ownership: session.surfaceOwnership,
+                                   presentation: presentation, isHostActive: isHostActive)
+    }
+
+    static func dismantleUIViewController(_ controller: PlayerSurfaceContainerController, coordinator: ()) {
+        controller.stopObservingOwnership()
     }
 }
 
@@ -28,10 +37,13 @@ struct PlayerSurface: UIViewControllerRepresentable {
 /// 画面变成一块黑。中间垫一个每次都新建的容器，SwiftUI 摘掉的就只是容器，
 /// 渲染控制器始终跟着 session 活着。
 @MainActor
-final class PlayerSurfaceContainerController: UIViewController {
+final class PlayerSurfaceContainerController: UIViewController, PlayerSurfaceOwnershipObserver {
     private weak var content: UIViewController?
+    private weak var ownership: PlayerSurfaceOwnership?
+    var canPresent: () -> Bool
 
-    init(content: UIViewController) {
+    init(content: UIViewController, canPresent: @escaping () -> Bool = { true }) {
+        self.canPresent = canPresent
         super.init(nibName: nil, bundle: nil)
         self.content = content
     }
@@ -41,6 +53,32 @@ final class PlayerSurfaceContainerController: UIViewController {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// Changing videos reuses this container. Unregister the old session before
+    /// accepting the new one so delayed old-session notifications cannot reclaim
+    /// or detach the replacement video's rendering controller.
+    func configure(content: UIViewController, ownership: PlayerSurfaceOwnership,
+                   presentation: PlayerSurfacePresentation,
+                   isHostActive: @escaping () -> Bool = { true }) {
+        if self.ownership !== ownership { stopObservingOwnership() }
+        canPresent = { [weak ownership] in
+            ownership?.presentation == presentation && isHostActive()
+        }
+        adopt(content)
+        self.ownership = ownership
+        ownership.addObserver(self)
+    }
+
+    func stopObservingOwnership() {
+        ownership?.removeObserver(self)
+        ownership = nil
+        canPresent = { false }
+    }
+
+    func playerSurfaceOwnershipDidChange() {
+        guard isViewLoaded else { return }
+        reclaimContentIfNeeded()
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -77,7 +115,7 @@ final class PlayerSurfaceContainerController: UIViewController {
             content = newContent
             return
         }
-        if let content, content !== newContent {
+        if let content, content !== newContent, content.parent === self {
             content.willMove(toParent: nil)
             content.view.removeFromSuperview()
             content.removeFromParent()
@@ -88,7 +126,7 @@ final class PlayerSurfaceContainerController: UIViewController {
     }
 
     private func attach(_ content: UIViewController) {
-        guard content.parent !== self else { return }
+        guard canPresent(), content.parent !== self else { return }
 
         // 不要从一个正显示在屏幕上的容器手里抢渲染层。
         // 抢走之后画面就没了，而抢的这一个自己还没上屏（多半根本不会上屏）。

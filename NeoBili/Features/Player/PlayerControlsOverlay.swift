@@ -1,222 +1,171 @@
 import SwiftUI
 
-/// A deliberately small control set: tap to show/hide a bottom scrubber with
-/// time labels and a fullscreen toggle. The video itself stays unobscured;
-/// only the area behind the bottom controls receives a local dark gradient.
+/// 原生按钮、菜单与滑杆组成媒体控制层；手势区域与稳定的视频渲染层分别管理。
 struct PlayerControlsOverlay: View {
+    @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let viewModel: PlayerViewModel
+    @Binding var controlsVisible: Bool
     let isFullScreen: Bool
     let onToggleFullScreen: () -> Void
+    var onToggleCompact: (() -> Void)? = nil
+    var isCompact = false
+    var controlsSafeAreaInsets = EdgeInsets()
+    var onDismiss: (() -> Void)? = nil
+    var videoTitle = ""
+    var videoSubtitle = ""
+    var shareURL: URL?
 
-    // 进入视频页时控件默认不显示，画面不被任何东西挡住；轻点一下才唤出。
-    @State private var controlsVisible = false
-    /// 为 true 时，进度条和时间显示的是手指选中的位置，而不是播放器的位置。
-    /// 手指抬起后它不会立刻变回 false，要等跳转真正完成，详见 `endScrub`。
     @State private var isScrubbing = false
     @State private var scrubTime: Double = 0
     @State private var seekTask: Task<Void, Never>?
     @State private var hideTask: Task<Void, Never>?
+    @State private var keepsControlsForMenu = false
+    @State private var isAddingWatchLater = false
+
+    private var isWaiting: Bool { !viewModel.hasRenderedFirstFrame || viewModel.isLoading || viewModel.isBuffering }
+    private var showsControls: Bool { controlsVisible || viewModel.errorMessage != nil }
+    private var canControlPlayback: Bool { viewModel.hasRenderedFirstFrame && viewModel.errorMessage == nil && !viewModel.isLoading }
+    private var displayTime: Double { isScrubbing ? scrubTime : viewModel.currentTime }
 
     var body: some View {
         ZStack {
-            // 透明手势区域接收轻点及分区竖向滑动，位于播放控件后面。
-            PlayerVerticalGestureLayer(isFullScreen: isFullScreen,
-                                       currentTime: displayTime,
-                                       duration: viewModel.duration,
-                                       onTap: toggleControls,
-                                       onToggleFullScreen: onToggleFullScreen,
-                                       onSeekChanged: { time in
-                                           controlsVisible = true
-                                           scrub(to: time)
-                                       },
-                                       onSeekEnded: endScrub(at:),
-                                       onSeekCancelled: cancelScrub)
-
-            // 播放时不显示“暂停”图标和圆形底色，但保留原位置的点击热区。
-            // 点击后视频会暂停，此时只显示“播放”图标，方便恢复播放。
-            centerPlaybackControl
-                .opacity(controlsVisible ? 1 : 0)
-                .allowsHitTesting(controlsVisible)
-
-            // 右上角的定时休眠按钮，跟着控件一起显隐。
-            VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    videoQualityMenu
-                    audioQualityMenu
-                    Spacer(minLength: 0)
-
-                    if let remaining = viewModel.sleepRemainingMinutes {
-                        Text("\(remaining) 分")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.black.opacity(0.4), in: Capsule())
-                    }
-
-                    sleepTimerMenu
-                }
-                .padding(.horizontal, 8)
-                .padding(.top, 4)
-
-                Spacer(minLength: 0)
+            if viewModel.errorMessage == nil {
+                PlayerVerticalGestureLayer(
+                    isFullScreen: isFullScreen, currentTime: displayTime, duration: viewModel.duration,
+                    onTap: toggleControls, onToggleFullScreen: onToggleFullScreen,
+                    onSeekChanged: { time in
+                        guard canControlPlayback else { return }
+                        controlsVisible = true
+                        scrub(to: time)
+                    },
+                    onSeekEnded: endScrub(at:), onSeekCancelled: cancelScrub
+                )
             }
-            .opacity(controlsVisible ? 1 : 0)
-            .allowsHitTesting(controlsVisible)
-
-            // 只让底部进度条所在的小片区域渐变变暗。
-            // 这层始终存在，只改透明度，避免进度条重新插入时引起画面抖动。
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-
-                ZStack(alignment: .bottom) {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black.opacity(0.12), location: 0.45),
-                            .init(color: .black.opacity(0.62), location: 1)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+            if isWaiting, !showsControls {
+                ProgressView().tint(.white)
                     .allowsHitTesting(false)
-
-                    bottomBar
-                }
-                // 这个数字是底部渐变区域的高度：越大，暗色向上延伸得越多。
-                .frame(height: 90)
+                    .accessibilityLabel("视频正在加载")
             }
-            .opacity(controlsVisible ? 1 : 0)
-            .allowsHitTesting(controlsVisible)
+            if showsControls {
+                PlayerGlassChrome(
+                    title: videoTitle, subtitle: videoSubtitle, shareURL: shareURL,
+                    videoQualityControl: videoQualityControl, audioQualityControl: audioQualityControl,
+                    position: displayTime, duration: viewModel.duration, buffered: viewModel.bufferedTime,
+                    isPlaying: viewModel.isPlaying, canControlPlayback: canControlPlayback, isWaiting: isWaiting,
+                    isFullScreen: isFullScreen, isCompact: isCompact,
+                    hasError: viewModel.errorMessage != nil, safeAreaInsets: controlsSafeAreaInsets,
+                    onBack: { if isFullScreen { onToggleFullScreen() } else { onDismiss?() } },
+                    onTogglePlayback: togglePlayback,
+                    onToggleFullScreen: { onToggleFullScreen(); scheduleAutoHide() },
+                    onToggleCompact: compactAction,
+                    onScrub: scrub(to:), onScrubEnd: endScrub(at:), onMenuInteraction: keepControlsForMenu
+                ) { playbackMenuContent }
+                .transition(.opacity)
+            }
         }
-        .animation(.easeInOut(duration: 0.2), value: controlsVisible)
-        // 进出全屏同样从干净画面开始，不把上一个状态的控件带过去。
-        .onChange(of: isFullScreen) {
-            hideTask?.cancel()
-            controlsVisible = false
-        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showsControls)
+        .onChange(of: isFullScreen) { scheduleAutoHide(afterInteraction: false) }
+        .onChange(of: viewModel.isPlaying) { scheduleAutoHide(afterInteraction: false) }
         .onDisappear {
             seekTask?.cancel()
             hideTask?.cancel()
         }
     }
 
-    /// 拖动期间显示手指的位置；跳转完成前也继续显示目标位置。
-    private var displayTime: Double {
-        isScrubbing ? scrubTime : viewModel.currentTime
-    }
-
-    private var centerPlaybackControl: some View {
-        Button {
-            viewModel.togglePlayPause()
-            scheduleAutoHide()
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(.black.opacity(viewModel.isPlaying ? 0 : 0.4))
-
-                Image(systemName: "play.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.white)
-                    .opacity(viewModel.isPlaying ? 0 : 1)
+    @ViewBuilder
+    private var playbackMenuContent: some View {
+        Button(isAddingWatchLater ? "正在加入稍后再看…" : "稍后再看", systemImage: "flag", action: addToWatchLater)
+            .disabled(isAddingWatchLater || viewModel.bvid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        Menu("定时休眠", systemImage: "moon.zzz") {
+            ForEach(PlayerViewModel.sleepOptions, id: \.self) { sleepMenuButton($0) }
+            sleepMenuButton(.afterVideoEnd)
+            if viewModel.isSleepTimerActive {
+                Divider()
+                Button("取消定时", role: .destructive) { viewModel.cancelSleepTimer(); scheduleAutoHide() }
             }
-            .frame(width: 64, height: 64)
-            .contentShape(Circle())
         }
-        .accessibilityLabel(viewModel.isPlaying ? "暂停" : "播放")
     }
 
-    private var videoQualityMenu: some View {
-        Menu {
-            ForEach(viewModel.availableVideoQualities, id: \.self) { quality in
-                Button {
-                    changeQuality(video: quality)
-                } label: {
-                    if quality == viewModel.selectedVideoQuality {
-                        Label(PlaybackQuality.videoTitle(quality), systemImage: "checkmark")
-                    } else { Text(PlaybackQuality.videoTitle(quality)) }
-                }
+    private var videoQualityControl: PlayerQualityControl {
+        PlayerQualityControl(
+            title: viewModel.selectedVideoQuality.map(PlaybackQuality.videoTitle) ?? "分辨率",
+            accessibilityLabel: "分辨率",
+            options: viewModel.availableVideoQualities.map { .init(id: $0, title: viewModel.videoQualityTitle($0)) },
+            selectedID: viewModel.selectedVideoQuality ?? 0,
+            isEnabled: !viewModel.availableVideoQualities.isEmpty && canControlPlayback && !isScrubbing,
+            onSelect: { changeQuality(video: $0) }
+        )
+    }
+
+    private var audioQualityControl: PlayerQualityControl {
+        PlayerQualityControl(
+            title: viewModel.selectedAudioQuality.map(PlaybackQuality.audioTitle) ?? "音质",
+            accessibilityLabel: "音质",
+            options: viewModel.availableAudioQualities.map { .init(id: $0, title: PlaybackQuality.audioTitle($0)) },
+            selectedID: viewModel.selectedAudioQuality ?? 0,
+            isEnabled: !viewModel.availableAudioQualities.isEmpty && canControlPlayback && !isScrubbing,
+            onSelect: { changeQuality(audio: $0) }
+        )
+    }
+
+    private func addToWatchLater() {
+        guard !isAddingWatchLater else { return }
+        scheduleAutoHide()
+        guard account.isLoggedIn else {
+            feedback.show("请先登录")
+            return
+        }
+        let bvid = viewModel.bvid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bvid.isEmpty else { return }
+        // 锁保留在控制层，菜单关闭或控制层自动隐藏后再次打开也不会重复提交。
+        isAddingWatchLater = true
+        let session = account.sessionID
+        Task {
+            defer { isAddingWatchLater = false }
+            guard account.isLoggedIn, account.sessionID == session else { return }
+            do {
+                try await BiliAPI.addWatchLater(aid: nil, bvid: bvid)
+                guard account.sessionID == session else { return }
+                feedback.show("已加入稍后再看")
+            } catch {
+                guard account.sessionID == session, !error.isCancellation else { return }
+                feedback.show(error.localizedDescription)
             }
-        } label: {
-            qualityLabel(viewModel.selectedVideoQuality.map(PlaybackQuality.videoTitle) ?? "分辨率")
         }
-        .disabled(viewModel.availableVideoQualities.isEmpty || viewModel.isLoading || isScrubbing)
-        .accessibilityLabel("调整分辨率")
     }
 
-    private var audioQualityMenu: some View {
-        Menu {
-            ForEach(viewModel.availableAudioQualities, id: \.self) { quality in
-                Button {
-                    changeQuality(audio: quality)
-                } label: {
-                    if quality == viewModel.selectedAudioQuality {
-                        Label(PlaybackQuality.audioTitle(quality), systemImage: "checkmark")
-                    } else { Text(PlaybackQuality.audioTitle(quality)) }
-                }
-            }
-        } label: {
-            qualityLabel(viewModel.selectedAudioQuality.map(PlaybackQuality.audioTitle) ?? "原始音质")
-        }
-        .disabled(viewModel.availableAudioQualities.isEmpty || viewModel.isLoading || isScrubbing)
-        .accessibilityLabel("调整音质")
+    private func keepControlsForMenu() {
+        hideTask?.cancel()
+        keepsControlsForMenu = true
+        controlsVisible = true
     }
 
-    private func qualityLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.caption.weight(.medium))
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .frame(minHeight: 44)
-            .foregroundStyle(.white)
-            .background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+    private var compactAction: (() -> Void)? {
+        guard let onToggleCompact else { return nil }
+        return { onToggleCompact(); scheduleAutoHide() }
+    }
+
+    private func togglePlayback() {
+        viewModel.togglePlayPause()
+        scheduleAutoHide()
     }
 
     private func changeQuality(video: Int? = nil, audio: Int? = nil) {
+        guard canControlPlayback, !isScrubbing else { return }
         hideTask?.cancel()
         Task {
-            if let message = await viewModel.selectQuality(video: video, audio: audio) {
-                feedback.show(message)
-            }
+            if let message = await viewModel.selectQuality(video: video, audio: audio) { feedback.show(message) }
             scheduleAutoHide()
         }
     }
 
-    private var sleepTimerMenu: some View {
-        Menu {
-            ForEach(PlayerViewModel.sleepOptions, id: \.self) { option in
-                sleepMenuButton(option)
-            }
-
-            sleepMenuButton(.afterVideoEnd)
-
-            if viewModel.isSleepTimerActive {
-                Divider()
-                Button("取消定时", role: .destructive) {
-                    viewModel.cancelSleepTimer()
-                }
-            }
-        } label: {
-            Image(systemName: viewModel.isSleepTimerActive ? "moon.zzz.fill" : "moon.zzz")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .accessibilityLabel("定时休眠")
-        .accessibilityValue(viewModel.isSleepTimerActive ? "已开启" : "未开启")
-    }
-
     private func sleepMenuButton(_ option: PlayerViewModel.SleepOption) -> some View {
-        Button {
-            viewModel.setSleepTimer(option)
-        } label: {
+        Button { viewModel.setSleepTimer(option); scheduleAutoHide() } label: {
             if viewModel.selectedSleepOption == option {
                 Label(title(for: option), systemImage: "checkmark")
-            } else {
-                Text(title(for: option))
-            }
+            } else { Text(title(for: option)) }
         }
     }
 
@@ -224,65 +173,26 @@ struct PlayerControlsOverlay: View {
         switch option {
         case .afterVideoEnd: return "本视频播完"
         case .minutes(let minutes):
-            return minutes >= 60 && minutes % 60 == 0
-                ? "\(minutes / 60) 小时"
-                : "\(minutes) 分钟"
+            return minutes >= 60 && minutes % 60 == 0 ? "\(minutes / 60) 小时" : "\(minutes) 分钟"
         }
     }
 
-    private var bottomBar: some View {
-        HStack(spacing: 8) {
-            Text(PlaybackTime.text(displayTime))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.white)
-
-            VideoScrubber(
-                position: displayTime,
-                buffered: viewModel.bufferedTime,
-                duration: viewModel.duration,
-                onScrub: scrub(to:),
-                onScrubEnd: endScrub(at:)
-            )
-
-            Text(PlaybackTime.text(viewModel.duration))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.white)
-
-            Button {
-                onToggleFullScreen()
-                scheduleAutoHide()
-            } label: {
-                Image(systemName: isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                    .font(.subheadline)
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
-    }
-
-    /// 手指按下和移动：只更新界面，视频继续按原来的位置播放。
     private func scrub(to time: Double) {
-        // 正在操作进度条时不能把控件收起来。
+        guard canControlPlayback else { return }
+        keepsControlsForMenu = false
         hideTask?.cancel()
         seekTask?.cancel()
         isScrubbing = true
         scrubTime = time
     }
 
-    /// 手指抬起：执行唯一一次跳转。
-    ///
-    /// 关键在于这里不立刻把 `isScrubbing` 设回 false。播放器要过一会儿才走到新位置，
-    /// 提前交还控制权，界面就会先显示跳转前的旧时间，再跳到目标位置——也就是松手时看到的那一下回跳。
     private func endScrub(at time: Double) {
+        guard canControlPlayback else { return }
         isScrubbing = true
         scrubTime = time
         seekTask?.cancel()
         seekTask = Task {
             await viewModel.seek(to: time)
-            // 已经开始下一次拖动时，位置由那一次接管，这里不要抢回来。
             guard !Task.isCancelled else { return }
             isScrubbing = false
             scheduleAutoHide()
@@ -297,12 +207,13 @@ struct PlayerControlsOverlay: View {
 
     private func toggleControls() {
         controlsVisible.toggle()
-        if controlsVisible { scheduleAutoHide() }
+        scheduleAutoHide()
     }
 
-    private func scheduleAutoHide() {
+    private func scheduleAutoHide(afterInteraction: Bool = true) {
         hideTask?.cancel()
-        guard viewModel.isPlaying else { return }
+        if afterInteraction { keepsControlsForMenu = false }
+        guard !keepsControlsForMenu, controlsVisible, viewModel.isPlaying, !isScrubbing, !UIAccessibility.isVoiceOverRunning else { return }
         hideTask = Task {
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { return }

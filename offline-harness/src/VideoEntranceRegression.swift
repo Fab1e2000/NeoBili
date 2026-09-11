@@ -30,5 +30,13 @@ import Foundation
         let duration = VideoResolutionBatch(ids: refresh.ids, generation: 1, enabled: true, minimumSeconds: 60)
         precondition(filter.resetsEntrance(comparedTo: refresh) && duration.resetsEntrance(comparedTo: refresh))
         print("PASS  主动刷新、画幅过滤与时长设置仍触发整批入场")
+
+        clock.admit(["A", "B"], animated: false)
+        precondition(clock.starts["A"] == 0 && clock.starts["B"] == 0)
+        clock.admit(["A", "B", "C"])
+        precondition(clock.starts["A"] == 0 && clock.starts["B"] == 0 && (clock.starts["C"] ?? 0) > 0)
+        clock.finishAnimations()
+        precondition(clock.starts.values.allSatisfy { $0 == 0 })
+        print("PASS  关闭入场动画持久标记当前批次完成，重新开启或回收卡片不会补播")
     }
 }

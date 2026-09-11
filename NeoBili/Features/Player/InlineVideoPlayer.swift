@@ -2,14 +2,22 @@ import SwiftUI
 
 /// The video surface plus our own `PlayerControlsOverlay` — no system
 /// transport chrome. `VideoDetailView` reuses this same instance for both the
-/// inline (portrait) and fullscreen (landscape) states, just resizing it —
+/// inline and fullscreen states, just resizing it —
 /// that's what keeps playback uninterrupted across the transition.
 struct InlineVideoPlayer: View {
     let viewModel: PlayerViewModel
+    @Binding var controlsVisible: Bool
     /// 列表卡片上那张封面。播放器拿到首帧之前先显示它，代替一整块黑屏。
     let coverURL: URL?
     let isFullScreen: Bool
     let onToggleFullScreen: () -> Void
+    var onToggleCompact: (() -> Void)? = nil
+    var isCompact = false
+    var controlsSafeAreaInsets = EdgeInsets()
+    var onDismiss: (() -> Void)? = nil
+    var videoTitle = ""
+    var videoSubtitle = ""
+    var shareURL: URL?
 
     var body: some View {
         ZStack {
@@ -38,19 +46,22 @@ struct InlineVideoPlayer: View {
                         .disabled(viewModel.isLoading)
                 }
                 .foregroundStyle(.white)
-            } else {
-                if viewModel.hasRenderedFirstFrame {
-                    PlayerControlsOverlay(
-                        viewModel: viewModel,
-                        isFullScreen: isFullScreen,
-                        onToggleFullScreen: onToggleFullScreen
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                if viewModel.isLoading || viewModel.isBuffering {
-                    LoadingTaskAnchor().tint(.white).allowsHitTesting(false)
-                }
             }
+            // 载入和失败阶段仍保留返回、全屏、收缩入口。
+            PlayerControlsOverlay(
+                viewModel: viewModel,
+                controlsVisible: $controlsVisible,
+                isFullScreen: isFullScreen,
+                onToggleFullScreen: onToggleFullScreen,
+                onToggleCompact: onToggleCompact,
+                isCompact: isCompact,
+                controlsSafeAreaInsets: controlsSafeAreaInsets,
+                onDismiss: onDismiss,
+                videoTitle: videoTitle,
+                videoSubtitle: videoSubtitle,
+                shareURL: shareURL
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

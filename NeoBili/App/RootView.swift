@@ -18,15 +18,16 @@ extension View {
     }
 }
 
-/// 三个主页面。切换时旧页面整体渐隐、新页面逐渐显现。
+/// 主页面保持独立导航与数据状态。
 enum MainTab: Hashable {
-    case home, following, mine
+    case home, following, live, mine
 }
 
 struct RootView: View {
     @State private var nowPlaying = NowPlayingStore()
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
+    @State private var liveRoom: LiveRoom?
     @Environment(\.scenePhase) private var scenePhase
     @Namespace private var videoTransition
 
@@ -34,10 +35,13 @@ struct RootView: View {
     @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
     /// 内容过滤同样在根视图转成环境值，所有列表即时响应设置变化。
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
+    @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
 
     /// 主页面切换特效：新页面淡入，快慢用设置页那条「进入」滑杆。
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
+    @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEntranceEnabled = CardAnimationSettings.defaultValue
     /// 当前页面。点下去立刻就换，高亮跟着立刻走。
     @State private var displayedTab: MainTab = .home
     /// 新页面的浓度：切换那一刻置 0，随后淡入。
@@ -53,7 +57,11 @@ struct RootView: View {
             }
             // 搜索不再单独占一个 Tab：入口挪到了首页顶部那个常驻搜索框。
             Tab("关注", systemImage: "person.2.fill", value: MainTab.following) {
-                FollowingView().id(account.sessionID).opacity(tabContentOpacity)
+                FollowingView(onOpenLiveRoom: openLiveRoom).id(account.sessionID).opacity(tabContentOpacity)
+            }
+            Tab("直播", systemImage: "dot.radiowaves.left.and.right", value: MainTab.live) {
+                LiveView(onOpenRoom: openLiveRoom)
+                .opacity(tabContentOpacity)
             }
             Tab("我的", systemImage: "person.crop.circle", value: MainTab.mine) {
                 MineView().opacity(tabContentOpacity)
@@ -65,12 +73,16 @@ struct RootView: View {
         // 出现/消失都会给整条链路（含 cover 和它的 zoom 转场）开一次动画事务，
         // 视频页重新 present 时会因此被构建两遍，出现两个渲染容器互相抢渲染层。
         .actionFeedbackOverlay()
+        .miniPlayerHost(isActive: { !nowPlaying.isServiceSheetPresented }, transitionNamespace: videoTransition)
         // 视频页由最外层持有，播放器和整页状态统一由 NowPlayingStore 管理；
-        // 视频页退出时由 store 负责停止并释放播放器。
+        // 视频页退出后由 store 将播放器交给小窗，关闭小窗时才释放。
         .fullScreenCover(isPresented: Binding(
             get: { nowPlaying.isExpanded && !nowPlaying.isServiceSheetPresented },
-            set: { if !nowPlaying.isServiceSheetPresented { nowPlaying.isExpanded = $0 } }
-        )) {
+            set: {
+                guard !nowPlaying.isServiceSheetPresented else { return }
+                if $0 { nowPlaying.isExpanded = true } else { nowPlaying.dismissVideoPage() }
+            }
+        ), onDismiss: nowPlaying.finishDismissal) {
             VideoPage()
                 // 视频页有自己的 UIHostingController，不会继承根视图注入的文字
                 // 档位（会退回跟随系统设置），必须在这里再补一次。
@@ -78,6 +90,10 @@ struct RootView: View {
                 .navigationTransition(
                     .zoom(sourceID: nowPlaying.transitionSourceID, in: videoTransition)
                 )
+                .background { VideoPagePresentationObserver(onDidAppear: nowPlaying.videoPageDidAppear) }
+        }
+        .fullScreenCover(item: $liveRoom) { room in
+            LiveRoomView(room: room).appTextSize()
         }
         .environment(nowPlaying)
         .environment(account)
@@ -93,8 +109,18 @@ struct RootView: View {
         .task { await account.restoreSessionIfNeeded() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await account.retrySessionIfNeeded() } }
+            else { nowPlaying.player?.savePlaybackProgress() }
         }
-        .onChange(of: account.sessionID) { nowPlaying.close() }
+        .onChange(of: miniPlayerEnabled) { nowPlaying.applyMiniPlayerSetting() }
+        .onChange(of: animatesPageEntrance) { _, enabled in
+            if !enabled { finishTabEntrance() }
+        }
+        .onChange(of: account.sessionID) { nowPlaying.close(); liveRoom = nil }
+    }
+
+    private func openLiveRoom(_ room: LiveRoom) {
+        nowPlaying.close()
+        liveRoom = room
     }
 
     /// TabView 的 selection 走这个代理：内容和高亮照常立刻切换，
@@ -117,8 +143,8 @@ struct RootView: View {
         tabSwitchTask?.cancel()
 
         // 关注页由动态卡片负责入场，避免整页先淡入、数据就绪后卡片再入场。
-        guard !reduceMotion, tab != .following else {
-            tabContentOpacity = 1
+        guard animatesPageEntrance, tab != .following else {
+            finishTabEntrance()
             displayedTab = tab
             return
         }
@@ -133,6 +159,18 @@ struct RootView: View {
             guard !Task.isCancelled else { return }
             withAnimation(.easeIn(duration: fadeIn)) { tabContentOpacity = 1 }
         }
+    }
+
+    private var animatesPageEntrance: Bool {
+        !reduceMotion && cardAnimationsEnabled && pageEntranceEnabled
+    }
+
+    private func finishTabEntrance() {
+        tabSwitchTask?.cancel()
+        tabSwitchTask = nil
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { tabContentOpacity = 1 }
     }
 }
 
