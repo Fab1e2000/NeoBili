@@ -1,0 +1,9 @@
+status=decode_completed
+availableQualityIDs=[125, 120, 116, 80, 64, 32, 16]
+selectedQuality=120
+trackWidth=3840
+trackHeight=2160
+decodedWidth=3840
+decodedHeight=2160
+firstFrame=true
+isPlaying=true

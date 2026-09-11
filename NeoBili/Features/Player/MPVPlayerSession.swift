@@ -74,7 +74,10 @@ enum PlayerPlaybackEvent: Sendable {
     case playing(Bool)
     case buffering(Bool)
     case position(TimeInterval)
+    case seekCompleted(TimeInterval)
     case duration(TimeInterval)
+    case displayAspectRatio(Double)
+    case decodedVideoSize(width: Int, height: Int)
     case buffered(TimeInterval)
     case ended
     case error(String)
@@ -242,7 +245,7 @@ final class MPVEngine: @unchecked Sendable {
         var layerPointer = Unmanaged.passUnretained(layer).toOpaque()
         mpv_set_option(mpv, "wid", MPV_FORMAT_INT64, &layerPointer)
 
-        let referer = "Referer: \(BiliHeaders.referer)"
+        let referer = "Referer: \(configuration.referer)"
         for (name, value) in MPVPlaybackOptions.make(
             configuration: configuration,
             isSimulator: PlatformInfo.isSimulator,
@@ -265,6 +268,8 @@ final class MPVEngine: @unchecked Sendable {
         mpv_observe_property(mpv, 0, "demuxer-cache-time", MPV_FORMAT_DOUBLE)
         mpv_observe_property(mpv, 0, "pause", MPV_FORMAT_FLAG)
         mpv_observe_property(mpv, 0, "paused-for-cache", MPV_FORMAT_FLAG)
+        mpv_observe_property(mpv, 0, "video-out-params/aspect", MPV_FORMAT_DOUBLE)
+        mpv_observe_property(mpv, 0, "video-out-params/rotate", MPV_FORMAT_INT64)
 
         // 这个闭包会被当作 C 函数指针调用，不能捕获任何 Swift 上下文——
         // 唯一的信息通道是 `context`，对应下面传入的 `self` 指针。
@@ -298,9 +303,20 @@ final class MPVEngine: @unchecked Sendable {
         setFlag(mpv, name: "pause", value: true)
     }
 
+    /// 手势退出的提交帧不能同步等内核拿锁（暂停期间渲染线程可能正持有着
+    /// 核心锁），命令排进事件队列异步执行。mpv 指针的读写本来就约定只发生
+    /// 在这条队列上（见 `stop()`），这里沿用同一份约束，与销毁天然串行。
+    func pauseAsync() {
+        eventQueue.async { [weak self] in
+            guard let self, let mpv = self.mpv else { return }
+            var flag: Int32 = 1
+            mpv_set_property(mpv, "pause", MPV_FORMAT_FLAG, &flag)
+        }
+    }
+
     func seek(to seconds: TimeInterval) {
         guard let mpv else { return }
-        sendCommand(mpv, ["seek", String(format: "%.3f", seconds), "absolute"])
+        sendCommand(mpv, ["seek", String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), seconds), "absolute+exact"])
     }
 
     func stop() {
@@ -384,7 +400,17 @@ final class MPVEngine: @unchecked Sendable {
             guard let namePointer = property.name else { return }
             handlePropertyChange(name: String(cString: namePointer), format: property.format, data: property.data)
         case MPV_EVENT_PLAYBACK_RESTART:
-            dispatchToMain { [weak self] in self?.reportFirstFrameIfNeeded() }
+            var position: Double = 0
+            let hasPosition = mpv.map {
+                mpv_get_property($0, "time-pos", MPV_FORMAT_DOUBLE, &position) >= 0
+            } ?? false
+            let resumedPosition = hasPosition && position.isFinite ? max(position, 0) : nil
+            dispatchToMain { [weak self] in
+                self?.reportFirstFrameIfNeeded()
+                if let resumedPosition { self?.onEvent?(.seekCompleted(resumedPosition)) }
+            }
+        case MPV_EVENT_VIDEO_RECONFIG:
+            reportDisplayAspectRatio()
         case MPV_EVENT_END_FILE:
             guard let raw = event.pointee.data else { return }
             let endFile = raw.assumingMemoryBound(to: mpv_event_end_file.self).pointee
@@ -423,12 +449,38 @@ final class MPVEngine: @unchecked Sendable {
         case ("paused-for-cache", MPV_FORMAT_FLAG):
             let value = data.assumingMemoryBound(to: Int32.self).pointee
             dispatchToMain { [weak self] in self?.onEvent?(.buffering(value != 0)) }
+        case ("video-out-params/aspect", MPV_FORMAT_DOUBLE),
+             ("video-out-params/rotate", MPV_FORMAT_INT64):
+            reportDisplayAspectRatio()
         default:
             break
         }
     }
 
     // MARK: - 主线程上的状态更新
+
+    /// 从同一份解码参数读取画幅和旋转，避免只用 DASH 编码宽高把旋转视频认反。
+    private func reportDisplayAspectRatio() {
+        guard let mpv else { return }
+        // 解码器输入尺寸用于验证实际播放档位，不能用显示比例或稿件元信息替代。
+        var width: Int64 = 0
+        var height: Int64 = 0
+        if mpv_get_property(mpv, "video-params/w", MPV_FORMAT_INT64, &width) >= 0,
+           mpv_get_property(mpv, "video-params/h", MPV_FORMAT_INT64, &height) >= 0,
+           width > 0, height > 0 {
+            let decodedWidth = Int(width)
+            let decodedHeight = Int(height)
+            dispatchToMain { [weak self] in
+                self?.onEvent?(.decodedVideoSize(width: decodedWidth, height: decodedHeight))
+            }
+        }
+        var aspect: Double = 0
+        var rotation: Int64 = 0
+        guard mpv_get_property(mpv, "video-out-params/aspect", MPV_FORMAT_DOUBLE, &aspect) >= 0 else { return }
+        _ = mpv_get_property(mpv, "video-out-params/rotate", MPV_FORMAT_INT64, &rotation)
+        guard let displayAspect = PlayerSurfaceGeometry.displayAspectRatio(aspect, rotation: rotation) else { return }
+        dispatchToMain { [weak self] in self?.onEvent?(.displayAspectRatio(displayAspect)) }
+    }
 
     /// `onEvent` 最终会调到 `PlayerViewModel`（`@MainActor`），这里统一走
     /// 普通的 `DispatchQueue.main.async`，而不是 `Task { @MainActor in }`——
@@ -463,14 +515,21 @@ final class MPVMetalViewController: UIViewController {
     private let engine: MPVEngine
     private let metalLayer = MPVMetalLayer()
     private var stableSurfaceSize: CGSize = .zero
+    private var displayAspectRatio: Double?
 
-    var onEvent: ((PlayerPlaybackEvent) -> Void)? {
-        didSet { engine.onEvent = onEvent }
-    }
+    var onEvent: ((PlayerPlaybackEvent) -> Void)?
 
     init(configuration: VideoPlaybackConfiguration) {
         engine = MPVEngine(configuration: configuration)
         super.init(nibName: nil, bundle: nil)
+        engine.onEvent = { [weak self] event in
+            guard let self else { return }
+            if case .displayAspectRatio(let ratio) = event {
+                displayAspectRatio = ratio
+                if isViewLoaded { layoutMetalLayer() }
+            }
+            onEvent?(event)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -537,12 +596,13 @@ final class MPVMetalViewController: UIViewController {
 
         // CAMetalLayer 的 drawable 大于 bounds 时不会按 contentsGravity 缩放，
         // 而是从左上角直接裁切（真机截图里的左侧黑条正来源于此）。让 layer
-        // 自己始终保持横屏 bounds，再整体做居中的 aspect-fill 变换，才能既
-        // 保持同一个 swapchain，又让小屏正确显示。系统旋转会连续插值这个
+        // 自己始终保持横屏 bounds，再按其中实际视频区域做居中等比缩放，才能既
+        // 保持同一个 swapchain，又让各种画幅完整显示。系统旋转会连续插值这个
         // position/transform，所以全屏切换仍然连贯。
         let scale = PlayerSurfaceGeometry.presentationScale(
             surfaceSize: stableSurfaceSize,
-            containerSize: view.bounds.size
+            containerSize: view.bounds.size,
+            videoAspectRatio: displayAspectRatio
         )
         metalLayer.bounds = CGRect(origin: .zero, size: stableSurfaceSize)
         metalLayer.position = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
@@ -561,6 +621,8 @@ final class MPVMetalViewController: UIViewController {
     }
     func play() { engine.play() }
     func pause() { engine.pause() }
+    /// 供退出手势的提交帧调用：不等内核锁，命令排队执行。
+    func pauseAsync() { engine.pauseAsync() }
     func seek(to seconds: TimeInterval) { engine.seek(to: seconds) }
 
     func stop() {
@@ -585,37 +647,15 @@ enum PlatformInfo {
     }()
 }
 
-/// 固定渲染表面的尺寸逻辑，单独拆出来便于单测。
-enum PlayerSurfaceGeometry {
-    /// 无论当前设备方向如何，都返回同一个横屏像素尺寸。
-    static func stableDrawableSize(for screenSize: CGSize) -> CGSize {
-        CGSize(
-            width: max(screenSize.width, screenSize.height),
-            height: min(screenSize.width, screenSize.height)
-        )
-    }
-
-    static func pointSize(for pixelSize: CGSize, displayScale: CGFloat) -> CGSize {
-        guard displayScale > 0 else { return .zero }
-        return CGSize(
-            width: pixelSize.width / displayScale,
-            height: pixelSize.height / displayScale
-        )
-    }
-
-    /// 把固定横屏 surface 等比铺满当前容器，超出的部分由父 view 居中裁掉。
-    static func presentationScale(surfaceSize: CGSize, containerSize: CGSize) -> CGFloat {
-        guard surfaceSize.width > 0, surfaceSize.height > 0 else { return 1 }
-        return max(
-            containerSize.width / surfaceSize.width,
-            containerSize.height / surfaceSize.height
-        )
-    }
-}
-
 @MainActor
 final class MPVPlayerSession {
     let viewController: MPVMetalViewController
+    /// 先切换渲染归属，再切换界面，旧页面的延迟布局不能抢回小窗画面。
+    let surfaceOwnership = PlayerSurfaceOwnership()
+    var surfacePresentation: PlayerSurfacePresentation {
+        get { surfaceOwnership.presentation }
+        set { surfaceOwnership.presentation = newValue }
+    }
     var onEvent: ((PlayerPlaybackEvent) -> Void)? {
         didSet { viewController.onEvent = onEvent }
     }
@@ -644,6 +684,13 @@ final class MPVPlayerSession {
 
     func pause() {
         viewController.pause()
+    }
+
+    /// 退出手势的提交帧上异步暂停：UIKit 的 zoom 退出动画正要开始，这里
+    /// 不能让主线程同步等内核锁。
+    func pauseAsync() {
+        guard !isStopped else { return }
+        viewController.pauseAsync()
     }
 
     func seek(to seconds: TimeInterval) async {

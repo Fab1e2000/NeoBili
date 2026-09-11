@@ -16,7 +16,7 @@ enum CommentLayout {
     /// 楼中楼区块与上方点赞行之间的距离。
     static let replyBlockGap: CGFloat = 12
     /// 楼中楼区块的圆角。
-    static let replyCornerRadius: CGFloat = 8
+    static let replyCornerRadius: CGFloat = 16
     /// 楼中楼区块内部的留白。
     static let replyPadding: CGFloat = 10
     /// 楼中楼每条回复之间的距离。
@@ -82,7 +82,7 @@ struct CommentsView: View {
     @Binding var scrollPosition: ScrollPosition
     var collapseConsume: ((CGFloat) -> CGFloat)? = nil
     var collapseEnd: (() -> Void)? = nil
-    var canCollapse: (() -> Bool)? = nil
+    var canCollapse: ((CGFloat) -> Bool)? = nil
     var collapseCanContinue: (() -> Bool)? = nil
 
     var body: some View {
@@ -91,7 +91,7 @@ struct CommentsView: View {
                 .background {
                     if let collapseConsume {
                         PausedVideoCollapseScroll(consume: collapseConsume, end: { collapseEnd?() },
-                                                  canConsume: { canCollapse?() ?? false },
+                                                  canConsume: { canCollapse?($0) ?? false },
                                                   canContinue: { collapseCanContinue?() ?? false })
                             .allowsHitTesting(false)
                     }
@@ -197,13 +197,17 @@ struct CommentRow: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
-            likeButton
-            if let replyToComment {
-                Button("回复") { replyToComment(comment) }
-                    .font(.caption)
-                    .buttonStyle(.plain)
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+                    likeButton
+                    if let replyToComment {
+                        Button { replyToComment(comment) } label: {
+                            CommentGlassActionLabel(title: "回复", symbol: "arrowshape.turn.up.left")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("回复评论")
+                    }
+                }
             }
         }
     }
@@ -215,17 +219,9 @@ struct CommentRow: View {
         return Button {
             Task { await viewModel.toggleLike(comment, isLoggedIn: account.isLoggedIn) }
         } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "hand.thumbsup")
-                    .symbolVariant(isLiked ? .fill : .none)
-                Text(count > 0 ? count.biliCountText : "赞")
-            }
-            .font(.caption2)
-            .foregroundStyle(isLiked ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
-            // 图标本身很小，扩一圈点击区域，免得点不中。
-            .padding(.vertical, 3)
-            .padding(.horizontal, 2)
-            .contentShape(Rectangle())
+            CommentGlassActionLabel(title: count > 0 ? count.biliCountText : "赞",
+                                    symbol: isLiked ? "hand.thumbsup.fill" : "hand.thumbsup",
+                                    isSelected: isLiked)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isLiked ? "取消点赞" : "点赞")
@@ -352,11 +348,19 @@ struct CommentRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
+#if DEBUG
+        .anchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { [.content: $0] }
+#endif
         .padding(CommentLayout.replyPadding)
-        .background(
-            Color(uiColor: .secondarySystemBackground),
+        .glassEffect(
+            .regular.interactive(),
             in: RoundedRectangle(cornerRadius: CommentLayout.replyCornerRadius, style: .continuous)
         )
+#if DEBUG
+        .transformAnchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { values, anchor in
+            values[.block] = anchor
+        }
+#endif
         // 整块都是进单独页面的入口，「查看全部回复」只是块内的一行文字提示，
         // 不再是独立按钮——两个可点的东西叠在一起，点哪儿都一样反而费解。
         .contentShape(RoundedRectangle(cornerRadius: CommentLayout.replyCornerRadius, style: .continuous))
@@ -364,5 +368,28 @@ struct CommentRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("查看全部 \(comment.rcount) 条回复")
+    }
+}
+
+/// 胶囊按文字固有宽度排版；小尺寸外观保留独立的 44pt 点击区域。
+struct CommentGlassActionLabel: View {
+    let title: String
+    let symbol: String
+    var isSelected = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol)
+            Text(title)
+        }
+        .font(.caption2)
+        .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(minHeight: 26)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
     }
 }

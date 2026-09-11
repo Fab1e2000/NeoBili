@@ -49,10 +49,7 @@ struct PlayerGestureSettingsSection: View {
             Button("恢复默认分区") { left = 0.33; right = 0.67; reversed = false }
         } header: {
             Text("播放器滑动手势")
-        } footer: {
-            Text(reversed
-                 ? "左侧下滑增加亮度，右侧下滑增加音量；中部下滑进入全屏，全屏中部上滑退出。横滑调整进度，松手跳转，滑到上方两角可取消。"
-                 : "左侧上滑增加亮度，右侧上滑增加音量；中部上滑进入全屏，全屏中部下滑退出。横滑整屏对应 90 秒，松手跳转，滑到上方两角可取消。")
+
         }
     }
 

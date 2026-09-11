@@ -1,0 +1,4 @@
+trigger=programmatic WKWebView.load
+userRoomTapPerformed=false
+roomID=6
+roomNavigationInterceptor=passed

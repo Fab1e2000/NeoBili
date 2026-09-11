@@ -40,10 +40,14 @@ enum FollowingSelection: Hashable, Identifiable, Sendable {
 final class FollowingViewModel {
     private(set) var feed = DynamicFeedModel(source: .following)
     private(set) var ups: [FollowedUp] = []
+    let liveDirectory: FollowedLiveDirectory
     private let readStore: FollowingReadStore
     private let accountSessionID = VideoLikeStore.shared.sessionID
 
-    init(readStore: FollowingReadStore = .shared) { self.readStore = readStore }
+    init(readStore: FollowingReadStore = .shared, liveDirectory: FollowedLiveDirectory = FollowedLiveDirectory()) {
+        self.readStore = readStore
+        self.liveDirectory = liveDirectory
+    }
 
     /// 轮盘停稳后真正提交给下方列表的选择。
     private(set) var selectedTarget: FollowingSelection = .all
@@ -53,12 +57,23 @@ final class FollowingViewModel {
     private var upFeeds: [Int: DynamicFeedModel] = [:]
 
     var carouselItems: [FollowingSelection] {
-        let displayed = ups.map { up in
+        let rooms = Dictionary(liveDirectory.rooms.map { ($0.uid, $0) }, uniquingKeysWith: { first, _ in first })
+        var displayed = ups.map { up in
             FollowedUp(mid: up.mid, uname: up.uname, face: up.face,
-                       hasUpdate: readStore.hasUpdate(up))
+                       hasUpdate: readStore.hasUpdate(up), liveRoomID: rooms[up.mid]?.roomID)
         }
-        return [.all] + (displayed.filter { readStore.keepsPriority($0) } + displayed.filter { !readStore.keepsPriority($0) })
+        let known = Set(ups.map(\.mid))
+        // 没有近期动态的已关注主播也能通过直播入口出现。
+        displayed += liveDirectory.rooms.filter { !known.contains($0.uid) }.map {
+            FollowedUp(mid: $0.uid, uname: $0.username, face: $0.faceURL?.absoluteString ?? "",
+                       hasUpdate: false, liveRoomID: $0.roomID)
+        }
+        return [.all] + FollowedUp.orderedForSidebar(displayed, keepsPriority: readStore.keepsPriority)
             .map(FollowingSelection.up)
+    }
+
+    func liveRoom(for up: FollowedUp) -> LiveRoom? {
+        liveDirectory.rooms.first { $0.uid == up.mid && $0.isLive }
     }
 
     var selectedUp: FollowedUp? { selectedTarget.up }
@@ -115,6 +130,7 @@ final class FollowingViewModel {
     func resetForAccountChange() {
         feed = DynamicFeedModel(source: .following)
         ups = []
+        liveDirectory.reset()
         upFeeds = [:]
         selectedTarget = .all
     }
@@ -161,10 +177,14 @@ final class FollowingViewModel {
         let byID = Dictionary(uniqueKeysWithValues: incoming.map { ($0.mid, $0) })
         let existing = Set(ups.map(\.mid))
         ups = ups.compactMap { byID[$0.mid] } + incoming.filter { !existing.contains($0.mid) }
+        reconcileCarouselSelection()
+    }
 
+    /// 直播轮询更新元数据时保留同一 UP；仅直播目录中的 UP 下播后回到全部。
+    func reconcileCarouselSelection() {
         guard case .up(let selected) = selectedTarget else { return }
-        if let refreshed = ups.first(where: { $0.mid == selected.mid }) {
-            selectedTarget = .up(refreshed)
+        if let refreshed = carouselItems.first(where: { $0.id == .up(selected.mid) }) {
+            selectedTarget = refreshed
         } else {
             selectedTarget = .all
         }

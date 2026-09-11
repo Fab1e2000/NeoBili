@@ -1,0 +1,25 @@
+{
+  "date": "2026-09-10",
+  "destination": "generic/platform=iOS",
+  "debug_build_for_testing": {
+    "result": "passed",
+    "log": "/tmp/neobili-following-live-debug-final.log"
+  },
+  "release_build": {
+    "result": "passed",
+    "log": "/tmp/neobili-following-live-release-final.log"
+  },
+  "host_regressions": {
+    "result": "passed",
+    "command": "zsh offline-harness/run.sh",
+    "log": "host-regression.log"
+  },
+  "release_app": "/tmp/NeoBiliPlaybackResumeBuild/Build/Products/Release-iphoneos/NeoBili.app",
+  "bundle_identifier": "com.elsterlee.NeoBili",
+  "supported_platforms": [
+    "iPhoneOS"
+  ],
+  "device_validation": "Not run: user says phone unavailable",
+  "installation": "Not attempted: user says phone unavailable",
+  "simulator_used": false
+}

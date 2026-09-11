@@ -5,9 +5,7 @@ import SwiftUI
 /// 数据来自 `x/web-interface/archive/related`，是 B 站针对当前这个视频算出来的
 /// 关联稿件，和首页那条按整体兴趣出内容的推荐流不是一回事。
 ///
-/// 排版上和搜索页那一套卡片不同：这一页整体是白底 + 细分隔线，卡片不再画
-/// 浅色底和圆角边框。视频页上半部分本来就是白底，如果下面接一片灰底卡片区，
-/// 两者之间会出现一道生硬的直角色块交界，像两个页面拼在一起。
+/// 整个推荐列表共享一张玻璃背景，行内不重复铺底，也不播放进入动画。
 struct RelatedVideosSection: View {
     /// 和简介正文一致的左右留白，两段内容才对得齐。
     private static let horizontalInset: CGFloat = 16
@@ -46,15 +44,15 @@ struct RelatedVideosSection: View {
                             author: video.owner.name,
                             playCount: video.stat.view,
                             durationText: video.formattedDuration,
-                            showsCardChrome: false
+                            showsCardChrome: false,
+                            animatesEntrance: false
                         )
                     }
-                    .videoEntranceIdentity(video.bvid)
                     .buttonStyle(.plain)
                     .contextMenu {
                         WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
                     }
-                    .padding(.horizontal, Self.horizontalInset)
+                    .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                     // 出现在屏幕上就先把播放地址取回来，点开时通常已经有结果了。
                     .task {
@@ -73,6 +71,10 @@ struct RelatedVideosSection: View {
                 }
             }
         }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+        .padding(.horizontal, Self.horizontalInset)
         .resolvePortraitVideos(videos)
     }
 }

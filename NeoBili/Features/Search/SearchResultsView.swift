@@ -101,5 +101,6 @@ struct SearchResultsView: View {
             await viewModel.loadMore()
             return viewModel.results
         }
+        .videoCardAnimationSource(.search)
     }
 }

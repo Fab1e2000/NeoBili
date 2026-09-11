@@ -119,15 +119,13 @@ struct FeedDropInRow<Content: View>: View {
     /// 落位速度倍率，来自设置页。
     let speed: Double
     let reduceMotion: Bool
+    let category: CardAnimationCategory
     @ViewBuilder var content: Content
 
+    private var animations = CardAnimationPreferences()
     @Environment(\.videoEntranceID) private var videoID
     @Environment(\.videoEntranceClocks) private var entranceClocks
-    @State private var progress: Double
-    /// 新卡片从隐藏状态开始；任务取消后保留等待状态，再出现时继续入场。
-    @State private var awaitingLanding: Bool
-    /// 已经为哪一代播过动画，避免同一代播两次。
-    @State private var playedGeneration: Int?
+    @State private var legacyStart: TimeInterval?
 
     init(
         index: Int,
@@ -135,6 +133,7 @@ struct FeedDropInRow<Content: View>: View {
         landing: Bool,
         speed: Double,
         reduceMotion: Bool,
+        category: CardAnimationCategory = .video,
         @ViewBuilder content: () -> Content
     ) {
         self.index = index
@@ -142,16 +141,12 @@ struct FeedDropInRow<Content: View>: View {
         self.landing = landing
         self.speed = speed
         self.reduceMotion = reduceMotion
+        self.category = category
         self.content = content()
-        let startsHidden = !reduceMotion
-        _progress = State(initialValue: startsHidden ? 0 : 1)
-        _awaitingLanding = State(initialValue: startsHidden)
     }
 
-    /// 沿用下来的行（id 没变）在换代时要不要重播。换代只发生在刷新那一刻，
-    /// 那时窗口一定是开着的，所以这里不必再看 `landing`。
     private var animatable: Bool {
-        !reduceMotion
+        !reduceMotion && animations.isEnabled(category: category, phase: .enter)
     }
 
     var body: some View {
@@ -160,7 +155,7 @@ struct FeedDropInRow<Content: View>: View {
                 // 起点来自整个列表的判断结果，卡片被懒加载回收也不会重置。
                 let scope = entranceClocks.first { $0.ids.contains(videoID) }
                 let start = scope?.start(for: videoID)
-                TimedVideoEntrance(start: start, speed: speed, reduceMotion: reduceMotion) {
+                TimedVideoEntrance(start: start, speed: speed, enabled: animatable) {
                     content
                 }
             } else {
@@ -171,36 +166,17 @@ struct FeedDropInRow<Content: View>: View {
     }
 
     private var legacyEntrance: some View {
-        content
-            .modifier(FeedDropInEffect(progress: progress))
-            // 刷新后新建出来的行走这条。用结构化的 task 而不是自己起 Task：
-            // 视图被回收重建时它会跟着取消，新实例按自己的 init 重新决定。
-            .task {
-                guard awaitingLanding else { return }
-                // 隔一帧再启动：同一帧内改两次状态会被合并成"没有动画"。
-                do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
-                guard !Task.isCancelled else { return }
-                awaitingLanding = false
-                playedGeneration = generation
-                withAnimation(landingAnimation) { progress = 1 }
-            }
-            // id 没变、被沿用下来的行走这条（比如刷新没拿到新内容）。
-            .onChange(of: generation) {
-                guard animatable, playedGeneration != generation else { return }
-                playedGeneration = generation
-                progress = 0
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(16))
-                    withAnimation(landingAnimation) { progress = 1 }
-                }
-            }
-
+        TimedVideoEntrance(start: legacyStart, speed: speed, enabled: animatable) {
+            content
+        }
+        .task(id: generation) {
+            // A stored monotonic start replaces per-row delayed Tasks and
+            // implicit spring transactions. Recycled rows resume that clock.
+            let delay = Double(min(index, FeedRefreshTuning.staggerRows - 1)) * FeedRefreshTuning.stagger(speed: speed)
+            legacyStart = ProcessInfo.processInfo.systemUptime + (animatable ? delay : 0)
+        }
     }
 
-    private var landingAnimation: Animation {
-        FeedRefreshTuning.landing(speed: speed)
-            .delay(Double(min(index, FeedRefreshTuning.staggerRows - 1)) * FeedRefreshTuning.stagger(speed: speed))
-    }
 }
 
 
@@ -212,6 +188,7 @@ extension EnvironmentValues {
 
 private struct VideoCardEntrance: ViewModifier {
     var enabled = true
+    var category: CardAnimationCategory = .video
     @Environment(\.videoEntranceProvided) private var provided
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var speed = AnimationSpeedSettings.defaultSpeed
@@ -220,7 +197,7 @@ private struct VideoCardEntrance: ViewModifier {
         if provided || !enabled {
             content
         } else {
-            FeedDropInRow(index: 0, generation: 0, landing: true, speed: speed, reduceMotion: reduceMotion) {
+            FeedDropInRow(index: 0, generation: 0, landing: true, speed: speed, reduceMotion: reduceMotion, category: category) {
                 content
             }
         }
@@ -228,7 +205,9 @@ private struct VideoCardEntrance: ViewModifier {
 }
 
 extension View {
-    func videoCardEntrance(enabled: Bool = true) -> some View { modifier(VideoCardEntrance(enabled: enabled)) }
+    func videoCardEntrance(enabled: Bool = true, category: CardAnimationCategory = .video) -> some View {
+        modifier(VideoCardEntrance(enabled: enabled, category: category))
+    }
 
     func videoEntranceIdentity(_ id: String?) -> some View {
         environment(\.videoEntranceID, id)
@@ -249,9 +228,11 @@ struct VideoEntranceScope {
 private struct TimedVideoEntrance<Content: View>: View {
     let start: TimeInterval?
     let speed: Double
-    let reduceMotion: Bool
+    let enabled: Bool
     @ViewBuilder var content: Content
-    @State private var finished = false
+    @State private var finishedStart: TimeInterval?
+
+    private var finished: Bool { start != nil && finishedStart == start }
 
     private var spring: Spring {
         .snappy(duration: FeedRefreshTuning.landingDuration / AnimationSpeedSettings.clamped(speed),
@@ -264,26 +245,42 @@ private struct TimedVideoEntrance<Content: View>: View {
     }
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion || start == nil || finished || elapsed >= spring.settlingDuration)) { _ in
-            let progress = start == nil ? 0 : (reduceMotion || elapsed >= spring.settlingDuration
-                ? 1 : spring.value(target: 1.0, time: elapsed))
+        // Disabled effects never wait for a clock or suppress hit testing.
+        // TimelineView has no running display link once settled or disabled.
+        TimelineView(.animation(paused: !enabled || start == nil || finished || elapsed >= spring.settlingDuration)) { _ in
+            let progress = !enabled || finished ? 1 : (start == nil ? 0 : (elapsed >= spring.settlingDuration
+                ? 1 : spring.value(target: 1.0, time: elapsed)))
             content.modifier(FeedDropInEffect(progress: progress))
         }
-        .allowsHitTesting(start != nil)
-        // 这里只停止已完成的屏幕绘制；动画的起点、进度不由 task 或 onAppear 决定。
-        .task(id: start) {
-            finished = false
-            guard start != nil, !reduceMotion else { return }
-            let remaining = max(0, spring.settlingDuration - elapsed)
+        .allowsHitTesting(!enabled || finished || start != nil)
+        .onChange(of: enabled) { _, enabled in
+            if !enabled { finishedStart = start }
+        }
+        .task(id: EntranceTaskID(start: start, enabled: enabled, speed: speed)) {
+            if !enabled {
+                finishedStart = start
+                return
+            }
+            guard enabled, start != nil, !finished else { return }
+            let delay = max(0, (start ?? 0) - ProcessInfo.processInfo.systemUptime)
+            let remaining = max(0, spring.settlingDuration - elapsed) + delay
             do { try await Task.sleep(for: .seconds(remaining)) } catch { return }
-            finished = true
+            finishedStart = start
         }
     }
+
+    private struct EntranceTaskID: Hashable {
+        let start: TimeInterval?
+        let enabled: Bool
+        let speed: Double
+    }
+
 }
 
 
 /// 刷新分隔条沿用整批视频的入场起点，包括屏幕外的提示条。
 private struct VideoBatchEntrance: ViewModifier {
+    private var animations = CardAnimationPreferences()
     @Environment(\.videoEntranceClocks) private var scopes
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var speed = AnimationSpeedSettings.defaultSpeed
@@ -293,7 +290,7 @@ private struct VideoBatchEntrance: ViewModifier {
         let start = scope.flatMap { scope in
             scope.clock.generation == scope.generation ? scope.clock.starts.values.min() : nil
         }
-        TimedVideoEntrance(start: start, speed: speed, reduceMotion: reduceMotion) {
+        TimedVideoEntrance(start: start, speed: speed, enabled: !reduceMotion && animations.isEnabled(category: .video, phase: .enter)) {
             content
         }
     }

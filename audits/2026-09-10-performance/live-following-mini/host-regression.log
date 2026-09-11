@@ -1,0 +1,199 @@
+/tmp/neobili-harness.Blik0Q/BiliPassport.swift:105:115: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+103 |             return .confirmed(cookies, accessKey: nil)
+104 |         case let code:
+105 |             throw PassportError.rejected("\(envelope.data?.message ?? envelope.message ?? "登录失败") (code \(code))")
+    |                                                                                                           |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+    |                                                                                                           |- note: use a default value parameter to avoid this warning
+    |                                                                                                           |- note: provide a default value to avoid this warning
+    |                                                                                                           `- note: use 'String(describing:)' to silence this warning
+106 |         }
+107 |     }
+/tmp/neobili-harness.Blik0Q/Tests.swift:102:9: warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+100 |         }
+101 | 
+102 |         await testDurationParsing()
+    |         `- warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+103 |         await testVideoDimension()
+104 |         await testFilterSemantics()
+
+/tmp/neobili-harness.Blik0Q/Tests.swift:103:9: warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+101 | 
+102 |         await testDurationParsing()
+103 |         await testVideoDimension()
+    |         `- warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+104 |         await testFilterSemantics()
+105 |         await testStoreDedupAndCooldown()
+
+/tmp/neobili-harness.Blik0Q/Tests.swift:108:9: warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+106 |         await testStoreConcurrencyCap()
+107 |         await testStoreCancellation()
+108 |         await testFeedRowGrouping()
+    |         `- warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+109 |         await testEnvironmentAction()
+110 |         await testWBICacheFreshness()
+
+/tmp/neobili-harness.Blik0Q/Tests.swift:109:9: warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+107 |         await testStoreCancellation()
+108 |         await testFeedRowGrouping()
+109 |         await testEnvironmentAction()
+    |         `- warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+110 |         await testWBICacheFreshness()
+111 |         await testLenientDynamicDecoding()
+
+/tmp/neobili-harness.Blik0Q/Tests.swift:110:9: warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+108 |         await testFeedRowGrouping()
+109 |         await testEnvironmentAction()
+110 |         await testWBICacheFreshness()
+    |         `- warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+111 |         await testLenientDynamicDecoding()
+112 |         await testFollowedUpLivePriority()
+
+/tmp/neobili-harness.Blik0Q/Tests.swift:111:9: warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+109 |         await testEnvironmentAction()
+110 |         await testWBICacheFreshness()
+111 |         await testLenientDynamicDecoding()
+    |         `- warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+112 |         await testFollowedUpLivePriority()
+113 | 
+
+/tmp/neobili-harness.Blik0Q/Tests.swift:112:9: warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+110 |         await testWBICacheFreshness()
+111 |         await testLenientDynamicDecoding()
+112 |         await testFollowedUpLivePriority()
+    |         `- warning: no 'async' operations occur within 'await' expression [#UnnecessaryEffectMarker]
+113 | 
+114 |         if failures == 0 {
+
+[#UnnecessaryEffectMarker]: <https://docs.swift.org/compiler/documentation/diagnostics/unnecessary-effect-marker>
+PASS  时长 M:SS
+PASS  时长 H:MM:SS
+PASS  时长 M:S 单数位
+PASS  时长两侧空白
+PASS  时长裸秒数
+PASS  时长全零交给详情补查
+PASS  秒位越界视为无法解析
+PASS  负数拒绝
+PASS  空串拒绝
+PASS  四段拒绝
+PASS  1080x1920 是竖屏
+PASS  1920x1080 + rotate 90 交换后是竖屏
+PASS  1080x1920 + rotate 270 交换后是横屏
+PASS  rotate 450 归一化为 90
+PASS  正方形按横屏保留（严格大于才算竖屏）
+PASS  零宽无效，也不算竖屏
+PASS  字符串宽高可解码
+PASS  恰好 600 秒、阈值 600 秒：保留
+PASS  画幅时长都已知且达标：不需要补查
+PASS  599 秒、阈值 600 秒：隐藏
+PASS  画幅已知竖屏：不再补查
+PASS  已知竖屏：隐藏
+PASS  过滤全关：不补查
+PASS  过滤全关：保留
+PASS  时长未知：补查详情（含时长要求）
+PASS  时长未知：补查前隐藏
+PASS  横屏但过短：隐藏
+PASS  竖屏但够长：仍隐藏
+PASS  列表与缓存都未知：隐藏
+PASS  未知条目进入补查清单
+PASS  详情补查后（700 秒横屏）：保留
+PASS  补查结果带时长标记，满足 requiringDuration 的复用
+PASS  同一 bvid 并发补查只发一次请求（实际 1 次）
+PASS  补查结果：横屏
+PASS  补查结果：时长 100 秒
+PASS  六天后仍在有效期内：不补查
+PASS  超过七天有效期后重新补查
+PASS  失败后进入冷却，不立即重试（实际 1 次）
+PASS  失败不当作横屏
+PASS  冷却结束后允许重试
+PASS  重启后读已持久化的补查结果，不重复请求
+PASS  同时补查不超过 50（实测 50）
+PASS  挂住期间不再发起新请求
+PASS  放行后全部补查完成（实际 200）
+PASS  整个过程并发都不超过 50（实测 50）
+PASS  取消后移除无人等待的排队请求
+PASS  取消的排队请求没有发出网络调用
+PASS  取消排队不写失败缓存
+PASS  取消一个等待者不会取消另一个等待者
+PASS  仍有人等待的请求继续排队
+PASS  共享排队请求只发一次
+PASS  剩余等待者获得有效结果
+PASS  释放名额后取消批次仍不发请求
+PASS  取消后同一视频可重新申请
+PASS  取消与共享交错时并发仍不超过 50
+PASS  取消在途请求的等待者可立即退出
+PASS  已完成的共享请求可继续复用缓存
+PASS  提示卡把行隔开
+PASS  提示卡前成对
+PASS  第二行是提示卡
+PASS  提示卡后接尾行
+PASS  行首提示卡独立成行
+PASS  奇数尾部单独成行
+PASS  同一实例相等
+PASS  不同实例不等
+PASS  setHandler 后动作生效
+PASS  换 handler 不改变盒子身份
+PASS  同一天有效
+PASS  跨自然日过期
+PASS  动态整页可解码
+PASS  数字 offset 转字符串
+PASS  数字 has_more 转布尔
+PASS  转发/坏条目被跳过，其余保留（实际 3 条）
+PASS  字符串 aid 可解
+PASS  动态视频自带画幅（竖屏）
+PASS  数字点赞状态转布尔
+PASS  评论区定位齐全
+PASS  协议相对图片地址补 https
+PASS  关注选择器：直播优先，其次未读，组内保持原顺序
+PASS  直播排序保留既有读取动画的优先级判定
+PASS  无效直播间编号不能获得直播优先级
+ALL PASS
+PASS  弹层 Binding 捕获不保留宿主动作盒子
+PASS  回复动作盒子与草稿随宿主释放
+PASS  不感兴趣替换后，仅新卡入场；同排及其余卡片的动画起点不变
+PASS  删除与分页追加不触发整批重播
+PASS  主动刷新、画幅过滤与时长设置仍触发整批入场
+PASS  关闭入场动画持久标记当前批次完成，重新开启或回收卡片不会补播
+PASS  新建存储实例后从原位置恢复（持久化）
+PASS  同一视频各分 P 独立记忆
+PASS  不同视频相同 cid 不互相覆盖
+PASS  无效播放器数值不能覆盖已保存进度
+PASS  主动拖回片头会持久清除旧位置
+PASS  片尾不足 5 秒从头播放
+PASS  短视频保留最后几秒，仅最后 2% 视为看完
+PASS  视频变短时不会从超出新时长的位置打开
+PASS  尚未知时长也能记住有效位置
+PASS  仅进入加载页并未产生可以覆盖旧记录的新位置
+PASS  开流前后短暂 0 不能把恢复点归零
+PASS  解码器抵达恢复点后接受连续进度
+PASS  切清晰度、备用源、重试时同样保护最后位置
+PASS  权威 seek 完成事件解除偏差超过 2 秒的等待
+PASS  向后拖动后迟到的旧位置不能覆盖目标
+PASS  向后拖动完成后继续正常记忆
+PASS  拖回开头允许真正的 0，屏蔽迟到旧位置
+PASS  EOF 后的尾随事件不能重新写回片尾进度
+PASS  重播后重新记忆新进度
+PASS  记录数量有上限，优先保留最近观看的视频
+ALL PLAYBACK RESUME CHECKS PASS
+PASS  横屏、超宽、正方形及竖屏画幅动态调整，竖屏上限保留详情，旋转与隐藏设置回归通过
+PASS  尺寸缺失/无效的 16:9 回退及编码旋转元数据回归通过
+Player surface aspect regression checks passed (24 layouts + rotation)
+PASS  加载、播放、暂停明确分离，playing 早于首帧仍属于加载
+PASS  首帧前竖屏最多收至标准画幅，横屏保持实际画幅，均不会隐藏成粉条
+PASS  迟到元数据保留标准尺寸或可见高度，旋转/换画幅不越过当前状态限制
+PASS  竖屏播放可连续缩至标准视频高度，完整画面不裁切且继续显示
+PASS  暂停后画面与单一染色进度连续收至56点，无标准尺寸处跳变，恢复播放清除染色
+PASS  横屏播放保持原高度，暂停收起行为保留
+PASS  越界手势、无效尺寸和极小容器不会产生负数或非有限布局
+PASS  自定义动画默认全开，视频/动态的进入与退出设置彼此独立
+PASS  关闭总开关立即跳过等待，重新开启保留各卡片开关
+PASS  动画等待期间关闭设置立即唤醒，10 秒延时不残留
+PASS  离页取消会终止动画等待和设置监听
+PASS  新来源继承旧视频开关，单页覆写不改变其他页面和动态卡片
+PASS  关闭历史退出立即结束该页等待，收藏的等待不受影响
+PASS  选择器展开按真实位移线性跟手，回拖与松手速度投影正确
+PASS  解析弹簧保留初速度，60/120Hz 与掉帧等价，高速反向不越界且收敛
+PASS  内容等比缩小与平移后整宽可见，上下视口始终完整衔接，左右镜像正确
+Player surface ownership regression passed: synchronous handoff, same-view session replacement, late hosts, weak lifetime, and removal
+Followed live directory regression passed: progressive pages, live filtering, failures, raw-page repetition, overlap, reset, cancellation, cache, and page cap
+Live room follow regression passed: permissions, known relation, retry, rollback, account generations, duplicate taps, stale reads/writes, and logout
+PASS  直播仅推荐/关注；筛空分页、重复页终止、刷新暂存与旧请求隔离

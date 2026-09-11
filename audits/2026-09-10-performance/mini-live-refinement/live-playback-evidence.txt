@@ -1,0 +1,9 @@
+roomID=7734200
+firstFrame=true
+firstFrameSeconds=1.122755791
+streamAttempts=1
+containers=flv
+aspect=1.7777777777777777
+quality=10000
+qualityCount=4
+pauseResume=passed

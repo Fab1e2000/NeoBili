@@ -1,0 +1,14 @@
+PASS  Downsampling retains physical pixels for crop, handles rotation and rejects invalid input
+BITMAP_BYTES original=48000000 thumbnail=786432
+HOST_MEDIAN_DECODE_MS original=47.320 thumbnail=5.039 (9 runs, 4000x3000 JPEG, 160x90 pt @3x)
+ALL IMAGE PERFORMANCE CHECKS PASS
+PASS  All 2000 v1 records migrate; new checkpoints persist and completion stays removed
+CHECKPOINT_BYTES_12_UPDATES legacy=1725444 incremental=659
+ENCODED_RECORDS_PER_CHECKPOINT legacy=2000 incremental=1
+DUPLICATE_SAVE_WRITES_6_CALLBACKS legacy=6 incremental=0
+ALL PLAYBACK PERSISTENCE PERFORMANCE CHECKS PASS
+PASS  Queued cancellation finishes while both network slots are occupied
+PLAY_URL_REQUESTS_AFTER_CANCELLED_DETAIL legacy=2 fixed=1
+PASS  Shared completed detail still serves later foreground opens
+PASS  Already-cancelled direct detail/playback callers start zero API requests
+ALL VIDEO PREPARATION CHECKS PASS

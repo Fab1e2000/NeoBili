@@ -1,0 +1,7 @@
+window=(0.0, 0.0, 874.0, 402.0)
+window.safeArea=UIEdgeInsets(top: 0.0, left: 62.0, bottom: 20.0, right: 62.0)
+host.view.frame=(0.0, 0.0, 874.0, 402.0)
+host.safeArea=UIEdgeInsets(top: 0.0, left: 62.0, bottom: 20.0, right: 62.0)
+fixture.windowFrame=Optional((0.0, 0.0, 874.0, 402.0))
+chrome.windowFrame=(0.0, 0.0, 874.0, 402.0)
+expected.chrome=(0.0, 0.0, 874.0, 402.0)

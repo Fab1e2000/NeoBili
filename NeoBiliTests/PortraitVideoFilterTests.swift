@@ -13,7 +13,7 @@ final class PortraitVideoFilterTests: XCTestCase {
         XCTAssertFalse(VideoDimension(width: 1080, height: 1920, rotate: 270).isPortrait)
     }
 
-    func testFilterHidesOnlyKnownPortraitVideos() {
+    func testPortraitFilterOnlyAdmitsConfirmedNonPortraitVideos() {
         let portrait = video("portrait", dimension: .init(width: 720, height: 1280))
         let landscape = video("landscape", dimension: .init(width: 1280, height: 720))
         let square = video("square", dimension: .init(width: 720, height: 720))
@@ -23,7 +23,8 @@ final class PortraitVideoFilterTests: XCTestCase {
         XCTAssertEqual(videos.hidingKnownPortraitVideos(false).map(\.bvid), videos.map(\.bvid))
         XCTAssertEqual(
             videos.hidingKnownPortraitVideos(true).map(\.bvid),
-            ["landscape", "square", "unknown"]
+            // 尺寸未知时等待详情补齐，严格过滤只放行已确认非竖屏的条目。
+            ["landscape", "square"]
         )
     }
 

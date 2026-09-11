@@ -1,0 +1,37 @@
+{
+  "info" : {
+    "arguments" : [
+      "devicectl",
+      "device",
+      "install",
+      "app",
+      "--device",
+      "00008150-001059D21A03C01C",
+      "/tmp/NeoBiliPlaybackResumeBuild/Build/Products/Release-iphoneos/NeoBili.app",
+      "--json-output",
+      "/tmp/neobili-exit-lifecycle-install.json"
+    ],
+    "commandType" : "devicectl.device.install.app",
+    "environment" : {
+      "TERM" : "dumb"
+    },
+    "jsonVersion" : 5,
+    "outcome" : "success",
+    "version" : "642.15"
+  },
+  "result" : {
+    "deviceIdentifier" : "121625E8-DCBD-5119-A18B-DA21877E7432",
+    "installedApplications" : [
+      {
+        "bundleID" : "com.elsterlee.NeoBili",
+        "databaseSequenceNumber" : 5452,
+        "databaseUUID" : "50918F4D-A3FE-4BBE-995D-32A81A59100E",
+        "installationURL" : "file:///private/var/containers/Bundle/Application/2FF7BC2A-3418-445F-B912-5C36E495DFBA/NeoBili.app/",
+        "launchServicesIdentifier" : "unknown",
+        "options" : {
+
+        }
+      }
+    ]
+  }
+}

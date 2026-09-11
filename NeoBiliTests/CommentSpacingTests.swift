@@ -4,22 +4,12 @@ import XCTest
 
 /// 评论行的竖向间距实测。
 ///
-/// 「楼中楼灰块到分隔线的距离不一致」这个问题靠读代码判断已经错过两次，
-/// 所以这里把真实的 `CommentRow` 渲染成位图，直接数像素：找到灰块的下边缘，
-/// 再找到下面那条分隔线，量出两者之间的空白，然后比较不同评论之间是否一致。
+/// 渲染真实 CommentRow，用测试专属的锚点标记测量容器下边缘与分隔线，
+/// 不再依赖某种背景颜色，也不会把液态玻璃阴影误认作布局边界。
+#if DEBUG
 @MainActor
 final class CommentSpacingTests: XCTestCase {
     private static let width: CGFloat = 390
-
-    /// 灰块（secondarySystemBackground，浅色下约 242/242/247）。
-    private func isReplyBlock(_ pixel: (r: Int, g: Int, b: Int)) -> Bool {
-        abs(pixel.r - 242) <= 3 && abs(pixel.g - 242) <= 3 && abs(pixel.b - 247) <= 3
-    }
-
-    /// 分隔线：明显比白底暗，又不是灰块那个色。
-    private func isDivider(_ pixel: (r: Int, g: Int, b: Int)) -> Bool {
-        pixel.r < 235 && !isReplyBlock(pixel)
-    }
 
     func testReplyBlockToDividerGapIsIdenticalAcrossComments() throws {
         // 两条结构不同的评论：回复条数、行数、是否有「查看全部」按钮都不一样。
@@ -124,6 +114,7 @@ final class CommentSpacingTests: XCTestCase {
 
             Divider()
                 .padding(.leading, CommentLayout.pageHorizontalInset)
+                .anchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { [.divider: $0] }
 
             // 分隔线后面留一段白，方便扫描时确认线的位置。
             Color.white.frame(height: 40)
@@ -133,59 +124,20 @@ final class CommentSpacingTests: XCTestCase {
         .environment(AccountStore())
         .environment(\.colorScheme, .light)
         .environment(\.dynamicTypeSize, dynamicTypeSize)
+        .commentReplyLayoutMarkers()
 
         let renderer = ImageRenderer(content: content)
         renderer.scale = 1
         return try XCTUnwrap(renderer.cgImage, "渲染失败")
     }
 
-    /// 把整张图取成灰度行摘要：每一行记下「这一行有没有墨迹」和「是不是灰块」。
-    ///
-    /// 只取一列会踩空——点赞行的文字很短，在靠右的列上根本没有像素，
-    /// 量出来的就不是它到灰块的距离了。
-    private func rowSummaries(of image: CGImage) throws -> [(hasInk: Bool, isBlock: Bool)] {
-        let width = image.width
-        let height = image.height
-
-        var buffer = [UInt8](repeating: 0, count: width * height * 4)
-        let context = try XCTUnwrap(CGContext(
-            data: &buffer,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: width * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ))
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        return (0..<height).map { y in
-            var hasInk = false
-            var isBlock = false
-            for x in 0..<width {
-                let offset = (y * width + x) * 4
-                let pixel = (r: Int(buffer[offset]), g: Int(buffer[offset + 1]), b: Int(buffer[offset + 2]))
-                if isReplyBlock(pixel) { isBlock = true }
-                // 250 这个门限把抗锯齿的浅灰边也算成墨迹，量的才是肉眼看到的边界。
-                if pixel.r < 250 || pixel.g < 250 || pixel.b < 250 { hasInk = true }
-            }
-            return (hasInk, isBlock)
-        }
-    }
-
-    /// 灰块下边缘到分隔线的距离。
+    /// 容器最后一个布局像素到分隔线的距离，沿用原来 +1 像素的约定。
     private func measureGapBelowReplyBlock(
         for comment: Comment,
         viewModel: CommentsViewModel? = nil,
         dynamicTypeSize: DynamicTypeSize = .large
     ) throws -> CGFloat {
-        let rows = try rowSummaries(of: render(comment, viewModel: viewModel, dynamicTypeSize: dynamicTypeSize))
-        let blockBottom = try XCTUnwrap(rows.indices.last { rows[$0].isBlock }, "没找到灰块")
-        let dividerRow = try XCTUnwrap(
-            rows.indices.first { $0 > blockBottom && rows[$0].hasInk },
-            "灰块下面没找到分隔线"
-        )
-        return CGFloat(dividerRow - blockBottom)
+        try CommentReplyLayoutSnapshot(image: render(comment, viewModel: viewModel, dynamicTypeSize: dynamicTypeSize)).blockGap
     }
 
     private func makeComment(
@@ -209,3 +161,4 @@ final class CommentSpacingTests: XCTestCase {
         return try JSONDecoder().decode(Comment.self, from: Data(json.utf8))
     }
 }
+#endif

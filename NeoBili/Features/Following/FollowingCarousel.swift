@@ -22,7 +22,7 @@ enum FollowingSidebarDwellSettings {
 
 enum FollowingSidebarLayout {
     static let transitionDuration: TimeInterval = 0.24
-    static let contentDisplacement: CGFloat = FollowingSidebarShape.width + FollowingSidebarContour.gap
+    static let contentDisplacement: CGFloat = FollowingSidebarPhysics.displacement
     static let countKey = "neobili.followingSidebarCount"
     static let counts = [5, 7, 9, 11]
     static let defaultCount = 7
@@ -48,7 +48,10 @@ struct FollowingCarousel: View {
     @Binding var isExpanded: Bool
     let onSettled: (FollowingSelection.ID) -> Void
     let onOpenUp: (FollowedUp) -> Void
+    let onOpenLive: (FollowedUp) -> Void
+    let onContextMenuChange: (Bool) -> Void
     let interactiveProgress: CGFloat?
+    let motion: FollowingSidebarMotion?
     let onCloseSwipe: (CGFloat) -> Void
     let onCloseSwipeEnd: (CGFloat) -> Void
 
@@ -64,7 +67,10 @@ struct FollowingCarousel: View {
     init(items: [FollowingSelection], focusedID: Binding<FollowingSelection.ID>, side: FollowingSidebarSide,
          isExpanded: Binding<Bool>, onSettled: @escaping (FollowingSelection.ID) -> Void,
          onOpenUp: @escaping (FollowedUp) -> Void,
+         onOpenLive: @escaping (FollowedUp) -> Void = { _ in },
+         onContextMenuChange: @escaping (Bool) -> Void = { _ in },
          interactiveProgress: CGFloat? = nil,
+         motion: FollowingSidebarMotion? = nil,
          onCloseSwipe: @escaping (CGFloat) -> Void = { _ in },
          onCloseSwipeEnd: @escaping (CGFloat) -> Void = { _ in },
          controller: FollowingAvatarScrollController? = nil) {
@@ -74,7 +80,10 @@ struct FollowingCarousel: View {
         _isExpanded = isExpanded
         self.onSettled = onSettled
         self.onOpenUp = onOpenUp
+        self.onOpenLive = onOpenLive
+        self.onContextMenuChange = onContextMenuChange
         self.interactiveProgress = interactiveProgress
+        self.motion = motion
         self.onCloseSwipe = onCloseSwipe
         self.onCloseSwipeEnd = onCloseSwipeEnd
         _scrollController = State(initialValue: controller ?? FollowingAvatarScrollController())
@@ -101,10 +110,11 @@ struct FollowingCarousel: View {
                         .gesture(
                             DragGesture(minimumDistance: 8, coordinateSpace: .global)
                                 .onChanged { value in
+                                    let translation = value.translation.width * (side == .left ? 1 : -1)
                                     if !isBackdropDragging,
-                                       isBackdropClosing || (value.translation.width < 0 && abs(value.translation.width) > abs(value.translation.height) * 1.3) {
+                                       isBackdropClosing || (translation < 0 && abs(translation) > abs(value.translation.height) * 1.3) {
                                         isBackdropClosing = true
-                                        onCloseSwipe(value.translation.width)
+                                        onCloseSwipe(translation)
                                         return
                                     }
                                     guard isBackdropDragging || abs(value.translation.height) > abs(value.translation.width) else { return }
@@ -120,8 +130,8 @@ struct FollowingCarousel: View {
                                 .onEnded { value in
                                     if isBackdropClosing {
                                         isBackdropClosing = false
-                                        onCloseSwipe(value.translation.width)
-                                        onCloseSwipeEnd(value.velocity.width)
+                                        onCloseSwipe(value.translation.width * (side == .left ? 1 : -1))
+                                        onCloseSwipeEnd(value.velocity.width * (side == .left ? 1 : -1))
                                         return
                                     }
                                     guard isBackdropDragging else { return }
@@ -143,16 +153,17 @@ struct FollowingCarousel: View {
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 12, coordinateSpace: .global)
                             .onChanged { value in
+                                let translation = value.translation.width * (side == .left ? 1 : -1)
                                 guard isExpanded,
-                                      isBackdropClosing || (value.translation.width < 0 && abs(value.translation.width) > abs(value.translation.height) * 1.3) else { return }
+                                      isBackdropClosing || (translation < 0 && abs(translation) > abs(value.translation.height) * 1.3) else { return }
                                 isBackdropClosing = true
-                                onCloseSwipe(value.translation.width)
+                                onCloseSwipe(translation)
                             }
                             .onEnded { value in
                                 guard isBackdropClosing else { return }
                                 isBackdropClosing = false
-                                onCloseSwipe(value.translation.width)
-                                onCloseSwipeEnd(value.velocity.width)
+                                onCloseSwipe(value.translation.width * (side == .left ? 1 : -1))
+                                onCloseSwipeEnd(value.velocity.width * (side == .left ? 1 : -1))
                             }
                     )
                 ZStack {
@@ -215,6 +226,7 @@ struct FollowingCarousel: View {
             rowHeight: rowHeight,
             isExpanded: isExpanded,
             interactiveProgress: interactiveProgress,
+            motion: motion,
             controller: scrollController,
             onFocus: { id in
                 guard isExpanded, sessionID == session else { return }
@@ -227,7 +239,12 @@ struct FollowingCarousel: View {
             onOpenUp: { up in
                 collapse()
                 onOpenUp(up)
-            }
+            },
+            onOpenLive: { up in
+                collapse()
+                onOpenLive(up)
+            },
+            onContextMenuChange: onContextMenuChange
         )
         .id(session)
     }
@@ -253,34 +270,44 @@ private struct FollowingExpandedCarousel: View {
     let rowHeight: CGFloat
     let isExpanded: Bool
     let interactiveProgress: CGFloat?
+    let motion: FollowingSidebarMotion?
     let controller: FollowingAvatarScrollController
     let onFocus: (FollowingSelection.ID) -> Void
     let onSettled: (FollowingSelection.ID) -> Void
     let onOpenUp: (FollowedUp) -> Void
+    let onOpenLive: (FollowedUp) -> Void
+    let onContextMenuChange: (Bool) -> Void
     @State private var titleID: FollowingSelection.ID?
     @State private var alignmentDistance: CGFloat?
+    @State private var isContextMenuPresented = false
 
     var body: some View {
         let shape = FollowingSidebarShape(side: side)
+        let progress = motion?.progress ?? interactiveProgress
         GlassEffectContainer(spacing: 0) {
             FollowingAvatarScroll(
                 items: items, initialID: initialID, side: side, rowHeight: rowHeight,
-                isExpanded: isExpanded, interactiveProgress: interactiveProgress, controller: controller,
+                isExpanded: isExpanded, interactiveProgress: progress, controller: controller,
                 onFocus: { titleID = $0; onFocus($0) },
                 onSettled: onSettled, onOpenUp: onOpenUp,
+                onOpenLive: onOpenLive,
+                onContextMenuChange: {
+                    isContextMenuPresented = $0
+                    onContextMenuChange($0)
+                },
                 onAlignment: { alignmentDistance = $0 }
             )
             .frame(width: FollowingSidebarShape.width, height: height)
             .contentShape(shape)
             .overlay(alignment: side == .left ? .trailing : .leading) {
-                if isExpanded {
+                if isExpanded && !isContextMenuPresented {
                     Text(items.first { $0.id == (titleID ?? initialID) }?.title ?? "全部动态")
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                         .padding(.horizontal, 10).padding(.vertical, 7)
                         .glassEffect(.regular, in: Capsule())
                         .frame(width: 140)
-                        .opacity(Double(interactiveProgress ?? 1))
+                        .opacity(Double(progress ?? 1))
                         .offset(x: side == .left ? 144 : -144)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -355,6 +382,8 @@ private struct FollowingAvatarScroll: UIViewRepresentable {
     let onFocus: (FollowingSelection.ID) -> Void
     let onSettled: (FollowingSelection.ID) -> Void
     let onOpenUp: (FollowedUp) -> Void
+    let onOpenLive: (FollowedUp) -> Void
+    let onContextMenuChange: (Bool) -> Void
     let onAlignment: (CGFloat) -> Void
 
     func makeCoordinator() -> FollowingAvatarScrollController { controller }
@@ -383,6 +412,8 @@ private struct FollowingAvatarScroll: UIViewRepresentable {
         controller.onFocus = onFocus
         controller.onSettled = onSettled
         controller.onOpenUp = onOpenUp
+        controller.onOpenLive = onOpenLive
+        controller.onContextMenuChange = onContextMenuChange
         controller.onAlignment = onAlignment
         controller.configure(items: items, initialID: initialID, side: side, rowHeight: rowHeight, expanded: isExpanded, interactiveProgress: interactiveProgress)
     }
@@ -479,7 +510,7 @@ private final class FollowingAvatarCell: UICollectionViewCell {
         self.item = item
         avatarSize = size
         host.rootView = FollowingSidebarAvatar(item: item, selected: focusedAppearance, size: size)
-        accessibilityLabel = item.title
+        accessibilityLabel = item.title + (item.up?.liveRoomID != nil ? "，正在直播" : "")
         accessibilityIdentifier = "following.avatar.\(item.id)"
         setNeedsLayout()
     }
@@ -501,13 +532,29 @@ private final class FollowingAvatarCell: UICollectionViewCell {
     }
     func stopAppearanceAnimation() { host.view.layer.removeAllAnimations() }
 
+    func contextMenuPreview() -> UITargetedPreview {
+        let parameters = UIPreviewParameters()
+        parameters.backgroundColor = .clear
+        let outline = UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: avatarSize, height: avatarSize))
+        if item.up?.liveRoomID != nil {
+            outline.append(UIBezierPath(roundedRect: CGRect(x: avatarSize * 0.15, y: avatarSize * 0.82,
+                                                           width: avatarSize * 0.7, height: avatarSize * 0.28),
+                                        cornerRadius: avatarSize * 0.14))
+        }
+        parameters.visiblePath = outline
+        // Lift only the circular avatar and its badge, never the rectangular collection cell.
+        return UITargetedPreview(view: host.view, parameters: parameters)
+    }
+
     private func positionAvatar() {
         let expandedX = side == .left ? 28 + 20 * weight : bounds.width - 28 - 20 * weight
         let collapsedX: CGFloat = side == .left ? 0 : bounds.width
         let x = collapsedX + (expandedX - collapsedX) * expansionProgress
-        host.view.bounds = CGRect(x: 0, y: 0, width: avatarSize, height: avatarSize)
-        host.view.center = CGPoint(x: x, y: bounds.height / 2)
-        host.view.transform = CGAffineTransform(scaleX: 1 + 0.5 * weight, y: 1 + 0.5 * weight)
+        let badgeHeight = item.up?.liveRoomID != nil ? avatarSize / 10 : 0
+        let scale = 1 + 0.5 * weight
+        host.view.bounds = CGRect(x: 0, y: 0, width: avatarSize, height: avatarSize + badgeHeight)
+        host.view.center = CGPoint(x: x, y: bounds.height / 2 + badgeHeight * scale / 2)
+        host.view.transform = CGAffineTransform(scaleX: scale, y: scale)
     }
 }
 
@@ -538,9 +585,13 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
     private var reportedID: FollowingSelection.ID?
     private var reportedDistance: CGFloat?
     private let haptic = UISelectionFeedbackGenerator()
+    private var isContextMenuPresented = false
+    private var pendingMenuAction: (() -> Void)?
     var onFocus: (FollowingSelection.ID) -> Void = { _ in }
     var onSettled: (FollowingSelection.ID) -> Void = { _ in }
     var onOpenUp: (FollowedUp) -> Void = { _ in }
+    var onOpenLive: (FollowedUp) -> Void = { _ in }
+    var onContextMenuChange: (Bool) -> Void = { _ in }
     var onAlignment: (CGFloat) -> Void = { _ in }
 
     fileprivate func attach(_ view: FollowingAvatarCollectionView) {
@@ -555,12 +606,16 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
     fileprivate func detach() {
         stop()
         external = false
+        pendingMenuAction = nil
+        if isContextMenuPresented { onContextMenuChange(false) }
+        isContextMenuPresented = false
         collection = nil
         onFocus = { _ in }; onSettled = { _ in }; onAlignment = { _ in }; onOpenUp = { _ in }
+        onOpenLive = { _ in }; onContextMenuChange = { _ in }
     }
 
     fileprivate func configure(items: [FollowingSelection], initialID: FollowingSelection.ID, side: FollowingSidebarSide, rowHeight: CGFloat, expanded: Bool, interactiveProgress: CGFloat?) {
-        guard let collection else { return }
+        guard let collection, !isContextMenuPresented else { return }
         let changed = self.items != items
         let resized = self.rowHeight != rowHeight || self.side != side
         if !hasPosition || !self.expanded {
@@ -591,7 +646,7 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
     }
 
     fileprivate func layout() {
-        guard let collection, collection.bounds.height > 0, !items.isEmpty else { return }
+        guard let collection, !isContextMenuPresented, collection.bounds.height > 0, !items.isEmpty else { return }
         if !hasPosition || lastSize != collection.bounds.size {
             let inset = max(0, (collection.bounds.height - rowHeight) / 2)
             collection.contentInset = UIEdgeInsets(top: inset, left: 0, bottom: inset, right: 0)
@@ -615,7 +670,7 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
         cell.setItem(items[index], size: min(40, rowHeight * 0.625))
     }
     private func render() {
-        guard let collection, hasPosition, !items.isEmpty else { return }
+        guard let collection, !isContextMenuPresented, hasPosition, !items.isEmpty else { return }
         let center = collection.contentOffset.y + collection.bounds.height / 2
         let index = min(items.count - 1, max(0, Int(((center - rowHeight / 2) / rowHeight).rounded())))
         let changed = selectedIndex != index
@@ -650,7 +705,7 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
         reportedDistance = distance
         // 避免 updateUIView / layoutSubviews 中同步修改 SwiftUI 状态。
         DispatchQueue.main.async { [weak self, weak collection] in
-            guard let self, let collection, self.collection === collection else { return }
+            guard let self, !self.isContextMenuPresented, let collection, self.collection === collection else { return }
             guard self.items.indices.contains(self.selectedIndex), self.items[self.selectedIndex].id == id else { return }
             self.onFocus(id)
             self.onAlignment(distance)
@@ -669,6 +724,7 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
     }
 
     func beginExternalDrag() {
+        guard !isContextMenuPresented else { return }
         stop()
         external = true
         translation = 0
@@ -693,7 +749,7 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
                    max(-collection.contentInset.top, offset))
     }
     private func settle(speed: CGFloat) {
-        guard let collection, hasPosition else { return }
+        guard let collection, !isContextMenuPresented, hasPosition else { return }
         stop()
         let projected = clamped(collection.contentOffset.y + speed * 0.12)
         target = clamped(((projected + collection.contentInset.top) / rowHeight).rounded() * rowHeight - collection.contentInset.top)
@@ -709,14 +765,17 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
         displayLink = link
     }
     @objc private func tick(_ link: CADisplayLink) {
-        guard let collection else { stop(); return }
-        let dt = min(1.0 / 30, max(0.001, link.timestamp - lastTime))
+        guard let collection, !isContextMenuPresented else { stop(); return }
+        let dt = max(0, link.timestamp - lastTime)
         lastTime = link.timestamp
-        let delta = target - collection.contentOffset.y
-        velocity += (324 * delta - 36 * velocity) * dt
-        let offset = clamped(collection.contentOffset.y + velocity * dt)
+        let next = FollowingSidebarPhysics.advanceUnbounded(
+            .init(progress: collection.contentOffset.y, velocity: velocity),
+            toward: target, elapsed: dt, frequency: 18
+        )
+        let offset = clamped(next.progress)
+        velocity = offset == next.progress ? next.velocity : 0
         collection.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
-        if abs(delta) < 0.3 && abs(velocity) < 3 {
+        if abs(target - offset) < 0.3 && abs(velocity) < 3 {
             collection.setContentOffset(CGPoint(x: 0, y: target), animated: false)
             stop()
             if items.indices.contains(selectedIndex) { onSettled(items[selectedIndex].id) }
@@ -726,16 +785,70 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         stop()
-        guard items.indices.contains(indexPath.item) else { return }
+        guard !isContextMenuPresented, items.indices.contains(indexPath.item) else { return }
         let y = CGFloat(indexPath.item) * rowHeight - collectionView.contentInset.top
         collectionView.setContentOffset(CGPoint(x: 0, y: y), animated: false)
         onSettled(items[indexPath.item].id)
     }
-    func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
-        guard let up = items[indexPath.item].up else { return nil }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            UIMenu(children: [UIAction(title: "查看 UP 主主页", image: UIImage(systemName: "person.crop.circle")) { _ in self?.onOpenUp(up) }])
+    func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint) -> UIContextMenuConfiguration? {
+        guard expanded, let index = indexPaths.first?.item,
+              items.indices.contains(index), let up = items[index].up else { return nil }
+        stop()
+        external = false
+        return UIContextMenuConfiguration(identifier: NSNumber(value: up.mid), previewProvider: nil) { [weak self] _ in
+            self?.contextMenu(for: up)
         }
+    }
+
+    func contextMenu(for up: FollowedUp) -> UIMenu {
+        var actions: [UIAction] = []
+        if up.liveRoomID != nil {
+            actions.append(UIAction(title: "进入直播间", image: UIImage(systemName: "dot.radiowaves.left.and.right")) { [weak self] _ in
+                self?.afterContextMenu { [weak self] in self?.onOpenLive(up) }
+            })
+        }
+        actions.append(UIAction(title: "查看 UP 主主页", image: UIImage(systemName: "person.crop.circle")) { [weak self] _ in
+            self?.afterContextMenu { [weak self] in self?.onOpenUp(up) }
+        })
+        return UIMenu(children: actions)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, contextMenuConfiguration configuration: UIContextMenuConfiguration,
+                        highlightPreviewForItemAt indexPath: IndexPath) -> UITargetedPreview? {
+        (collectionView.cellForItem(at: indexPath) as? FollowingAvatarCell)?.contextMenuPreview()
+    }
+
+    func collectionView(_ collectionView: UICollectionView, contextMenuConfiguration configuration: UIContextMenuConfiguration,
+                        dismissalPreviewForItemAt indexPath: IndexPath) -> UITargetedPreview? {
+        (collectionView.cellForItem(at: indexPath) as? FollowingAvatarCell)?.contextMenuPreview()
+    }
+
+    func collectionView(_ collectionView: UICollectionView, willDisplayContextMenu configuration: UIContextMenuConfiguration,
+                        animator: (any UIContextMenuInteractionAnimating)?) {
+        stop()
+        external = false
+        isContextMenuPresented = true
+        collectionView.isScrollEnabled = false
+        onContextMenuChange(true)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, willEndContextMenuInteraction configuration: UIContextMenuConfiguration,
+                        animator: (any UIContextMenuInteractionAnimating)?) {
+        let finish = { [weak self, weak collectionView] in
+            guard let self, self.collection === collectionView else { return }
+            self.isContextMenuPresented = false
+            collectionView?.isScrollEnabled = self.expanded
+            self.onContextMenuChange(false)
+            let action = self.pendingMenuAction
+            self.pendingMenuAction = nil
+            action?()
+        }
+        if let animator { animator.addCompletion(finish) } else { finish() }
+    }
+
+    private func afterContextMenu(_ action: @escaping () -> Void) {
+        // Keep the sidebar in place until UIKit has put its lifted preview back.
+        if isContextMenuPresented { pendingMenuAction = action } else { action() }
     }
 }
 
@@ -854,8 +967,19 @@ private struct FollowingSidebarAvatar: View {
                     .overlay { Circle().stroke(.background, lineWidth: 2) }
             }
         }
+        .overlay(alignment: .bottom) {
+            if item.up?.liveRoomID != nil {
+                Text("LIVE")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Color.accentColor, in: Capsule())
+                    .offset(y: 6)
+            }
+        }
         .scaleEffect(size / 60)
         .frame(width: size, height: size)
+        .padding(.bottom, item.up?.liveRoomID != nil ? size / 10 : 0)
     }
 }
 
@@ -907,12 +1031,14 @@ private struct AllDynamicsAvatar: View {
 /// 将横向展开手势直接挂到页面 UIScrollView，避免被卡片和 SwiftUI 滚动手势抢走。
 struct FollowingPageSwipeObserver: UIViewRepresentable {
     let enabled: Bool
+    var side: FollowingSidebarSide = .left
     let onMove: (CGFloat) -> Void
     let onEnd: (CGFloat?) -> Void
 
     func makeUIView(context: Context) -> ObserverView { ObserverView() }
     func updateUIView(_ view: ObserverView, context: Context) {
         view.enabled = enabled
+        view.direction = side == .left ? 1 : -1
         view.onMove = onMove
         view.onEnd = onEnd
         view.attach()
@@ -922,6 +1048,7 @@ struct FollowingPageSwipeObserver: UIViewRepresentable {
     @MainActor
     final class ObserverView: UIView, UIGestureRecognizerDelegate {
         var enabled = true
+        var direction: CGFloat = 1
         var onMove: ((CGFloat) -> Void)?
         var onEnd: ((CGFloat?) -> Void)?
         private weak var scroll: UIScrollView?
@@ -958,7 +1085,7 @@ struct FollowingPageSwipeObserver: UIViewRepresentable {
 
         override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             let velocity = pan.velocity(in: window)
-            return enabled && velocity.x > 0 && abs(velocity.x) > abs(velocity.y) * 1.3
+            return enabled && velocity.x * direction > 0 && abs(velocity.x) > abs(velocity.y) * 1.3
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
@@ -969,10 +1096,10 @@ struct FollowingPageSwipeObserver: UIViewRepresentable {
         @objc private func panned(_ gesture: UIPanGestureRecognizer) {
             switch gesture.state {
             case .began, .changed:
-                onMove?(gesture.translation(in: window).x)
+                onMove?(gesture.translation(in: window).x * direction)
             case .ended:
-                onMove?(gesture.translation(in: window).x)
-                onEnd?(gesture.velocity(in: window).x)
+                onMove?(gesture.translation(in: window).x * direction)
+                onEnd?(gesture.velocity(in: window).x * direction)
             case .cancelled, .failed:
                 onEnd?(nil)
             default:

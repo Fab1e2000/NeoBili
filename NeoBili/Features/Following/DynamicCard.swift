@@ -79,7 +79,7 @@ struct DynamicCard: View {
             if let video = entry.video,
                video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
                 videoBlock(video)
-                    .videoCardEntrance()
+                    .videoCardEntrance(category: .dynamic)
                     .videoEntranceIdentity(video.bvid)
             }
 
@@ -93,7 +93,7 @@ struct DynamicCard: View {
                         .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
                 }
         )
-        .resolvePortraitVideos([entry.video].compactMap { $0 })
+        .resolvePortraitVideos([entry.video].compactMap { $0 }, animationCategory: .dynamic)
     }
 
     // MARK: - UP 主
