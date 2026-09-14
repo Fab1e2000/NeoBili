@@ -1,0 +1,56 @@
+{
+  "info" : {
+    "arguments" : [
+      "devicectl",
+      "device",
+      "process",
+      "launch",
+      "--device",
+      "00008150-001059D21A03C01C",
+      "com.elsterlee.NeoBili",
+      "--json-output",
+      "/tmp/neobili-danmaku-launch.json"
+    ],
+    "commandType" : "devicectl.device.process.launch",
+    "environment" : {
+      "TERM" : "dumb"
+    },
+    "jsonVersion" : 5,
+    "outcome" : "success",
+    "version" : "642.15"
+  },
+  "result" : {
+    "deviceIdentifier" : "121625E8-DCBD-5119-A18B-DA21877E7432",
+    "launchOptions" : {
+      "activatedWhenStarted" : true,
+      "arguments" : [
+
+      ],
+      "environmentVariables" : {
+        "TERM" : "dumb"
+      },
+      "platformSpecificOptions" : {
+
+      },
+      "startStopped" : false,
+      "terminateExistingInstances" : false,
+      "user" : {
+        "active" : true
+      }
+    },
+    "process" : {
+      "auditToken" : [
+        4294967295,
+        501,
+        501,
+        501,
+        501,
+        1492,
+        0,
+        4007
+      ],
+      "executable" : "file:///private/var/containers/Bundle/Application/B9D302B0-00F6-49B3-B1CE-4F001CCC7AC6/NeoBili.app/NeoBili",
+      "processIdentifier" : 1492
+    }
+  }
+}

@@ -234,17 +234,52 @@ private actor BiliImageDataLoader {
     }
 }
 
+/// ImageIO 解码并发闸门。快速滚动时被掠过的卡片都会发起解码，一次 fling
+/// 可能同时排入几十个大图解码，与 UI 动画抢 CPU；限制并发数让单帧内最多
+/// 只有少数解码在跑，其余排队（下载不受影响，那本来就是 I/O 等待）。
+private actor DecodeGate {
+    static let shared = DecodeGate()
+    static let limit = 4
+    private var inFlight = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func enter() async {
+        if inFlight < Self.limit {
+            inFlight += 1
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func leave() {
+        if let next = waiters.first {
+            waiters.removeFirst()
+            next.resume()
+        } else {
+            inFlight -= 1
+        }
+    }
+}
+
 enum BiliImageLoader {
     /// nil requests an original; on-screen cards always supply physical pixels.
     static func load(_ url: URL, pixelSize: ImagePixelSize? = nil) async throws -> UIImage {
         try await BiliImageCache.shared.image(for: url, pixelSize: pixelSize) {
             let data = try await BiliImageDataLoader.shared.data(for: url)
-            return try await Task.detached(priority: .userInitiated) {
-                guard let decoded = ImageDownsampling.decode(data, fitting: pixelSize) else {
-                    throw BiliAPIError.invalidURL
-                }
-                return UIImage(cgImage: decoded)
-            }.value
+            await DecodeGate.shared.enter()
+            do {
+                let image = try await Task.detached(priority: .userInitiated) {
+                    guard let decoded = ImageDownsampling.decode(data, fitting: pixelSize) else {
+                        throw BiliAPIError.invalidURL
+                    }
+                    return UIImage(cgImage: decoded)
+                }.value
+                await DecodeGate.shared.leave()
+                return image
+            } catch {
+                await DecodeGate.shared.leave()
+                throw error
+            }
         }
     }
 }

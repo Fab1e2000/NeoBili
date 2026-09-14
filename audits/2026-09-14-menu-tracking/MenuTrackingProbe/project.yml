@@ -1,0 +1,34 @@
+name: MenuTrackingProbe
+settings:
+  base:
+    ARCHS: arm64
+options:
+  deploymentTarget:
+    iOS: '26.0'
+targets:
+  MenuTrackingProbe:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.elsterlee.MenuTrackingProbe
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        SWIFT_VERSION: '6.0'
+        TARGETED_DEVICE_FAMILY: '1'
+        CODE_SIGNING_ALLOWED: NO
+    scheme:
+      testTargets: [MenuTrackingProbeUITests]
+  MenuTrackingProbeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: MenuTrackingProbe
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.elsterlee.MenuTrackingProbeUITests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: '6.0'
+        CODE_SIGNING_ALLOWED: NO

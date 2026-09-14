@@ -1,0 +1,56 @@
+{
+  "info" : {
+    "arguments" : [
+      "devicectl",
+      "device",
+      "process",
+      "launch",
+      "--device",
+      "00008150-001059D21A03C01C",
+      "com.elsterlee.NeoBili",
+      "--json-output",
+      "/tmp/neobili-chrome-rows-launch.json"
+    ],
+    "commandType" : "devicectl.device.process.launch",
+    "environment" : {
+      "TERM" : "dumb"
+    },
+    "jsonVersion" : 5,
+    "outcome" : "success",
+    "version" : "642.15"
+  },
+  "result" : {
+    "deviceIdentifier" : "121625E8-DCBD-5119-A18B-DA21877E7432",
+    "launchOptions" : {
+      "activatedWhenStarted" : true,
+      "arguments" : [
+
+      ],
+      "environmentVariables" : {
+        "TERM" : "dumb"
+      },
+      "platformSpecificOptions" : {
+
+      },
+      "startStopped" : false,
+      "terminateExistingInstances" : false,
+      "user" : {
+        "active" : true
+      }
+    },
+    "process" : {
+      "auditToken" : [
+        4294967295,
+        501,
+        501,
+        501,
+        501,
+        2596,
+        0,
+        7179
+      ],
+      "executable" : "file:///private/var/containers/Bundle/Application/D5DFB018-FA6C-4A61-BC6E-3F351F504FDC/NeoBili.app/NeoBili",
+      "processIdentifier" : 2596
+    }
+  }
+}

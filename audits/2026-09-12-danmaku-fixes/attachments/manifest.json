@@ -1,0 +1,26 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00008150-001059D21A03C01C",
+        "deviceName" : "iPhone",
+        "exportedFileName" : "89EF19B7-120A-4C2B-8976-82654898E88B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "public.plain-text_0_8DAFD663-4510-4F52-99D6-BD196CE9B157.txt",
+        "timestamp" : 1789205304.658
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00008150-001059D21A03C01C",
+        "deviceName" : "iPhone",
+        "exportedFileName" : "926CAEE9-5470-466A-9CEE-143FA9072D66.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "public.plain-text_0_99848BD0-3DB1-442A-B828-6BCB87BDBE91.txt",
+        "timestamp" : 1789205302.592
+      }
+    ],
+    "testIdentifier" : "DanmakuDeviceSmokeTests/testLiveMessagesAndFollowingPortalOnPhysicalDevice()",
+    "testIdentifierURL" : "test://com.apple.xcode/NeoBili/NeoBiliTests/DanmakuDeviceSmokeTests/testLiveMessagesAndFollowingPortalOnPhysicalDevice"
+  }
+]

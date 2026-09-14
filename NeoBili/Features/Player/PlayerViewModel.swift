@@ -12,6 +12,8 @@ final class PlayerViewModel {
     let cid: Int
     private(set) var configuration: VideoPlaybackConfiguration
     private(set) var session: MPVPlayerSession
+    /// 弹幕控制器与播放器同生命周期；开关打开时由界面触发创建。
+    private(set) var danmaku: DanmakuController?
 
     private(set) var isLoading = true
     private(set) var errorMessage: String?
@@ -41,6 +43,9 @@ final class PlayerViewModel {
     private(set) var selectedVideoQuality: Int?
     private(set) var selectedAudioQuality: Int?
     private var qualityRequestID = UUID()
+    /// 界面侧位置更新节流（10Hz）：进度条/时间/弹幕共用这一个节拍。
+    private var lastPositionUITick: UInt64 = 0
+    private static let positionUITickInterval: UInt64 = 100_000_000
     private var qualityFetchTask: Task<PlayURLData, Error>?
     private var isFetchingQuality = false
     /// 换源期间保留最后一次播放/暂停意图，防止新内核默认播放覆盖用户暂停。
@@ -479,6 +484,7 @@ final class PlayerViewModel {
         let wasAudible = isPlaying || qualityPlaybackIntent != nil
         if qualityPlaybackIntent != nil { qualityPlaybackIntent = false }
         isPlaying = false
+        danmaku?.setPaused(true)
         // 首帧尚未到达时 isPlaying 可能为 false，仍须暂停内核。
         session.pauseAsync()
         if wasAudible {
@@ -490,9 +496,26 @@ final class PlayerViewModel {
         }
     }
 
+    /// 弹幕开关打开时创建控制器并开始拉取弹幕；已创建就跳过。
+    func ensureDanmaku() {
+        guard danmaku == nil, !isStopped else { return }
+        let controller = DanmakuController(bvid: bvid, cid: cid)
+        danmaku = controller
+        controller.load()
+        controller.setPaused(!isPlaying)
+        controller.update(currentTime: currentTime)
+    }
+
+    /// 弹幕关闭时释放加载任务与画面。
+    func disableDanmaku() {
+        danmaku?.shutdown()
+        danmaku = nil
+    }
+
     /// 被另一个视频页盖住时调用。只停声音和画面，不释放播放项目。
     func pause() {
         savePlaybackProgress()
+        danmaku?.setPaused(true)
         guard isPlaying || qualityPlaybackIntent != nil else { return }
         if qualityPlaybackIntent != nil { qualityPlaybackIntent = false }
         session.pause()
@@ -511,10 +534,12 @@ final class PlayerViewModel {
             return
         }
         guard hasRenderedFirstFrame else { return }
+        danmaku?.setPaused(false)
         if resumeState.isCompleted {
             // EOF 会卸载文件，必须重新打开当前地址，单纯 seek/play 不会重播。
             resumeState.seek(to: 0)
             currentTime = 0
+            danmaku?.seek(to: 0)
             savePlaybackProgress()
             isLoading = true
             hasRenderedFirstFrame = false
@@ -558,6 +583,7 @@ final class PlayerViewModel {
         let target = min(max(seconds, 0), upperBound)
         currentTime = target
         resumeState.seek(to: target)
+        danmaku?.seek(to: target)
         savePlaybackProgress()
         reportWatchProgress(target)
         SystemNowPlayingCenter.shared.updateElapsed(
@@ -623,6 +649,7 @@ final class PlayerViewModel {
             // 启动时那次可能失败，失败的会话不会出现在系统的「正在播放」里。
             PlaybackAudioSession.activateOnce()
         case .playing(let playing):
+            danmaku?.setPaused(!playing)
             if qualityPlaybackIntent == false, playing {
                 session.pause()
                 isPlaying = false
@@ -640,7 +667,14 @@ final class PlayerViewModel {
         case .position(let position):
             guard hasRenderedFirstFrame, !isLoading, (!isSwitchingQuality || isFetchingQuality),
                   resumeState.accept(position: position) else { return }
+            // time-pos 事件本来按视频帧率到达（合批后仍有每秒几十次）；
+            // 界面只需要 10Hz：进度条、时间标签和弹幕注入在这个频率下
+            // 与逐帧完全一致，每秒却省下几十次 @Observable 失效与 body 重算。
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard now - lastPositionUITick >= Self.positionUITickInterval else { return }
+            lastPositionUITick = now
             currentTime = position
+            danmaku?.update(currentTime: position)
             if abs(position - lastSavedPosition) >= 5 { savePlaybackProgress() }
             // 观看进度心跳：距离上次上报前进超过 5 秒才发，对齐官方
             // 网页播放器的节奏。
@@ -666,7 +700,10 @@ final class PlayerViewModel {
                 )
             }
         case .buffered(let buffered):
-            bufferedTime = max(currentTime + buffered, currentTime)
+            let next = max(currentTime + buffered, currentTime)
+            // 缓存前沿只在明显前进时才写：这个属性没有界面消费缓冲区段时
+            // 也会把控制层子树整体打失效，高频事件纯属浪费。
+            if abs(next - bufferedTime) >= 0.25 { bufferedTime = next }
         case .displayAspectRatio(let ratio):
             if ratio.isFinite, ratio > 0 {
                 displayAspectRatio = ratio
@@ -681,6 +718,7 @@ final class PlayerViewModel {
             guard hasRenderedFirstFrame, !isLoading, !isSwitchingQuality else { return }
             isPlaying = false
             isLoading = false
+            danmaku?.setPaused(true)
             resumeState.complete()
             savePlaybackProgress()
             // 看完时 played_time 传 -1，服务端会把它记成「已看完」。

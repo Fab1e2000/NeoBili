@@ -92,7 +92,10 @@ struct FollowingCarousel: View {
     private var displayedItems: [FollowingSelection] {
         let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let known = Set(expandedIDs)
-        return expandedIDs.compactMap { byID[$0] } + items.filter { !known.contains($0.id) }
+        let stable = expandedIDs.compactMap { byID[$0] } + items.filter { !known.contains($0.id) }
+        return stable.filter { $0.id == .all }
+            + stable.filter { $0.up?.liveRoomID != nil }
+            + stable.filter { $0.id != .all && $0.up?.liveRoomID == nil }
     }
 
     private var focusedItem: FollowingSelection {
@@ -617,6 +620,12 @@ final class FollowingAvatarScrollController: NSObject, UICollectionViewDataSourc
     fileprivate func configure(items: [FollowingSelection], initialID: FollowingSelection.ID, side: FollowingSidebarSide, rowHeight: CGFloat, expanded: Bool, interactiveProgress: CGFloat?) {
         guard let collection, !isContextMenuPresented else { return }
         let changed = self.items != items
+        if changed, self.expanded, self.items.indices.contains(selectedIndex),
+           let newIndex = items.firstIndex(where: { $0.id == self.items[selectedIndex].id }),
+           newIndex != selectedIndex {
+            selectedIndex = newIndex
+            hasPosition = false
+        }
         let resized = self.rowHeight != rowHeight || self.side != side
         if !hasPosition || !self.expanded {
             let index = items.firstIndex { $0.id == initialID } ?? 0

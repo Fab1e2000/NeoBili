@@ -1,0 +1,56 @@
+{
+  "info" : {
+    "arguments" : [
+      "devicectl",
+      "device",
+      "process",
+      "launch",
+      "--device",
+      "00008150-001059D21A03C01C",
+      "com.elsterlee.NeoBili",
+      "--json-output",
+      "/tmp/neobili-player-edge-launch.json"
+    ],
+    "commandType" : "devicectl.device.process.launch",
+    "environment" : {
+      "TERM" : "dumb"
+    },
+    "jsonVersion" : 5,
+    "outcome" : "success",
+    "version" : "642.15"
+  },
+  "result" : {
+    "deviceIdentifier" : "121625E8-DCBD-5119-A18B-DA21877E7432",
+    "launchOptions" : {
+      "activatedWhenStarted" : true,
+      "arguments" : [
+
+      ],
+      "environmentVariables" : {
+        "TERM" : "dumb"
+      },
+      "platformSpecificOptions" : {
+
+      },
+      "startStopped" : false,
+      "terminateExistingInstances" : false,
+      "user" : {
+        "active" : true
+      }
+    },
+    "process" : {
+      "auditToken" : [
+        4294967295,
+        501,
+        501,
+        501,
+        501,
+        2638,
+        0,
+        7302
+      ],
+      "executable" : "file:///private/var/containers/Bundle/Application/16511B29-D409-467F-8C3E-C2D3F4236265/NeoBili.app/NeoBili",
+      "processIdentifier" : 2638
+    }
+  }
+}

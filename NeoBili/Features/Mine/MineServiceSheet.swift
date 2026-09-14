@@ -38,7 +38,11 @@ struct MineServiceSheet: View {
                 .appTextSize()
                 .environment(\.videoTransitionNamespace, videoTransition)
                 .navigationTransition(.zoom(sourceID: nowPlaying.transitionSourceID, in: videoTransition))
-                .background { VideoPagePresentationObserver(onDidAppear: nowPlaying.videoPageDidAppear) }
+                .background { VideoPagePresentationObserver(
+                    onDidAppear: nowPlaying.videoPageDidAppear,
+                    onInteractionBegan: nowPlaying.videoPageInteractionBegan,
+                    onInteractionEnded: nowPlaying.videoPageInteractionEnded
+                ) }
         }
     }
 

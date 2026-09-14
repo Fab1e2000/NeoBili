@@ -7,6 +7,30 @@ import XCTest
 /// injected by the tests below; no PlayerViewModel/MPV/network is needed.
 @MainActor
 final class PlayerGlassStyleTests: XCTestCase {
+    func testDanmakuUsesTopRowAndFooterFillsWidthForEveryAspectRatio() {
+        for width: CGFloat in [288, 361, 788] {
+            for height: CGFloat in [96, 130, 152, 210, 320, 820] {
+                for fullscreen in [false, true] {
+                    let bounds = CGRect(x: 16, y: 6, width: width, height: height)
+                    let layout = PlayerChromeLayout(bounds: bounds, isFullScreen: fullscreen,
+                        hasVideoQuality: true, hasAudioQuality: true, hasDanmaku: true,
+                        videoQualityWidth: 140, audioQualityWidth: 100)
+                    XCTAssertEqual(layout.audioQuality.midY, layout.danmaku.midY)
+                    XCTAssertEqual(layout.danmaku.midY, layout.more.midY)
+                    XCTAssertLessThan(layout.audioQuality.maxX, layout.danmaku.minX)
+                    XCTAssertLessThan(layout.danmaku.maxX, layout.more.minX)
+                    XCTAssertEqual(layout.timeline.minX, bounds.minX)
+                    XCTAssertEqual(layout.timeline.maxX + 6, layout.fullScreen.minX)
+                    XCTAssertEqual(layout.fullScreen.maxX, bounds.maxX)
+                    XCTAssertEqual(layout.timeline.midY, layout.fullScreen.midY)
+                    XCTAssertTrue(layout.secondaryActions.isEmpty)
+                    XCTAssertGreaterThanOrEqual(layout.videoQuality.width, 48)
+                    XCTAssertLessThan(layout.back.maxX, layout.videoQuality.minX)
+                }
+            }
+        }
+    }
+
     func testQualityPillsUseTheirOwnMeasuredWidthAndKeepMinimumHitArea() {
         let bounds = CGRect(x: 28, y: 12, width: 818, height: 361)
         let short = PlayerChromeLayout(bounds: bounds, isFullScreen: true,
@@ -99,13 +123,15 @@ final class PlayerGlassStyleTests: XCTestCase {
             for height: CGFloat in [48, 75, 96, 130, 151, 152, 157, 175, 176, 212, 320, 560, 820] {
                 let bounds = CGRect(x: 16, y: 6, width: width, height: height)
                 let layout = PlayerChromeLayout(bounds: bounds)
-                XCTAssertEqual(layout.transport.midX, bounds.midX, accuracy: 0.001)
-                XCTAssertEqual(layout.transport.midY, bounds.midY, accuracy: 0.001)
-                XCTAssertEqual(layout.back.minX, bounds.minX, accuracy: 0.001)
+                if !layout.transport.isEmpty {
+                    XCTAssertEqual(layout.transport.midX, bounds.midX, accuracy: 0.001)
+                    XCTAssertEqual(layout.transport.midY, bounds.midY, accuracy: 0.001)
+                }
+                if !layout.back.isEmpty { XCTAssertEqual(layout.back.minX, bounds.minX, accuracy: 0.001) }
                 XCTAssertEqual(layout.fullScreen.maxX, bounds.maxX, accuracy: 0.001)
                 if layout.mode == .minimal {
-                    XCTAssertEqual(layout.fullScreen.midY, layout.transport.midY, accuracy: 0.001)
-                    XCTAssertLessThan(layout.more.maxX, layout.fullScreen.minX)
+                    XCTAssertTrue(layout.transport.isEmpty)
+                    XCTAssertTrue(layout.more.isEmpty)
                 } else {
                     XCTAssertEqual(layout.back.minY, bounds.minY, accuracy: 0.001)
                     XCTAssertEqual(layout.more.minY, bounds.minY, accuracy: 0.001)
@@ -148,7 +174,7 @@ final class PlayerGlassStyleTests: XCTestCase {
     }
 
     func testQualityMenusYieldToMoreOnShortFramesAndToTheTitleOnlyWhenSpaceAllows() {
-        for height: CGFloat in [48, 75, 95, 96, 130, 151] {
+        for height: CGFloat in [48, 75, 95] {
             let layout = PlayerChromeLayout(bounds: CGRect(x: 16, y: 6, width: 361, height: height),
                                             hasVideoQuality: true, hasAudioQuality: true)
             XCTAssertTrue(layout.videoQuality.isEmpty)
@@ -467,6 +493,7 @@ private struct PlayerGlassScreenFixture: View {
                               isWaiting: state == .loading, isLive: isLive,
                               isFullScreen: fullScreen, hasError: state == .error,
                               safeAreaInsets: fullScreen ? safeAreaInsets : EdgeInsets(),
+                              isDanmakuEnabled: true, showsDanmakuToggle: true, onToggleDanmaku: {},
                               onToggleCompact: fullScreen ? nil : {}) {
                 Menu("定时休眠") { Button("30 分钟") {} }
             }

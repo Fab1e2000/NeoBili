@@ -187,7 +187,7 @@ struct VideoPage: View {
                             .allowsHitTesting(false)
                     }
                     .background {
-                        PlayerReturnGestureGuard(enabled: canInteractWithVideoCollapse && videoCollapseDistance > 0,
+                        PlayerReturnGestureGuard(enabled: spacePath.isEmpty,
                                                  verticalOnly: true)
                             .allowsHitTesting(false)
                     }
@@ -373,7 +373,8 @@ struct VideoPage: View {
     }
 
     private var canInteractWithVideoCollapse: Bool {
-        store.isExpanded && spacePath.isEmpty && !isFullScreen && store.route != nil
+        store.isExpanded && !store.isVideoPageInteractionInProgress
+            && spacePath.isEmpty && !isFullScreen && store.route != nil
             && store.player?.errorMessage == nil && viewModel?.errorMessage == nil
     }
 

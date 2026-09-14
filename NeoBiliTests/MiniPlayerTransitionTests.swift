@@ -57,6 +57,9 @@ final class MiniPlayerTransitionTests: XCTestCase {
             if fixture.didDismiss { break }
         }
         let final = try XCTUnwrap(samples.last, "Capture an intermediate native zoom frame, not only the destination ID")
+        let geometry = XCTAttachment(string: "target=\(target), expanded=\(expanded), final=\(final), window=\(window.bounds)")
+        geometry.lifetime = .keepAlways
+        add(geometry)
         XCTAssertLessThan(abs(final.midX - target.midX), 45)
         XCTAssertLessThan(abs(final.midY - target.midY), 60,
                           "The shrinking page must approach the mini's actual lower docking position, not the original top card")

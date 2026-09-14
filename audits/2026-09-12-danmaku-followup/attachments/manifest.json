@@ -1,0 +1,32 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00008150-001059D21A03C01C",
+        "deviceName" : "iPhone",
+        "exportedFileName" : "214C41E3-E410-49BE-8348-844DFF54432F.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "danmaku-solid-fill_0_7F56F910-54A1-4C71-B567-96725CC487DF.png",
+        "timestamp" : 1789206257.724
+      }
+    ],
+    "testIdentifier" : "DanmakuRegressionTests/testOutlineDoesNotDarkenOpaqueGlyphInteriors()",
+    "testIdentifierURL" : "test://com.apple.xcode/NeoBili/NeoBiliTests/DanmakuRegressionTests/testOutlineDoesNotDarkenOpaqueGlyphInteriors"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "00008150-001059D21A03C01C",
+        "deviceName" : "iPhone",
+        "exportedFileName" : "841CDB4E-D72B-43BA-A838-B52E5B5F9AE0.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "late-live-avatar-badge_0_767F65A6-A524-4C0D-BA7C-DF429C518DF6.png",
+        "timestamp" : 1789206258.424
+      }
+    ],
+    "testIdentifier" : "FollowingContextMenuTests/testLateLiveStateIsVisibleNearTopOfAlreadyExpandedSidebar()",
+    "testIdentifierURL" : "test://com.apple.xcode/NeoBili/NeoBiliTests/FollowingContextMenuTests/testLateLiveStateIsVisibleNearTopOfAlreadyExpandedSidebar"
+  }
+]

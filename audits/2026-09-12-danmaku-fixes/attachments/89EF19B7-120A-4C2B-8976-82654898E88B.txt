@@ -1,0 +1,3 @@
+roomID=7734200
+connected=true
+receivedMessages=23

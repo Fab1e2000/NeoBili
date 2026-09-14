@@ -231,6 +231,7 @@ final class MPVEngine: @unchecked Sendable {
     /// `layer` 只是取一次它的地址交给 mpv 的 `wid` 选项，不需要长期持有——
     /// 渲染层本身的生命周期由 `MPVMetalViewController` 管。
     func start(renderingInto layer: MPVMetalLayer) {
+        attachedLayer = layer
         guard let mpv = mpv_create() else {
             dispatchToMain { [weak self] in self?.onEvent?(.error("mpv 初始化失败")) }
             return
@@ -238,7 +239,9 @@ final class MPVEngine: @unchecked Sendable {
         self.mpv = mpv
 
 #if DEBUG
-        mpv_request_log_messages(mpv, "debug")
+        // debug 级日志每个解封装包都有数条，每条都会变成一个事件挤进
+        // 事件队列；排查 mpv 内部问题时临时改回 "debug"。
+        mpv_request_log_messages(mpv, "warn")
 #else
         mpv_request_log_messages(mpv, "no")
 #endif
@@ -294,12 +297,14 @@ final class MPVEngine: @unchecked Sendable {
     }
 
     func play() {
-        guard let mpv else { return }
+        // 销毁块对 mpv 指针的置空发生在 eventQueue 上；这里的主线程读取
+        // 靠 isStopped 同步挡住，否则就是正式的数据竞争。
+        guard !isStopped, let mpv else { return }
         setFlag(mpv, name: "pause", value: false)
     }
 
     func pause() {
-        guard let mpv else { return }
+        guard !isStopped, let mpv else { return }
         setFlag(mpv, name: "pause", value: true)
     }
 
@@ -315,7 +320,7 @@ final class MPVEngine: @unchecked Sendable {
     }
 
     func seek(to seconds: TimeInterval) {
-        guard let mpv else { return }
+        guard !isStopped, let mpv else { return }
         sendCommand(mpv, ["seek", String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), seconds), "absolute+exact"])
     }
 
@@ -329,28 +334,34 @@ final class MPVEngine: @unchecked Sendable {
         // 时候被释放，mpv 都不会再摸到一块已经释放的内存。
         mpv_set_wakeup_callback(mpv, nil, nil)
 
-        // 用 `sync` 而不是 `async`：一是要和 `drainEvents()` 借用同一个串行
-        // 队列排好顺序——mpv 规定销毁期间不能有别的调用在并发访问同一个
-        // handle；二是要保证这个函数真正返回时 mpv 已经销毁完了。调用方
-        // 紧接着往往会释放整条对象链，如果销毁还没做完，mpv 内部线程可能
-        // 会在这条链已经被回收之后还去碰它。
-        eventQueue.sync {
+        // 销毁要在 eventQueue 上排队（与 drainEvents 串行，满足 mpv 的
+        // 「销毁期间不能并发访问」约束），但改成 async：mpv_terminate_destroy
+        // 要拆掉解码管线和 Vulkan 设备，主线程同步等它会卡住切画质/关页的
+        // 转场动画几十毫秒。block 强持有 engine（连带保持 `wid` 指向的渲染
+        // 层引用），销毁完成前对象链不会被释放，原来的时序保证不变。
+        let layer = attachedLayer
+        eventQueue.async { [self] in
             var pauseFlag: Int32 = 1
             mpv_set_property(mpv, "pause", MPV_FORMAT_FLAG, &pauseFlag)
             mpv_terminate_destroy(mpv)
             self.mpv = nil
+            _ = layer
         }
     }
+
+    /// `start(renderingInto:)` 记下的渲染层；stop 的异步销毁要强持有它，
+    /// 保证 mpv 内部线程销毁完成前 wid 指针始终有效。
+    private weak var attachedLayer: MPVMetalLayer?
 
     /// 回前台后画面有时不会自动恢复；先关视频轨道，回前台再打开，强制让
     /// 渲染表面重新建立一次。
     func enterBackground() {
-        guard let mpv else { return }
+        guard !isStopped, let mpv else { return }
         mpv_set_property_string(mpv, "vid", "no")
     }
 
     func enterForeground() {
-        guard let mpv else { return }
+        guard !isStopped, let mpv else { return }
         mpv_set_property_string(mpv, "vid", "auto")
     }
 
@@ -385,10 +396,33 @@ final class MPVEngine: @unchecked Sendable {
 
     private func drainEvents() {
         guard let mpv else { return }
+        // mpv 对 time-pos 基本每个视频帧发一次变化事件；一次唤醒经常携带
+        // 一整批。连续的 time-pos 合并成最后一条再派发（其余事件照常逐条、
+        // 按原顺序处理），主线程的跳转次数从每帧一次降到每批一次。
+        var pendingPosition: Double?
         while true {
             guard let event = mpv_wait_event(mpv, 0) else { break }
             if event.pointee.event_id == MPV_EVENT_NONE { break }
+            if event.pointee.event_id == MPV_EVENT_PROPERTY_CHANGE,
+               let raw = event.pointee.data {
+                let property = raw.assumingMemoryBound(to: mpv_event_property.self).pointee
+                if let namePointer = property.name,
+                   property.format == MPV_FORMAT_DOUBLE,
+                   strcmp(namePointer, "time-pos") == 0,
+                   let value = property.data?.assumingMemoryBound(to: Double.self).pointee,
+                   value.isFinite {
+                    pendingPosition = max(value, 0)
+                    continue
+                }
+                if let pending = pendingPosition {
+                    pendingPosition = nil
+                    dispatchToMain { [weak self] in self?.handlePosition(pending) }
+                }
+            }
             handle(event: event)
+        }
+        if let pending = pendingPosition {
+            dispatchToMain { [weak self] in self?.handlePosition(pending) }
         }
     }
 
@@ -528,6 +562,10 @@ final class MPVMetalViewController: UIViewController {
                 displayAspectRatio = ratio
                 if isViewLoaded { layoutMetalLayer() }
             }
+            // UIKit owns the interactive zoom until completion (including a
+            // cancelled gesture). Keep decoding, but avoid rebuilding SwiftUI
+            // and injecting text bitmaps into that transition's transaction.
+            if case .position = event, transitionCoordinator != nil { return }
             onEvent?(event)
         }
     }
@@ -589,6 +627,11 @@ final class MPVMetalViewController: UIViewController {
     }
 
     private func layoutMetalLayer() {
+        // The outer UIKit zoom already interpolates geometry. An implicit
+        // animation on the Metal sublayer starts a second easing at release.
+        CATransaction.begin()
+        if transitionCoordinator != nil { CATransaction.setDisableActions(true) }
+        defer { CATransaction.commit() }
         guard stableSurfaceSize.width > 0, stableSurfaceSize.height > 0 else {
             metalLayer.frame = view.bounds
             return

@@ -108,8 +108,13 @@ final class SystemNowPlayingCenter {
         elapsed = max(value, 0)
         let second = Int(elapsed.rounded(.down))
         guard force || second != lastPublishedSecond else { return }
-        lastPublishedSecond = second
-        publish()
+        // 播放中锁屏会按 playbackRate 自己外推已播时间，无需每秒一次
+        // nowPlayingInfo IPC（一次同步 XPC，偶尔几十毫秒）。这里只记下
+        // 最新进度，暂停/seek/切歌（state 或 force 路径）时才真正发布。
+        if force || playbackRate == 0 {
+            lastPublishedSecond = second
+            publish()
+        }
     }
 
     func updatePlaybackState(isPlaying: Bool, sessionID: UUID) {
