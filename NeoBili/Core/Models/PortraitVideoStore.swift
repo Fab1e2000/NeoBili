@@ -5,7 +5,10 @@ import Observation
 @MainActor @Observable
 final class PortraitVideoStore {
     static let shared = PortraitVideoStore(metadataLoader: loadMetadata)
-    private static let maximumConcurrentRequests = 50
+    // 旧值 50：一次滚一页（20 张无缓存画幅卡片）就是 20 路并发详情请求，
+    // 带宽和 CPU 双尖峰，还极易触发接口风控连累正常请求。6 路足够在
+    // 半秒内消化一页，请求集合不变，只改节奏。
+    private static let maximumConcurrentRequests = 6
 
     struct Request: Sendable {
         let bvid: String

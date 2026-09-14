@@ -7,9 +7,31 @@ import XCTest
 /// local data. Running them requires a connected device; no Simulator is used.
 @MainActor
 final class FollowingContextMenuTests: XCTestCase {
+    func testLateLiveStateIsVisibleNearTopOfAlreadyExpandedSidebar() async throws {
+        let fixture = try await makeFixture()
+        defer { fixture.dismiss() }
+        fixture.probe.additional = (3...30).map {
+            FollowedUp(mid: $0, uname: "普通 UP \($0)", face: "", hasUpdate: false)
+        }
+        try await Task.sleep(for: .milliseconds(150))
+        fixture.probe.additional[27].liveRoomID = 3000
+        try await Task.sleep(for: .milliseconds(300))
+        fixture.window.layoutIfNeeded()
+        let live = try XCTUnwrap(fixture.collection.cellForItem(at: IndexPath(item: 2, section: 0)))
+        XCTAssertTrue(live.accessibilityLabel?.contains("普通 UP 30，正在直播") == true)
+        let image = UIGraphicsImageRenderer(bounds: fixture.window.bounds).image { _ in
+            fixture.window.drawHierarchy(in: fixture.window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "late-live-avatar-badge"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testOnlyLiveUPsOfferLiveRoomActionAndBothOfferProfileAction() throws {
         let controller = FollowingAvatarScrollController()
-        let live = FollowedUp(mid: 1, uname: "直播 UP", face: "", hasUpdate: false, liveRoomID: 100)
+        var additional: [FollowedUp] = []
+    let live = FollowedUp(mid: 1, uname: "直播 UP", face: "", hasUpdate: false, liveRoomID: 100)
         let ordinary = FollowedUp(mid: 2, uname: "普通 UP", face: "", hasUpdate: true)
         let liveActions = controller.contextMenu(for: live).children.compactMap { $0 as? UIAction }
         let ordinaryActions = controller.contextMenu(for: ordinary).children.compactMap { $0 as? UIAction }
@@ -175,6 +197,7 @@ private final class MenuProbe {
     var expanded = true
     var selection: FollowingSelection.ID = .up(1)
     let controller = FollowingAvatarScrollController()
+    var additional: [FollowedUp] = []
     let live = FollowedUp(mid: 1, uname: "直播 UP", face: "", hasUpdate: false, liveRoomID: 100)
     @ObservationIgnored var menuStates: [Bool] = []
     @ObservationIgnored var openedLive: [Int] = []
@@ -184,7 +207,7 @@ private struct MenuSidebarFixture: View {
     @Bindable var probe: MenuProbe
     var body: some View {
         FollowingCarousel(
-            items: [.all, .up(probe.live), .up(FollowedUp(mid: 2, uname: "普通 UP", face: "", hasUpdate: false))],
+            items: [.all, .up(probe.live), .up(FollowedUp(mid: 2, uname: "普通 UP", face: "", hasUpdate: false))] + probe.additional.map(FollowingSelection.up),
             focusedID: $probe.selection, side: .left, isExpanded: $probe.expanded,
             onSettled: { _ in }, onOpenUp: { _ in },
             onOpenLive: { probe.openedLive.append($0.mid) },

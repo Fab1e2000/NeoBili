@@ -67,7 +67,8 @@ struct PlayerReturnGestureGuard: UIViewRepresentable {
                 }
                 return false
             }
-            for recognizer in recognizers where !gates.contains(where: { $0.recognizer === recognizer }) {
+            for recognizer in recognizers where recognizer.state == .possible
+                && !gates.contains(where: { $0.recognizer === recognizer }) {
                 let gate = (recognizer.delegate as? DelegateGate) ?? DelegateGate(region: self, recognizer: recognizer)
                 gate.add(region: self)
                 gates.append(gate)
@@ -117,7 +118,7 @@ struct PlayerReturnGestureGuard: UIViewRepresentable {
             for region in regions.compactMap(\.value) where region.verticalOnly {
                 if region.containsInteraction(at: gestureRecognizer.location(in: region)),
                    let pan = gestureRecognizer as? UIPanGestureRecognizer,
-                   Self.isVertical(velocity: pan.velocity(in: region), translation: pan.translation(in: region)) {
+                   Self.isVertical(velocity: pan.velocity(in: region.window), translation: pan.translation(in: region.window)) {
                     return false
                 }
             }

@@ -39,6 +39,9 @@ final class LivePlayerModel {
     private var playbackRoomID: Int
     private var timeoutTask: Task<Void, Never>?
 
+    /// 拿到播放地址后是真实长房间号；之前是入口的短号。弹幕连接用它。
+    var danmakuRoomID: Int { playbackRoomID }
+
     init(room: LiveRoom,
          roomLoader: @escaping LiveRoomLoader = { try await LiveAPI.roomInfo(roomID: $0) },
          playbackLoader: @escaping LivePlaybackLoader = { try await LiveAPI.playback(roomID: $0, quality: $1) },

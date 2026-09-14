@@ -31,6 +31,7 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Networking/AppSigner.swift" \
    "$APP/Core/Networking/URL+Bili.swift" \
    "$APP/Core/UI/EnvironmentAction.swift" \
+   "$APP/Features/Danmaku/DanmakuModels.swift" \
    "$APP/Features/Home/HomeViewModel.swift" \
    "$HARNESS/src/Tests.swift" \
    "$HARNESS/src/Stubs.swift" \
@@ -103,6 +104,13 @@ swiftc -swift-version 6 -parse-as-library \
     "$HARNESS/src/FollowedLiveDirectoryRegression.swift" \
     -o "$BUILD_DIR/followed-live-directory"
 "$BUILD_DIR/followed-live-directory"
+
+# 直播弹幕 WebSocket 的二进制包编解码（真实生产代码，无依赖桩）。
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/Live/LivePacketCodec.swift" \
+    "$HARNESS/src/LivePacketCodecRegression.swift" \
+    -o "$BUILD_DIR/live-packet-codec"
+"$BUILD_DIR/live-packet-codec"
 
 # 直播关注直接编译生产状态模型；资料和写接口均为离线桩。
 swiftc -swift-version 6 -parse-as-library \

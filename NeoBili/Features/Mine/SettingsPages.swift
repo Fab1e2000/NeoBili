@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PlaybackSettingsView: View {
+    @AppStorage(DanmakuSettings.coloredEnabledKey) private var coloredDanmaku = true
     @AppStorage("neobili.preferredQuality") private var preferredQuality = 64
     @AppStorage(PlaybackQuality.audioStorageKey) private var preferredAudioQuality = 0
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
@@ -18,6 +19,9 @@ struct PlaybackSettingsView: View {
                         Text(option.title).tag(option.id)
                     }
                 }
+            }
+            Section("弹幕") {
+                Toggle("彩色弹幕", isOn: $coloredDanmaku)
             }
             Section("播放方式") {
                 Toggle("小窗播放", isOn: $miniPlayerEnabled)

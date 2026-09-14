@@ -20,7 +20,10 @@ struct RelatedVideosSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // Lazy 化：相关视频一次二三十条，普通 VStack 会把全部封面同时
+        // 送去下载和解码，打开视频页就是一次 CPU/带宽尖峰。行的外观与
+        // 分隔线逻辑保持不变。
+        LazyVStack(alignment: .leading, spacing: 0) {
             if visibleVideos.isEmpty {
                 if isLoading || videos.hasPendingVideoDimensions(hidesPortraitVideos) {
                     LoadingTaskAnchor()

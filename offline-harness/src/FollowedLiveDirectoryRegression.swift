@@ -3,7 +3,7 @@ import Foundation
 // Only the unused default network entry point is stubbed. Every test injects a
 // controlled loader into the production FollowedLiveDirectory implementation.
 enum LiveAPI {
-    static func followed(page: Int) async throws -> LiveRoomPage {
+    static func followedUsers() async throws -> LiveRoomPage {
         preconditionFailure("Offline regression must never call a network loader")
     }
 }

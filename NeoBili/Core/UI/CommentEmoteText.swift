@@ -5,12 +5,11 @@ import UIKit
 ///
 /// 表情要嵌在文字行里，所以不能用普通的异步图片视图——`Text` 只接受已经就绪、
 /// 且尺寸正确的 `Image`。这里按 URL 把**原图**下载并缓存一份；拼进 `Text` 前
-/// 再按当时的字号就地缩放。
+/// 再按当时的字号缩放。
 ///
-/// 缩放结果刻意不落缓存：表情高度跟着文字档位走（见 `CommentEmoteText`），
-/// 档位一变就要按新尺寸重排，如果按「URL + 高度」缓存，改档位后旧图全部
-/// 命不中、还得重新下载一遍才能显示。原图只下一遍，缩放是本地的小图重绘，
-/// 代价可以忽略。
+/// 缩放结果按「URL + 目标高度」记忆化（NSCache，内存压力下自动淘汰）：
+/// 滚动期同一行会随列表重建反复求值，每次都重绘小图会叠成持续的主线程
+/// CPU。文字档位变了 key 随之变化，不存在旧档位图冒充新档位的问题。
 @MainActor
 @Observable
 final class CommentEmoteStore {
@@ -18,11 +17,23 @@ final class CommentEmoteStore {
 
     private var originals: [URL: UIImage] = [:]
     private var loading: Set<URL> = []
+    private let scaledCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 800
+        cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
 
     /// 已经就绪的表情，按目标高度缩放好。原图没就绪时返回 nil，调用方按原文显示。
     func image(for url: URL, height: CGFloat) -> Image? {
+        let key = "\(url.absoluteString)|\(Int(height * 100))" as NSString
+        if let cached = scaledCache.object(forKey: key) {
+            return Image(uiImage: cached)
+        }
         guard let original = originals[url] else { return nil }
-        return Image(uiImage: Self.scaled(original, toHeight: height))
+        let scaled = Self.scaled(original, toHeight: height)
+        scaledCache.setObject(scaled, forKey: key, cost: Self.pixelCost(scaled))
+        return Image(uiImage: scaled)
     }
 
     /// 把这条评论用到的表情原图都取回来。重复调用不会重复下载。
@@ -52,13 +63,20 @@ final class CommentEmoteStore {
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
 
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let original = UIImage(data: data),
-              original.size.height > 0
-        else { return }
+        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return }
+        // 解码 + 逐像素裁边是这条路径最贵的两步（大表情可达数百 KB 像素），
+        // 全部挪出主线程；MainActor 只做一次字典赋值。
+        let prepared = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let original = UIImage(data: data), original.size.height > 0 else { return nil }
+            return Self.trimmed(original) ?? original
+        }.value
+        guard let prepared else { return }
+        originals[url] = prepared
+    }
 
-        // 裁掉透明边再入库，原因见 `trimmed`。
-        originals[url] = Self.trimmed(original) ?? original
+    private static func pixelCost(_ image: UIImage) -> Int {
+        guard let cg = image.cgImage else { return 0 }
+        return cg.width * cg.height * 4
     }
 
     /// 裁掉表情四周的透明留白。
@@ -66,7 +84,7 @@ final class CommentEmoteStore {
     /// `Text` 里的图片按「图片底边贴文字基线」排版（已用像素级实验验证）。
     /// 很多表情 PNG 自带一圈透明边，底部那一段会把画面整个架高，表情看
     /// 起来浮在文字上方；裁掉之后画面本体真正贴住基线，与文字底边对齐。
-    private static func trimmed(_ image: UIImage) -> UIImage? {
+    private nonisolated static func trimmed(_ image: UIImage) -> UIImage? {
         guard let cg = image.cgImage else { return nil }
         let width = cg.width, height = cg.height
         guard width > 0, height > 0 else { return nil }
@@ -115,7 +133,7 @@ final class CommentEmoteStore {
     }
 
     /// `Text` 里的图片是按点尺寸原样画的，没法再 resize，所以在这里就缩到位。
-    private static func scaled(_ image: UIImage, toHeight height: CGFloat) -> UIImage {
+    private nonisolated static func scaled(_ image: UIImage, toHeight height: CGFloat) -> UIImage {
         let size = CGSize(width: height * image.size.width / image.size.height, height: height)
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = UITraitCollection.current.displayScale

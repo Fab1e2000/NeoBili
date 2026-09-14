@@ -43,6 +43,7 @@ struct FollowingView: View {
     private struct LiveRefreshContext: Hashable {
         let isActive: Bool
         let accountID: Int?
+        let isLoggedIn: Bool
         let generation: Int
     }
 
@@ -230,7 +231,7 @@ struct FollowingView: View {
             viewModel.reconcileCarouselSelection()
         }
         .task(id: LiveRefreshContext(isActive: isFollowingVisible && scenePhase == .active,
-                                     accountID: account.accountID, generation: liveRefreshGeneration)) {
+                                     accountID: account.accountID, isLoggedIn: account.isLoggedIn, generation: liveRefreshGeneration)) {
             guard isFollowingVisible, scenePhase == .active, account.isLoggedIn else { return }
             let directory = viewModel.liveDirectory
             while !Task.isCancelled {
