@@ -19,6 +19,8 @@ struct InlineVideoPlayer: View {
     var videoSubtitle = ""
     var shareURL: URL?
 
+    @AppStorage(DanmakuSettings.videoEnabledKey) private var danmakuEnabled = DanmakuSettings.defaultValue
+
     var body: some View {
         ZStack {
             Color.black
@@ -30,6 +32,12 @@ struct InlineVideoPlayer: View {
             // 反而会让 SwiftUI 拆掉正在渲染的那一层，出现有声音没画面。
             PlayerSurface(session: viewModel.session)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if let danmaku = viewModel.danmaku {
+                DanmakuView(controller: danmaku, isFullScreen: isFullScreen, isSuppressed: isCompact)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
 
             if !viewModel.hasRenderedFirstFrame, let coverURL {
                 BiliImage(url: coverURL)
@@ -63,5 +71,17 @@ struct InlineVideoPlayer: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .onAppear { syncDanmaku() }
+        .onChange(of: viewModel.hasRenderedFirstFrame) { syncDanmaku() }
+        .onChange(of: danmakuEnabled) { syncDanmaku() }
+        // 换视频（相关视频、换P）会换掉整个 PlayerViewModel，但本视图身份
+        // 不变——onAppear 和 onChange 都不会再触发，必须跟着播放器实例走。
+        .task(id: ObjectIdentifier(viewModel)) { syncDanmaku() }
+    }
+
+    /// 开关状态与控制器保持一致：打开时确保已创建并加载，关闭时立即释放。
+    private func syncDanmaku() {
+        if !danmakuEnabled { viewModel.disableDanmaku() }
+        else if viewModel.hasRenderedFirstFrame { viewModel.ensureDanmaku() }
     }
 }

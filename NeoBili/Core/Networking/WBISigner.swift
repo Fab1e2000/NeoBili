@@ -80,6 +80,15 @@ actor WBISigner {
            Self.isCacheFresh(savedAt: cachedAt) {
             return cached
         }
+        // 断网/风控期间 nav 必失败：不设冷却的话，之后每个 WBI 请求都会立刻
+        // 再发一次 nav，形成请求风暴。失败后 30 秒冷却期内直接重抛最后一次
+        // 的错误，不再发起新的 nav；成功路径的行为不变。
+        if let lastFailedAt,
+           let lastError,
+           Date().timeIntervalSince(lastFailedAt) < Self.navFailureCooldown {
+            if let refreshTask { return try await refreshTask.value }
+            throw lastError
+        }
         if let refreshTask {
             return try await refreshTask.value
         }
@@ -95,14 +104,27 @@ actor WBISigner {
         refreshTask = task
         defer { refreshTask = nil }
 
-        let key = try await task.value
-        let now = Date()
-        cachedMixinKey = key
-        cachedAt = now
-        defaults.set(key, forKey: mixinKeyDefaultsKey)
-        defaults.set(now.timeIntervalSince1970, forKey: savedAtDefaultsKey)
-        return key
+        do {
+            let key = try await task.value
+            let now = Date()
+            cachedMixinKey = key
+            cachedAt = now
+            lastFailedAt = nil
+            lastError = nil
+            defaults.set(key, forKey: mixinKeyDefaultsKey)
+            defaults.set(now.timeIntervalSince1970, forKey: savedAtDefaultsKey)
+            return key
+        } catch {
+            lastFailedAt = Date()
+            lastError = error
+            throw error
+        }
     }
+
+    /// nav 最近一次失败的时间与错误；冷却期内不再发起新的 nav 请求。
+    private var lastFailedAt: Date?
+    private var lastError: Error?
+    private static let navFailureCooldown: TimeInterval = 30
 
     /// WBI 图片密钥并不需要按小时刷新。PiliPlus 也是把同一天拿到的密钥直接
     /// 持久复用；这样重新打开 App 后，首页推荐和第一个视频都能立刻签名，

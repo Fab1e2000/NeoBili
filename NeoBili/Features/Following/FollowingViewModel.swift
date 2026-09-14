@@ -111,8 +111,10 @@ final class FollowingViewModel {
 
     func loadInitial() async {
         async let upList: Void = loadUpsIfNeeded()
+        async let live: Void = liveDirectory.refresh()
         await feed.loadInitial()
         await upList
+        await live
     }
 
     func refresh(staged: Bool = false, stagingID: UUID? = nil) async {

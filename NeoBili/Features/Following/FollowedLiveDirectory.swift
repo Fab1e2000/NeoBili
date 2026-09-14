@@ -13,7 +13,7 @@ final class FollowedLiveDirectory {
     private let loader: Loader
     private let now: () -> Date
 
-    init(loader: @escaping Loader = { try await LiveAPI.followed(page: $0) }, now: @escaping () -> Date = Date.init) {
+    init(loader: @escaping Loader = { _ in try await LiveAPI.followedUsers() }, now: @escaping () -> Date = Date.init) {
         self.loader = loader
         self.now = now
     }

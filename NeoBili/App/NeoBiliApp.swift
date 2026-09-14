@@ -11,6 +11,13 @@ struct NeoBiliApp: App {
         // just sit unflushed instead of reaching `devicectl --console`.
         setvbuf(stdout, nil, _IONBF, 0)
 
+        // 封面/头像的压缩数据完全依赖 URLSession 的 HTTP 缓存（解码位图另有
+        // 内存缓存）。系统默认 URLCache 只有几百 KB 内存 / 10MB 磁盘，feed 场景
+        // 必然抖动回源；放大后回滚列表和二次进页直接命中磁盘。
+        URLCache.shared = URLCache(memoryCapacity: 64 * 1024 * 1024,
+                                   diskCapacity: 256 * 1024 * 1024,
+                                   directory: nil)
+
         // 「有声音没画面」只在真机上复现，诊断日志同时进 Xcode 控制台和沙盒文件，
         // 事后整份拉下来看。每次冷启动清空，拉到的就只有本轮复现的记录。
 

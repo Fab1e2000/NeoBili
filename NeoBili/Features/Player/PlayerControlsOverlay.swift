@@ -23,6 +23,7 @@ struct PlayerControlsOverlay: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var keepsControlsForMenu = false
     @State private var isAddingWatchLater = false
+    @AppStorage(DanmakuSettings.videoEnabledKey) private var danmakuEnabled = DanmakuSettings.defaultValue
 
     private var isWaiting: Bool { !viewModel.hasRenderedFirstFrame || viewModel.isLoading || viewModel.isBuffering }
     private var showsControls: Bool { controlsVisible || viewModel.errorMessage != nil }
@@ -56,6 +57,8 @@ struct PlayerControlsOverlay: View {
                     isPlaying: viewModel.isPlaying, canControlPlayback: canControlPlayback, isWaiting: isWaiting,
                     isFullScreen: isFullScreen, isCompact: isCompact,
                     hasError: viewModel.errorMessage != nil, safeAreaInsets: controlsSafeAreaInsets,
+                    isDanmakuEnabled: danmakuEnabled, showsDanmakuToggle: true,
+                    onToggleDanmaku: { danmakuEnabled.toggle() },
                     onBack: { if isFullScreen { onToggleFullScreen() } else { onDismiss?() } },
                     onTogglePlayback: togglePlayback,
                     onToggleFullScreen: { onToggleFullScreen(); scheduleAutoHide() },

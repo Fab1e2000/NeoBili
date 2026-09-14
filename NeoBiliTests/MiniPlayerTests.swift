@@ -25,6 +25,51 @@ final class MiniPlayerTests: XCTestCase {
 
     // Keep lifecycle tests synchronous. Every store is closed before this main
     // actor turn ends, so its queued metadata/stream loads never start.
+    func testCancelledInteractiveExitRetainsPageAndCanDismissAgain() throws {
+        for miniEnabled in [true, false] {
+            let defaults = try makeDefaults()
+            defaults.set(miniEnabled, forKey: PlaybackWindowSettings.storageKey)
+            let store = NowPlayingStore(defaults: defaults)
+            defer { store.close() }
+            store.open(route(), from: "card")
+            store.videoPageDidAppear()
+            let player = try XCTUnwrap(store.player)
+            let source = store.transitionSourceID
+            store.videoPageInteractionBegan()
+            XCTAssertTrue(store.isVideoPageInteractionInProgress)
+            XCTAssertTrue(store.isExpanded)
+            XCTAssertFalse(store.isMiniPlayerPresented)
+            store.videoPageDidAppear()
+            XCTAssertEqual(store.transitionSourceID, source)
+            store.dismissVideoPage()
+            store.videoPageInteractionEnded(cancelled: true)
+            XCTAssertTrue(store.isExpanded)
+            XCTAssertFalse(store.isVideoPageInteractionInProgress)
+            XCTAssertFalse(store.isVideoPageDismissalInProgress)
+            XCTAssertFalse(store.isMiniPlayerPresented)
+            XCTAssertNil(store.dismissalPlaybackPhase)
+            XCTAssertTrue(store.player === player)
+            XCTAssertEqual(player.session.surfacePresentation, .page)
+            store.finishDismissal() // A stale completion must not tear down the restored page.
+            XCTAssertTrue(store.player === player)
+            store.dismissVideoPage()
+            store.finishDismissal()
+            XCTAssertEqual(store.isMiniPlayerPresented, miniEnabled)
+        }
+    }
+
+    func testInteractiveCancellationBeforeBindingChangeClearsFrozenLayout() throws {
+        let store = NowPlayingStore(defaults: try makeDefaults())
+        defer { store.close() }
+        store.open(route(), from: "card")
+        store.videoPageInteractionBegan()
+        XCTAssertNotNil(store.dismissalPlaybackPhase)
+        store.videoPageInteractionEnded(cancelled: true)
+        XCTAssertNil(store.dismissalPlaybackPhase)
+        XCTAssertTrue(store.isExpanded)
+        XCTAssertFalse(store.isMiniPlayerPresented)
+    }
+
     func testPreferenceDefaultsToEnabledAndSupportsExplicitOff() throws {
         let defaults = try makeDefaults()
         XCTAssertTrue(PlaybackWindowSettings.isEnabled(in: defaults))

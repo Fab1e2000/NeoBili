@@ -16,6 +16,9 @@ struct LiveRoomView: View {
     @State private var requestedQuality: Int?
     @State private var hideTask: Task<Void, Never>?
     @State private var keepsControlsForMenu = false
+    @State private var danmaku = LiveDanmakuModel()
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(DanmakuSettings.liveEnabledKey) private var liveDanmakuEnabled = DanmakuSettings.defaultValue
 
     init(room: LiveRoom) { _player = State(initialValue: LivePlayerModel(room: room)) }
     init(player: LivePlayerModel) { _player = State(initialValue: player) }
@@ -53,6 +56,22 @@ struct LiveRoomView: View {
         .background { PlayerSafeAreaReader { controlsSafeArea = $0 }.allowsHitTesting(false) }
         .task(id: reloadID) { await player.load(quality: requestedQuality) }
         .task(id: followContext) { await following.load(followContext) }
+        // 真实房间号在播放地址返回后才更新；跟着它（重）连弹幕服务器。
+        // 列表常驻；飘幕开关只影响画面上的那层。
+        .task(id: "\(player.danmakuRoomID)-\(player.hasRenderedFirstFrame)") {
+            // Give the media request a short head start, but keep chat available if video stalls.
+            if !player.hasRenderedFirstFrame {
+                do { try await Task.sleep(for: .milliseconds(800)) } catch { return }
+            }
+            guard !Task.isCancelled else { return }
+            danmaku.start(roomID: player.danmakuRoomID)
+        }
+        // 退后台后直播 WS 必断，回前台主动重连，不等心跳超时才暴露。
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            danmaku.stop()
+            danmaku.start(roomID: player.danmakuRoomID)
+        }
         .actionFeedbackOverlay()
         .onChange(of: player.isPlaying) { scheduleHide(afterInteraction: false) }
         .onChange(of: voiceOverEnabled) { scheduleHide(afterInteraction: false) }
@@ -60,6 +79,7 @@ struct LiveRoomView: View {
         .onDisappear {
             hideTask?.cancel()
             player.stop()
+            danmaku.stop()
             OrientationController.enterPortrait()
         }
     }
@@ -72,11 +92,24 @@ struct LiveRoomView: View {
             if !player.hasRenderedFirstFrame, let cover = player.room.coverURL {
                 BiliImage(url: cover).aspectRatio(contentMode: .fit)
             }
+            // 全屏时弹幕直接铺在画面上；非全屏改用播放器下方的独立容器。
+            if isFullScreen, liveDanmakuEnabled {
+                LiveDanmakuFlowView(model: danmaku)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
             Color.clear.contentShape(Rectangle())
                 .onTapGesture {
                     controlsVisible.toggle()
                     scheduleHide()
                 }
+            if isFullScreen, liveDanmakuEnabled, let superChat = danmaku.superChats.first {
+                SuperChatBanner(item: superChat) { danmaku.hideSuperChat(superChat.id) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(.leading, 25)
+                    .padding(.bottom, 64)
+                    .allowsHitTesting(!showsControls)
+            }
             if (player.isLoading || player.isBuffering), !showsControls {
                 ProgressView().tint(.white).allowsHitTesting(false)
             }
@@ -102,6 +135,8 @@ struct LiveRoomView: View {
                     isLive: true, isFullScreen: isFullScreen,
                     hasError: player.errorMessage != nil || player.isOffline,
                     safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
+                    isDanmakuEnabled: liveDanmakuEnabled, showsDanmakuToggle: true,
+                    onToggleDanmaku: { liveDanmakuEnabled.toggle() },
                     onBack: { if isFullScreen { toggleFullScreen() } else { dismiss() } },
                     onTogglePlayback: { player.togglePlayback(); scheduleHide() },
                     onToggleFullScreen: toggleFullScreen,
@@ -136,6 +171,8 @@ struct LiveRoomView: View {
                                  isOwnAccount: followContext.isOwnAccount, onToggleFollow: toggleFollow)
                 LiveRoomIntroductionCard(room: player.room, isOffline: player.isOffline,
                                          isExpanded: $isIntroductionExpanded)
+                LiveDanmakuPanel(model: danmaku)
+                    .frame(height: 280)
                 if let error = player.errorMessage {
                     Label(error, systemImage: "wifi.exclamationmark")
                         .font(.callout)

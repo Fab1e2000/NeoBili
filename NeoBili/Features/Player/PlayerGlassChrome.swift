@@ -41,6 +41,23 @@ struct PlayerQualityControl {
     let onSelect: (Int) -> Void
 }
 
+/// 弹幕开关的「弹」字圆角徽标。SF Symbols 里没有贴近 B 站弹幕语义的符号，
+/// 自绘这个徽标与玻璃圆钮的视觉分量一致；关闭时整块降透明度。
+struct DanmakuBadge: View {
+    var isEnabled: Bool
+
+    var body: some View {
+        Text("弹")
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(isEnabled ? Color.white : Color.white.opacity(0.4))
+            .frame(width: 19, height: 21)
+            .overlay {
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(isEnabled ? Color.white : Color.white.opacity(0.4), lineWidth: 1.6)
+            }
+    }
+}
+
 /// 玻璃控制层只接收值与动作，便于在真机上独立检查每种画幅，不加载播放内核。
 struct PlayerGlassChrome<MenuContent: View>: View {
     var title = ""
@@ -59,6 +76,9 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     var isCompact = false
     var hasError = false
     var safeAreaInsets = EdgeInsets()
+    var isDanmakuEnabled = false
+    var showsDanmakuToggle = false
+    var onToggleDanmaku: (() -> Void)?
     var onBack: () -> Void = {}
     var onTogglePlayback: () -> Void = {}
     var onToggleFullScreen: () -> Void = {}
@@ -73,23 +93,40 @@ struct PlayerGlassChrome<MenuContent: View>: View {
         GeometryReader { geometry in
             // 横屏刘海位于侧边中段，上下按钮行只避让圆角；使用整个屏幕，包括视频两侧黑边。
             let usesScreenEdges = isFullScreen && geometry.size.width > geometry.size.height
-            let leading = usesScreenEdges ? 28 : safeAreaInsets.leading + 16
-            let trailing = usesScreenEdges ? 28 : safeAreaInsets.trailing + 16
-            let top = usesScreenEdges ? max(12, safeAreaInsets.top + 6) : safeAreaInsets.top + 6
+            let leading = usesScreenEdges ? 16 : safeAreaInsets.leading + 8
+            let trailing = usesScreenEdges ? 16 : safeAreaInsets.trailing + 8
+            let top = usesScreenEdges ? max(4, safeAreaInsets.top) : safeAreaInsets.top
             let bounds = CGRect(x: leading, y: top,
                                 width: max(0, geometry.size.width - leading - trailing),
-                                height: max(0, geometry.size.height - top - safeAreaInsets.bottom - 8))
+                                height: max(0, geometry.size.height - top - safeAreaInsets.bottom))
             let layout = PlayerChromeLayout(bounds: bounds, textScale: textScale, isFullScreen: isFullScreen,
                                             hasVideoQuality: videoQualityControl != nil,
                                             hasAudioQuality: audioQualityControl != nil,
+                                            hasDanmaku: showsDanmakuToggle && onToggleDanmaku != nil,
                                             videoQualityWidth: preferredWidth(videoQualityControl),
                                             audioQualityWidth: preferredWidth(audioQualityControl))
             GlassEffectContainer(spacing: 6) {
                 ZStack {
-                    backButton.chromeFrame(layout.back)
-                    settingsMenu(inlineQualities: !layout.videoQuality.isEmpty || !layout.audioQuality.isEmpty)
-                        .chromeFrame(layout.more)
+                    if !layout.back.isEmpty { backButton.chromeFrame(layout.back) }
+                    if !layout.more.isEmpty {
+                        settingsMenu(inlineQualities: !layout.videoQuality.isEmpty || !layout.audioQuality.isEmpty,
+                                     needsPlaybackAction: layout.transport.isEmpty)
+                            .chromeFrame(layout.more)
+                    }
                     fullScreenButton.chromeFrame(layout.fullScreen)
+                    if showsDanmakuToggle, let onToggleDanmaku, layout.danmaku != .zero {
+                        Button(action: onToggleDanmaku) {
+                            DanmakuBadge(isEnabled: isDanmakuEnabled)
+                                .frame(width: 32, height: 32)
+                                .glassEffect(.regular.interactive(), in: Circle())
+                                .frame(width: 48, height: 48)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(isDanmakuEnabled ? "关闭弹幕" : "开启弹幕")
+                        .accessibilityIdentifier("player.danmaku")
+                        .chromeFrame(layout.danmaku)
+                    }
                     if !hasError, let videoQualityControl, !layout.videoQuality.isEmpty {
                         qualityMenu(videoQualityControl, identifier: "player.videoQuality")
                             .chromeFrame(layout.videoQuality)
@@ -102,7 +139,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                         if !layout.metadata.isEmpty, !title.isEmpty {
                             metadata.chromeFrame(layout.metadata)
                         }
-                        if canControlPlayback || isWaiting {
+                        if !layout.transport.isEmpty && (canControlPlayback || isWaiting) {
                             Button(action: onTogglePlayback) {
                                 if isWaiting {
                                     ProgressView().tint(.white)
@@ -112,7 +149,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                                 } else {
                                     PlayerGlassCircleLabel(symbol: isPlaying ? "pause.fill" : "play.fill",
                                                            diameter: layout.transport.width,
-                                                           symbolSize: layout.mode == .expanded ? 40 : (layout.mode == .inline ? 27 : 20))
+                                                           symbolSize: layout.mode == .expanded ? 30 : 24)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -137,8 +174,14 @@ struct PlayerGlassChrome<MenuContent: View>: View {
 
     private func preferredWidth(_ control: PlayerQualityControl?) -> CGFloat? {
         guard let control else { return nil }
+        // 控制层可见时 body 以帧率重算；字体测量结果只取决于 (标题, 字号档位)，
+        // 记忆化后同帧不再重复测。
+        let memoKey = "\(control.title)|\(control.options.count)|\(textScale)" as NSString
+        if let memo = PlayerGlassWidthMemo.cache.object(forKey: memoKey) { return CGFloat(memo.doubleValue) }
         let font = UIFont.systemFont(ofSize: 12 * textScale, weight: .semibold)
-        return max(48, ceil((control.title as NSString).size(withAttributes: [.font: font]).width) + 24)
+        let width = max(48, ceil((control.title as NSString).size(withAttributes: [.font: font]).width) + 24)
+        PlayerGlassWidthMemo.cache.setObject(NSNumber(value: width), forKey: memoKey)
+        return width
     }
 
     private var transportTitle: String {
@@ -148,7 +191,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     }
 
     private var backButton: some View {
-        Button(action: onBack) { PlayerGlassCircleLabel(symbol: "chevron.left", hitDiameter: 48) }
+        Button(action: onBack) { PlayerGlassCircleLabel(symbol: "chevron.left", diameter: 32, symbolSize: 16, hitDiameter: 48) }
             .buttonStyle(.plain)
             .accessibilityLabel(isFullScreen ? "退出全屏" : "返回")
             .accessibilityIdentifier("player.back")
@@ -157,7 +200,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     private var fullScreenButton: some View {
         Button(action: onToggleFullScreen) {
             PlayerGlassCircleLabel(symbol: isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
-                                   hitDiameter: 48)
+                                   diameter: 32, symbolSize: 16, hitDiameter: 48)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isFullScreen ? "退出全屏" : "进入全屏")
@@ -167,15 +210,13 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     private var metadata: some View {
         VStack(spacing: 2) {
             Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-            if !subtitle.isEmpty {
-                Text(subtitle).font(.caption).foregroundStyle(.white.opacity(0.7))
-            }
         }
         .lineLimit(1)
         .minimumScaleFactor(0.8)
         .padding(.horizontal, 16)
-        .frame(maxHeight: .infinity)
+        .frame(height: 32)
         .playerGlassSurface(in: Capsule())
+        .frame(height: 48)
         .allowsHitTesting(false)
         .accessibilityIdentifier("player.metadata")
     }
@@ -191,8 +232,9 @@ struct PlayerGlassChrome<MenuContent: View>: View {
             }
             .foregroundStyle(.white)
             .padding(.horizontal, isMinimal ? 6 : 12)
-            .frame(height: 48)
+            .frame(height: 32)
             .playerGlassSurface(in: Capsule())
+            .frame(height: 48)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(isWaiting ? "正在连接直播" : "直播中")
@@ -215,8 +257,9 @@ struct PlayerGlassChrome<MenuContent: View>: View {
             .font(.caption.monospacedDigit())
             .foregroundStyle(.white)
             .padding(.horizontal, showsTimeLabels ? 12 : 6)
-            .frame(maxHeight: .infinity)
+            .frame(height: 32)
             .playerGlassSurface(in: Capsule())
+            .frame(height: 48)
             .accessibilityIdentifier("player.timeline")
         }
     }
@@ -244,8 +287,13 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     private var compactTitle: String { isCompact ? "展开视频画面" : "收起视频画面" }
     private var compactSymbol: String { isCompact ? "chevron.compact.up" : "chevron.compact.down" }
 
-    private func settingsMenu(inlineQualities: Bool) -> some View {
+    private func settingsMenu(inlineQualities: Bool, needsPlaybackAction: Bool) -> some View {
+        ZStack {
         Menu {
+            if needsPlaybackAction {
+                Button(isPlaying ? "暂停" : "播放", systemImage: isPlaying ? "pause.fill" : "play.fill", action: onTogglePlayback)
+                    .disabled(!canControlPlayback)
+            }
             // 极矮画幅装不下第二排；展开全屏即可使用独立画质、音质按钮。
             if !inlineQualities {
                 if let videoQualityControl { Menu(videoQualityControl.accessibilityLabel) { qualityOptions(videoQualityControl) } }
@@ -259,23 +307,21 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                     onMenuInteraction()
                 }
             }
-        } label: { PlayerGlassCircleLabel(symbol: "ellipsis", hitDiameter: 48) }
+        } label: {
+            Color.clear.frame(width: 48, height: 48).contentShape(Rectangle())
+        }
         .buttonStyle(PlayerMenuButtonStyle(onPress: onMenuInteraction))
         .accessibilityLabel("更多播放选项")
         .accessibilityIdentifier("player.more")
+            PlayerGlassCircleLabel(symbol: "ellipsis", diameter: 32, symbolSize: 16, hitDiameter: 48)
+                .allowsHitTesting(false).accessibilityHidden(true)
+        }
     }
 
     private func qualityMenu(_ control: PlayerQualityControl, identifier: String) -> some View {
+        ZStack {
         Menu { qualityOptions(control) } label: {
-            Text(control.title)
-                .font(.system(size: 12 * textScale, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48)
-                .glassEffect(.regular.interactive(), in: Capsule())
-                .contentShape(Rectangle())
+            Color.clear.frame(maxWidth: .infinity).frame(height: 48).contentShape(Rectangle())
         }
         .buttonStyle(PlayerMenuButtonStyle(onPress: onMenuInteraction))
         .menuIndicator(.hidden)
@@ -283,6 +329,15 @@ struct PlayerGlassChrome<MenuContent: View>: View {
         .accessibilityLabel(control.accessibilityLabel)
         .accessibilityValue(control.title)
         .accessibilityIdentifier(identifier)
+            Text(control.title)
+                .font(.system(size: 12 * textScale, weight: .semibold))
+                .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity).frame(height: 32)
+                .glassEffect(.regular, in: Capsule())
+                .opacity(control.isEnabled ? 1 : 0.4)
+                .allowsHitTesting(false).accessibilityHidden(true)
+        }
     }
 
     @ViewBuilder private func qualityOptions(_ control: PlayerQualityControl) -> some View {
@@ -296,10 +351,8 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     }
 }
 
-/// 直接观察原生按钮按下状态，不在 Menu 上叠加竞争点击的 Tap/Drag 手势。
 private struct PlayerMenuButtonStyle: ButtonStyle {
     let onPress: () -> Void
-
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.8 : 1)
@@ -307,6 +360,16 @@ private struct PlayerMenuButtonStyle: ButtonStyle {
                 if pressed { onPress() }
             }
     }
+}
+
+/// PlayerGlassChrome 是泛型类型放不下静态存储属性；字体测量的记忆化挂在这里。
+@MainActor
+private enum PlayerGlassWidthMemo {
+    static let cache: NSCache<NSString, NSNumber> = {
+        let cache = NSCache<NSString, NSNumber>()
+        cache.countLimit = 64
+        return cache
+    }()
 }
 
 private extension View {

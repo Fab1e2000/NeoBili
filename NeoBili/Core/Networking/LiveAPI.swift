@@ -18,12 +18,46 @@ enum LiveAPI {
         return payload.page(number: page, size: 9, onlyLive: true)
     }
 
+    static func followedUsers() async throws -> LiveRoomPage {
+        let payload: FollowedLiveUsersPayload = try await APIClient.shared.get(
+            path: "x/polymer/web-dynamic/v1/portal",
+            params: ["up_list_more": "1", "web_location": "333.1365"],
+            additionalHeaders: DynamicRequest.headers
+        )
+        return LiveRoomPage(rooms: payload.live_users.items, page: 1, hasMore: false)
+    }
+
     static func roomInfo(roomID: Int) async throws -> LiveRoom {
         guard roomID > 0 else { throw BiliAPIError.invalidURL }
         let payload: LiveRoomInfoPayload = try await request(path: "xlive/web-room/v1/index/getH5InfoByRoom", params: [
             "room_id": String(roomID)
         ], roomID: roomID)
         return payload.room
+    }
+
+    /// 弹幕服务器的认证 token 与候选地址（PiliPlus live.dart:159 的同一端点）。
+    static func danmuInfo(roomID: Int) async throws -> LiveDanmuInfoPayload {
+        guard roomID > 0 else { throw BiliAPIError.invalidURL }
+        return try await request(path: "xlive/web-room/v1/index/getDanmuInfo", params: [
+            "id": String(roomID), "type": "0", "web_location": "444.8"
+        ], roomID: roomID, signed: true)
+    }
+
+    /// 有效期内的 SC 列表（开播中进房时补齐已有 SC）。返回原始字典，
+    /// 字段与 WS 的 SUPER_CHAT_MESSAGE.data 完全同构，走同一条解析路径。
+    static func superChatList(roomID: Int) async throws -> [[String: Any]] {
+        guard roomID > 0 else { return [] }
+        let url = try makeURL(path: "av/v1/SuperChat/getMessageList", params: ["room_id": String(roomID)])
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.setValue("https://live.bilibili.com/\(roomID)", forHTTPHeaderField: "Referer")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              root["code"] as? Int == 0,
+              let payload = root["data"] as? [String: Any],
+              let list = payload["list"] as? [[String: Any]] else { return [] }
+        return list
     }
 
     /// PiliPlus live.dart 的同一套播放参数，公开 nav 密钥仍由现有 WBISigner 管理。
@@ -283,5 +317,15 @@ struct LivePlaybackPayload: Decodable {
         }
         return LivePlayback(roomID: roomID, liveStatus: live_status, isPortrait: is_portrait ?? false,
                             qualities: qualities, candidates: live_status == 1 ? candidates : [])
+    }
+}
+
+struct FollowedLiveUsersPayload: Decodable {
+    let live_users: Users
+    struct Users: Decodable { let items: [LiveRoom] }
+    enum CodingKeys: String, CodingKey { case live_users }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        live_users = try values.decodeIfPresent(Users.self, forKey: .live_users) ?? Users(items: [])
     }
 }

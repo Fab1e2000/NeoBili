@@ -110,6 +110,7 @@ struct Harness {
         await testWBICacheFreshness()
         await testLenientDynamicDecoding()
         await testFollowedUpLivePriority()
+        testDanmakuXMLParsing()
 
         if failures == 0 {
             print("ALL PASS")
@@ -135,6 +136,42 @@ struct Harness {
         expect(heldPriority.map(\.mid) == [3, 4, 1, 2, 5, 6], "直播排序保留既有读取动画的优先级判定")
         let invalid = FollowedUp(mid: 7, uname: "invalid", face: "", hasUpdate: false, liveRoomID: 0)
         expect(invalid.liveRoomID == nil, "无效直播间编号不能获得直播优先级")
+    }
+
+    // MARK: 弹幕 XML 解析
+
+    static func testDanmakuXMLParsing() {
+        // p 属性字段：时间(秒),类型,字号,颜色,发送时间戳,池,哈希,弹幕id
+        let xml = """
+        <i>
+        <chatserver>chat.bilibili.com</chatserver>
+        <maxlimit>1000</maxlimit>
+        <d p="12.5,1,25,16777215,1700000000,0,abc123,9001">前方高能</d>
+        <d p="13.0,4,25,16711680,1700000000,0,abc123,9002">底部弹幕</d>
+        <d p="14.2,5,25,65280,1700000000,0,abc123,9003">顶部弹幕</d>
+        <d p="15.0,7,25,16777215,1700000000,0,abc123,9004">{"高级弹幕不渲染"}</d>
+        <d p="16.0,6,25,16777215,1700000000,0,abc123,9005">逆向弹幕</d>
+        <d p="17.5,1,25,16777215,1700000000,0,abc123,9006">带[方括号]与转义&amp;测试</d>
+        <d p="18.0,1,25,16777215,1700000000,0,abc123,9007"></d>
+        <d p="不是数字,1,25,16777215,1700000000,0,abc123,9008">坏时间</d>
+        <d p="19.0,1,25,0,1700000000,0,abc123,9009">黑色弹幕</d>
+        </i>
+        """
+        let items = DanmakuLoader.parse(Data(xml.utf8))
+
+        // 保留：滚动 1、底部 4、顶部 5、转义文本（滚动）、黑色滚动；
+        // 丢弃：mode 7 高级、mode 6 逆向、空文本、坏时间。
+        expect(items.count == 5, "弹幕解析：只保留可渲染的类型且跳过无效条目")
+        expect(items[0].time == 12.5 && items[0].isScroll && !items[0].isTop, "mode 1 归类为滚动")
+        expect(items[1].time == 13.0 && !items[1].isScroll && !items[1].isTop, "mode 4 归类为底部")
+        expect(items[2].time == 14.2 && !items[2].isScroll && items[2].isTop, "mode 5 归类为顶部")
+        expect(items[4].color == 0, "颜色字段按十进制原样保留")
+        expect(items[0].text == "前方高能", "普通文本原样保留")
+        expect(items[3].text == "带[方括号]与转义&测试", "XML 转义实体还原为原文")
+
+        // 按时间排序 + 游标定位的输入契约由 prepare 保证，这里验证解析顺序稳定。
+        let times = items.map(\.time)
+        expect(times == times.sorted(), "解析结果保持文档顺序，排序交给引擎")
     }
 
     // MARK: 时长解析
@@ -288,42 +325,46 @@ struct Harness {
         defaults.removePersistentDomain(forName: "harness.cap")
 
         let total = 200
-        // 前 50 次调用挂住，观察并发上限；其余放行。
-        let recorder = LoaderRecorder(holdCount: 50)
+        // 前 6 次调用挂住，观察并发上限；其余放行。
+        // （上限从 50 收紧到 6：一页 20 张卡片的详情请求不再瞬时并发，
+        // 避免带宽尖峰与接口风控。）
+        let cap = 6
+        let recorder = LoaderRecorder(holdCount: cap)
         let store = PortraitVideoStore(defaults: defaults, metadataLoader: recorder.loader)
 
         let task = Task {
             await store.resolve((0..<total).map { "bv-\($0)" })
         }
-        try? await waitUntil("前 50 个补查挂起") { recorder.calls.count == 50 }
-        expect(recorder.maxInFlight <= 50, "同时补查不超过 50（实测 \(recorder.maxInFlight)）")
-        expect(recorder.calls.count == 50, "挂住期间不再发起新请求")
+        try? await waitUntil("前 \(cap) 个补查挂起") { recorder.calls.count == cap }
+        expect(recorder.maxInFlight <= cap, "同时补查不超过 \(cap)（实测 \(recorder.maxInFlight)）")
+        expect(recorder.calls.count == cap, "挂住期间不再发起新请求")
 
         recorder.releaseHeld()
         await task.value
         expect(recorder.calls.count == total, "放行后全部补查完成（实际 \(recorder.calls.count)）")
-        expect(recorder.maxInFlight <= 50, "整个过程并发都不超过 50（实测 \(recorder.maxInFlight)）")
+        expect(recorder.maxInFlight <= cap, "整个过程并发都不超过 \(cap)（实测 \(recorder.maxInFlight)）")
     }
 
     static func testStoreCancellation() async {
         let suite = "harness.cancel.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
-        let recorder = LoaderRecorder(holdCount: 50)
+        // 与并发上限一致（6）：先占满全部在途名额，再观察排队的取消行为。
+        let cap = 6
+        let recorder = LoaderRecorder(holdCount: cap)
         let store = PortraitVideoStore(defaults: defaults, metadataLoader: recorder.loader)
-        let active = Task { await store.resolve((0..<50).map { "active-\($0)" }) }
-        try? await waitUntil("占满 50 个请求") { recorder.calls.count == 50 }
-
+        let active = Task { await store.resolve((0..<cap).map { "active-\($0)" }) }
+        try? await waitUntil("占满 \(cap) 个请求") { recorder.calls.count == cap }
         var queuedFinished = false
         let queued = Task {
-            await store.resolve((0..<50).map { "cancel-\($0)" })
+            await store.resolve((0..<cap).map { "cancel-\($0)" })
             queuedFinished = true
         }
-        try? await waitUntil("50 条请求排队") { store.queuedRequestCount == 50 }
+        try? await waitUntil("\(cap) 条请求排队") { store.queuedRequestCount == cap }
         queued.cancel()
         try? await waitUntil("取消后立即退出，不等在途请求完成") { queuedFinished }
         expect(store.queuedRequestCount == 0, "取消后移除无人等待的排队请求")
-        expect(recorder.calls.count == 50, "取消的排队请求没有发出网络调用")
+        expect(recorder.calls.count == cap, "取消的排队请求没有发出网络调用")
         expect(!store.hasFreshAttempt(bvid: "cancel-0"), "取消排队不写失败缓存")
 
         let first = Task { await store.resolve(["shared-queued"]) }
@@ -342,7 +383,7 @@ struct Harness {
         expect(!recorder.calls.contains { $0.hasPrefix("cancel-") }, "释放名额后取消批次仍不发请求")
         await store.resolve(["cancel-0"])
         expect(recorder.calls.filter { $0 == "cancel-0" }.count == 1, "取消后同一视频可重新申请")
-        expect(recorder.maxInFlight <= 50, "取消与共享交错时并发仍不超过 50")
+        expect(recorder.maxInFlight <= cap, "取消与共享交错时并发仍不超过 \(cap)")
 
         let inFlightRecorder = LoaderRecorder(holdCount: 1)
         let inFlightStore = PortraitVideoStore(defaults: defaults, metadataLoader: inFlightRecorder.loader)

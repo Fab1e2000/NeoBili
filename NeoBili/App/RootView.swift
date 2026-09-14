@@ -90,7 +90,11 @@ struct RootView: View {
                 .navigationTransition(
                     .zoom(sourceID: nowPlaying.transitionSourceID, in: videoTransition)
                 )
-                .background { VideoPagePresentationObserver(onDidAppear: nowPlaying.videoPageDidAppear) }
+                .background { VideoPagePresentationObserver(
+                    onDidAppear: nowPlaying.videoPageDidAppear,
+                    onInteractionBegan: nowPlaying.videoPageInteractionBegan,
+                    onInteractionEnded: nowPlaying.videoPageInteractionEnded
+                ) }
         }
         .fullScreenCover(item: $liveRoom) { room in
             LiveRoomView(room: room).appTextSize()
