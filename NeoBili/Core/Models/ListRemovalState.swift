@@ -15,6 +15,8 @@ final class ListRemovalState<ID: Hashable> {
         return true
     }
 
+    var hasPending: Bool { !pendingIDs.isEmpty }
+
     func hide(_ id: ID) { hiddenIDs.insert(id) }
 
     func finish(_ id: ID) {

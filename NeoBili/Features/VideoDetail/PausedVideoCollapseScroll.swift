@@ -119,7 +119,15 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
                     moved(scroll, old: lockedOffset)
                 }
             case .ended:
-                if blocking, consumed {
+                // 松手时列表可能尚未回顶。此时也要接管朝顶部的惯性，
+                // 否则原生减速到顶后无法将剩余位移交给播放器。
+                let returnsToPlayer = verticalDrag && velocity.y > 0 && canConsume?(-1) == true
+                if (blocking && consumed) || returnsToPlayer {
+                    if !blocking {
+                        lockedOffset = scroll.contentOffset
+                        lockedOffset.y = max(lockedOffset.y, -scroll.adjustedContentInset.top)
+                    }
+                    blocking = true
                     momentum = -velocity.y
                     lastTimestamp = 0
                     let link = CADisplayLink(target: ticker, selector: #selector(WeakTicker.tick(_:)))
@@ -149,19 +157,26 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
             guard lastTimestamp > 0 else { lastTimestamp = link.timestamp; return }
             let dt = min(link.timestamp - lastTimestamp, 1.0 / 30)
             lastTimestamp = link.timestamp
+            advanceMomentum(elapsed: dt)
+        }
+
+        /// 手指位移与惯性使用相同的交接顺序；拆出时间步以验证松手后的行为。
+        func advanceMomentum(elapsed dt: TimeInterval) {
+            guard let scroll, displayLink != nil, blocking, dt.isFinite, dt > 0 else { return }
             // UIScrollView 的 decelerationRate 是每毫秒速度保留比例。
             let rate = Double(scroll.decelerationRate.rawValue)
             let decay = pow(rate, dt * 1000)
             let distance = momentum * CGFloat((decay - 1) / (1000 * log(rate)))
             momentum *= CGFloat(decay)
-            let used = consume?(distance) ?? 0
+            let minimum = -scroll.adjustedContentInset.top
+            let requested = VideoScrollHandoff.playerDelta(distance, offset: lockedOffset.y, minimum: minimum)
+            let used = canConsume?(requested) == true ? (consume?(requested) ?? 0) : 0
             let remainder = distance - used
             if abs(remainder) > 0.01 {
-                let minimum = -scroll.adjustedContentInset.top
                 let maximum = max(minimum, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
                 let proposed = lockedOffset.y + remainder
                 lockedOffset.y = min(max(proposed, minimum), maximum)
-                if proposed != lockedOffset.y { momentum = 0 }
+                if abs(proposed - lockedOffset.y) > 0.01 { momentum = 0 }
             }
             moved(scroll, old: lockedOffset)
             if abs(momentum) < 5 {

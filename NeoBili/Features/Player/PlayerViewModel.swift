@@ -8,6 +8,7 @@ typealias PlaybackSourceOpener = @MainActor (MPVPlayerSession, PlaybackSource, T
 @MainActor
 @Observable
 final class PlayerViewModel {
+    let storyboardStore = VideoStoryboardStore()
     let bvid: String
     let cid: Int
     private(set) var configuration: VideoPlaybackConfiguration
@@ -183,6 +184,8 @@ final class PlayerViewModel {
     private let sourceOpener: PlaybackSourceOpener
     private let watchProgressReporter: @Sendable (String, Int, Double) async -> Void
     private let progressStore: PlaybackProgressStore
+    var isPlaybackCompleted: Bool { resumeState.isCompleted }
+
     private var resumeState: PlaybackResumeState
     private var hasPreparedInitialSource = false
     private var lastSavedPosition: TimeInterval

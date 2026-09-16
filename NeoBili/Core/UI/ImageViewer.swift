@@ -1,3 +1,4 @@
+import ImageIO
 import QuickLook
 import SwiftUI
 import UIKit
@@ -5,7 +6,7 @@ import UIKit
 /// 图片查看器里的一张图。
 struct ViewerImage: Identifiable, Hashable, Sendable {
     let url: URL?
-    var id: String { url?.absoluteString ?? UUID().uuidString }
+    var id: String { url?.absoluteString ?? "missing-image" }
 }
 
 /// 一次查看请求：一组图 + 从第几张开始。
@@ -41,7 +42,7 @@ extension View {
     /// `@Environment(\.openImageViewer)` 打开它。
     ///
     /// 每一屏各挂各的，而不是全 App 共用一个：视频页本身就是从根视图
-    /// present 出来的，同一处再叠第二个 fullScreenCover 会冲突。
+    /// present 出来的，图片面板由当前所在屏幕承载。
     func imageViewerHost() -> some View {
         modifier(ImageViewerHost())
     }
@@ -55,150 +56,160 @@ private struct ImageViewerHost: ViewModifier {
         openAction.setHandler { [payload = $payload] in payload.wrappedValue = $0 }
         return content
             .environment(\.openImageViewer, openAction)
-            .fullScreenCover(item: $payload) { ImageViewer(payload: $0) }
+            .sheet(item: $payload) {
+                ImageViewer(payload: $0)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
     }
 }
 
-/// 全屏图片查看器。
-///
-/// 交互整套交给系统的 QuickLook：捏合缩放、双击定点放大、左右翻页、
-/// 顶部「1 / 9」计数、分享面板（自带「存储图像」）、标记，都不用自己写。
-///
-/// 代价是 QuickLook 只认**本地文件**，所以先把图下到磁盘缓存里再交给它。
+/// 每页独立加载；保留原始顺序，失败的图片不会挤掉用户选中的那张。
 struct ImageViewer: View {
     let payload: ImageViewerPayload
-
     @Environment(\.dismiss) private var dismiss
+    @State private var selection: Int
+    @State private var model: ImageViewerModel
 
-    @State private var files: [URL]?
-    /// 有图片下载失败时，起始下标要按剩下的重新对齐。
-    @State private var start = 0
-    @State private var failureMessage: String?
+    init(payload: ImageViewerPayload) {
+        self.payload = payload
+        _selection = State(initialValue: payload.startIndex)
+        _model = State(initialValue: ImageViewerModel(images: payload.images))
+    }
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
-            if let files {
-                QuickLookViewer(files: files, startIndex: start) { dismiss() }
-                    .ignoresSafeArea()
-            } else {
-                loadingOrFailure
+        NavigationStack {
+            Group {
+                if payload.images.isEmpty {
+                    ContentUnavailableView("没有可显示的图片", systemImage: "photo")
+                } else {
+                    TabView(selection: $selection) {
+                        ForEach(payload.images.indices, id: \.self) { index in
+                            page(at: index).tag(index)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                }
+            }
+            .background(Color(uiColor: .systemBackground))
+            .navigationTitle(payload.images.isEmpty ? "图片" : "\(selection + 1) / \(payload.images.count)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭", systemImage: "xmark") { dismiss() }
+                        .accessibilityIdentifier("imageViewer.close")
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    if let file = model.files[selection] {
+                        ShareLink(item: file) { Label("分享图片", systemImage: "square.and.arrow.up") }
+                    }
+                }
             }
         }
-        .task(id: payload.id) { await prepare() }
+        .task { await model.prepare(startIndex: payload.startIndex) }
+        // 快速翻页时立即请求所选页，不必等待后台预取轮到它。
+        .task(id: selection) { await model.load(selection) }
     }
 
     @ViewBuilder
-    private var loadingOrFailure: some View {
-        VStack(spacing: 16) {
-            if let failureMessage {
-                Image(systemName: "photo.badge.exclamationmark").font(.largeTitle)
-                Text(failureMessage).font(.subheadline)
+    private func page(at index: Int) -> some View {
+        if let file = model.files[index] {
+            // 只实例化当前及相邻预览，避免一组大图同时解码。
+            if abs(index - selection) <= 1 {
+                ImageFilePreview(file: file)
             } else {
-                LoadingTaskAnchor().tint(.white)
+                Color(uiColor: .systemBackground)
             }
-
-            Button("关闭") { dismiss() }
-                .font(.subheadline)
-                .padding(.top, 8)
-        }
-        .foregroundStyle(.white.opacity(0.8))
-    }
-
-    /// 把这一组图都落到磁盘再交给 QuickLook。
-    ///
-    /// 全部就绪才展示：QuickLook 的数据源是按需回调的，某一张还没落地时
-    /// 那一页会直接显示成"无法预览"，而且不会自己重试。图片一般不超过九张，
-    /// 命中缓存时这一步没有任何等待。
-    private func prepare() async {
-        failureMessage = nil
-        let remotes = payload.images.compactMap(\.url)
-        guard !remotes.isEmpty else {
-            failureMessage = "没有可显示的图片"
-            return
-        }
-
-        // 并发下，不然九张图要一张接一张地等。
-        let downloaded = await withTaskGroup(of: (Int, URL?).self) { group in
-            for (position, remote) in remotes.enumerated() {
-                group.addTask {
-                    (position, try? await ImageFileCache.shared.localFile(for: remote))
-                }
+        } else if model.failures.contains(index) {
+            ContentUnavailableView {
+                Label("图片加载失败", systemImage: "photo.badge.exclamationmark")
+            } description: {
+                Text("其他图片仍可左右滑动查看。")
+            } actions: {
+                Button("重试") { Task { await model.load(index, retry: true) } }
+                    .accessibilityIdentifier("imageViewer.retry")
             }
-            var result: [Int: URL] = [:]
-            for await (position, local) in group { result[position] = local }
-            return result
+        } else {
+            ProgressView("正在加载图片").frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-
-        var located: [URL] = []
-        var adjustedStart = 0
-        for position in remotes.indices {
-            // 落在起始那一张之前的失败图会让下标前移，这里跟着对齐。
-            if position == payload.startIndex { adjustedStart = located.count }
-            if let local = downloaded[position] { located.append(local) }
-        }
-
-        guard !located.isEmpty else {
-            failureMessage = "图片加载失败"
-            return
-        }
-        start = min(adjustedStart, located.count - 1)
-        files = located
     }
 }
 
-/// 包一层 QuickLook。外面再套一个导航控制器，才有顶部那条工具栏
-/// （标题是「1 / 9」，右边是分享）；关闭按钮得自己加，嵌入式的
-/// QLPreviewController 不会自带"完成"。
-private struct QuickLookViewer: UIViewControllerRepresentable {
-    let files: [URL]
-    let startIndex: Int
-    let onClose: () -> Void
+@MainActor
+@Observable
+final class ImageViewerModel {
+    private(set) var files: [Int: URL] = [:]
+    private(set) var failures: Set<Int> = []
+    @ObservationIgnored private var loading: [Int: Task<URL, Error>] = [:]
+    private let images: [ViewerImage]
+    private let fetch: @Sendable (URL) async throws -> URL
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(files: files, onClose: onClose)
+    init(images: [ViewerImage], fetch: @escaping @Sendable (URL) async throws -> URL = {
+        try await ImageFileCache.shared.localFile(for: $0)
+    }) {
+        self.images = images
+        self.fetch = fetch
     }
 
-    func makeUIViewController(context: Context) -> UINavigationController {
+    func prepare(startIndex: Int) async {
+        await load(startIndex)
+        // 当前图完成后再预取其余图；顺序下载控制弱设备的网络和解码压力。
+        let order = images.indices.filter { $0 != startIndex }.sorted {
+            abs($0 - startIndex) < abs($1 - startIndex)
+        }
+        for index in order {
+            guard !Task.isCancelled else { return }
+            await load(index)
+        }
+    }
+
+    func load(_ index: Int, retry: Bool = false) async {
+        guard images.indices.contains(index), files[index] == nil,
+              retry || !failures.contains(index) else { return }
+        guard let remote = images[index].url else { failures.insert(index); return }
+        failures.remove(index)
+        let task: Task<URL, Error>
+        if let existing = loading[index] {
+            task = existing
+        } else {
+            let fetch = fetch
+            task = Task { try await fetch(remote) }
+            loading[index] = task
+        }
+        do {
+            let file = try await task.value
+            guard !Task.isCancelled else { return }
+            files[index] = file
+        } catch {
+            guard !Task.isCancelled, !error.isCancellation else { return }
+            failures.insert(index)
+        }
+        loading[index] = nil
+    }
+}
+
+/// 单页 QuickLook 保留系统缩放和动图解码；外层统一负责分页、分享及关闭。
+private struct ImageFilePreview: UIViewControllerRepresentable {
+    let file: URL
+    func makeCoordinator() -> Coordinator { Coordinator(file: file) }
+    func makeUIViewController(context: Context) -> QLPreviewController {
         let preview = QLPreviewController()
         preview.dataSource = context.coordinator
-        preview.currentPreviewItemIndex = min(max(startIndex, 0), max(files.count - 1, 0))
-        preview.navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .close,
-            target: context.coordinator,
-            action: #selector(Coordinator.close)
-        )
-        return UINavigationController(rootViewController: preview)
+        return preview
     }
-
-    func updateUIViewController(_ controller: UINavigationController, context: Context) {
-        context.coordinator.files = files
-        context.coordinator.onClose = onClose
+    func updateUIViewController(_ controller: QLPreviewController, context: Context) {
+        guard context.coordinator.file != file else { return }
+        context.coordinator.file = file
+        controller.reloadData()
     }
-
     @MainActor
     final class Coordinator: NSObject, QLPreviewControllerDataSource {
-        var files: [URL]
-        var onClose: () -> Void
-
-        init(files: [URL], onClose: @escaping () -> Void) {
-            self.files = files
-            self.onClose = onClose
+        var file: URL
+        init(file: URL) { self.file = file }
+        nonisolated func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        nonisolated func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> any QLPreviewItem {
+            MainActor.assumeIsolated { file as NSURL }
         }
-
-        nonisolated func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
-            MainActor.assumeIsolated { files.count }
-        }
-
-        nonisolated func previewController(
-            _ controller: QLPreviewController,
-            previewItemAt index: Int
-        ) -> any QLPreviewItem {
-            MainActor.assumeIsolated { files[index] as NSURL }
-        }
-
-        @objc func close() { onClose() }
     }
 }
 
@@ -251,8 +262,13 @@ actor ImageFileCache {
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        guard !data.isEmpty else { throw BiliAPIError.invalidURL }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        guard !data.isEmpty,
+              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              CGImageSourceGetCount(source) > 0 else { throw URLError(.cannotDecodeContentData) }
 
         let file = directory.appending(path: "\(Self.digest(of: remote)).\(Self.fileExtension(of: data))")
         try data.write(to: file, options: .atomic)

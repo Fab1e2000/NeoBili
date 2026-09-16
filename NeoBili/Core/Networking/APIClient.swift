@@ -229,13 +229,43 @@ struct APIClient {
         return try await perform(request)
     }
 
+    /// App 只读接口使用同一套 HD 签名；无 App 凭据时允许访客请求。
+    func getApp<T: Decodable>(path: String, params: [String: String]) async throws -> T {
+        var query = params
+        if let key = await DeviceIdentity.shared.accessKey, !key.isEmpty {
+            query["access_key"] = key
+        } else if await DeviceIdentity.shared.isLoggedIn {
+            throw BiliAPIError.missingAccessKey
+        }
+        guard var components = URLComponents(url: Self.appBaseURL.appendingPathComponent(path),
+                                             resolvingAgainstBaseURL: false) else { throw BiliAPIError.invalidURL }
+        components.percentEncodedQuery = AppSigner.queryString(from: AppSigner.signed(query))
+        guard let url = components.url else { throw BiliAPIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        request.httpShouldHandleCookies = false
+        request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("android_hd", forHTTPHeaderField: "app-key")
+        request.setValue(await DeviceIdentity.shared.appBuvid(), forHTTPHeaderField: "buvid")
+        request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
+        request.setValue(String(repeating: "1", count: 64), forHTTPHeaderField: "fp_local")
+        request.setValue(String(repeating: "1", count: 64), forHTTPHeaderField: "fp_remote")
+        request.setValue("11111111", forHTTPHeaderField: "session_id")
+        request.setValue("prod", forHTTPHeaderField: "env")
+        request.setValue("11111111111111111111111111111111:1111111111111111:0:0", forHTTPHeaderField: "x-bili-trace-id")
+        request.setValue("", forHTTPHeaderField: "x-bili-aurora-eid")
+        request.setValue("", forHTTPHeaderField: "x-bili-aurora-zone")
+        request.setValue("cronet", forHTTPHeaderField: "bili-http-engine")
+        return try await perform(request)
+    }
+
     /// APP 端接口（app.bilibili.com）。
     ///
     /// 和网页端是完全两套认证：这里不发 Cookie，改用 `access_key` 表明身份，
     /// 再用 appkey/appsec 给整组参数签名（见 `AppSigner`）。UA 也必须换成
     /// BiliDroid 那串，否则请求会被当成非法客户端。
     ///
-    /// 目前只有「点踩」需要走这条路——网页端没有对应的写接口。
+    /// 「点踩」等 App 写接口要求具备 App 登录凭据。
     func postApp(
         path: String,
         form: [String: String] = [:]

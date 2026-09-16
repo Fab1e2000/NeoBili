@@ -19,6 +19,7 @@ struct PlayerControlsOverlay: View {
 
     @State private var isScrubbing = false
     @State private var scrubTime: Double = 0
+    @State private var isGestureSeeking = false
     @State private var seekTask: Task<Void, Never>?
     @State private var hideTask: Task<Void, Never>?
     @State private var keepsControlsForMenu = false
@@ -28,20 +29,36 @@ struct PlayerControlsOverlay: View {
     private var isWaiting: Bool { !viewModel.hasRenderedFirstFrame || viewModel.isLoading || viewModel.isBuffering }
     private var showsControls: Bool { controlsVisible || viewModel.errorMessage != nil }
     private var canControlPlayback: Bool { viewModel.hasRenderedFirstFrame && viewModel.errorMessage == nil && !viewModel.isLoading }
-    private var displayTime: Double { isScrubbing ? scrubTime : viewModel.currentTime }
+    // Defer observable reads until the timeline/gesture leaf evaluates its body.
+    // Reading currentTime here in the overlay body would invalidate all menus at 10Hz.
+    private var progressSource: PlayerProgressSource {
+        PlayerProgressSource {
+            .init(position: isScrubbing ? scrubTime : viewModel.currentTime,
+                  duration: viewModel.duration, buffered: viewModel.bufferedTime,
+                  previewStore: viewModel.storyboardStore,
+                  previewVideo: VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid))
+        }
+    }
 
     var body: some View {
         ZStack {
             if viewModel.errorMessage == nil {
-                PlayerVerticalGestureLayer(
-                    isFullScreen: isFullScreen, currentTime: displayTime, duration: viewModel.duration,
+                PlayerProgressGestureLayer(
+                    progressSource: progressSource, isFullScreen: isFullScreen, canSeek: canControlPlayback,
+                    feedbackTopInset: controlsSafeAreaInsets.top,
                     onTap: toggleControls, onToggleFullScreen: onToggleFullScreen,
                     onSeekChanged: { time in
                         guard canControlPlayback else { return }
-                        controlsVisible = true
+                        isGestureSeeking = true
                         scrub(to: time)
                     },
-                    onSeekEnded: endScrub(at:), onSeekCancelled: cancelScrub
+                    onSeekEnded: { time in
+                        isGestureSeeking = false
+                        endScrub(at: time)
+                    }, onSeekCancelled: {
+                        isGestureSeeking = false
+                        cancelScrub()
+                    }
                 )
             }
             if isWaiting, !showsControls {
@@ -53,7 +70,7 @@ struct PlayerControlsOverlay: View {
                 PlayerGlassChrome(
                     title: videoTitle, subtitle: videoSubtitle, shareURL: shareURL,
                     videoQualityControl: videoQualityControl, audioQualityControl: audioQualityControl,
-                    position: displayTime, duration: viewModel.duration, buffered: viewModel.bufferedTime,
+                    progressSource: progressSource,
                     isPlaying: viewModel.isPlaying, canControlPlayback: canControlPlayback, isWaiting: isWaiting,
                     isFullScreen: isFullScreen, isCompact: isCompact,
                     hasError: viewModel.errorMessage != nil, safeAreaInsets: controlsSafeAreaInsets,
@@ -65,8 +82,15 @@ struct PlayerControlsOverlay: View {
                     onToggleCompact: compactAction,
                     onScrub: scrub(to:), onScrubEnd: endScrub(at:), onMenuInteraction: keepControlsForMenu
                 ) { playbackMenuContent }
+                .opacity(isGestureSeeking ? 0 : 1)
+                .allowsHitTesting(!isGestureSeeking)
                 .transition(.opacity)
             }
+        }
+        .task(id: canControlPlayback) {
+            guard canControlPlayback else { return }
+            await viewModel.storyboardStore.load(VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid))
+            await viewModel.storyboardStore.prepare(at: viewModel.currentTime)
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showsControls)
         .onChange(of: isFullScreen) { scheduleAutoHide(afterInteraction: false) }

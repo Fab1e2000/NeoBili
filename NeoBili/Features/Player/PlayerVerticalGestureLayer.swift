@@ -9,6 +9,8 @@ struct PlayerVerticalGestureLayer: View {
     let isFullScreen: Bool
     let currentTime: Double
     let duration: Double
+    var canSeek = true
+    var feedbackTopInset: CGFloat = 0
     let onTap: () -> Void
     let onToggleFullScreen: () -> Void
     let onSeekChanged: (Double) -> Void
@@ -24,8 +26,7 @@ struct PlayerVerticalGestureLayer: View {
     @State private var direction: CGFloat = 1
     @State private var fired = false
     @State private var beganFullscreen = false
-    @State private var targetTime: Double = 0
-    @State private var cancelSeek = false
+    @State private var seek: PlayerSeekGestureState?
     @State private var lastVolumeUpdate: TimeInterval = 0
     @GestureState private var dragging = false
 
@@ -39,16 +40,18 @@ struct PlayerVerticalGestureLayer: View {
                     DragGesture(minimumDistance: 18, coordinateSpace: .local)
                         .updating($dragging) { _, active, _ in active = true }
                         .onChanged { drag in update(drag, size: geometry.size) }
-                        .onEnded { _ in finish(cancelled: false) }
+                        .onEnded { drag in
+                            if zone != nil { update(drag, size: geometry.size) }
+                            finish(cancelled: false)
+                        }
                         .exclusively(before: TapGesture().onEnded(onTap))
                 )
-                .overlay {
-                    Text(readout)
-                        .font(.callout.monospacedDigit().weight(.medium))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.8), radius: 2, y: 1)
-                        .position(x: geometry.size.width / 2, y: geometry.size.height * 0.76)
-                        .opacity(zone == .brightness || zone == .volume || zone == .seek ? 1 : 0)
+                .overlay(alignment: .top) {
+                    feedback
+                        .environment(\.colorScheme, .dark)
+                        .padding(.top, max(feedbackTopInset, geometry.safeAreaInsets.top)
+                                 + min(max(geometry.size.height * 0.06, 8), 24))
+                        .padding(.horizontal, 12)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -65,28 +68,52 @@ struct PlayerVerticalGestureLayer: View {
             // SwiftUI 取消手势时不会调用 onEnded，仍要清理预览状态。
             if !active, zone != nil { finish(cancelled: true) }
         }
+        .onChange(of: canSeek) { _, enabled in if !enabled { finish(cancelled: true) } }
         .onChange(of: isFullScreen) { finish(cancelled: true) }
-        .onDisappear { finish(cancelled: true) }
+        .onAppear { output.startObservingVolume() }
+        .onDisappear {
+            finish(cancelled: true)
+            output.stopObservingVolume()
+        }
     }
 
-    private var readout: String {
-        if zone == .seek {
-            return cancelSeek ? "松开取消跳转" : PlaybackTime.text(targetTime)
+    @ViewBuilder
+    private var feedback: some View {
+        if let seek, zone == .seek {
+            VStack(spacing: 6) {
+                Label(seek.isCancelled ? "松开取消跳转" : (seek.delta >= 0 ? "快进" : "后退"),
+                      systemImage: seek.isCancelled ? "xmark" : (seek.delta >= 0 ? "forward.fill" : "backward.fill"))
+                Text("\(PlaybackTime.text(seek.target)) / \(PlaybackTime.text(seek.duration))")
+                    .font(.headline.monospacedDigit())
+                Text(seek.isCancelled ? "移回画面继续调整" : "\(seek.delta >= 0 ? "+" : "−")\(Int(abs(seek.delta).rounded())) 秒 · 松开跳转")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+            .padding(12)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
+        } else if zone == .brightness || zone == .volume || (zone == nil && output.externalVolume != nil) {
+            let displayedValue = zone == nil ? (output.externalVolume ?? output.volume) : value
+            Label("\(Int((displayedValue * 100).rounded()))%", systemImage: zone == .brightness ? "sun.max.fill" : "speaker.wave.2.fill")
+                .font(.callout.monospacedDigit())
+                .padding(12)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
         }
-        return "\(Int((value * 100).rounded()))"
     }
 
     private func update(_ drag: DragGesture.Value, size: CGSize) {
         if zone == nil {
             let dx = abs(drag.translation.width)
             let dy = abs(drag.translation.height)
-            if dx > 3 * dy {
-                guard duration.isFinite, duration > 0 else { return }
+            if dx > 2 * dy {
+                guard canSeek, let state = PlayerSeekGestureState(
+                    position: currentTime, duration: duration, width: size.width,
+                    translation: drag.translation.width
+                ) else { return }
+                seek = state
                 zone = .seek
-                targetTime = min(max(currentTime, 0), duration)
-                cancelSeek = false
-                onSeekChanged(targetTime)
-            } else if dy > 3 * dx {
+                onSeekChanged(state.target)
+            } else if dy > 2 * dx {
                 let bounds = PlayerGestureSettings.boundaries(left: left, right: right)
                 let x = drag.startLocation.x / max(size.width, 1)
                 zone = x < bounds.0 ? .brightness : (x > bounds.1 ? .volume : .fullscreen)
@@ -102,17 +129,12 @@ struct PlayerVerticalGestureLayer: View {
             return
         }
 
-        let dx = drag.translation.width - lastTranslation.width
         let dy = (drag.translation.height - lastTranslation.height) * direction
         lastTranslation = drag.translation
         switch zone {
         case .seek:
-            // 和 PiliPlus 一样，拖到画面上方左右各 1/8 的角落可以取消跳转。
-            cancelSeek = drag.location.y <= size.height * 0.125
-                && (drag.location.x <= size.width * 0.125 || drag.location.x >= size.width * 0.875)
-            guard !cancelSeek else { return }
-            targetTime = min(max(targetTime + Double(dx / max(size.width, 1)) * 90, 0), duration)
-            onSeekChanged(targetTime)
+            seek?.update(translation: drag.translation.width, location: drag.location, height: size.height)
+            if let seek { onSeekChanged(seek.target) }
         case .brightness:
             value = min(max(value - dy / max(size.height * 3, 1), 0), 1)
             output.setBrightness(value)
@@ -139,22 +161,62 @@ struct PlayerVerticalGestureLayer: View {
         zone = nil
         fired = false
         if completedZone == .volume { output.setVolume(value) }
-        if completedZone == .seek {
-            if cancelled || cancelSeek { onSeekCancelled() }
-            else { onSeekEnded(targetTime) }
+        if completedZone == .seek, let seek {
+            if cancelled || seek.isCancelled { onSeekCancelled() }
+            else { onSeekEnded(seek.target) }
         }
-        cancelSeek = false
+        seek = nil
     }
 }
 
 @MainActor
+@Observable
 private final class PlayerGestureOutput {
-    weak var view: MPVolumeView?
+    @ObservationIgnored weak var view: MPVolumeView?
+    private(set) var externalVolume: CGFloat?
+    @ObservationIgnored private var volumeObservation: NSKeyValueObservation?
+    @ObservationIgnored private var hideVolumeTask: Task<Void, Never>?
+    @ObservationIgnored private var observationID: UUID?
+    @ObservationIgnored private var suppressVolumeEventsUntil: TimeInterval = 0
+
+    func startObservingVolume() {
+        guard volumeObservation == nil else { return }
+        let id = UUID()
+        observationID = id
+        volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] session, _ in
+            let volume = CGFloat(session.outputVolume)
+            let eventTime = ProcessInfo.processInfo.systemUptime
+            Task { @MainActor [weak self] in
+                guard let self, self.observationID == id,
+                      eventTime >= self.suppressVolumeEventsUntil else { return }
+                self.externalVolume = volume
+                self.hideVolumeTask?.cancel()
+                self.hideVolumeTask = Task { @MainActor [weak self] in
+                    do { try await Task.sleep(for: .milliseconds(800)) }
+                    catch { return }
+                    self?.externalVolume = nil
+                }
+            }
+        }
+    }
+
+    func stopObservingVolume() {
+        observationID = nil
+        volumeObservation?.invalidate()
+        volumeObservation = nil
+        hideVolumeTask?.cancel()
+        hideVolumeTask = nil
+        externalVolume = nil
+    }
     var brightness: CGFloat { view?.window?.windowScene?.screen.brightness ?? 0.5 }
     var volume: CGFloat { CGFloat(AVAudioSession.sharedInstance().outputVolume) }
     func setBrightness(_ value: CGFloat) { view?.window?.windowScene?.screen.brightness = value }
     func setVolume(_ value: CGFloat) {
         guard let slider = view?.subviews.compactMap({ $0 as? UISlider }).first else { return }
+        // 手势写入也会产生系统音量通知；短暂忽略回声，避免松手后重复弹出提示。
+        suppressVolumeEventsUntil = ProcessInfo.processInfo.systemUptime + 0.2
+        hideVolumeTask?.cancel()
+        externalVolume = nil
         slider.setValue(Float(value), animated: false)
         slider.sendActions(for: .valueChanged)
     }

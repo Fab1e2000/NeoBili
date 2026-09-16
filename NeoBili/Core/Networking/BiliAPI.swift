@@ -10,23 +10,12 @@ enum BiliAPI {
         )
     }
 
-    /// The web recommendation feed used by PiliPlus. Unlike the fixed daily
-    /// popular ranking, advancing `fresh_idx` yields a new recommendation batch.
+    /// 使用 PiliPlus 的 App 推荐接口，列表刷新与分页仍由原 ViewModel 管理。
     static func recommendFeed(freshIndex: Int) async throws -> [VideoSummary] {
-        let page: RecommendFeedPage = try await APIClient.shared.get(
-            path: "x/web-interface/wbi/index/top/feed/rcmd",
-            params: [
-                "version": "1",
-                "fresh_type": "4",
-                "feed_version": "V8",
-                "homepage_ver": "1",
-                "ps": "20",
-                "fresh_idx": String(freshIndex),
-                "brush": String(freshIndex)
-            ],
-            requiresWBI: true
+        let page: AppRecommendationPage = try await APIClient.shared.getApp(
+            path: "x/v2/feed/index", params: AppRecommendationPage.parameters(freshIndex: freshIndex)
         )
-        return page.item.compactMap { $0.asVideoSummary }
+        return page.videos
     }
 
     /// 首页推荐的内容反馈，与视频页的点踩分别上报。
@@ -708,68 +697,6 @@ private struct RelatedVideoStat: Decodable {
     let coin: Int?
     let share: Int?
     let reply: Int?
-}
-
-/// `top/rcmd` mixes video cards with ads/live/bangumi entries (`goto != "av"`)
-/// and doesn't guarantee every field a plain video has, so this decodes
-/// leniently and `asVideoSummary` filters down to what we can actually show.
-private struct RecommendFeedItem: Decodable {
-    let goto: String?
-    let bvid: String?
-    let aid: Int?
-    let cid: Int?
-    let title: String?
-    let pic: String?
-    let desc: String?
-    let duration: Int?
-    let pubdate: Int?
-    let owner: VideoOwner?
-    let stat: RecommendFeedStat?
-    let dimension: VideoDimension?
-
-    let trackID: String?
-
-    enum CodingKeys: String, CodingKey {
-        case goto, bvid, cid, title, pic, desc, duration, pubdate, owner, stat, dimension
-        case aid = "id"
-        case trackID = "track_id"
-    }
-
-    var asVideoSummary: VideoSummary? {
-        guard goto == "av",
-              let bvid, let aid, let cid, let title, let pic,
-              let duration, let pubdate, let owner, let stat
-        else { return nil }
-        return VideoSummary(
-            bvid: bvid, aid: aid, cid: cid, title: title, pic: pic,
-            desc: desc ?? "", duration: duration, pubdate: pubdate,
-            owner: owner,
-            stat: VideoStat(
-                view: stat.view ?? 0,
-                danmaku: stat.danmaku ?? 0,
-                like: stat.like ?? 0,
-                favorite: 0,
-                coin: 0,
-                share: 0,
-                reply: 0
-            ),
-            dimension: dimension,
-            recommendationTrackID: trackID
-        )
-    }
-}
-
-/// Recommendation cards intentionally contain only the counters needed by
-/// the feed. Decoding them as a full `VideoStat` makes otherwise-valid feed
-/// responses fail because fields such as `favorite` and `coin` are absent.
-private struct RecommendFeedStat: Decodable {
-    let view: Int?
-    let danmaku: Int?
-    let like: Int?
-}
-
-private struct RecommendFeedPage: Decodable {
-    let item: [RecommendFeedItem]
 }
 
 struct SearchResultItem: Decodable, Identifiable, Hashable, VideoDimensionProviding {

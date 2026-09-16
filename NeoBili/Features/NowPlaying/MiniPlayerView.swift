@@ -109,6 +109,7 @@ private struct FloatingMiniPlayer: View {
         .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
         .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
         .accessibilityElement(children: .contain)
+        .appTheme()
         .accessibilityLabel("视频小窗")
         .accessibilityAction(named: "展开视频", onExpand)
         .accessibilityAction(named: "播放或暂停") { player?.togglePlayPause() }

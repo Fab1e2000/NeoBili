@@ -299,3 +299,14 @@ private struct VideoBatchEntrance: ViewModifier {
 extension View {
     func videoBatchEntrance() -> some View { modifier(VideoBatchEntrance()) }
 }
+
+/// The request and exit run concurrently; fast responses wait only for the
+/// remaining exit time, slow responses never start a second fade.
+struct FeedRefreshExitTiming {
+    let start: TimeInterval
+    let duration: TimeInterval
+
+    func remaining(at now: TimeInterval) -> TimeInterval {
+        max(0, duration - max(0, now - start))
+    }
+}

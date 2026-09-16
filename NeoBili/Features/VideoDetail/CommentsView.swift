@@ -352,8 +352,8 @@ struct CommentRow: View {
         .anchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { [.content: $0] }
 #endif
         .padding(CommentLayout.replyPadding)
-        .glassEffect(
-            .regular.interactive(),
+        .background(
+            Color(uiColor: .tertiarySystemFill),
             in: RoundedRectangle(cornerRadius: CommentLayout.replyCornerRadius, style: .continuous)
         )
 #if DEBUG
