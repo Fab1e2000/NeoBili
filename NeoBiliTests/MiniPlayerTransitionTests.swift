@@ -50,9 +50,11 @@ final class MiniPlayerTransitionTests: XCTestCase {
         for _ in 0..<28 {
             try await Task.sleep(for: .milliseconds(20))
             let image = render(window, scale: 0.25)
-            if let bounds = greenBounds(in: image), bounds.height < expanded.height * 0.6 {
-                samples.append(bounds)
-                lastImage = image
+            if let bounds = greenBounds(in: image) {
+                if bounds.height < expanded.height * 0.6 {
+                    samples.append(bounds)
+                    lastImage = image
+                }
             }
             if fixture.didDismiss { break }
         }
@@ -60,9 +62,15 @@ final class MiniPlayerTransitionTests: XCTestCase {
         let geometry = XCTAttachment(string: "target=\(target), expanded=\(expanded), final=\(final), window=\(window.bounds)")
         geometry.lifetime = .keepAlways
         add(geometry)
-        XCTAssertLessThan(abs(final.midX - target.midX), 45)
-        XCTAssertLessThan(abs(final.midY - target.midY), 60,
-                          "The shrinking page must approach the mini's actual lower docking position, not the original top card")
+        // Native zoom cross-fades before the page reaches its final bounds.
+        // Check its trajectory at the captured scale, not an already-faded endpoint.
+        let progress = (expanded.height - final.height) / (expanded.height - target.height)
+        XCTAssertGreaterThan(progress, 0.25)
+        let projectedX = expanded.midX + (final.midX - expanded.midX) / progress
+        let projectedY = expanded.midY + (final.midY - expanded.midY) / progress
+        XCTAssertLessThan(abs(projectedX - target.midX), 45)
+        XCTAssertLessThan(abs(projectedY - target.midY), 60,
+                          "The sampled zoom trajectory must lead to the actual mini bar, not the original top card")
         if let lastImage {
             let attachment = XCTAttachment(image: lastImage)
             attachment.name = "native-video-dismissal-approaches-mini-window"
@@ -140,12 +148,10 @@ private struct MiniTransitionHost: View {
                     onAnchorChange: { _ in }
                 )
             }
-            .fullScreenCover(isPresented: $fixture.isPresented, onDismiss: { fixture.didDismiss = true }) {
+            .mediaZoomCover(isPresented: $fixture.isPresented, entrySourceID: "card", namespace: transition, onDismiss: { fixture.didDismiss = true }) {
                 Color(red: 0, green: 1, blue: 0).ignoresSafeArea()
-                    .navigationTransition(.zoom(sourceID: fixture.sourceID, in: transition))
                     .background {
                         VideoPagePresentationObserver {
-                            fixture.sourceID = NowPlayingStore.miniPlayerTransitionSourceID
                             fixture.didAppear = true
                         }
                     }

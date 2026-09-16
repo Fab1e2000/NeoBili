@@ -18,7 +18,6 @@ struct HomeView: View {
     @State private var reselectCount = 0
     @State private var shortcutTask: Task<Void, Never>?
     @State private var isRefreshing = false
-    @State private var isSearchFocused = false
 
     /// 刷新的三段式可视化：旧卡片原地淡出，新卡片按行落位。
     /// 参数集中在 FeedRefreshTuning 里。
@@ -30,11 +29,6 @@ struct HomeView: View {
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
 
-    /// 搜索就在首页完成，不跳页：搜索框固定在紧凑工具栏内，
-    /// 回车后这一页的内容换成结果，清空后回到推荐流。
-    @State private var search = SearchViewModel()
-    @State private var searchHistory = SearchHistory.shared
-
     private var animatesExit: Bool {
         !reduceMotion && animations.isEnabled(phase: .exit)
     }
@@ -44,43 +38,9 @@ struct HomeView: View {
         let _ = SearchLatencyProbe.body("HomeView")
         #endif
         NavigationStack {
-            Group {
-                if search.hasSubmittedSearch {
-                    SearchResultsView(viewModel: search)
-                } else {
-                    feed
-                        // The keyboard covers recommendations; it does not need to resize the grid.
-                        .ignoresSafeArea(.keyboard, edges: .bottom)
-                }
-            }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .overlay {
-                if isSearchFocused {
-                    ZStack {
-                        // Extend the backdrop behind the search bar, status bar, and keyboard.
-                        // Keep suggestion content inside the safe area above the keyboard.
-                        Color(uiColor: .systemGroupedBackground)
-                            .ignoresSafeArea()
-                        if search.query.isEmpty {
-                            searchHistoryList
-                        } else if search.isShowingSuggestions {
-                            searchSuggestions
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .toolbarVisibility(.hidden, for: .navigationBar)
-            .toolbarVisibility(isSearchFocused ? .hidden : .automatic, for: .tabBar)
-            // 用固定的安全区栏承载搜索，不再让 toolbarPrincipal 在滚动边缘恢复为双层高度。
-            .safeAreaBar(edge: .top, spacing: 0) { homeSearchBar }
-            // 输入一变就重新取候选词。上一次的任务会被 SwiftUI 取消，
-            // 所以视图模型里那个 250 毫秒的等待就等于防抖。
-            .task(id: search.trimmedQuery) { await search.loadSuggestions() }
-            // 清空输入（点「取消」或点叉）就回到推荐流。
-            .onChange(of: search.trimmedQuery) {
-                if search.trimmedQuery.isEmpty { search.reset() }
-            }
+            feed
+                .background(Color(uiColor: .systemGroupedBackground))
+                .toolbarVisibility(.hidden, for: .navigationBar)
             .task { await viewModel.loadInitial() }
             // 登录/退出后同一套推荐接口在服务端会切到个性化/通用推流，
             // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。
@@ -95,11 +55,7 @@ struct HomeView: View {
         .background {
             HomeTabReselectionObserver {
                 guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented else { return }
-                if isSearchFocused || search.hasSubmittedSearch {
-                    cancelSearch()
-                } else {
-                    reselectCount += 1
-                }
+                reselectCount += 1
             }
             .frame(width: 0, height: 0)
         }
@@ -114,91 +70,6 @@ struct HomeView: View {
             // its request remains in flight.
             withAnimation(nil) { listOpacity = 1; exitTiming = nil }
         }
-        #if DEBUG
-        .task {
-            await SearchLatencyProbe.shared.run(focus: { isSearchFocused = $0 },
-                                               query: { search.query },
-                                               isSearching: { search.hasSubmittedSearch },
-                                               cancel: { cancelSearch() })
-        }
-        .onChange(of: isSearchFocused) { _, focused in SearchLatencyProbe.focusChanged(focused) }
-        #endif
-    }
-
-    private var homeSearchBar: some View {
-        HomeSearchBar(text: $search.query, isFocused: $isSearchFocused,
-                      onSubmit: { submitSearch() }, onCancel: { cancelSearch() },
-                      canClearHistory: !searchHistory.keywords.isEmpty, onClearHistory: { searchHistory.clear() })
-            // UISearchBar supplies its own icon and text padding; avoid doubling those insets.
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background {
-                if isSearchFocused {
-                    Color(uiColor: .systemGroupedBackground)
-                        .ignoresSafeArea(.container, edges: .top)
-                }
-            }
-    }
-
-    private var searchHistoryList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                Text("搜索历史")
-                    .font(.headline)
-                    .padding(.horizontal, 22).padding(.vertical, 16)
-                if searchHistory.keywords.isEmpty {
-                    Text("暂无搜索历史")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                        .padding(.horizontal, 22)
-                }
-                ForEach(searchHistory.keywords, id: \.self) { keyword in
-                    Button { submitSearch(keyword: keyword) } label: {
-                        Label(keyword, systemImage: "clock.arrow.circlepath")
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 22).padding(.vertical, 14)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    Divider().padding(.leading, 22)
-                }
-            }
-        }
-        .scrollDismissesKeyboard(.interactively)
-    }
-
-    private var searchSuggestions: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(search.suggestions) { suggestion in
-                    Button {
-                        submitSearch(keyword: suggestion.value)
-                    } label: {
-                        Text(suggestion.value)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 14)
-                    }
-                    .buttonStyle(.plain)
-
-                    Divider().padding(.leading, 22)
-                }
-            }
-        }
-        .scrollDismissesKeyboard(.interactively)
-    }
-
-    private func submitSearch(keyword: String? = nil) {
-        search.submit(keyword: keyword)
-        guard search.hasSubmittedSearch else { return }
-        isSearchFocused = false
-    }
-
-    private func cancelSearch() {
-        isSearchFocused = false
-        search.query = ""
-        search.reset()
     }
 
     private var feed: some View {
@@ -261,7 +132,8 @@ struct HomeView: View {
             .scrollDisabled(isRefreshing && listOpacity < 1)
             // 卡片从搜索框下面滑过去时，顶部给一层渐隐，让搜索框浮在内容之上
             // 而不是硬生生压着卡片（iOS 26 的 scroll edge effect）。
-            .scrollEdgeEffectStyle(.soft, for: .all)
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollEdgeEffectHidden(true, for: .bottom)
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 // 只在「离开顶部 / 回到顶部」这两个瞬间更新状态：滚动过程中
                 // 每帧都写 CGFloat 会让整个 body（含 feedRows 分组）跟着重算。

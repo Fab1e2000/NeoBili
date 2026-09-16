@@ -1,0 +1,22 @@
+{
+  "fill": {
+    "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "Play.svg",
+          "name": "Theme play"
+        },
+        {
+          "image-name": "Backing.svg",
+          "name": "Offset play"
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

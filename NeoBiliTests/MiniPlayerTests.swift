@@ -1,8 +1,70 @@
 import XCTest
+import UIKit
+import SwiftUI
 @testable import NeoBili
 
 @MainActor
 final class MiniPlayerTests: XCTestCase {
+    func testImmediateReturnKeepsEntryAnchorWithoutBlockingGestures() {
+        let region = PlayerReturnGestureGuard.RegionView()
+        region.verticalOnly = true
+        let pan = UIPanGestureRecognizer()
+        let gate = PlayerReturnGestureGuard.DelegateGate(region: region, recognizer: pan)
+        XCTAssertTrue(gate.gestureRecognizerShouldBegin(pan))
+
+        let host = ZoomHost(rootView: AnyView(Color.clear))
+        XCTAssertEqual(host.sourceID(entryID: "card", isDismissing: false), "card")
+        XCTAssertEqual(host.sourceID(entryID: "card", isDismissing: true), "card")
+        XCTAssertEqual(host.sourceID(entryID: "card", isDismissing: true), "card")
+        // UIKit restores appearance when an interrupted return is cancelled.
+        host.viewDidAppear(false)
+        XCTAssertEqual(host.sourceID(entryID: "card", isDismissing: true), NowPlayingStore.miniPlayerTransitionSourceID)
+        XCTAssertTrue(gate.gestureRecognizerShouldBegin(pan))
+    }
+
+    func testLiveMiniPlayerReusesSessionAndCancelledDismissalRestoresPage() throws {
+        let store = NowPlayingStore()
+        defer { store.close() }
+        store.openLive(LiveRoom(roomID: 1, title: "直播测试", username: "主播"), from: "live-card")
+        let live = try XCTUnwrap(store.livePlayer)
+        let session = live.session
+        XCTAssertNil(store.route)
+        XCTAssertEqual(store.transitionSourceID, "live-card")
+        store.videoPageDidAppear()
+        XCTAssertEqual(store.transitionSourceID, "live-card")
+        store.videoPageInteractionBegan()
+        store.dismissVideoPage()
+        XCTAssertEqual(session.surfacePresentation, .page)
+        store.videoPageInteractionEnded(cancelled: true)
+        store.finishDismissal()
+        XCTAssertTrue(store.isExpanded)
+        XCTAssertEqual(session.surfacePresentation, .page)
+        store.dismissVideoPage()
+        store.finishDismissal()
+        XCTAssertEqual(session.surfacePresentation, .mini)
+        XCTAssertTrue(store.isMiniPlayerPresented)
+        store.expandMiniPlayer()
+        XCTAssertTrue(store.livePlayer === live)
+        XCTAssertTrue(store.activeSession === session)
+        XCTAssertEqual(session.surfacePresentation, .page)
+    }
+
+    func testSwitchingBetweenLiveAndVideoReleasesPreviousMedia() throws {
+        let store = NowPlayingStore()
+        defer { store.close() }
+        let room = LiveRoom(roomID: 1, title: "直播测试", username: "主播")
+        store.open(route(), from: "video-card")
+        store.openLive(room, from: "live-card")
+        XCTAssertNil(store.player)
+        XCTAssertNil(store.route)
+        XCTAssertNotNil(store.livePlayer)
+        store.open(route(), from: "video-card")
+        XCTAssertNil(store.livePlayer)
+        XCTAssertNotNil(store.player)
+        store.close()
+        XCTAssertFalse(store.hasMedia)
+    }
+
     @MainActor
     private final class OwnershipProbe: PlayerSurfaceOwnershipObserver {
         let ownership: PlayerSurfaceOwnership
@@ -54,7 +116,7 @@ final class MiniPlayerTests: XCTestCase {
             XCTAssertTrue(store.player === player)
             store.dismissVideoPage()
             store.finishDismissal()
-            XCTAssertEqual(store.isMiniPlayerPresented, miniEnabled)
+            XCTAssertTrue(store.isMiniPlayerPresented)
         }
     }
 
@@ -70,11 +132,11 @@ final class MiniPlayerTests: XCTestCase {
         XCTAssertFalse(store.isMiniPlayerPresented)
     }
 
-    func testPreferenceDefaultsToEnabledAndSupportsExplicitOff() throws {
+    func testPersistentPlayerIgnoresLegacyDisabledPreference() throws {
         let defaults = try makeDefaults()
         XCTAssertTrue(PlaybackWindowSettings.isEnabled(in: defaults))
         defaults.set(false, forKey: PlaybackWindowSettings.storageKey)
-        XCTAssertFalse(PlaybackWindowSettings.isEnabled(in: defaults))
+        XCTAssertTrue(PlaybackWindowSettings.isEnabled(in: defaults))
         defaults.set(true, forKey: PlaybackWindowSettings.storageKey)
         XCTAssertTrue(PlaybackWindowSettings.isEnabled(in: defaults))
     }
@@ -136,7 +198,7 @@ final class MiniPlayerTests: XCTestCase {
         XCTAssertTrue(store.isDescriptionExpanded)
     }
 
-    func testDisabledOptionPausesThenReleasesOnlyAfterDismissal() throws {
+    func testLegacyDisabledOptionStillRetainsPlaybackAfterDismissal() throws {
         let defaults = try makeDefaults()
         defaults.set(false, forKey: PlaybackWindowSettings.storageKey)
         let store = NowPlayingStore(defaults: defaults)
@@ -144,30 +206,24 @@ final class MiniPlayerTests: XCTestCase {
         store.open(route(), from: "test-card")
         let player = try XCTUnwrap(store.player)
         let route = store.route
-        let detail = store.detailViewModel
         player.session.onEvent?(.firstFrame)
         player.session.onEvent?(.playing(true))
 
         store.dismissVideoPage()
+        XCTAssertTrue(store.player === player)
+        XCTAssertTrue(player.isPlaying)
+        XCTAssertTrue(store.isMiniPlayerPresented)
+        XCTAssertEqual(player.session.surfacePresentation, .page)
+        store.finishDismissal()
         XCTAssertEqual(store.route, route)
         XCTAssertTrue(store.player === player)
-        XCTAssertTrue(store.detailViewModel === detail)
-        XCTAssertTrue(store.isVideoPageDismissalInProgress)
-        XCTAssertEqual(store.dismissalPlaybackPhase, .playing)
-        XCTAssertEqual(player.session.surfacePresentation, .page)
-        XCTAssertFalse(player.isPlaying)
-        XCTAssertFalse(store.isExpanded)
-        XCTAssertFalse(store.isMiniPlayerPresented)
-        store.finishDismissal()
-        XCTAssertNil(store.route)
-        XCTAssertNil(store.player)
-        XCTAssertNil(store.detailViewModel)
-        XCTAssertNil(store.dismissalPlaybackPhase)
+        XCTAssertTrue(player.isPlaying)
+        XCTAssertTrue(store.isMiniPlayerPresented)
+        XCTAssertEqual(player.session.surfacePresentation, .mini)
         XCTAssertFalse(store.isVideoPageDismissalInProgress)
-        XCTAssertFalse(store.isMiniPlayerPresented)
     }
 
-    func testReopeningDuringDisabledDismissalRestartsCancelledLoadsAndIgnoresOldCompletion() throws {
+    func testReopeningDuringDismissalReusesPlayerAndIgnoresOldCompletion() throws {
         let defaults = try makeDefaults()
         defaults.set(false, forKey: PlaybackWindowSettings.storageKey)
         let store = NowPlayingStore(defaults: defaults)
@@ -179,7 +235,7 @@ final class MiniPlayerTests: XCTestCase {
         store.open(video, from: "test-card")
         let newPlayer = try XCTUnwrap(store.player)
         store.finishDismissal()
-        XCTAssertFalse(newPlayer === oldPlayer)
+        XCTAssertTrue(newPlayer === oldPlayer)
         XCTAssertTrue(store.player === newPlayer)
         XCTAssertEqual(store.route, video)
         XCTAssertTrue(store.isExpanded)
@@ -187,7 +243,7 @@ final class MiniPlayerTests: XCTestCase {
         XCTAssertNil(store.dismissalPlaybackPhase)
     }
 
-    func testTurningOptionOffWhileFloatingClosesThePlayer() throws {
+    func testLegacyPreferenceChangeDoesNotClosePersistentPlayer() throws {
         let defaults = try makeDefaults()
         let store = NowPlayingStore(defaults: defaults)
         defer { store.close() }
@@ -200,10 +256,10 @@ final class MiniPlayerTests: XCTestCase {
 
         defaults.set(false, forKey: PlaybackWindowSettings.storageKey)
         store.applyMiniPlayerSetting()
-        XCTAssertNil(store.player)
-        XCTAssertNil(store.route)
-        XCTAssertFalse(store.isMiniPlayerPresented)
-        XCTAssertFalse(player.isPlaying)
+        XCTAssertTrue(store.player === player)
+        XCTAssertNotNil(store.route)
+        XCTAssertTrue(store.isMiniPlayerPresented)
+        XCTAssertTrue(player.isPlaying)
     }
 
     func testExplicitCloseClearsPlaybackAndIgnoresLatePlayerEvents() throws {
@@ -389,14 +445,14 @@ final class MiniPlayerTests: XCTestCase {
         XCTAssertEqual(player.session.surfacePresentation, .mini)
     }
 
-    func testCompletedPresentationRetargetsNativeExitToMiniButKeepsCardEntry() throws {
+    func testCompletedPresentationKeepsStableEntryWhileMiniExpansionUsesMini() throws {
         let defaults = try makeDefaults()
         let store = NowPlayingStore(defaults: defaults)
         defer { store.close() }
         store.open(route(), from: "entry-card")
         XCTAssertEqual(store.transitionSourceID, "entry-card")
         store.videoPageDidAppear()
-        XCTAssertEqual(store.transitionSourceID, NowPlayingStore.miniPlayerTransitionSourceID)
+        XCTAssertEqual(store.transitionSourceID, "entry-card")
         store.dismissVideoPage()
         let player = try XCTUnwrap(store.player)
         XCTAssertEqual(player.session.surfacePresentation, .page)
@@ -407,7 +463,7 @@ final class MiniPlayerTests: XCTestCase {
 
         defaults.set(false, forKey: PlaybackWindowSettings.storageKey)
         store.applyMiniPlayerSetting()
-        XCTAssertEqual(store.transitionSourceID, "entry-card", "Disabling the mini window restores a valid card destination")
+        XCTAssertEqual(store.transitionSourceID, NowPlayingStore.miniPlayerTransitionSourceID, "Legacy preferences must not change the persistent player destination")
     }
 
     func testOpenRelatedThenDismissNotifiesTheReplacementSessionAndPreservesZoomTarget() throws {
@@ -431,7 +487,7 @@ final class MiniPlayerTests: XCTestCase {
 
         store.dismissVideoPage()
         XCTAssertEqual(mountedMini.observed, [.page], "The page retains its pixels during the shrink animation")
-        XCTAssertEqual(store.transitionSourceID, NowPlayingStore.miniPlayerTransitionSourceID)
+        XCTAssertEqual(store.transitionSourceID, "entry-card")
         store.finishDismissal()
         XCTAssertEqual(mountedMini.observed, [.page, .mini], "The native completion actively wakes the replacement's already-mounted mini")
         XCTAssertTrue(store.player === replacement)

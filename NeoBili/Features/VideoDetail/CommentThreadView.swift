@@ -80,7 +80,8 @@ struct CommentThreadView: View {
                     footer
                 }
             }
-            .scrollEdgeEffectStyle(.soft, for: .all)
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollEdgeEffectHidden(true, for: .bottom)
             .background(Color(uiColor: .systemBackground))
             .commentComposer(viewModel: viewModel, root: root)
             .navigationTitle("回复")

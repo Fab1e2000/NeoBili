@@ -303,6 +303,7 @@ struct VideoPage: View {
                 VideoPartsSheet(
                     parts: detail.pages,
                     currentCid: store.activeCid ?? detail.cid,
+                    coverURL: store.route?.secureCoverURL,
                     onSelect: { part in store.selectPart(cid: part.cid) }
                 )
                 .appTextSize()

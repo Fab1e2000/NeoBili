@@ -36,6 +36,7 @@ struct HomeTabReselectionObserver: UIViewControllerRepresentable {
         var onReselect: (() -> Void)?
         private var callbackPending = false
         private weak var controller: UITabBarController?
+        private weak var probe: UIViewController?
         // NSObject 的转发入口为 nonisolated；所有访问均由主线程入口或下方线程检查保护。
         nonisolated(unsafe) private weak var original: (any UITabBarControllerDelegate)?
 
@@ -45,6 +46,7 @@ struct HomeTabReselectionObserver: UIViewControllerRepresentable {
             guard let tab = probe.tabBarController ?? Self.findTab(in: root), tab.delegate !== self else { return }
             if controller !== tab { detach() }
             controller = tab
+            self.probe = probe
             original = tab.delegate
             tab.delegate = self
         }
@@ -63,17 +65,26 @@ struct HomeTabReselectionObserver: UIViewControllerRepresentable {
         func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
             let allowed = original?.tabBarController?(tabBarController, shouldSelect: viewController) ?? true
             if allowed, tabBarController.selectedViewController === viewController,
-               tabBarController.viewControllers?.first === viewController {
+               containsHome(viewController) {
                 notifyReselection()
             }
             return allowed
         }
         func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
             let allowed = original?.tabBarController?(tabBarController, shouldSelectTab: tab) ?? true
-            if allowed, tabBarController.selectedTab === tab, tabBarController.tabs.first === tab {
+            if allowed, tabBarController.selectedTab === tab, let viewController = tab.viewController, containsHome(viewController) {
                 notifyReselection()
             }
             return allowed
+        }
+
+        private func containsHome(_ viewController: UIViewController) -> Bool {
+            var ancestor = probe
+            while let current = ancestor {
+                if current === viewController { return true }
+                ancestor = current.parent
+            }
+            return false
         }
 
         private func notifyReselection() {

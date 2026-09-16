@@ -2,10 +2,9 @@ import SwiftUI
 
 /// 搜索结果列表。
 ///
-/// 它不含搜索框——搜索框由首页的固定顶部栏承载，这里只负责把
-/// 结果画出来。首页在「搜过东西」时用它替换推荐流，取消搜索后再换回去。
+/// 它不含搜索框；搜索 Tab 或标签搜索页负责输入，这里只展示结果。
 struct SearchResultsView: View {
-    /// 和首页共用同一个视图模型：搜索框、候选词、结果都挂在它上面。
+    /// 和搜索入口共用视图模型，保留查询与结果状态。
     let viewModel: SearchViewModel
 
     @Environment(NowPlayingStore.self) private var nowPlaying

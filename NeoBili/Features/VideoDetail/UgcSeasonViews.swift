@@ -35,7 +35,7 @@ struct UgcSeasonRow: View {
     }
 }
 
-/// 合集分集列表。当前这一集由原生 Picker 显示选中标记，点其它集就地换片。
+/// 合集分集使用与搜索结果一致的独立卡片。
 struct UgcSeasonSheet: View {
     let season: UgcSeason
     /// 当前播放的稿件 bvid，用来高亮。
@@ -51,24 +51,35 @@ struct UgcSeasonSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if visibleEpisodes.isEmpty, season.episodes.hasPendingVideoDimensions(hidesPortraitVideos) {
-                    LoadingTaskAnchor()
-                } else if visibleEpisodes.isEmpty {
-                    ContentUnavailableView("没有可显示的分集", systemImage: "rectangle.slash")
-                } else {
-                    Picker("选择分集", selection: selection) {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if visibleEpisodes.isEmpty, season.episodes.hasPendingVideoDimensions(hidesPortraitVideos) {
+                        LoadingTaskAnchor()
+                    } else if visibleEpisodes.isEmpty {
+                        ContentUnavailableView("没有可显示的分集", systemImage: "rectangle.slash")
+                    } else {
                         ForEach(visibleEpisodes) { episode in
-                            row(episode)
-                                .tag(Optional(episode.id))
+                            Button {
+                                onSelect(episode)
+                                dismiss()
+                            } label: {
+                                VideoListCard(
+                                    coverURL: episode.secureCoverURL,
+                                    title: episode.title ?? "",
+                                    author: episode.bvid == currentBvid ? "正在播放" : (season.title ?? "合集"),
+                                    playCount: -1,
+                                    durationText: episode.formattedDuration
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(episode.bvid == currentBvid ? .isSelected : [])
+                            .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
+                            .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
                         }
                     }
-                    .pickerStyle(.inline)
-                    .tint(.primary)
-                    .labelsHidden()
                 }
             }
-            .listStyle(.insetGrouped)
+            .background(Color(uiColor: .systemGroupedBackground))
             // 左缘触控死区：防止边缘误触直接切了分集。
             .leftEdgeTapDeadZone()
             .navigationTitle(season.title ?? "合集")
@@ -82,43 +93,5 @@ struct UgcSeasonSheet: View {
         .presentationDetents([.medium, .large])
         .resolvePortraitVideos(season.episodes)
         .videoCardAnimationSource(.collection)
-    }
-
-    private var selection: Binding<String?> {
-        Binding(get: {
-            guard let currentBvid else { return nil }
-            return visibleEpisodes.first(where: { $0.bvid == currentBvid })?.id
-        }, set: { id in
-            guard let id, let episode = visibleEpisodes.first(where: { $0.id == id }) else { return }
-            onSelect(episode)
-            dismiss()
-        })
-    }
-
-    private func row(_ episode: UgcSeasonEpisode) -> some View {
-        HStack(spacing: 12) {
-            ZStack(alignment: .bottomTrailing) {
-                BiliImage(url: episode.secureCoverURL)
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 120, height: 68)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                if !episode.formattedDuration.isEmpty {
-                    Text(episode.formattedDuration)
-                        .font(.caption2)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 3))
-                        .padding(4)
-                }
-            }
-            Text(episode.title ?? "")
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .contentShape(Rectangle())
     }
 }

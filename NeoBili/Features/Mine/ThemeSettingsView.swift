@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ThemeSettingsView: View {
+    @Environment(ThemeIconController.self) private var themeIcon
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     private let columns = [GridItem(.adaptive(minimum: 82), spacing: 12)]
 
@@ -20,11 +21,20 @@ struct ThemeSettingsView: View {
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(Color.accentColor.opacity(0.14), in: Capsule())
                     }
-                    Text("用于选中状态、按钮及播放器收起条。页面背景和文字仍跟随系统的浅色／深色外观。")
+                    Text("用于选中状态、按钮、播放器收起条及桌面图标。页面背景和文字仍跟随系统的浅色／深色外观。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 .padding(18)
                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+
+                if let message = themeIcon.errorMessage {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(message).font(.footnote).foregroundStyle(.secondary)
+                        Button("重试更新桌面图标") {
+                            Task { await themeIcon.apply(themeID: themeID) }
+                        }
+                    }
+                }
 
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(AppTheme.presets) { theme in

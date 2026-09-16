@@ -249,7 +249,8 @@
 		8973EE6DD242F15B2AA483CF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = NeoBiliIcon;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "NeoBiliIcon-rose NeoBiliIcon-ruby NeoBiliIcon-coral NeoBiliIcon-orange NeoBiliIcon-amber NeoBiliIcon-olive NeoBiliIcon-lime NeoBiliIcon-leaf NeoBiliIcon-forest NeoBiliIcon-jade NeoBiliIcon-teal NeoBiliIcon-cyan NeoBiliIcon-sky NeoBiliIcon-blue NeoBiliIcon-cobalt NeoBiliIcon-indigo NeoBiliIcon-violet NeoBiliIcon-lavender NeoBiliIcon-orchid NeoBiliIcon-berry NeoBiliIcon-cocoa NeoBiliIcon-slate NeoBiliIcon-graphite";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
@@ -390,7 +391,8 @@
 		FD849950D7F08FEC5DE31FAE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = NeoBiliIcon;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "NeoBiliIcon-rose NeoBiliIcon-ruby NeoBiliIcon-coral NeoBiliIcon-orange NeoBiliIcon-amber NeoBiliIcon-olive NeoBiliIcon-lime NeoBiliIcon-leaf NeoBiliIcon-forest NeoBiliIcon-jade NeoBiliIcon-teal NeoBiliIcon-cyan NeoBiliIcon-sky NeoBiliIcon-blue NeoBiliIcon-cobalt NeoBiliIcon-indigo NeoBiliIcon-violet NeoBiliIcon-lavender NeoBiliIcon-orchid NeoBiliIcon-berry NeoBiliIcon-cocoa NeoBiliIcon-slate NeoBiliIcon-graphite";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;

@@ -6,6 +6,8 @@ struct LiveRoomView: View {
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    private var keepsPlaybackOnDismiss = false
+    private var onReturn: (() -> Void)?
     @State private var player: LivePlayerModel
     @State private var following = LiveRoomFollowModel()
     @State private var isIntroductionExpanded = false
@@ -22,7 +24,12 @@ struct LiveRoomView: View {
     @AppStorage(DanmakuSettings.liveEnabledKey) private var liveDanmakuEnabled = DanmakuSettings.defaultValue
 
     init(room: LiveRoom) { _player = State(initialValue: LivePlayerModel(room: room)) }
-    init(player: LivePlayerModel) { _player = State(initialValue: player) }
+    init(player: LivePlayerModel, keepsPlaybackOnDismiss: Bool = false,
+         onReturn: (() -> Void)? = nil) {
+        _player = State(initialValue: player)
+        self.keepsPlaybackOnDismiss = keepsPlaybackOnDismiss
+        self.onReturn = onReturn
+    }
 
     private var followContext: LiveRoomFollowModel.Context {
         .init(mid: player.room.uid, sessionID: account.sessionID,
@@ -66,7 +73,11 @@ struct LiveRoomView: View {
         .ignoresSafeArea(isFullScreen ? .all : [], edges: .all)
         .statusBarHidden(isFullScreen)
         .background { PlayerSafeAreaReader { controlsSafeArea = $0 }.allowsHitTesting(false) }
-        .task(id: reloadID) { await player.load(quality: requestedQuality) }
+        .task(id: reloadID) {
+            if !keepsPlaybackOnDismiss || reloadID > 0 {
+                await player.load(quality: requestedQuality)
+            }
+        }
         .task(id: followContext) { await following.load(followContext) }
         // 真实房间号在播放地址返回后才更新；跟着它（重）连弹幕服务器。
         // 列表常驻；飘幕开关只影响画面上的那层。
@@ -90,7 +101,7 @@ struct LiveRoomView: View {
         .onChange(of: player.displayAspectRatio) { if isFullScreen { applyFullScreenOrientation() } }
         .onDisappear {
             hideTask?.cancel()
-            player.stop()
+            if !keepsPlaybackOnDismiss { player.stop() }
             danmaku.stop()
             OrientationController.enterPortrait()
         }
@@ -149,7 +160,7 @@ struct LiveRoomView: View {
                     safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
                     isDanmakuEnabled: liveDanmakuEnabled, showsDanmakuToggle: true,
                     onToggleDanmaku: { liveDanmakuEnabled.toggle() },
-                    onBack: { if isFullScreen { toggleFullScreen() } else { dismiss() } },
+                    onBack: { if isFullScreen { toggleFullScreen() } else { if let onReturn { onReturn() } else { dismiss() } } },
                     onTogglePlayback: { player.togglePlayback(); scheduleHide() },
                     onToggleFullScreen: toggleFullScreen,
                     onMenuInteraction: { hideTask?.cancel(); keepsControlsForMenu = true; controlsVisible = true }
@@ -209,7 +220,8 @@ struct LiveRoomView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollBounceBehavior(.basedOnSize)
-            .scrollEdgeEffectStyle(.soft, for: .all)
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollEdgeEffectHidden(true, for: .bottom)
         }
         .background(Color(uiColor: .systemBackground))
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14))
