@@ -261,7 +261,7 @@ struct HomeView: View {
             .scrollDisabled(isRefreshing && listOpacity < 1)
             // 卡片从搜索框下面滑过去时，顶部给一层渐隐，让搜索框浮在内容之上
             // 而不是硬生生压着卡片（iOS 26 的 scroll edge effect）。
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 // 只在「离开顶部 / 回到顶部」这两个瞬间更新状态：滚动过程中
                 // 每帧都写 CGFloat 会让整个 body（含 feedRows 分组）跟着重算。

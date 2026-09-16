@@ -58,7 +58,7 @@ struct VideoListCard: View {
     let durationText: String
     /// 是否画出卡片本身的外观（浅色底、圆角、边线）。
     ///
-    /// 详情页传 false，由推荐列表的共享玻璃容器提供背景。
+    /// 详情页传 false，让推荐列表直接显示在页面背景上。
     var showsCardChrome = true
     var animatesEntrance = true
 

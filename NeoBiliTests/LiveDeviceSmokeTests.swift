@@ -107,7 +107,7 @@ final class LiveDeviceSmokeTests: XCTestCase {
         let previous = scene.keyWindow
         let window = UIWindow(windowScene: scene)
         let model = LiveFeedModel { _, _ in page }
-        let host = UIHostingController(rootView: LiveView(model: model, onOpenRoom: { _ in }).environment(account))
+        let host = UIHostingController(rootView: LiveView(model: model, onOpenRoom: { _, _ in }).environment(account))
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer {

@@ -9,6 +9,7 @@ struct LiveRoomView: View {
     @State private var player: LivePlayerModel
     @State private var following = LiveRoomFollowModel()
     @State private var isIntroductionExpanded = false
+    @State private var detailsHeaderHeight: CGFloat = 160
     @State private var isFullScreen = false
     @State private var controlsVisible = false
     @State private var controlsSafeArea = EdgeInsets()
@@ -43,12 +44,23 @@ struct LiveRoomView: View {
                 videoSurface
                     .frame(width: geometry.size.width, height: playerHeight)
                     .clipped()
+                    .background {
+                        PlayerReturnGestureGuard(enabled: true)
+                            .allowsHitTesting(false)
+                    }
                 if !isFullScreen {
-                    roomDetails
+                    roomDetails(bottomInset: geometry.safeAreaInsets.bottom)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background {
+                            PlayerReturnGestureGuard(enabled: true, verticalOnly: true)
+                                .allowsHitTesting(false)
+                        }
+                        .leftEdgeTapDeadZone()
                 }
             }
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+            .frame(width: geometry.size.width,
+                   height: geometry.size.height + (isFullScreen ? 0 : geometry.safeAreaInsets.bottom),
+                   alignment: .top)
         }
         .background(Color.black.ignoresSafeArea())
         .ignoresSafeArea(isFullScreen ? .all : [], edges: .all)
@@ -163,30 +175,42 @@ struct LiveRoomView: View {
         )
     }
 
-    private var roomDetails: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                LiveRoomOwnerRow(room: player.room, card: following.card, isFollowing: following.isFollowing,
-                                 isLoading: following.isLoading, isToggling: following.isToggling,
-                                 isOwnAccount: followContext.isOwnAccount, onToggleFollow: toggleFollow)
-                LiveRoomIntroductionCard(room: player.room, isOffline: player.isOffline,
-                                         isExpanded: $isIntroductionExpanded)
-                LiveDanmakuPanel(model: danmaku)
-                    .frame(height: 280)
-                if let error = player.errorMessage {
-                    Label(error, systemImage: "wifi.exclamationmark")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+    private func roomDetails(bottomInset: CGFloat) -> some View {
+        GeometryReader { geometry in
+            let bottomPadding = max(8, bottomInset)
+            // 用剩余高度承载弹幕；长简介或小屏幕仍可滚动，并保留可用的弹幕视口。
+            let panelHeight = max(200, geometry.size.height - detailsHeaderHeight - 18 - 14 - bottomPadding)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        LiveRoomOwnerRow(room: player.room, card: following.card, isFollowing: following.isFollowing,
+                                         isLoading: following.isLoading, isToggling: following.isToggling,
+                                         isOwnAccount: followContext.isOwnAccount, onToggleFollow: toggleFollow)
+                        LiveRoomIntroductionCard(room: player.room, isOffline: player.isOffline,
+                                                 isExpanded: $isIntroductionExpanded)
+                        if let error = player.errorMessage {
+                            Label(error, systemImage: "wifi.exclamationmark")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+                        }
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                        detailsHeaderHeight = $0
+                    }
+                    LiveDanmakuPanel(model: danmaku)
+                        .frame(height: panelHeight)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, bottomPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 18)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollEdgeEffectStyle(.soft, for: .all)
         }
-        .scrollEdgeEffectStyle(.soft, for: .all)
         .background(Color(uiColor: .systemBackground))
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14))
         .background {

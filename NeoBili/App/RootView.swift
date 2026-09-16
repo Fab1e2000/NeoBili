@@ -23,11 +23,18 @@ enum MainTab: Hashable {
     case home, following, live, mine
 }
 
+/// 房间与转场来源一起提交，避免首次展示捕获旧的来源 ID。
+private struct LiveRoomPresentation: Identifiable {
+    let room: LiveRoom
+    let sourceID: String
+    var id: String { sourceID }
+}
+
 struct RootView: View {
     @State private var nowPlaying = NowPlayingStore()
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
-    @State private var liveRoom: LiveRoom?
+    @State private var liveRoom: LiveRoomPresentation?
     @Environment(\.scenePhase) private var scenePhase
     @Namespace private var videoTransition
 
@@ -52,16 +59,16 @@ struct RootView: View {
         @Bindable var nowPlaying = nowPlaying
 
         return TabView(selection: tabSelection) {
+            Tab("直播", systemImage: "dot.radiowaves.left.and.right", value: MainTab.live) {
+                LiveView(onOpenRoom: openLiveRoom)
+                .opacity(tabContentOpacity)
+            }
             Tab("推荐", systemImage: "house.fill", value: MainTab.home) {
                 HomeView().opacity(tabContentOpacity)
             }
             // 搜索不再单独占一个 Tab：入口挪到了首页顶部那个常驻搜索框。
             Tab("关注", systemImage: "person.2.fill", value: MainTab.following) {
-                FollowingView(onOpenLiveRoom: openLiveRoom).id(account.sessionID).opacity(tabContentOpacity)
-            }
-            Tab("直播", systemImage: "dot.radiowaves.left.and.right", value: MainTab.live) {
-                LiveView(onOpenRoom: openLiveRoom)
-                .opacity(tabContentOpacity)
+                FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") }).id(account.sessionID).opacity(tabContentOpacity)
             }
             Tab("我的", systemImage: "person.crop.circle", value: MainTab.mine) {
                 MineView().opacity(tabContentOpacity)
@@ -96,9 +103,13 @@ struct RootView: View {
                     onInteractionEnded: nowPlaying.videoPageInteractionEnded
                 ) }
         }
-        .fullScreenCover(item: $liveRoom) { room in
-            LiveRoomView(room: room).appTextSize()
+        .fullScreenCover(item: $liveRoom) { presentation in
+            LiveRoomView(room: presentation.room)
+                .appTextSize()
+                .navigationTransition(.zoom(sourceID: presentation.sourceID, in: videoTransition))
         }
+        // 统一各页面底部与固定控件之间的柔和渐变模糊。
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .appTheme()
         .environment(nowPlaying)
         .environment(account)
@@ -123,9 +134,9 @@ struct RootView: View {
         .onChange(of: account.sessionID) { nowPlaying.close(); liveRoom = nil }
     }
 
-    private func openLiveRoom(_ room: LiveRoom) {
+    private func openLiveRoom(_ room: LiveRoom, sourceID: String) {
         nowPlaying.close()
-        liveRoom = room
+        liveRoom = LiveRoomPresentation(room: room, sourceID: sourceID)
     }
 
     /// TabView 的 selection 走这个代理：内容和高亮照常立刻切换，

@@ -189,6 +189,22 @@ struct VideoPage: View {
                         sectionPages
                             .environment(\.commentBottomInset, geometry.safeAreaInsets.bottom)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .overlay(alignment: .top) {
+                                // 在选择器下沿柔化滚动内容，不占布局高度或拦截手势。
+                                Rectangle()
+                                    .fill(.regularMaterial)
+                                    .overlay {
+                                        LinearGradient(colors: [Color(uiColor: .systemBackground), .clear],
+                                                       startPoint: .top, endPoint: .bottom)
+                                    }
+                                    .mask {
+                                        LinearGradient(colors: [.black, .clear],
+                                                       startPoint: .top, endPoint: .bottom)
+                                    }
+                                    .frame(height: 12)
+                                    .allowsHitTesting(false)
+                                    .accessibilityHidden(true)
+                            }
                     }
                     .background(Color(uiColor: .systemBackground))
                     .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))

@@ -42,6 +42,7 @@ enum FollowingSidebarLayout {
 
 /// A：边缘头像入口；B：可上下滚动的头像列表。仅在停稳或收起时提交筛选。
 struct FollowingCarousel: View {
+    @Environment(\.videoTransitionNamespace) private var videoTransition
     let items: [FollowingSelection]
     @Binding var focusedID: FollowingSelection.ID
     let side: FollowingSidebarSide
@@ -151,6 +152,7 @@ struct FollowingCarousel: View {
                 }
                 // 同一份原生列表同时承载 A/B，收起不会销毁或复制头像。
                 expandedRail(height: height, rowHeight: rowHeight)
+                    .videoTransitionSource("following-live", in: videoTransition)
                     .allowsHitTesting(isExpanded)
                     .accessibilityHidden(!isExpanded)
                     .simultaneousGesture(
