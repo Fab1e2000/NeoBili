@@ -40,31 +40,40 @@ struct VideoPartsRow: View {
     }
 }
 
-/// 分P列表弹层。当前这一P由原生 Picker 显示选中标记，点其它P就地切换，
-/// 和合集分集列表（`UgcSeasonSheet`）一个交互。
+/// 分P以独立视频卡片展示，直接铺在页面背景上。
 struct VideoPartsSheet: View {
     let parts: [VideoPart]
-    /// 当前播放的分P cid，用来高亮。
     let currentCid: Int?
+    var coverURL: URL? = nil
     let onSelect: (VideoPart) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            List {
-                Picker("选择分P", selection: selection) {
+            ScrollView {
+                LazyVStack(spacing: 0) {
                     ForEach(parts) { part in
-                        row(part)
-                            .tag(Optional(part.cid))
+                        Button {
+                            onSelect(part)
+                            dismiss()
+                        } label: {
+                            VideoListCard(
+                                coverURL: coverURL,
+                                title: part.part,
+                                author: part.cid == currentCid ? "P\(part.page) · 正在播放" : "P\(part.page)",
+                                playCount: -1,
+                                durationText: part.formattedDuration
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(part.cid == currentCid ? .isSelected : [])
+                        .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
+                        .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
                     }
                 }
-                .pickerStyle(.inline)
-                .tint(.primary)
-                .labelsHidden()
             }
-            .listStyle(.insetGrouped)
-            // 左缘触控死区：防止边缘误触直接切了分P。
+            .background(Color(uiColor: .systemGroupedBackground))
             .leftEdgeTapDeadZone()
             .navigationTitle("分P")
             .navigationBarTitleDisplayMode(.inline)
@@ -75,32 +84,6 @@ struct VideoPartsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-    }
-
-    private var selection: Binding<Int?> {
-        Binding(get: { currentCid }, set: { cid in
-            guard let part = parts.first(where: { $0.cid == cid }) else { return }
-            onSelect(part)
-            dismiss()
-        })
-    }
-
-    private func row(_ part: VideoPart) -> some View {
-        HStack(spacing: 12) {
-            Text(part.part)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if !part.formattedDuration.isEmpty {
-                Text(part.formattedDuration)
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-
-        }
-        .contentShape(Rectangle())
+        .videoCardAnimationSource(.collection)
     }
 }

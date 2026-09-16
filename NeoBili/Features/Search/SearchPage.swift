@@ -1,69 +1,83 @@
 import SwiftUI
 
-/// 搜索页。首页顶部那颗搜索胶囊推进来的。
-///
-/// 页面本身只负责「还没搜」和「搜到了」两种内容，搜索框、候选词浮层、
-/// 取消按钮全部交给系统的 `.searchable`——进页面就自动聚焦、弹键盘。
+/// 独立搜索 Tab 的内容；输入框只挂在本 Tab 的导航栈上。
 struct SearchPage: View {
-    @State private var viewModel = SearchViewModel()
-    @State private var isSearchPresented = false
+    let viewModel: SearchViewModel
+    let onSubmit: (String?) -> Void
+    @State private var history = SearchHistory.shared
 
     var body: some View {
         Group {
-            if viewModel.hasSubmittedSearch {
+            if viewModel.isShowingSuggestions {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if viewModel.suggestions.isEmpty {
+                            searchRow("搜索：\(viewModel.trimmedQuery)", keyword: viewModel.trimmedQuery)
+                        } else {
+                            ForEach(viewModel.suggestions) { suggestion in
+                                searchRow(suggestion.value, keyword: suggestion.value)
+                                Divider().padding(.horizontal, 20)
+                            }
+                        }
+                    }
+                }
+                .scrollDismissesKeyboard(.interactively)
+            } else if viewModel.hasSubmittedSearch {
                 SearchResultsView(viewModel: viewModel)
             } else {
-                ContentUnavailableView {
-                    Label("搜索视频", systemImage: "magnifyingglass")
-                } description: {
-                    Text("输入关键词，或从下面的候选词里挑一个。")
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack {
+                            Text("搜索历史").font(.headline)
+                            Spacer()
+                            Button("清空", systemImage: "trash") { history.clear() }
+                                .labelStyle(.iconOnly)
+                                .frame(width: 44, height: 44)
+                                .disabled(history.keywords.isEmpty)
+                                .accessibilityLabel("清空搜索历史")
+                                .accessibilityIdentifier("search.clearHistory")
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        if history.keywords.isEmpty {
+                            Text("暂无搜索历史")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 20)
+                        }
+                        ForEach(history.keywords, id: \.self) { keyword in
+                            searchRow(keyword, keyword: keyword, symbol: "clock.arrow.circlepath")
+                            Divider().padding(.horizontal, 20)
+                        }
+                    }
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
         }
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            // 仅背景越过键盘安全区；列表仍正常避让键盘和搜索栏。
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+        }
+        .navigationTitle("搜索")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(
-            text: $viewModel.query,
-            isPresented: $isSearchPresented,
-            placement: .toolbar,
-            prompt: "搜索视频"
-        )
-        // 系统原生的候选词浮层。点中一条由 searchCompletion 填回输入框
-        // 并触发下面的 onSubmit，不需要自己处理点击。
-        .searchSuggestions {
-            if viewModel.isShowingSuggestions {
-                ForEach(viewModel.suggestions) { suggestion in
-                    // 就是一行黑字：放大镜图标去掉，只留一点左边距。
-                    Text(suggestion.value)
-                        .foregroundStyle(.primary)
-                        .padding(.leading, 6)
-                        .searchCompletion(suggestion.value)
-                }
-            }
-        }
-        .onSubmit(of: .search) { viewModel.submit() }
-        // 输入一变就重新取候选词。上一次的任务会被 SwiftUI 取消，
-        // 所以视图模型里那个 250 毫秒的等待就等于防抖。
-        .task(id: viewModel.trimmedQuery) { await viewModel.loadSuggestions() }
-        // 清空输入就回到「还没搜」的状态。
-        .onChange(of: viewModel.trimmedQuery) {
-            if viewModel.trimmedQuery.isEmpty { viewModel.reset() }
-        }
-        // 等推场动画走完再要焦点。转场途中要焦点，系统会把它丢掉，键盘不弹。
-        .task {
-            try? await Task.sleep(for: .milliseconds(250))
-            isSearchPresented = true
-        }
         .onAppear { OrientationController.enterPortrait() }
     }
-}
 
-#Preview {
-    NavigationStack {
-        SearchPage()
-            .environment(NowPlayingStore())
-            .environment(AccountStore())
-            .environment(ActionFeedback())
+    private func searchRow(_ title: String, keyword: String, symbol: String? = nil) -> some View {
+        Button { onSubmit(keyword) } label: {
+            HStack(spacing: 10) {
+                if let symbol { Image(systemName: symbol).foregroundStyle(.secondary) }
+                Text(title).multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }

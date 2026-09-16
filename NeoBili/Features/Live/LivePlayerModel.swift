@@ -174,8 +174,10 @@ final class LivePlayerModel {
             canUsePreparedSession = false
             next = session
         } else {
+            let presentation = session.surfacePresentation
             session.stop()
             next = MPVPlayerSession(configuration: .live(roomID: playbackRoomID))
+            next.surfacePresentation = presentation
             session = next
         }
         isLoading = true

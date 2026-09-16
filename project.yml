@@ -30,6 +30,8 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         CFBundleDisplayName: NeoBili
+        CFBundleShortVersionString: "1.0.3"
+        CFBundleVersion: "4"
         NSPhotoLibraryAddUsageDescription: 保存登录二维码到相册，便于在哔哩哔哩 App 的扫一扫里从相册识别登录。
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -44,7 +46,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.elsterlee.NeoBili
         SWIFT_VERSION: "6.0"
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_APPICON_NAME: NeoBiliIcon
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "NeoBiliIcon-rose NeoBiliIcon-ruby NeoBiliIcon-coral NeoBiliIcon-orange NeoBiliIcon-amber NeoBiliIcon-olive NeoBiliIcon-lime NeoBiliIcon-leaf NeoBiliIcon-forest NeoBiliIcon-jade NeoBiliIcon-teal NeoBiliIcon-cyan NeoBiliIcon-sky NeoBiliIcon-blue NeoBiliIcon-cobalt NeoBiliIcon-indigo NeoBiliIcon-violet NeoBiliIcon-lavender NeoBiliIcon-orchid NeoBiliIcon-berry NeoBiliIcon-cocoa NeoBiliIcon-slate NeoBiliIcon-graphite"
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_PREVIEWS: YES

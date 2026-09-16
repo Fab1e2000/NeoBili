@@ -1,6 +1,81 @@
 import SwiftUI
 
 struct LiveView: View {
+    @Environment(AccountStore.self) private var account
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var recommended: LiveFeedModel
+    @State private var following: LiveFeedModel
+    @State private var source: LiveFeedModel.Source = .recommended
+    let onOpenRoom: (LiveRoom, String) -> Void
+
+    init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom, String) -> Void) {
+        _recommended = State(initialValue: model)
+        let followed = LiveFeedModel()
+        followed.select(.following)
+        _following = State(initialValue: followed)
+        self.onOpenRoom = onOpenRoom
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Picker("直播内容", selection: selection) {
+                    Text("推荐").tag(LiveFeedModel.Source.recommended)
+                    if account.isLoggedIn { Text("关注").tag(LiveFeedModel.Source.following) }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("live.feedSource")
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+
+                // 和视频页共用原生横向分页行为，每页保留自己的列表和滚动位置。
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 0) {
+                        page(recommended)
+                            .id(LiveFeedModel.Source.recommended)
+                        if account.isLoggedIn {
+                            page(following)
+                                .id(LiveFeedModel.Source.following)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollPosition(id: Binding<LiveFeedModel.Source?>(
+                    get: { source },
+                    set: { if let value = $0 { source = value } }
+                ))
+                .scrollTargetBehavior(.paging)
+                .scrollIndicators(.hidden)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .onChange(of: account.sessionID) {
+            source = .recommended
+            following.select(.following)
+        }
+        .onChange(of: account.isLoggedIn) { _, loggedIn in
+            if !loggedIn { source = .recommended }
+            else { following.select(.following) }
+        }
+    }
+
+    private var selection: Binding<LiveFeedModel.Source> {
+        Binding(get: { source }, set: { value in
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { source = value }
+        })
+    }
+
+    private func page(_ model: LiveFeedModel) -> some View {
+        LiveFeedPage(model: model, onSelectRecommended: { selection.wrappedValue = .recommended },
+                     onOpenRoom: onOpenRoom)
+            .frame(maxHeight: .infinity)
+            .containerRelativeFrame(.horizontal)
+    }
+}
+
+private struct LiveFeedPage: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(AccountStore.self) private var account
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -10,15 +85,16 @@ struct LiveView: View {
     @State private var previousEntranceGeneration: Int?
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     @State private var refreshTask: Task<Void, Never>?
-    @State private var pullState = 0
     @State private var isRefreshing = false
     @State private var refreshID = UUID()
     @State private var listOpacity = 1.0
     private var animations = VideoCardAnimationPreferences(source: .live)
+    let onSelectRecommended: () -> Void
     let onOpenRoom: (LiveRoom, String) -> Void
 
-    init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom, String) -> Void) {
+    init(model: LiveFeedModel, onSelectRecommended: @escaping () -> Void, onOpenRoom: @escaping (LiveRoom, String) -> Void) {
         _model = State(initialValue: model)
+        self.onSelectRecommended = onSelectRecommended
         self.onOpenRoom = onOpenRoom
     }
 
@@ -41,22 +117,17 @@ struct LiveView: View {
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
 
     var body: some View {
-        NavigationStack {
-            feed
-                .background(Color(uiColor: .systemGroupedBackground))
-                .navigationTitle("直播")
-                .navigationBarTitleDisplayMode(.inline)
-                .safeAreaBar(edge: .top, spacing: 0) { selector }
-                .task(id: LoadContext(source: model.source, sessionID: account.sessionID,
-                                      isLoggedIn: account.isLoggedIn)) {
-                    let previousSource = model.source
-                    model.synchronizeAccount(sessionID: account.sessionID, isLoggedIn: account.isLoggedIn)
-                    // Signing out starts a new Recommended task; that task owns its request.
-                    guard previousSource == model.source else { return }
-                    await model.loadInitial()
-                }
-                .onAppear { OrientationController.enterPortrait() }
+        feed
+        .background(Color(uiColor: .systemGroupedBackground))
+        .task(id: LoadContext(source: model.source, sessionID: account.sessionID,
+                              isLoggedIn: account.isLoggedIn)) {
+            let previousSource = model.source
+            model.synchronizeAccount(sessionID: account.sessionID, isLoggedIn: account.isLoggedIn)
+            // Signing out starts a new Recommended task; that task owns its request.
+            guard previousSource == model.source else { return }
+            await model.loadInitial()
         }
+        .onAppear { OrientationController.enterPortrait() }
         .transformEnvironment(\.videoEntranceClocks) {
             $0.append(VideoEntranceScope(ids: Set(entranceBatch.ids),
                                         generation: entranceBatch.generation, clock: entranceClock))
@@ -80,17 +151,6 @@ struct LiveView: View {
         .onChange(of: account.sessionID) { resetRefreshPresentation() }
     }
 
-    private var selector: some View {
-        Picker("直播内容", selection: Binding(get: { model.source }, set: { model.select($0) })) {
-            Text("推荐").tag(LiveFeedModel.Source.recommended)
-            if account.isLoggedIn { Text("关注").tag(LiveFeedModel.Source.following) }
-        }
-        .pickerStyle(.segmented)
-        .accessibilityIdentifier("live.feedSource")
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-    }
-
     private var feed: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
@@ -98,12 +158,12 @@ struct LiveView: View {
                     initialState
                         .frame(maxWidth: .infinity, minHeight: 330)
                 } else {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
-                                        GridItem(.flexible(), spacing: 10)], spacing: 16) {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8),
+                                        GridItem(.flexible(), spacing: 8)], spacing: 10) {
                         ForEach(model.rooms) { room in
-                            Button { onOpenRoom(room, "live-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
+                            Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
                                 .buttonStyle(.plain)
-                                .videoTransitionSource("live-card-\(room.roomID)", in: videoTransition)
+                                .videoTransitionSource("live-\(model.source.rawValue)-card-\(room.roomID)", in: videoTransition)
                                 .videoEntranceIdentity("live:\(room.roomID)")
                                 .accessibilityIdentifier("live.room.\(room.roomID)")
                                 .task { await model.loadMoreIfNeeded(current: room) }
@@ -114,20 +174,17 @@ struct LiveView: View {
                     pagination
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 10)
             .background {
                 ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing && !model.isLoading,
-                                 onProgress: { distance, armed in pullState = distance > 0 ? (armed ? 2 : 1) : 0 },
+                                 onProgress: { _, _ in },
                                  onRefresh: startRefresh)
             }
         }
         .scrollBounceBehavior(.always, axes: .vertical)
-        .scrollEdgeEffectStyle(.soft, for: .all)
-        .overlay(alignment: .top) {
-            FeedRefreshFeedback(isRefreshing: isRefreshing, pullState: pullState,
-                                error: model.rooms.isEmpty ? nil : model.errorMessage, retry: startRefresh)
-        }
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .scrollEdgeEffectHidden(true, for: .bottom)
         .accessibilityAction(named: "刷新直播", startRefresh)
     }
 
@@ -151,7 +208,7 @@ struct LiveView: View {
                 Text(model.source == .following ? "开播后会显示在这里，也可以看看推荐直播。" : "稍后下拉刷新。")
             } actions: {
                 if model.source == .following {
-                    Button("看看推荐") { model.select(.recommended) }
+                    Button("看看推荐", action: onSelectRecommended)
                 }
             }
         }
@@ -185,7 +242,6 @@ struct LiveView: View {
         let requestID = UUID()
         refreshID = requestID
         isRefreshing = true
-        pullState = 0
         let duration = animatesExit && !model.rooms.isEmpty ? FeedRefreshTuning.fadeExit(speed: exitSpeed) : 0
         defer {
             if refreshID == requestID {
@@ -224,7 +280,6 @@ struct LiveView: View {
         refreshTask?.cancel()
         refreshTask = nil
         model.discardStagedRefresh()
-        pullState = 0
         refreshID = UUID()
         withAnimation(nil) {
             listOpacity = 1

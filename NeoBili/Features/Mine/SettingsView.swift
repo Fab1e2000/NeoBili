@@ -9,8 +9,6 @@ struct SettingsView: View {
             Section("播放") {
                 NavigationLink("播放与画质") { PlaybackSettingsView() }
                     .accessibilityIdentifier("settings.playback")
-                NavigationLink("小窗移动范围") { MiniPlayerMovementSettingsView() }
-                    .accessibilityIdentifier("settings.miniPlayer.movement")
                 NavigationLink("播放器手势") { PlayerGestureSettingsView() }
                     .accessibilityIdentifier("settings.playerGestures")
             }
