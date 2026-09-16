@@ -9,6 +9,9 @@ struct LiveView: View {
     @State private var pendingRoom: LiveRoom?
     @State private var entranceClock = VideoEntranceClock()
     @State private var previousEntranceGeneration: Int?
+    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
+    @State private var refreshTask: Task<Void, Never>?
+    @State private var pullState = 0
     @State private var isRefreshing = false
     @State private var refreshID = UUID()
     @State private var listOpacity = 1.0
@@ -87,6 +90,7 @@ struct LiveView: View {
         .onChange(of: animatesExit) { _, enabled in
             if !enabled { withAnimation(nil) { listOpacity = 1 } }
         }
+        .onDisappear { resetRefreshPresentation() }
         .onChange(of: model.source) { resetRefreshPresentation() }
         .onChange(of: account.sessionID) { resetRefreshPresentation() }
     }
@@ -109,9 +113,6 @@ struct LiveView: View {
                     initialState
                         .frame(maxWidth: .infinity, minHeight: 330)
                 } else {
-                    if let message = model.errorMessage {
-                        retryMessage(message) { await refreshFeed() }
-                    }
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
                                         GridItem(.flexible(), spacing: 10)], spacing: 16) {
                         ForEach(model.rooms) { room in
@@ -123,16 +124,25 @@ struct LiveView: View {
                         }
                     }
                     .opacity(animatesExit ? listOpacity : 1)
-                    .allowsHitTesting(!isRefreshing)
+                    .allowsHitTesting(listOpacity == 1)
                     pagination
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 12)
+            .background {
+                ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing && !model.isLoading,
+                                 onProgress: { distance, armed in pullState = distance > 0 ? (armed ? 2 : 1) : 0 },
+                                 onRefresh: startRefresh)
+            }
         }
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollEdgeEffectStyle(.soft, for: .all)
-        .refreshable { await refreshFeed() }
+        .overlay(alignment: .top) {
+            FeedRefreshFeedback(isRefreshing: isRefreshing, pullState: pullState,
+                                error: model.rooms.isEmpty ? nil : model.errorMessage, retry: startRefresh)
+        }
+        .accessibilityAction(named: "刷新直播", startRefresh)
     }
 
     @ViewBuilder
@@ -189,11 +199,8 @@ struct LiveView: View {
         let requestID = UUID()
         refreshID = requestID
         isRefreshing = true
-        let startedAt = ProcessInfo.processInfo.systemUptime
+        pullState = 0
         let duration = animatesExit && !model.rooms.isEmpty ? FeedRefreshTuning.fadeExit(speed: exitSpeed) : 0
-        if duration > 0 {
-            withAnimation(.easeOut(duration: duration)) { listOpacity = 0 }
-        }
         defer {
             if refreshID == requestID {
                 model.discardStagedRefresh()
@@ -205,10 +212,12 @@ struct LiveView: View {
         }
         await model.refresh(staged: true)
         guard !Task.isCancelled, refreshID == requestID else { return }
+        guard model.errorMessage == nil else { return }
         if animatesExit {
+            withAnimation(.easeOut(duration: duration)) { listOpacity = 0 }
             do {
                 try await CardAnimationSettings.waitWhileEnabled(
-                    for: max(0, duration - (ProcessInfo.processInfo.systemUptime - startedAt)),
+                    for: duration,
                     category: .video, phase: .exit, source: .live
                 )
             } catch { return }
@@ -220,7 +229,16 @@ struct LiveView: View {
         }
     }
 
+    private func startRefresh() {
+        guard !isRefreshing, !model.isLoading else { return }
+        refreshTask = Task { await refreshFeed() }
+    }
+
     private func resetRefreshPresentation() {
+        refreshTask?.cancel()
+        refreshTask = nil
+        model.discardStagedRefresh()
+        pullState = 0
         refreshID = UUID()
         withAnimation(nil) {
             listOpacity = 1

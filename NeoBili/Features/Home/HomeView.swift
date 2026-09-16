@@ -23,17 +23,17 @@ struct HomeView: View {
     /// 刷新的三段式可视化：旧卡片原地淡出，新卡片按行落位。
     /// 参数集中在 FeedRefreshTuning 里。
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// 列表整体的浓度。下拉时先淡一点，松手后接着往下淡，数据到达后淡尽再让新卡落位。
+    /// 松手启动淡出；网络请求并行进行，新内容等淡出结束后再落位。
     /// 全程只有这一个量在变，卡片本身不位移，所以不会出现错位。
     @State private var listOpacity: Double = 1
+    @State private var exitTiming: FeedRefreshExitTiming?
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
-    /// 这一轮淡出的起点。数据回得比淡出还快时，靠它算出还要等多久才轮到落位。
-    @State private var exitStartedAt: Date?
 
     /// 搜索就在首页完成，不跳页：搜索框固定在紧凑工具栏内，
     /// 回车后这一页的内容换成结果，清空后回到推荐流。
     @State private var search = SearchViewModel()
+    @State private var searchHistory = SearchHistory.shared
 
     private var animatesExit: Bool {
         !reduceMotion && animations.isEnabled(phase: .exit)
@@ -61,7 +61,9 @@ struct HomeView: View {
                         // Keep suggestion content inside the safe area above the keyboard.
                         Color(uiColor: .systemGroupedBackground)
                             .ignoresSafeArea()
-                        if search.isShowingSuggestions {
+                        if search.query.isEmpty {
+                            searchHistoryList
+                        } else if search.isShowingSuggestions {
                             searchSuggestions
                         }
                     }
@@ -110,8 +112,7 @@ struct HomeView: View {
             guard !enabled else { return }
             // A settings change must also restore an already fading feed while
             // its request remains in flight.
-            withAnimation(nil) { listOpacity = 1 }
-            exitStartedAt = nil
+            withAnimation(nil) { listOpacity = 1; exitTiming = nil }
         }
         #if DEBUG
         .task {
@@ -126,7 +127,8 @@ struct HomeView: View {
 
     private var homeSearchBar: some View {
         HomeSearchBar(text: $search.query, isFocused: $isSearchFocused,
-                      onSubmit: { submitSearch() }, onCancel: { cancelSearch() })
+                      onSubmit: { submitSearch() }, onCancel: { cancelSearch() },
+                      canClearHistory: !searchHistory.keywords.isEmpty, onClearHistory: { searchHistory.clear() })
             // UISearchBar supplies its own icon and text padding; avoid doubling those insets.
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -136,6 +138,33 @@ struct HomeView: View {
                         .ignoresSafeArea(.container, edges: .top)
                 }
             }
+    }
+
+    private var searchHistoryList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                Text("搜索历史")
+                    .font(.headline)
+                    .padding(.horizontal, 22).padding(.vertical, 16)
+                if searchHistory.keywords.isEmpty {
+                    Text("暂无搜索历史")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .padding(.horizontal, 22)
+                }
+                ForEach(searchHistory.keywords, id: \.self) { keyword in
+                    Button { submitSearch(keyword: keyword) } label: {
+                        Label(keyword, systemImage: "clock.arrow.circlepath")
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 22).padding(.vertical, 14)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 22)
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var searchSuggestions: some View {
@@ -182,9 +211,7 @@ struct HomeView: View {
                     .frame(height: 0)
                     .background {
                         ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing,
-                                         onProgress: { distance, _ in
-                                             updatePullFade(distance)
-                                         }, onRefresh: { startRefresh() })
+                                         onProgress: { _, _ in }, onRefresh: { startRefresh() })
                     }
 
                 LazyVStack(spacing: HomeCardLayout.rowSpacing) {
@@ -222,7 +249,7 @@ struct HomeView: View {
                 .padding(.vertical, HomeCardLayout.verticalInset)
                 .opacity(animatesExit ? listOpacity : 1)
 
-                // 刷新进度在顶部浮层显示，翻页进度单独放在列表底部。
+                // 翻页进度放在列表底部。
                 if viewModel.isLoadingMore {
                     LoadingTaskAnchor()
                         .padding()
@@ -231,7 +258,7 @@ struct HomeView: View {
             .scrollPosition($feedPosition)
             // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
             .scrollBounceBehavior(.always, axes: .vertical)
-            .scrollDisabled(isRefreshing)
+            .scrollDisabled(isRefreshing && listOpacity < 1)
             // 卡片从搜索框下面滑过去时，顶部给一层渐隐，让搜索框浮在内容之上
             // 而不是硬生生压着卡片（iOS 26 的 scroll edge effect）。
             .scrollEdgeEffectStyle(.soft, for: .top)
@@ -253,19 +280,6 @@ struct HomeView: View {
                     }
                 } else {
                     startRefresh()
-                }
-            }
-            .onChange(of: isRefreshing) { _, refreshing in
-                if refreshing {
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        feedPosition.scrollTo(edge: .top)
-                    }
-                }
-            }
-            // Reduce Motion 下不做位移和 3D，只留一颗系统转圈。
-            .overlay(alignment: .top) {
-                if !animatesExit, isRefreshing {
-                    LoadingTaskAnchor().controlSize(.small).padding(.top, 12)
                 }
             }
             .accessibilityAction(named: "刷新推荐") { startRefresh() }
@@ -296,23 +310,14 @@ struct HomeView: View {
             }
         }
     }
-    /// 下拉过程中列表先淡一点，作为退出动画的预告。
-    ///
-    /// ShortPullRefresh 在真的要刷新时不会把距离清零，所以松手那一帧
-    /// 浓度就停在这里的值上，接着由 beginRefresh 往下淡，中间没有跳变。
-    private func updatePullFade(_ distance: CGFloat) {
-        guard !isRefreshing, animatesExit else { return }
-        let threshold = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
-        let progress = Double(min(max(distance, 0) / threshold, 1))
-        let faded = 1 - FeedRefreshTuning.pullFade * progress
-        // 值没变就不写状态：写 @State 会让整页 body 重算。
-        if listOpacity != faded { listOpacity = faded }
-    }
-
     private func startRefresh(scrollToTop: Bool = false) {
         guard !isRefreshing else { return }
         beginRefresh()
         refreshTask = Task { @MainActor in
+            defer {
+                withAnimation(nil) { listOpacity = 1; exitTiming = nil; isRefreshing = false }
+                refreshTask = nil
+            }
             // Keep existing content until the request is ready, including when
             // animation settings change in the middle of the request.
             await viewModel.refresh(staged: true)
@@ -324,24 +329,22 @@ struct HomeView: View {
 
     private func beginRefresh() {
         isRefreshing = true
-        guard animatesExit else {
-            listOpacity = 1
-            exitStartedAt = nil
-            return
-        }
-        exitStartedAt = .now
-        withAnimation(.easeOut(duration: FeedRefreshTuning.fadeExit(speed: exitSpeed))) {
-            listOpacity = 0
-        }
+        guard animatesExit else { listOpacity = 1; exitTiming = nil; return }
+        let duration = FeedRefreshTuning.fadeExit(speed: exitSpeed)
+        exitTiming = FeedRefreshExitTiming(start: ProcessInfo.processInfo.systemUptime, duration: duration)
+        withAnimation(.easeOut(duration: duration)) { listOpacity = 0 }
     }
 
     private func finishRefresh(scrollToTop: Bool) async {
-        if animatesExit {
-            let duration = FeedRefreshTuning.fadeExit(speed: exitSpeed)
-            let elapsed = exitStartedAt.map { Date.now.timeIntervalSince($0) } ?? duration
+        guard viewModel.errorMessage == nil else {
+            isRefreshing = false
+            listOpacity = 1
+            return
+        }
+        if animatesExit, let exitTiming {
             do {
                 try await CardAnimationSettings.waitWhileEnabled(
-                    for: max(duration - elapsed, 0), category: .video, phase: .exit, source: .recommendation
+                    for: exitTiming.remaining(at: ProcessInfo.processInfo.systemUptime), category: .video, phase: .exit, source: .recommendation
                 )
             } catch {
                 return
@@ -356,7 +359,6 @@ struct HomeView: View {
             listOpacity = 1
             landingGeneration += 1
             isRefreshing = false
-            exitStartedAt = nil
         }
     }
 

@@ -37,7 +37,8 @@ private struct AppTextSizeModifier: ViewModifier {
     @AppStorage(AppTextSize.storageKey) private var index = AppTextSize.defaultIndex
 
     func body(content: Content) -> some View {
-        content.dynamicTypeSize(AppTextSize.size(at: index))
+        // 这些入口同时是独立呈现的根部，主题也需在此重新注入。
+        content.dynamicTypeSize(AppTextSize.size(at: index)).appTheme()
     }
 }
 

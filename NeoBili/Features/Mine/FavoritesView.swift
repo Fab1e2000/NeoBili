@@ -5,9 +5,10 @@ struct FavoritesView: View {
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @State private var folders: [FavFolder] = []
+    @State private var folderRemovals = ListRemovalState<Int>()
     @State private var isLoading = false
     @State private var errorMessage: String?
-    /// 待删除的收藏夹。删整个收藏夹是不可撤销的，所以要先确认一次。
+    /// 待删除的收藏夹。提交后不可恢复，保留确认和短暂撤销窗口。
     @State private var folderPendingDeletion: FavFolder?
 
     var body: some View {
@@ -62,8 +63,8 @@ struct FavoritesView: View {
         .task { await load() }
         .refreshable { await load() }
         .confirmationDialog(
-            // 删掉收藏夹会连同里面的内容一起没掉，而且没有撤销，所以问一句。
-            "删除「\(folderPendingDeletion?.title ?? "")」后，里面的 \(folderPendingDeletion?.mediaCount ?? 0) 个内容也会一并消失，且无法恢复。",
+            // 整个收藏夹的删除提交后不可恢复，先说明影响范围。
+            "删除「\(folderPendingDeletion?.title ?? "")」后，里面的 \(folderPendingDeletion?.mediaCount ?? 0) 个内容也会一并消失。可在提示中撤销，提交后无法恢复。",
             isPresented: Binding(
                 get: { folderPendingDeletion != nil },
                 set: { if !$0 { folderPendingDeletion = nil } }
@@ -81,16 +82,26 @@ struct FavoritesView: View {
     }
 
     private func delete(_ folder: FavFolder) async {
+        guard folderRemovals.begin(folder.id) else { return }
+        defer { folderRemovals.finish(folder.id) }
+        let sessionID = account.sessionID
+        var removedIndex: Int?
+        withAnimation { removedIndex = folderRemovals.remove(folder.id, from: &folders) }
         do {
+            guard await feedback.confirmRemoval("已移除收藏夹"),
+                  account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.deleteFavoriteFolders(folderIDs: [folder.id])
-            withAnimation { folders.removeAll { $0.id == folder.id } }
-            feedback.show("已删除收藏夹")
         } catch {
-            feedback.show(error.localizedDescription)
+            if let removedIndex {
+                withAnimation { folderRemovals.restore(folder, at: removedIndex, in: &folders) }
+            }
+            if !error.isCancellation { feedback.show(error.localizedDescription) }
         }
     }
 
     private func load() async {
+        guard !folderRemovals.hasPending else { return }
+        let revision = folderRemovals.revision
         guard let mid = account.accountID else {
             errorMessage = "登录状态已失效，请重新登录"
             return
@@ -99,7 +110,9 @@ struct FavoritesView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            folders = try await BiliAPI.favoriteFolders(ownerMid: mid)
+            let result = try await BiliAPI.favoriteFolders(ownerMid: mid)
+            guard folderRemovals.revision == revision, !Task.isCancelled else { return }
+            folders = result
         } catch {
             guard !error.isCancellation else { return }
             errorMessage = error.localizedDescription
@@ -113,6 +126,7 @@ struct FavoritesView: View {
 struct FavoriteFolderView: View {
     let folder: FavFolder
 
+    @Environment(AccountStore.self) private var account
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
@@ -260,6 +274,7 @@ struct FavoriteFolderView: View {
     /// 而点「重试」是另起一个不受牵连的任务，所以反而能成功。改成拿到数据
     /// 之后再整体替换，顺带也没有了刷新过程中的白屏。
     private func reload() async {
+        guard !removals.hasPending else { return }
         let requestID = UUID()
         loadID = requestID
         let revision = removals.revision
@@ -288,6 +303,7 @@ struct FavoriteFolderView: View {
     }
 
     private func loadNextPage() async {
+        guard !removals.hasPending else { return }
         guard !isLoadingMore, !isLoading else { return }
         let requestID = UUID()
         loadID = requestID
@@ -318,13 +334,14 @@ struct FavoriteFolderView: View {
     }
 
     /// 同 `HistoryView.delete`：先移走卡片再发请求，失败了放回原位。
-    /// 成功时不弹提示——卡片消失本身就是反馈。
+    /// 移除后提供短暂撤销入口，超时再提交请求。
     ///
     /// 动效拆成两段顺序执行（`CardRemovalAnimation`）：先原地淡出，完全
     /// 看不见后空位才收拢、下方卡片上移补位——两段同时进行会出现叠影。
     private func remove(_ media: FavMedia) async {
         guard videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
         defer { removals.finish(media.id) }
+        let sessionID = account.sessionID
         var removedIndex: Int?
         do {
             try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.menuDismissWaitMilliseconds, source: .favorites)
@@ -333,6 +350,8 @@ struct FavoriteFolderView: View {
             withAnimation(CardRemovalAnimation.collapse(source: .favorites)) {
                 removedIndex = removals.remove(media.id, from: &videos)
             }
+            guard await feedback.confirmRemoval("已移出收藏夹"),
+                  account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.removeFavorite(folderID: folder.id, aid: media.id)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             withAnimation(CardRemovalAnimation.collapse(source: .favorites)) { videos.removeAll { $0.id == media.id } }

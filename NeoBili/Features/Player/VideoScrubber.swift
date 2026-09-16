@@ -17,6 +17,7 @@ struct VideoScrubber: View {
     let duration: Double
     let onScrub: (Double) -> Void
     let onScrubEnd: (Double) -> Void
+    var previewVideo: VideoPreviewID? = nil
     @State private var isEditing = false
     @State private var draft: Double = 0
 
@@ -46,6 +47,10 @@ struct VideoScrubber: View {
         .controlSize(.small)
         .tint(.white)
         .frame(height: 48)
+        .anchorPreference(key: VideoScrubPreviewPreference.self, value: .bounds) { anchor in
+            guard isEditing, let previewVideo else { return nil }
+            return VideoScrubPreviewPosition(bounds: anchor, video: previewVideo, seconds: draft, duration: total)
+        }
         .contentShape(Rectangle())
         .accessibilityLabel("播放进度")
         .accessibilityValue("\(PlaybackTime.text(isEditing ? draft : position))，共 \(PlaybackTime.text(duration))")

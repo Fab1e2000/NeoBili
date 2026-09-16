@@ -6,7 +6,14 @@ struct InlineVideoCollapseOverlay: View {
     let videoHeight: CGFloat
     let topInset: CGFloat
     let isCollapsed: Bool
+    let player: PlayerViewModel?
+    let onBack: () -> Void
     let onExpand: () -> Void
+
+    private var playTitle: String {
+        guard let player, player.hasRenderedFirstFrame else { return "立即播放" }
+        return player.isPlaybackCompleted ? "重新播放" : "继续播放"
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -17,20 +24,35 @@ struct InlineVideoCollapseOverlay: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
 
-            Button(action: onExpand) {
-                Image(systemName: "play.fill")
-                    .font(.title3)
-                    .foregroundStyle(.white)
-                    .frame(width: 56, height: 56)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: videoHeight)
-                    .contentShape(Rectangle())
+            HStack(spacing: 0) {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("返回")
+
+                Button(action: onExpand) {
+                    Label(playTitle, systemImage: player?.isPlaybackCompleted == true ? "arrow.counterclockwise" : "play.fill")
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("展开视频并\(playTitle)")
+
+                Color.clear.frame(width: 44, height: 44)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
+            .padding(.horizontal, 8)
+            .font(.title3)
+            .foregroundStyle(.white)
+            .frame(height: videoHeight)
             .buttonStyle(.plain)
             .opacity(progress)
             .allowsHitTesting(isCollapsed)
             .accessibilityHidden(!isCollapsed)
-            .accessibilityLabel("展开视频并继续播放")
         }
         .frame(maxWidth: .infinity, alignment: .top)
     }

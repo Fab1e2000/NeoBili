@@ -69,13 +69,14 @@ final class MiniPlayerBoundsPreviewState {
 
 /// Uses the same host/safe-area coordinate system as the moving player.
 struct MiniPlayerBoundsPreview: UIViewRepresentable {
+    @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     let top: Double
     let bottom: Double
     func makeUIView(context: Context) -> BoundsView { BoundsView() }
     func updateUIView(_ view: BoundsView, context: Context) {
         view.top = top
         view.bottom = bottom
-        view.tintColor = UIColor(Color.accentColor)
+        view.tintColor = UIColor(AppTheme.selected(themeID).color)
         view.setNeedsDisplay()
     }
 

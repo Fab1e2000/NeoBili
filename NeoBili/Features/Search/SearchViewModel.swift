@@ -60,6 +60,7 @@ final class SearchViewModel {
         let trimmed = trimmedQuery
         reset()
         guard !trimmed.isEmpty else { return }
+        SearchHistory.shared.record(trimmed)
         submittedKeyword = trimmed
         isLoading = true
         let request = generation

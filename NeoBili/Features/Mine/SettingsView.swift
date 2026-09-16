@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
 
     var body: some View {
@@ -22,6 +23,12 @@ struct SettingsView: View {
             }
 
             Section("界面与交互") {
+                NavigationLink {
+                    ThemeSettingsView()
+                } label: {
+                    LabeledContent("主题色", value: AppTheme.selected(themeID).name)
+                }
+                .accessibilityIdentifier("settings.theme")
                 NavigationLink("文字大小") { DisplaySettingsView() }
                     .accessibilityIdentifier("settings.display")
                 NavigationLink {

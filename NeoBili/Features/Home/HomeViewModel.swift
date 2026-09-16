@@ -28,14 +28,28 @@ enum HomeFeedRow: Identifiable {
     static func group(_ items: [HomeFeedItem]) -> [HomeFeedRow] {
         var rows: [HomeFeedRow] = []
         var pending: [VideoSummary] = []
+        var markerAfterPendingRow = false
         for item in items {
             switch item {
             case .video(let video):
                 pending.append(video)
-                if pending.count == 2 { rows.append(.videos(pending)); pending = [] }
+                if pending.count == 2 {
+                    rows.append(.videos(pending))
+                    pending = []
+                    if markerAfterPendingRow {
+                        rows.append(.lastSeen)
+                        markerAfterPendingRow = false
+                    }
+                }
             case .lastSeen:
-                if !pending.isEmpty { rows.append(.videos(pending)); pending = [] }
-                rows.append(.lastSeen)
+                if pending.isEmpty {
+                    rows.append(.lastSeen)
+                } else {
+                    // A refresh/filter may leave an odd number of new cards.
+                    // Finish this row in the original video order before placing
+                    // the full-width marker; never create a hole just for it.
+                    markerAfterPendingRow = true
+                }
             }
         }
         if !pending.isEmpty { rows.append(.videos(pending)) }
@@ -101,7 +115,7 @@ final class HomeViewModel {
         return items
     }
 
-    /// 按行惰性布局，刷新分界独占两列，不与旧视频混在同一行。
+    /// 按行惰性布局；分隔条放在包含刷新边界的完整一行之后。
     var feedRows: [HomeFeedRow] { HomeFeedRow.group(feedItems) }
 
     /// 保留原始列表，设置变化时只重算页面内容，关闭过滤后无需重新请求。
@@ -117,13 +131,8 @@ final class HomeViewModel {
         videos.contains { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos) }
     }
 
-    private static let freshIndexKey = "neobili.recommendFreshIndex"
-    private static let popularPageKey = "neobili.popularFallbackPage"
-
-    private let defaults: UserDefaults
-    private var freshIndex: Int
-    private var popularPage: Int
-    private var useFallback = false
+    private var freshIndex = 0
+    private let fetchRecommendations: (Int) async throws -> [VideoSummary]
     /// 刷新拿到的新批次先寄存在这里，等界面把旧卡片淡尽再合并进列表。
     /// 数据一到就换列表的话，用户会看到旧卡片在半透明状态下突然变成新卡片。
     private var pendingRefresh: [VideoSummary]?
@@ -137,12 +146,11 @@ final class HomeViewModel {
         case loadMore
     }
 
-    init(defaults: UserDefaults = .standard,
-         reportUninterested: @escaping (VideoSummary) async throws -> Void = BiliAPI.markRecommendationUninterested) {
-        self.defaults = defaults
+    init(defaults _: UserDefaults = .standard,
+         reportUninterested: @escaping (VideoSummary) async throws -> Void = BiliAPI.markRecommendationUninterested,
+         fetchRecommendations: @escaping (Int) async throws -> [VideoSummary] = BiliAPI.recommendFeed) {
         self.reportUninterested = reportUninterested
-        freshIndex = max(defaults.integer(forKey: Self.freshIndexKey), 1)
-        popularPage = max(defaults.integer(forKey: Self.popularPageKey), 1)
+        self.fetchRecommendations = fetchRecommendations
     }
 
     func loadInitial() async {
@@ -154,7 +162,7 @@ final class HomeViewModel {
     /// `commitStagedRefresh()` 合并——留给退出动画把旧卡片淡完。
     func refresh(staged: Bool = false) async {
         // 下拉刷新优先级最高：取消可能仍在进行的分页，并立刻开始新的刷新。
-        // freshIndex 不归零是 NeoBili 对 PiliPlus 逻辑的必要适配，防止重启 App 后再次拿到同一批推荐。
+        // 刷新从 idx=0 / pull=true 开始；分页游标只在当前推荐会话内递增。
         stageNextRefresh = staged
         await startLoad(reason: .refresh, replacingActiveLoad: true)
     }
@@ -216,8 +224,7 @@ final class HomeViewModel {
         }
 
         if reason == .refresh {
-            // 每次手动刷新都先尝试个性化推荐，失败后才使用热门榜。
-            useFallback = false
+            freshIndex = 0
             pendingRefresh = nil
         }
 
@@ -239,32 +246,17 @@ final class HomeViewModel {
         } catch {
             guard activeLoadID == loadID, !Self.isCancellation(error) else { return }
             // 与 PiliPlus 一致：已有推荐时刷新失败也保留旧内容，不把页面替换成错误页。
-            if videos.isEmpty {
-                errorMessage = error.localizedDescription
-            }
+            errorMessage = error.localizedDescription
         }
     }
 
-    /// 先请求推荐；推荐接口不可用时，再退回热门列表。
+    /// 与 PiliPlus 一致，失败保留原列表，不用热门榜替代个性化推荐。
     private func fetchNextBatch() async throws -> [VideoSummary] {
-        if !useFallback {
-            do {
-                let requestIndex = freshIndex
-                advanceFreshIndex()
-                let batch = try await BiliAPI.recommendFeed(freshIndex: requestIndex)
-                try Task.checkCancellation()
-                if !batch.isEmpty {
-                    return batch
-                }
-                useFallback = true
-            } catch {
-                guard !Self.isCancellation(error) else { throw error }
-                useFallback = true
-            }
-        }
-
+        let requestIndex = freshIndex
+        let batch = try await fetchRecommendations(requestIndex)
         try Task.checkCancellation()
-        return try await loadPopularBatch()
+        if !batch.isEmpty { freshIndex = requestIndex == Int.max ? 1 : requestIndex + 1 }
+        return batch
     }
 
     /// 复刻 PiliPlus 的保留刷新：新内容放在上面，旧内容接在提示卡之后。
@@ -308,39 +300,4 @@ final class HomeViewModel {
             || (error as? URLError)?.code == .cancelled
     }
 
-    /// 读取热门榜的下一页。如果已经到达最后一页，就记住下次从第 1 页开始。
-    /// 若启动 App 时保存的页码早已过期，本次会立即改请求第 1 页。
-    private func loadPopularBatch() async throws -> [VideoSummary] {
-        let requestPage = popularPage
-        advancePopularPage()
-        let feedPage = try await BiliAPI.popularVideos(page: requestPage)
-
-        if feedPage.noMore {
-            setPopularPage(1)
-        }
-        guard feedPage.list.isEmpty, requestPage != 1 else {
-            return feedPage.list
-        }
-
-        let firstPage = try await BiliAPI.popularVideos(page: 1)
-        setPopularPage(firstPage.noMore ? 1 : 2)
-        return firstPage.list
-    }
-
-    /// Persist the next cursor before starting the request. If the process is
-    /// terminated immediately after receiving a feed, the next launch still
-    /// cannot repeat the same cursor and batch.
-    private func advanceFreshIndex() {
-        freshIndex = freshIndex == Int.max ? 1 : freshIndex + 1
-        defaults.set(freshIndex, forKey: Self.freshIndexKey)
-    }
-
-    private func advancePopularPage() {
-        setPopularPage(popularPage == Int.max ? 1 : popularPage + 1)
-    }
-
-    private func setPopularPage(_ page: Int) {
-        popularPage = page
-        defaults.set(popularPage, forKey: Self.popularPageKey)
-    }
 }

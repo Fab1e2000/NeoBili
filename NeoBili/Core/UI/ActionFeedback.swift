@@ -8,16 +8,64 @@ import SwiftUI
 @MainActor
 @Observable
 final class ActionFeedback {
-    /// 有值时根视图会弹出提示；用户点掉后自动置回 nil。
-    var message: String?
+    private(set) var message: String?
+    private(set) var canUndo = false
+    @ObservationIgnored private var expiry: Task<Void, Never>?
+    @ObservationIgnored private var pending: CheckedContinuation<Bool, Never>?
+    @ObservationIgnored private var token = UUID()
 
     func show(_ text: String) {
+        finish(commit: true)
         message = text
+        scheduleExpiry(after: .seconds(2))
     }
 
-    /// 写操作的统一出口：成功报一句，失败把接口原话透出来。
+    /// true 才提交网络请求；撤销或任务取消时由调用方恢复原条目。
+    func confirmRemoval(_ text: String, duration: Duration = .seconds(5)) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        finish(commit: true)
+        let request = UUID()
+        token = request
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                pending = continuation
+                message = text
+                canUndo = true
+                scheduleExpiry(after: duration, token: request)
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self, self.token == request else { return }
+                self.finish(commit: false)
+            }
+        }
+    }
+
+    func undo() { finish(commit: false) }
+
     func report(_ error: Error?, successText: String) {
-        message = error.map { $0.localizedDescription } ?? successText
+        show(error.map { $0.localizedDescription } ?? successText)
+    }
+
+    private func scheduleExpiry(after duration: Duration, token request: UUID? = nil) {
+        let request = request ?? UUID()
+        token = request
+        expiry = Task { [weak self] in
+            do { try await Task.sleep(for: duration) } catch { return }
+            guard let self, self.token == request else { return }
+            self.finish(commit: true)
+        }
+    }
+
+    private func finish(commit: Bool) {
+        expiry?.cancel()
+        expiry = nil
+        token = UUID()
+        message = nil
+        canUndo = false
+        let continuation = pending
+        pending = nil
+        continuation?.resume(returning: commit)
     }
 }
 
@@ -40,7 +88,15 @@ struct ActionFeedbackOverlay: ViewModifier {
                 // 远超一个提示条该有的样子。
                 ZStack {
                     if let message = feedback.message {
-                        Text(message)
+                        HStack(spacing: 16) {
+                            Text(message)
+                            if feedback.canUndo {
+                                Button("撤销") { feedback.undo() }
+                                    .fontWeight(.semibold)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .accessibilityIdentifier("feedback.undo")
+                            }
+                        }
                         .font(.subheadline)
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
@@ -50,11 +106,7 @@ struct ActionFeedbackOverlay: ViewModifier {
                         .padding(.horizontal, 32)
                         .padding(.bottom, 80)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                        // 看完就自己走，不用用户去点掉。
-                        .task(id: message) {
-                            try? await Task.sleep(for: .seconds(2))
-                            feedback.message = nil
-                        }
+
                     }
                 }
                 .animation(.spring(duration: 0.3), value: feedback.message)
