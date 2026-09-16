@@ -145,7 +145,7 @@ private struct LivePageFixtureTabs: View {
             Tab("推荐", systemImage: "house.fill", value: 0) { Color.clear }
             Tab("关注", systemImage: "person.2.fill", value: 1) { Color.clear }
             Tab("直播", systemImage: "dot.radiowaves.left.and.right", value: 2) {
-                LiveView(model: model) { _ in }
+                LiveView(model: model) { _, _ in }
             }
             Tab("我的", systemImage: "person.crop.circle", value: 3) { Color.clear }
         }

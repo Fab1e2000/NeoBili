@@ -37,6 +37,7 @@ private struct CommentComposerHost: ViewModifier {
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.commentBottomInset) private var bottomInset
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var barHeight: CGFloat = 64
     private var savedDraft: CommentDraft { viewModel.commentDraft(root: root?.rpid ?? 0) }
     @State private var sending = false
@@ -109,17 +110,20 @@ private struct CommentComposerHost: ViewModifier {
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
 
-                Button(action: send) {
-                    Group {
-                        Image(systemName: "arrow.up").font(.headline)
+                if focused {
+                    Button(action: send) {
+                        Image(systemName: "arrow.up")
+                            .font(.headline)
+                            .frame(width: 24, height: 24)
                     }
-                    .frame(width: 24, height: 24)
+                    .buttonStyle(CommentSendButtonStyle())
+                    .disabled(sending || savedDraft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("发送评论")
+                    .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .trailing)))
                 }
-                .buttonStyle(CommentSendButtonStyle())
-                .disabled(sending || savedDraft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityLabel("发送评论")
             }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: focused)
         .background {
             CommentOutsideTapObserver(enabled: focused) { focused = false }
         }
