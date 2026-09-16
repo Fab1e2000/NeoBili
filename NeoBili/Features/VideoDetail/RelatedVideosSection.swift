@@ -5,9 +5,9 @@ import SwiftUI
 /// 数据来自 `x/web-interface/archive/related`，是 B 站针对当前这个视频算出来的
 /// 关联稿件，和首页那条按整体兴趣出内容的推荐流不是一回事。
 ///
-/// 整个推荐列表共享一张玻璃背景，行内不重复铺底，也不播放进入动画。
+/// 推荐列表直接铺在页面上，行内不重复铺底，也不播放进入动画。
 struct RelatedVideosSection: View {
-    /// 和简介正文一致的左右留白，两段内容才对得齐。
+    /// 与上方玻璃容器外边缘对齐，只保留一层页面留白。
     private static let horizontalInset: CGFloat = 16
 
     let videos: [VideoSummary]
@@ -33,7 +33,6 @@ struct RelatedVideosSection: View {
                     Text(videos.isEmpty ? "暂时没有相关视频" : "相关视频已被内容过滤设置隐藏")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, Self.horizontalInset)
                 }
             } else {
                 ForEach(visibleVideos) { video in
@@ -55,7 +54,6 @@ struct RelatedVideosSection: View {
                     .contextMenu {
                         WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
                     }
-                    .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                     // 出现在屏幕上就先把播放地址取回来，点开时通常已经有结果了。
                     .task {
@@ -65,18 +63,16 @@ struct RelatedVideosSection: View {
                         )
                     }
 
-                    // 分隔线从封面右边起画，和评论列表那边的处理一致；
+                    // 分隔线与推荐内容的左右边缘对齐；
                     // 最后一条不画，列表末尾不该悬着一根线。
                     if video.id != visibleVideos.last?.id {
                         Divider()
-                            .padding(.leading, Self.horizontalInset)
                     }
                 }
             }
         }
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
         .padding(.horizontal, Self.horizontalInset)
         .resolvePortraitVideos(videos)
     }

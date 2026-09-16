@@ -13,8 +13,10 @@ enum CommentLayout {
     static let avatarTextSpacing: CGFloat = 10
     /// 用户名、正文、点赞行之间的竖向距离。
     static let textVerticalSpacing: CGFloat = 5
+    /// 正文与轻量操作行之间的距离。
+    static let actionRowGap: CGFloat = 2
     /// 楼中楼区块与上方点赞行之间的距离。
-    static let replyBlockGap: CGFloat = 12
+    static let replyBlockGap: CGFloat = 4
     /// 楼中楼区块的圆角。
     static let replyCornerRadius: CGFloat = 16
     /// 楼中楼区块内部的留白。
@@ -175,7 +177,7 @@ struct CommentRow: View {
                 }
 
                 metaRow
-                    .padding(.top, CommentLayout.textVerticalSpacing)
+                    .padding(.top, CommentLayout.actionRowGap)
 
                 if showsReplies, comment.rcount > 0 || !(viewModel.submittedReplies[comment.id] ?? []).isEmpty {
                     replySection
@@ -197,16 +199,14 @@ struct CommentRow: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
-            GlassEffectContainer(spacing: 8) {
-                HStack(spacing: 8) {
-                    likeButton
-                    if let replyToComment {
-                        Button { replyToComment(comment) } label: {
-                            CommentGlassActionLabel(title: "回复", symbol: "arrowshape.turn.up.left")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("回复评论")
+            HStack(spacing: 8) {
+                likeButton
+                if let replyToComment {
+                    Button { replyToComment(comment) } label: {
+                        CommentActionLabel(title: "回复", symbol: "arrowshape.turn.up.left")
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("回复评论")
                 }
             }
         }
@@ -219,7 +219,7 @@ struct CommentRow: View {
         return Button {
             Task { await viewModel.toggleLike(comment, isLoggedIn: account.isLoggedIn) }
         } label: {
-            CommentGlassActionLabel(title: count > 0 ? count.biliCountText : "赞",
+            CommentActionLabel(title: count > 0 ? count.biliCountText : "赞",
                                     symbol: isLiked ? "hand.thumbsup.fill" : "hand.thumbsup",
                                     isSelected: isLiked)
         }
@@ -371,8 +371,8 @@ struct CommentRow: View {
     }
 }
 
-/// 胶囊按文字固有宽度排版；小尺寸外观保留独立的 44pt 点击区域。
-struct CommentGlassActionLabel: View {
+/// 紧凑的普通图文按钮，整块留白都可点击。
+struct CommentActionLabel: View {
     let title: String
     let symbol: String
     var isSelected = false
@@ -386,10 +386,7 @@ struct CommentGlassActionLabel: View {
         .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
         .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .frame(minHeight: 26)
-        .glassEffect(.regular.interactive(), in: Capsule())
-        .frame(minWidth: 44, minHeight: 44)
+        .frame(minWidth: 44, minHeight: 32)
         .contentShape(Rectangle())
     }
 }

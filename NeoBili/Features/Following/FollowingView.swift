@@ -178,7 +178,7 @@ struct FollowingView: View {
         .scrollPosition($listPosition)
         // 即使内容不足一屏也允许下拉刷新。
         .scrollBounceBehavior(.always, axes: .vertical)
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .scrollDisabled((isRefreshing && refreshOpacity < 1) || pendingSelectionID != nil)
         .overlay(alignment: .top) {
             if pendingSelectionID != nil {

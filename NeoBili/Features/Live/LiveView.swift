@@ -1,12 +1,11 @@
 import SwiftUI
 
 struct LiveView: View {
+    @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(AccountStore.self) private var account
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
     @State private var model: LiveFeedModel
-    @State private var showsRoomEntry = false
-    @State private var pendingRoom: LiveRoom?
     @State private var entranceClock = VideoEntranceClock()
     @State private var previousEntranceGeneration: Int?
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
@@ -16,9 +15,9 @@ struct LiveView: View {
     @State private var refreshID = UUID()
     @State private var listOpacity = 1.0
     private var animations = VideoCardAnimationPreferences(source: .live)
-    let onOpenRoom: (LiveRoom) -> Void
+    let onOpenRoom: (LiveRoom, String) -> Void
 
-    init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom) -> Void) {
+    init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom, String) -> Void) {
         _model = State(initialValue: model)
         self.onOpenRoom = onOpenRoom
     }
@@ -47,12 +46,6 @@ struct LiveView: View {
                 .background(Color(uiColor: .systemGroupedBackground))
                 .navigationTitle("直播")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("打开直播间", systemImage: "link") { showsRoomEntry = true }
-                            .accessibilityIdentifier("live.openRoom")
-                    }
-                }
                 .safeAreaBar(edge: .top, spacing: 0) { selector }
                 .task(id: LoadContext(source: model.source, sessionID: account.sessionID,
                                       isLoggedIn: account.isLoggedIn)) {
@@ -61,14 +54,6 @@ struct LiveView: View {
                     // Signing out starts a new Recommended task; that task owns its request.
                     guard previousSource == model.source else { return }
                     await model.loadInitial()
-                }
-                .sheet(isPresented: $showsRoomEntry, onDismiss: {
-                    if let room = pendingRoom {
-                        pendingRoom = nil
-                        onOpenRoom(room)
-                    }
-                }) {
-                    LiveRoomEntrySheet { pendingRoom = $0 }
                 }
                 .onAppear { OrientationController.enterPortrait() }
         }
@@ -116,8 +101,9 @@ struct LiveView: View {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
                                         GridItem(.flexible(), spacing: 10)], spacing: 16) {
                         ForEach(model.rooms) { room in
-                            Button { onOpenRoom(room) } label: { LiveRoomCard(room: room) }
+                            Button { onOpenRoom(room, "live-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
                                 .buttonStyle(.plain)
+                                .videoTransitionSource("live-card-\(room.roomID)", in: videoTransition)
                                 .videoEntranceIdentity("live:\(room.roomID)")
                                 .accessibilityIdentifier("live.room.\(room.roomID)")
                                 .task { await model.loadMoreIfNeeded(current: room) }

@@ -56,7 +56,7 @@ final class InteractionControlsVisualTests: XCTestCase {
                         HStack(spacing: 8) {
                             ForEach(["赞", "9", "999", "1.2万"], id: \.self) { count in
                                 Button {} label: {
-                                    CommentGlassActionLabel(title: count, symbol: "hand.thumbsup")
+                                    CommentActionLabel(title: count, symbol: "hand.thumbsup")
                                 }.buttonStyle(.plain)
                             }
                         }
