@@ -13,6 +13,7 @@ struct InlineVideoPlayer: View {
     let onToggleFullScreen: () -> Void
     var onToggleCompact: (() -> Void)? = nil
     var isCompact = false
+    var isDanmakuSuppressed = false
     var controlsSafeAreaInsets = EdgeInsets()
     var onDismiss: (() -> Void)? = nil
     var videoTitle = ""
@@ -34,7 +35,9 @@ struct InlineVideoPlayer: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if let danmaku = viewModel.danmaku {
-                DanmakuView(controller: danmaku, isFullScreen: isFullScreen, isSuppressed: isCompact)
+                DanmakuView(controller: danmaku, isFullScreen: isFullScreen, isSuppressed: isDanmakuSuppressed)
+                    // 视频保持铺满屏幕，只有弹幕画布从灵动岛下方开始。
+                    .padding(.top, isFullScreen ? controlsSafeAreaInsets.top : 0)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }

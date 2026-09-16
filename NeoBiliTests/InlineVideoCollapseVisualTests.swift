@@ -174,7 +174,8 @@ private struct CollapseVisualFixture: View {
                    height: geometry.size.height + topOverlap + geometry.safeAreaInsets.bottom, alignment: .top)
             .overlay(alignment: .top) {
                 InlineVideoCollapseOverlay(progress: progress, videoHeight: height,
-                                           topInset: geometry.safeAreaInsets.top, isCollapsed: isCollapsed) {}
+                                           topInset: geometry.safeAreaInsets.top, isCollapsed: isCollapsed,
+                                           player: nil, onBack: {}) {}
             }
             .offset(y: -topOverlap)
         }

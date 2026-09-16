@@ -59,6 +59,55 @@ final class VideoScrollHandoffTests: XCTestCase {
         XCTAssertEqual(rig.collapse, 100)
     }
 
+    func testFlingReleasedBeforeTopContinuesIntoPlayerExpansion() {
+        let rig = Rig(collapse: 200, offset: 150)
+        rig.begin(downward: true)
+        rig.drag(translation: 40, nativeOffset: 110)
+        defer { rig.observer.detach() }
+        rig.end(velocity: 1000)
+        rig.observer.advanceMomentum(elapsed: 1.0 / 60)
+        XCTAssertEqual(rig.collapse, 200, "列表未回顶前不能展开播放器")
+        XCTAssertLessThan(rig.scroll.contentOffset.y, 110)
+        for _ in 0..<120 { rig.observer.advanceMomentum(elapsed: 1.0 / 60) }
+        XCTAssertEqual(rig.collapse, 0, accuracy: 0.01, "一次惯性完成回顶和展开，无需第二次手势")
+        XCTAssertEqual(rig.scroll.contentOffset.y, -30, accuracy: 0.01)
+    }
+
+    func testWeakFlingStopsInContentWithoutPrematureExpansion() {
+        let rig = Rig(collapse: 200, offset: 300)
+        rig.begin(downward: true)
+        defer { rig.observer.detach() }
+        rig.end(velocity: 100)
+        for _ in 0..<180 { rig.observer.advanceMomentum(elapsed: 1.0 / 60) }
+        XCTAssertEqual(rig.collapse, 200)
+        XCTAssertGreaterThan(rig.scroll.contentOffset.y, -30)
+        XCTAssertLessThan(rig.scroll.contentOffset.y, 300)
+    }
+
+    func testCollapseMomentumContinuesIntoContentAtTheOtherEnd() {
+        let rig = Rig(collapse: 100, offset: -30)
+        rig.begin(downward: false)
+        rig.drag(translation: -20, nativeOffset: -10)
+        defer { rig.observer.detach() }
+        rig.end(velocity: -800)
+        for _ in 0..<120 { rig.observer.advanceMomentum(elapsed: 1.0 / 60) }
+        XCTAssertEqual(rig.collapse, 200)
+        XCTAssertGreaterThan(rig.scroll.contentOffset.y, 0)
+    }
+
+    func testNewTouchStopsPreviousExpansionMomentum() {
+        let rig = Rig(collapse: 200, offset: 100)
+        rig.begin(downward: true)
+        defer { rig.observer.detach() }
+        rig.end(velocity: 1000)
+        rig.observer.advanceMomentum(elapsed: 1.0 / 60)
+        let offset = rig.scroll.contentOffset.y
+        rig.begin(downward: false)
+        rig.observer.advanceMomentum(elapsed: 1.0 / 60)
+        XCTAssertEqual(rig.scroll.contentOffset.y, offset)
+        XCTAssertEqual(rig.collapse, 200)
+    }
+
     private final class Rig {
         let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 400, height: 500))
         let observer = PausedVideoCollapseScroll.Observer()
@@ -88,6 +137,9 @@ final class VideoScrollHandoffTests: XCTestCase {
         func drag(translation: CGFloat, nativeOffset: CGFloat) {
             scroll.contentOffset.y = nativeOffset
             observer.handlePan(state: .changed, translation: CGPoint(x: 0, y: translation), velocity: .zero)
+        }
+        func end(velocity: CGFloat) {
+            observer.handlePan(state: .ended, translation: .zero, velocity: CGPoint(x: 0, y: velocity))
         }
     }
 }

@@ -989,6 +989,7 @@ private struct FollowingSidebarAvatar: View {
         .scaleEffect(size / 60)
         .frame(width: size, height: size)
         .padding(.bottom, item.up?.liveRoomID != nil ? size / 10 : 0)
+        .appTheme()
     }
 }
 

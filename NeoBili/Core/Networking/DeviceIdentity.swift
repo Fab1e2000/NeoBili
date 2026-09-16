@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Manages the anonymous device identity (buvid3/buvid4) that Bilibili's web
 /// API expects as a cookie on every request, even for guest (logged-out) traffic.
@@ -59,6 +60,18 @@ actor DeviceIdentity {
     /// 网页密码登录只有 Cookie，所以这里可能为 nil。
     var accessKey: String? {
         cachedAccessKey
+    }
+
+    /// PiliPlus 的 App buvid 与网页 buvid3 分开持久化，不随刷新重建。
+    func appBuvid() -> String {
+        let key = "neobili.appBuvid"
+        if let saved = defaults.string(forKey: key), !saved.isEmpty { return saved }
+        let digest = Insecure.MD5.hash(data: Data(UUID().uuidString.utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        let chars = Array(digest)
+        let value = "XY\(chars[2])\(chars[12])\(chars[22])\(digest)"
+        defaults.set(value, forKey: key)
+        return value
     }
 
     /// App 启动时就把设备标识取回来，之后的接口请求不必再等它。

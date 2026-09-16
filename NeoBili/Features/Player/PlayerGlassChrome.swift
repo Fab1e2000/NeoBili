@@ -68,6 +68,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     var position: Double = 0
     var duration: Double = 0
     var buffered: Double = 0
+    var progressSource: PlayerProgressSource?
     var isPlaying = false
     var canControlPlayback = true
     var isWaiting = false
@@ -158,8 +159,15 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                             .accessibilityIdentifier("player.transport")
                             .chromeFrame(layout.transport)
                         }
-                        timeline(showsTimeLabels: layout.showsTimeLabels, isMinimal: layout.mode == .minimal)
-                            .chromeFrame(layout.timeline)
+                        PlayerTimeline(
+                            progressSource: progressSource ?? PlayerProgressSource {
+                                .init(position: position, duration: duration, buffered: buffered)
+                            },
+                            isLive: isLive, isWaiting: isWaiting, canControlPlayback: canControlPlayback,
+                            showsTimeLabels: layout.showsTimeLabels, isMinimal: layout.mode == .minimal,
+                            onScrub: onScrub, onScrubEnd: onScrubEnd
+                        )
+                        .chromeFrame(layout.timeline)
                         if !layout.secondaryActions.isEmpty {
                             secondaryActions
                                 .chromeFrame(layout.secondaryActions)
@@ -219,49 +227,6 @@ struct PlayerGlassChrome<MenuContent: View>: View {
         .frame(height: 48)
         .allowsHitTesting(false)
         .accessibilityIdentifier("player.metadata")
-    }
-
-    @ViewBuilder
-    private func timeline(showsTimeLabels: Bool, isMinimal: Bool) -> some View {
-        if isLive {
-            HStack(spacing: 6) {
-                Circle().fill(isWaiting ? Color.white.opacity(0.6) : .red).frame(width: 6, height: 6)
-                    .accessibilityHidden(true)
-                Text(isWaiting ? (isMinimal ? "连接" : "连接中") : (isMinimal ? "直播" : "直播中"))
-                    .font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, isMinimal ? 6 : 12)
-            .frame(height: 32)
-            .playerGlassSurface(in: Capsule())
-            .frame(height: 48)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(isWaiting ? "正在连接直播" : "直播中")
-            .accessibilityIdentifier("player.liveStatus")
-        } else {
-            HStack(spacing: showsTimeLabels ? 8 : 0) {
-                if showsTimeLabels {
-                    Text(PlaybackTime.text(position)).lineLimit(1).minimumScaleFactor(0.7).accessibilityHidden(true)
-                }
-                VideoScrubber(position: position, buffered: buffered, duration: duration,
-                              onScrub: onScrub, onScrubEnd: onScrubEnd)
-                    .disabled(!canControlPlayback || duration <= 0)
-                    .frame(minWidth: 44)
-                if showsTimeLabels {
-                    Text(PlaybackTime.text(duration))
-                        .foregroundStyle(.white.opacity(0.8)).accessibilityHidden(true)
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                }
-            }
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.white)
-            .padding(.horizontal, showsTimeLabels ? 12 : 6)
-            .frame(height: 32)
-            .playerGlassSurface(in: Capsule())
-            .frame(height: 48)
-            .accessibilityIdentifier("player.timeline")
-        }
     }
 
     private var secondaryActions: some View {

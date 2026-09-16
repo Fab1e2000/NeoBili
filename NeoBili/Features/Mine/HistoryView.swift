@@ -5,6 +5,7 @@ import SwiftUI
 /// 结构与首页保持同构（ScrollView + 卡片 Button + 转场源直接挂在
 /// Button 上），这样点开/退出视频页的 zoom 动效和首页完全一致。
 struct HistoryView: View {
+    @Environment(AccountStore.self) private var account
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
@@ -153,6 +154,7 @@ struct HistoryView: View {
     /// SwiftUI 持有的下拉刷新任务就被取消，请求跟着失败，页面报「加载失败」；
     /// 而「重试」是另起的任务，不受影响，所以看起来只有下拉会坏。
     private func reload() async {
+        guard !removals.hasPending else { return }
         let requestID = UUID()
         loadID = requestID
         let revision = removals.revision
@@ -187,6 +189,7 @@ struct HistoryView: View {
     }
 
     private func loadNextPage() async {
+        guard !removals.hasPending else { return }
         guard !isLoadingMore, !isLoading else { return }
         let requestID = UUID()
         loadID = requestID
@@ -234,6 +237,7 @@ struct HistoryView: View {
     private func delete(_ item: HistoryItem) async {
         guard items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
         defer { removals.finish(item.id) }
+        let sessionID = account.sessionID
         var removedIndex: Int?
         do {
             try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.menuDismissWaitMilliseconds, source: .history)
@@ -242,6 +246,8 @@ struct HistoryView: View {
             withAnimation(CardRemovalAnimation.collapse(source: .history)) {
                 removedIndex = removals.remove(item.id, from: &items)
             }
+            guard await feedback.confirmRemoval("已移除历史记录"),
+                  account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.deleteHistory(kid: item.kidParam)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             withAnimation(CardRemovalAnimation.collapse(source: .history)) { items.removeAll { $0.id == item.id } }

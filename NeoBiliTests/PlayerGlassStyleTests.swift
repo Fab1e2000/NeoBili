@@ -7,6 +7,33 @@ import XCTest
 /// injected by the tests below; no PlayerViewModel/MPV/network is needed.
 @MainActor
 final class PlayerGlassStyleTests: XCTestCase {
+    func testProgressUpdatesDoNotRebuildMenuContentOnRealDevice() async throws {
+        let host = try PlayerGlassSnapshotHost()
+        defer { host.close() }
+        let progress = PlayerProgressIsolationState()
+        let recorder = PlayerProgressIsolationRecorder()
+        try await host.show(PlayerProgressIsolationFixture(progress: progress, recorder: recorder))
+        let initialMenus = recorder.menuBuilds
+        XCTAssertGreaterThan(initialMenus, 0)
+        XCTAssertEqual(recorder.lastPosition, 0)
+
+        for tick in 1...10 {
+            progress.position = Double(tick)
+            progress.buffered = Double(tick + 20)
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(recorder.lastPosition, 10, "The timeline must continue reading live progress")
+        XCTAssertEqual(recorder.lastBuffered, 30)
+        XCTAssertEqual(recorder.menuBuilds, initialMenus,
+                       "Playback ticks must not rebuild native menu content")
+
+        progress.quality = 64
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertGreaterThan(recorder.menuBuilds, initialMenus,
+                             "Real quality changes must still update menu content")
+        XCTAssertEqual(recorder.lastMenuQuality, 64)
+    }
+
     func testDanmakuUsesTopRowAndFooterFillsWidthForEveryAspectRatio() {
         for width: CGFloat in [288, 361, 788] {
             for height: CGFloat in [96, 130, 152, 210, 320, 820] {
@@ -681,5 +708,52 @@ private final class PlayerGlassProbeView: UIView {
     private func recordFrame() {
         guard let window, bounds.width > 0, bounds.height > 0 else { return }
         capture?(convert(bounds, to: window))
+    }
+}
+
+@Observable @MainActor
+private final class PlayerProgressIsolationState {
+    var position = 0.0
+    var buffered = 0.0
+    var quality = 80
+}
+
+@MainActor
+private final class PlayerProgressIsolationRecorder {
+    var menuBuilds = 0
+    var lastPosition = -1.0
+    var lastBuffered = -1.0
+    var lastMenuQuality = 0
+}
+
+private struct PlayerProgressIsolationFixture: View {
+    let progress: PlayerProgressIsolationState
+    let recorder: PlayerProgressIsolationRecorder
+
+    var body: some View {
+        let quality = PlayerQualityControl(
+            title: "Q\(progress.quality)", accessibilityLabel: "分辨率",
+            options: [.init(id: 64, title: "720P"), .init(id: 80, title: "1080P")],
+            selectedID: progress.quality, isEnabled: true,
+            onSelect: { progress.quality = $0 }
+        )
+        PlayerGlassChrome(
+            videoQualityControl: quality,
+            progressSource: PlayerProgressSource {
+                recorder.lastPosition = progress.position
+                recorder.lastBuffered = progress.buffered
+                return .init(position: progress.position, duration: 600, buffered: progress.buffered)
+            },
+            isPlaying: true
+        ) {
+            recordedMenu(quality: quality.selectedID)
+        }
+        .frame(height: 230)
+    }
+
+    private func recordedMenu(quality: Int) -> some View {
+        recorder.menuBuilds += 1
+        recorder.lastMenuQuality = quality
+        return Button("Probe") {}
     }
 }

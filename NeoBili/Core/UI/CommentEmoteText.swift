@@ -159,12 +159,18 @@ struct CommentEmoteText: View {
     var prefix: String = ""
 
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.commentTimeJump) private var timeJump
 
     private var store: CommentEmoteStore { .shared }
 
     var body: some View {
         composed
             .font(font)
+            .environment(\.openURL, OpenURLAction { url in
+                guard let seconds = CommentTimeLinks.seconds(from: url) else { return .systemAction }
+                timeJump?(seconds)
+                return .handled
+            })
             .task(id: message) {
                 await store.preload(Array(emotes.values))
             }
@@ -174,7 +180,7 @@ struct CommentEmoteText: View {
         segments.reduce(Text(prefix).foregroundColor(.secondary)) { partial, segment in
             switch segment {
             case .text(let value):
-                return partial + Text(value)
+                return partial + (timeJump == nil ? Text(value) : Text(CommentTimeLinks.attributed(value)))
             case .emote(let literal, let emote):
                 guard let url = emote.secureURL,
                       let image = store.image(for: url, height: emoteHeight(for: emote))

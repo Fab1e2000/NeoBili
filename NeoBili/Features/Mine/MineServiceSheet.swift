@@ -28,7 +28,7 @@ struct MineServiceSheet: View {
         .actionFeedbackOverlay()
         .miniPlayerHost(isActive: { nowPlaying.isServiceSheetPresented }, transitionNamespace: videoTransition)
         .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .presentationCornerRadius(32)
         .fullScreenCover(isPresented: Binding(
             get: { nowPlaying.isExpanded },

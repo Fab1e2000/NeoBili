@@ -60,9 +60,9 @@ struct DynamicDetailView: View {
         .navigationTitle("动态")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { dismiss() } label: {
-                    Image(systemName: "chevron.left")
+                    Image(systemName: "xmark")
                 }
                 .accessibilityLabel("关闭动态")
             }

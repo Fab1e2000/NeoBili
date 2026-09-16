@@ -29,6 +29,7 @@ struct FollowingView: View {
     @AppStorage(CardAnimationSettings.dynamicEnterKey) private var dynamicEnterEnabled = true
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = true
     @State private var isRefreshing = false
+    @State private var pullState = 0
     @State private var refreshOpacity = 1.0
     @State private var landingGeneration = 0
     @State private var landingWindow = false
@@ -153,7 +154,7 @@ struct FollowingView: View {
                 ShortPullRefresh(
                     threshold: refreshDistance,
                     enabled: !isRefreshing && !isSidebarExpanded,
-                    onProgress: { distance, _ in updatePullFade(distance) },
+                    onProgress: { distance, armed in pullState = distance > 0 ? (armed ? 2 : 1) : 0 },
                     onRefresh: startRefresh
                 )
                 .overlay {
@@ -178,10 +179,13 @@ struct FollowingView: View {
         // 即使内容不足一屏也允许下拉刷新。
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollEdgeEffectStyle(.soft, for: .top)
-        .scrollDisabled(isRefreshing || pendingSelectionID != nil)
+        .scrollDisabled((isRefreshing && refreshOpacity < 1) || pendingSelectionID != nil)
         .overlay(alignment: .top) {
-            if pendingSelectionID != nil || (!animatesCardExit && isRefreshing) {
+            if pendingSelectionID != nil {
                 LoadingTaskAnchor().controlSize(.small).padding(.top, 12)
+            } else {
+                FeedRefreshFeedback(isRefreshing: isRefreshing, pullState: pullState,
+                                    error: viewModel.activeFeed.errorMessage, retry: startRefresh)
             }
         }
         .accessibilityAction(named: "刷新关注动态") { startRefresh() }
@@ -234,9 +238,11 @@ struct FollowingView: View {
                                      accountID: account.accountID, isLoggedIn: account.isLoggedIn, generation: liveRefreshGeneration)) {
             guard isFollowingVisible, scenePhase == .active, account.isLoggedIn else { return }
             let directory = viewModel.liveDirectory
+            // 每次回到关注页立即请求，不受上次成功后 60 秒缓存窗口限制。
+            await directory.refresh(force: true)
             while !Task.isCancelled {
-                await directory.refresh(force: liveRefreshGeneration > 0)
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                await directory.refresh()
             }
         }
         .task(id: isSidebarExpanded && !isAvatarMenuPresented ? focusedTargetID : nil) {
@@ -358,14 +364,6 @@ struct FollowingView: View {
         }
     }
 
-    private func updatePullFade(_ distance: CGFloat) {
-        guard !isRefreshing, animatesCardExit else { return }
-        let progress = Double(min(max(distance, 0) / CGFloat(HomeRefreshSettings.clamped(refreshDistance)), 1))
-        let faded = 1 - FeedRefreshTuning.pullFade * progress
-        // 值没变就不写状态：写 @State 会让整页 body 重算。
-        if refreshOpacity != faded { refreshOpacity = faded }
-    }
-
     private func startRefresh() {
         guard !isRefreshing, !isSidebarExpanded else { return }
         liveRefreshGeneration += 1
@@ -374,21 +372,25 @@ struct FollowingView: View {
         pendingSelectionID = nil
         feedOpacity = 1
         isRefreshing = true
+        pullState = 0
+        refreshOpacity = 1
         landingWindow = false
         let model = viewModel
         let feed = model.activeFeed
         let duration = animatesCardExit ? FeedRefreshTuning.fadeExit(speed: exitSpeed) : 0
         let stagingID = UUID()
-        let started = Date.now
-        withAnimation(.easeOut(duration: 0.25)) { listPosition.scrollTo(edge: .top) }
-        if animatesCardExit {
-            withAnimation(.easeOut(duration: duration)) { refreshOpacity = 0 }
-        }
+
         refreshTask = Task { @MainActor in
             await model.refresh(staged: true, stagingID: stagingID)
-            let remaining = max(0, duration - Date.now.timeIntervalSince(started))
-            if remaining > 0 {
-                try? await CardAnimationSettings.waitWhileEnabled(for: remaining, category: .dynamic, phase: .exit)
+            guard !Task.isCancelled else { feed.commitStagedRefresh(id: stagingID); return }
+            guard feed.errorMessage == nil else {
+                isRefreshing = false
+                refreshTask = nil
+                return
+            }
+            if animatesCardExit {
+                withAnimation(.easeOut(duration: duration)) { refreshOpacity = 0 }
+                try? await CardAnimationSettings.waitWhileEnabled(for: duration, category: .dynamic, phase: .exit)
             }
             // 离页或切换 UP 后只完成原数据源的提交，不改新页面的动画状态。
             guard !Task.isCancelled else { feed.commitStagedRefresh(id: stagingID); return }
@@ -412,6 +414,7 @@ struct FollowingView: View {
         refreshTask = nil
         pendingSelectionID = nil
         isRefreshing = false
+        pullState = 0
         landingWindow = false
         refreshOpacity = 1
     }

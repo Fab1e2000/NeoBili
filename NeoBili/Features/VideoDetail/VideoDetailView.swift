@@ -52,6 +52,7 @@ struct VideoPage: View {
     @State private var isPortraitFullScreen = false
     @State private var controlsSafeArea = EdgeInsets()
     @State private var playerControlsVisible = false
+    @State private var commentTimeJump = EnvironmentAction<Double> { _ in }
 
     /// 收起状态下标题最多显示几行。展开后标题不再截断，简介正文也跟着铺开。
 
@@ -90,7 +91,22 @@ struct VideoPage: View {
     @State private var spacePath = NavigationPath()
 
     var body: some View {
-        NavigationStack(path: $spacePath) {
+        commentTimeJump.setHandler { [store, feedback] seconds in
+            guard let player = store.player, player.hasRenderedFirstFrame,
+                  !player.isLoading, player.duration.isFinite, player.duration > 0 else {
+                feedback.show("视频尚未准备好，请稍后重试")
+                return
+            }
+            guard seconds.isFinite, seconds >= 0, seconds <= player.duration else {
+                feedback.show("该时间点超出当前视频时长")
+                return
+            }
+            Task {
+                guard store.player === player else { return }
+                await player.seek(to: seconds)
+            }
+        }
+        return NavigationStack(path: $spacePath) {
             videoPageRoot
                 // 视频页自己不显示导航栏；推入 UP 主空间页后由那一页显示。
                 .toolbarVisibility(.hidden, for: .navigationBar)
@@ -142,7 +158,7 @@ struct VideoPage: View {
             let collapseProgress = isFullScreen ? 0 : layout.visualProgress(for: distance, phase: collapsePhase)
             VStack(spacing: 0) {
                 ZStack {
-                    videoArea
+                    videoArea(isVideoHidden: hidesVideo)
                         .frame(width: geometry.size.width,
                                height: videoHeight)
                         .allowsHitTesting(!hidesVideo)
@@ -203,7 +219,8 @@ struct VideoPage: View {
             .overlay(alignment: .top) {
                 if !isFullScreen {
                     InlineVideoCollapseOverlay(progress: collapseProgress, videoHeight: videoHeight,
-                                               topInset: geometry.safeAreaInsets.top, isCollapsed: hidesVideo) {
+                                               topInset: geometry.safeAreaInsets.top, isCollapsed: hidesVideo,
+                                               player: store.player, onBack: store.goBack) {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             videoCollapseDistance = 0
                             store.player?.play()
@@ -239,7 +256,13 @@ struct VideoPage: View {
                 // 换源／重试时立即恢复完整画面，不能残留暂停时的粉色栏。
                 clampVideoCollapse()
             } else {
-                withAnimation(.easeInOut(duration: 0.2)) { clampVideoCollapse() }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if phase == .playing {
+                        videoCollapseDistance = 0
+                    } else {
+                        clampVideoCollapse()
+                    }
+                }
             }
         }
         .onChange(of: inlineAspectRatio) { updateFullScreenOrientation() }
@@ -295,7 +318,7 @@ struct VideoPage: View {
     }
 
     @ViewBuilder
-    private var videoArea: some View {
+    private func videoArea(isVideoHidden: Bool) -> some View {
         if let player = store.player {
             InlineVideoPlayer(
                 viewModel: player,
@@ -305,6 +328,7 @@ struct VideoPage: View {
                 onToggleFullScreen: toggleFullScreen,
                 onToggleCompact: compactVideoAction,
                 isCompact: videoCollapseDistance > 0,
+                isDanmakuSuppressed: isVideoHidden,
                 controlsSafeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
                 onDismiss: store.goBack,
                 videoTitle: viewModel?.detail?.title ?? store.route?.title ?? "",
@@ -452,6 +476,7 @@ struct VideoPage: View {
             CommentsView(viewModel: commentsViewModel, scrollPosition: $store.commentsScroll,
                          collapseConsume: consumeVideoScroll, collapseEnd: finishVideoCollapse,
                          canCollapse: canConsumeVideoScroll, collapseCanContinue: canContinueCollapseMomentum)
+                .environment(\.commentTimeJump, commentTimeJump)
         } else {
             GeometryReader { geometry in
                 ScrollView {

@@ -99,6 +99,7 @@ struct RootView: View {
         .fullScreenCover(item: $liveRoom) { room in
             LiveRoomView(room: room).appTextSize()
         }
+        .appTheme()
         .environment(nowPlaying)
         .environment(account)
         .environment(feedback)

@@ -4,6 +4,7 @@ import SwiftUI
 /// 卡片沿用搜索页/相关视频页的 `VideoListCard`，结构与首页同构
 /// （ScrollView + Button + 转场源紧跟 buttonStyle），zoom 动效和首页一致。
 struct WatchLaterView: View {
+    @Environment(AccountStore.self) private var account
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
@@ -122,6 +123,7 @@ struct WatchLaterView: View {
     }
 
     private func reload() async {
+        guard !removals.hasPending else { return }
         let requestID = UUID()
         loadID = requestID
         let revision = removals.revision
@@ -147,6 +149,7 @@ struct WatchLaterView: View {
         guard let aid = item.aid else { return }
         guard items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
         defer { removals.finish(item.id) }
+        let sessionID = account.sessionID
         var removedIndex: Int?
         do {
             try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.menuDismissWaitMilliseconds, source: .watchLater)
@@ -155,6 +158,8 @@ struct WatchLaterView: View {
             withAnimation(CardRemovalAnimation.collapse(source: .watchLater)) {
                 removedIndex = removals.remove(item.id, from: &items)
             }
+            guard await feedback.confirmRemoval("已移出稍后再看"),
+                  account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.removeWatchLater(aid: aid)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             withAnimation(CardRemovalAnimation.collapse(source: .watchLater)) { items.removeAll { $0.id == item.id } }
