@@ -30,14 +30,21 @@ struct MineServiceSheet: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(32)
-        .fullScreenCover(isPresented: Binding(
+        .mediaZoomCover(isPresented: Binding(
             get: { nowPlaying.isExpanded },
             set: { if $0 { nowPlaying.isExpanded = true } else { nowPlaying.dismissVideoPage() } }
-        ), onDismiss: nowPlaying.finishDismissal) {
-            VideoPage()
+        ), entrySourceID: nowPlaying.transitionSourceID, namespace: videoTransition,
+           onDismiss: nowPlaying.finishDismissal) {
+            Group {
+                if let player = nowPlaying.livePlayer {
+                    LiveRoomView(player: player, keepsPlaybackOnDismiss: true,
+                                 onReturn: nowPlaying.dismissVideoPage)
+                } else {
+                    VideoPage()
+                }
+            }
                 .appTextSize()
                 .environment(\.videoTransitionNamespace, videoTransition)
-                .navigationTransition(.zoom(sourceID: nowPlaying.transitionSourceID, in: videoTransition))
                 .background { VideoPagePresentationObserver(
                     onDidAppear: nowPlaying.videoPageDidAppear,
                     onInteractionBegan: nowPlaying.videoPageInteractionBegan,

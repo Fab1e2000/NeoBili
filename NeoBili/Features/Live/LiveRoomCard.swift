@@ -4,20 +4,11 @@ struct LiveRoomCard: View {
     let room: LiveRoom
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             CoverThumbnail(url: room.coverURL)
                 .overlay(alignment: .bottom) {
                     LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
                         .frame(height: 48)
-                }
-                .overlay(alignment: .topLeading) {
-                    Text(room.isLive ? "直播中" : "未开播")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(room.isLive ? Color.red.opacity(0.9) : Color.black.opacity(0.55), in: Capsule())
-                        .padding(7)
                 }
                 .overlay(alignment: .bottom) {
                     HStack(spacing: 4) {
@@ -32,28 +23,39 @@ struct LiveRoomCard: View {
                     .foregroundStyle(.white)
                     .padding(7)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10))
 
-            Text(room.title.isEmpty ? "直播间 \(room.roomID)" : room.title)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.primary)
-                .lineLimit(2, reservesSpace: true)
+            VStack(alignment: .leading, spacing: 7) {
+                Text(room.title.isEmpty ? "直播间 \(room.roomID)" : room.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2, reservesSpace: true)
 
-            HStack(spacing: 5) {
-                if let face = room.faceURL {
-                    BiliImage(url: face)
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 18, height: 18)
-                        .clipShape(Circle())
+                HStack(spacing: 5) {
+                    if let face = room.faceURL {
+                        BiliImage(url: face)
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 16, height: 16)
+                            .clipShape(Circle())
+                    }
+                    Text(room.username.isEmpty ? "房间 \(room.roomID)" : room.username)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                Text(room.username.isEmpty ? "房间 \(room.roomID)" : room.username)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 10)
+            .frame(height: 81, alignment: .top)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(room.username)，\(room.title)，\(room.isLive ? "直播中" : "未开播")")
         .accessibilityHint("打开直播间")

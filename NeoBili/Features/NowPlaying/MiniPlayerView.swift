@@ -1,141 +1,139 @@
 import SwiftUI
 
 extension View {
+    /// 主 TabView 使用原生底部附件，随导航栏在展开和紧凑布局之间切换。
+    func tabMiniPlayerHost(isActive: @escaping () -> Bool = { true }, transitionNamespace: Namespace.ID? = nil) -> some View {
+        modifier(TabMiniPlayerHost(isActive: isActive, transitionNamespace: transitionNamespace))
+    }
+
+    /// 收藏、历史等独立 sheet 没有 TabView，用安全区栏承载同一个播放条。
     func miniPlayerHost(isActive: @escaping () -> Bool = { true }, transitionNamespace: Namespace.ID? = nil) -> some View {
-        modifier(MiniPlayerHost(isActive: isActive, transitionNamespace: transitionNamespace))
+        modifier(SheetMiniPlayerHost(isActive: isActive, transitionNamespace: transitionNamespace))
     }
 }
 
-private struct MiniPlayerHost: ViewModifier {
+private struct TabMiniPlayerHost: ViewModifier {
     let isActive: () -> Bool
     let transitionNamespace: Namespace.ID?
-    @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
-    @AppStorage(MiniPlayerMovementSettings.topKey) private var topLimit = 0.0
-    @AppStorage(MiniPlayerMovementSettings.bottomKey) private var bottomLimit = 1.0
     @Environment(NowPlayingStore.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var typeSize
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        // 保留全屏页下方的附件，使 zoom 退出始终有稳定的标题栏目标。
+        if #available(iOS 26.1, *) {
+            content.tabViewBottomAccessory(isEnabled: store.hasMedia && isActive()) {
+                MiniPlayerBar(transitionNamespace: transitionNamespace)
+            }
+        } else {
+            content.tabViewBottomAccessory {
+                if store.hasMedia && isActive() {
+                    MiniPlayerBar(transitionNamespace: transitionNamespace)
+                }
+            }
+        }
+    }
+}
+
+private struct SheetMiniPlayerHost: ViewModifier {
+    let isActive: () -> Bool
+    let transitionNamespace: Namespace.ID?
+    @Environment(NowPlayingStore.self) private var store
 
     func body(content: Content) -> some View {
-        content.overlay {
-            if isActive(), MiniPlayerBoundsPreviewState.shared.isVisible {
-                MiniPlayerBoundsPreview(top: topLimit, bottom: bottomLimit)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-            }
-            // Keep the source alive underneath the full-screen page. Removing it
-            // on expansion leaves the system zoom with only the old feed card.
-            if isActive(), miniPlayerEnabled, store.route != nil {
-                MiniPlayerContainer(
-                    content: FloatingMiniPlayer(
-                        player: store.player,
-                        coverURL: store.route?.secureCoverURL,
-                        errorMessage: store.player?.errorMessage ?? store.detailViewModel?.errorMessage,
-                        showsTransitionCover: store.isExpanded || store.isVideoPageDismissalInProgress,
-                        isHostActive: isActive,
-                        onExpand: store.expandMiniPlayer,
-                        onClose: store.close
-                    )
-                    .environment(\.dynamicTypeSize, typeSize)
-                    .videoTransitionSource(NowPlayingStore.miniPlayerTransitionSourceID, in: transitionNamespace)
-                    .opacity(store.transitionSourceID == NowPlayingStore.miniPlayerTransitionSourceID || store.isMiniPlayerPresented ? 1 : 0),
-                    aspectRatio: store.player?.displayAspectRatio,
-                    anchor: store.miniPlayerAnchor,
-                    reduceMotion: reduceMotion,
-                    topLimit: topLimit, bottomLimit: bottomLimit,
-                    onAnchorChange: { store.miniPlayerAnchor = $0 }
-                )
-                .allowsHitTesting(store.isMiniPlayerPresented && !store.isExpanded)
-                .accessibilityHidden(!store.isMiniPlayerPresented || store.isExpanded)
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            if store.hasMedia && isActive() {
+                MiniPlayerBar(transitionNamespace: transitionNamespace)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22))
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
             }
         }
     }
 }
 
-private struct FloatingMiniPlayer: View {
-    let player: PlayerViewModel?
-    let coverURL: URL?
-    let errorMessage: String?
-    let showsTransitionCover: Bool
-    let isHostActive: () -> Bool
-    let onExpand: () -> Void
-    let onClose: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
-    @State private var controlsVisible = false
-    @State private var hideTask: Task<Void, Never>?
+/// 系统附件负责背景，播放条仅显示标题与播放操作。
+struct MiniPlayerBar: View {
+    let transitionNamespace: Namespace.ID?
+    @Environment(NowPlayingStore.self) private var store
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
 
+    private var isInline: Bool { placement == .inline }
+    private var title: String { store.livePlayer?.room.title ?? store.detailViewModel?.detail?.title ?? store.route?.title ?? "视频加载中" }
+    private var error: String? { store.livePlayer?.errorMessage ?? store.player?.errorMessage ?? store.detailViewModel?.errorMessage }
     var body: some View {
-        ZStack {
-            Color.black
-            if let player {
-                PlayerSurface(session: player.session, presentation: .mini, isHostActive: isHostActive)
-                    .allowsHitTesting(false)
-            }
-            if player?.hasRenderedFirstFrame != true || showsTransitionCover, let coverURL {
-                BiliImage(url: coverURL).aspectRatio(contentMode: .fit)
-            }
-            if !controlsVisible, isLoading {
-                ProgressView().tint(.white).allowsHitTesting(false)
-            }
-            if !controlsVisible, errorMessage != nil {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.white)
-                    .allowsHitTesting(false)
-            }
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(controlsAnimation) { controlsVisible.toggle() }
-                    scheduleHide()
+        if store.hasMedia {
+            HStack(spacing: isInline ? 6 : 10) {
+                Button(action: store.expandMiniPlayer) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
-            if controlsVisible {
-                MiniPlayerControls(
-                    isPlaying: player?.isPlaying == true,
-                    canControlPlayback: player?.hasRenderedFirstFrame == true && errorMessage == nil,
-                    isLoading: isLoading,
-                    hasError: errorMessage != nil,
-                    onExpand: onExpand,
-                    onTogglePlayback: {
-                        player?.togglePlayPause()
-                        scheduleHide()
-                    },
-                    onClose: onClose
-                )
-                .transition(.opacity)
+                .buttonStyle(.plain)
+                .accessibilityLabel("展开视频：\(title)")
+                .accessibilityIdentifier("miniPlayer.expand")
+
+                Button(action: store.togglePlayback) {
+                    Group {
+                        if error != nil {
+                            Image(systemName: "exclamationmark.triangle")
+                        } else if store.isLoading || (store.livePlayer?.isBuffering ?? store.player?.isBuffering ?? false) {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
+                        }
+                    }
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!store.hasRenderedFirstFrame || error != nil)
+                .accessibilityLabel(store.isPlaying ? "暂停" : "播放")
+                .accessibilityIdentifier("miniPlayer.playPause")
+
+                if !isInline {
+                    Button(action: store.close) {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.medium))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("关闭播放器")
+                    .accessibilityIdentifier("miniPlayer.close")
+                }
             }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
-        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
-        .accessibilityElement(children: .contain)
-        .appTheme()
-        .accessibilityLabel("视频小窗")
-        .accessibilityAction(named: "展开视频", onExpand)
-        .accessibilityAction(named: "播放或暂停") { player?.togglePlayPause() }
-        .accessibilityAction(named: "关闭小窗", onClose)
-        .onChange(of: player?.isPlaying) { scheduleHide() }
-        .onChange(of: voiceOverEnabled) { scheduleHide() }
-        .onDisappear { hideTask?.cancel() }
-    }
-
-    private var isLoading: Bool {
-        errorMessage == nil && (player == nil || player?.isLoading == true || player?.isBuffering == true)
-    }
-
-    private var controlsAnimation: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.15) }
-
-    private func scheduleHide() {
-        hideTask?.cancel()
-        guard controlsVisible, player?.isPlaying == true, !voiceOverEnabled else { return }
-        hideTask = Task {
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else { return }
-            withAnimation(controlsAnimation) { controlsVisible = false }
+            .padding(.horizontal, isInline ? 8 : 12)
+            .padding(.vertical, isInline ? 2 : 6)
+            .accessibilityElement(children: .contain)
+            .accessibilityAction(named: "关闭播放器", store.close)
+            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 22))
+            .contextMenu {
+                Button("关闭播放器", systemImage: "xmark", action: store.close)
+            } preview: {
+                // The accessory changes placement as the tab bar collapses.
+                // A standalone preview must not inherit that layout or its zoom anchor.
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                    .frame(width: 260, alignment: .leading)
+                    .padding(16)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 22))
+            }
+            .background {
+                // Keep the native page-transition anchor outside the menu preview.
+                if let transitionNamespace {
+                    MediaZoomSource(id: NowPlayingStore.miniPlayerTransitionSourceID,
+                                    namespace: transitionNamespace)
+                }
+            }
         }
     }
 }
-
 
 /// A chrome-only view keeps player ownership and UIKit drag handling in the
 /// existing container, and allows layout snapshots without starting playback.

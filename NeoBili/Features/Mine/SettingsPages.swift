@@ -4,7 +4,6 @@ struct PlaybackSettingsView: View {
     @AppStorage(DanmakuSettings.coloredEnabledKey) private var coloredDanmaku = true
     @AppStorage("neobili.preferredQuality") private var preferredQuality = 64
     @AppStorage(PlaybackQuality.audioStorageKey) private var preferredAudioQuality = 0
-    @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
 
     var body: some View {
         Form {
@@ -24,8 +23,9 @@ struct PlaybackSettingsView: View {
                 Toggle("彩色弹幕", isOn: $coloredDanmaku)
             }
             Section("播放方式") {
-                Toggle("小窗播放", isOn: $miniPlayerEnabled)
-                    .accessibilityIdentifier("settings.miniPlayer.enabled")
+                Text("退出视频页面后，视频会在底部迷你播放器中继续播放。点击播放条可返回视频，点击关闭按钮可结束播放。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
         .settingsPage("播放与画质")
