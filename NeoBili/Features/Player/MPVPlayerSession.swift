@@ -219,6 +219,18 @@ final class MPVEngine: @unchecked Sendable {
     private var isStopped = false
     private var hasReportedFirstFrame = false
     private var lastKnownPosition: TimeInterval = 0
+    // Only accessed on eventQueue. Throttle before waking the main thread.
+    private var latestEventPosition: TimeInterval = 0
+    private var lastPositionDispatch: UInt64 = 0
+    private var lastCacheDispatch: UInt64 = 0
+
+    private func publishPosition(_ position: TimeInterval, force: Bool = false) {
+        latestEventPosition = position
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard force || now - lastPositionDispatch >= 100_000_000 else { return }
+        lastPositionDispatch = now
+        dispatchToMain { [weak self] in self?.handlePosition(position) }
+    }
 
     var onEvent: ((PlayerPlaybackEvent) -> Void)?
 
@@ -353,16 +365,14 @@ final class MPVEngine: @unchecked Sendable {
     /// 保证 mpv 内部线程销毁完成前 wid 指针始终有效。
     private weak var attachedLayer: MPVMetalLayer?
 
-    /// 回前台后画面有时不会自动恢复；先关视频轨道，回前台再打开，强制让
-    /// 渲染表面重新建立一次。
-    func enterBackground() {
-        guard !isStopped, let mpv else { return }
-        mpv_set_property_string(mpv, "vid", "no")
-    }
-
-    func enterForeground() {
-        guard !isStopped, let mpv else { return }
-        mpv_set_property_string(mpv, "vid", "auto")
+    /// Audio-only playback must disable decoding as well as the hidden Metal output.
+    /// Serialize with event handling and shutdown without blocking UI gestures.
+    func setVideoEnabled(_ enabled: Bool) {
+        guard !isStopped else { return }
+        eventQueue.async { [weak self] in
+            guard let self, let mpv = self.mpv else { return }
+            mpv_set_property_string(mpv, "vid", enabled ? "auto" : "no")
+        }
     }
 
     // MARK: - mpv command/property helpers（只从调用方所在线程执行，本身线程安全）
@@ -414,15 +424,15 @@ final class MPVEngine: @unchecked Sendable {
                     pendingPosition = max(value, 0)
                     continue
                 }
-                if let pending = pendingPosition {
-                    pendingPosition = nil
-                    dispatchToMain { [weak self] in self?.handlePosition(pending) }
-                }
+            }
+            if let pending = pendingPosition {
+                pendingPosition = nil
+                publishPosition(pending)
             }
             handle(event: event)
         }
         if let pending = pendingPosition {
-            dispatchToMain { [weak self] in self?.handlePosition(pending) }
+            publishPosition(pending)
         }
     }
 
@@ -439,6 +449,8 @@ final class MPVEngine: @unchecked Sendable {
                 mpv_get_property($0, "time-pos", MPV_FORMAT_DOUBLE, &position) >= 0
             } ?? false
             let resumedPosition = hasPosition && position.isFinite ? max(position, 0) : nil
+            lastCacheDispatch = 0
+            if let resumedPosition { publishPosition(resumedPosition, force: true) }
             dispatchToMain { [weak self] in
                 self?.reportFirstFrameIfNeeded()
                 if let resumedPosition { self?.onEvent?(.seekCompleted(resumedPosition)) }
@@ -468,7 +480,7 @@ final class MPVEngine: @unchecked Sendable {
         case ("time-pos", MPV_FORMAT_DOUBLE):
             let value = data.assumingMemoryBound(to: Double.self).pointee
             guard value.isFinite else { return }
-            dispatchToMain { [weak self] in self?.handlePosition(max(value, 0)) }
+            publishPosition(max(value, 0))
         case ("duration", MPV_FORMAT_DOUBLE):
             let value = data.assumingMemoryBound(to: Double.self).pointee
             guard value.isFinite, value > 0 else { return }
@@ -476,9 +488,13 @@ final class MPVEngine: @unchecked Sendable {
         case ("demuxer-cache-time", MPV_FORMAT_DOUBLE):
             let value = data.assumingMemoryBound(to: Double.self).pointee
             guard value.isFinite else { return }
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard now - lastCacheDispatch >= 500_000_000 else { return }
+            lastCacheDispatch = now
             dispatchToMain { [weak self] in self?.handleCacheTime(value) }
         case ("pause", MPV_FORMAT_FLAG):
             let value = data.assumingMemoryBound(to: Int32.self).pointee
+            publishPosition(latestEventPosition, force: true)
             dispatchToMain { [weak self] in self?.onEvent?(.playing(value == 0)) }
         case ("paused-for-cache", MPV_FORMAT_FLAG):
             let value = data.assumingMemoryBound(to: Int32.self).pointee
@@ -546,6 +562,7 @@ final class MPVEngine: @unchecked Sendable {
 /// 自己的生命周期回调、`NotificationCenter` 的这两个前后台通知本身就在
 /// 主线程发出），从没有 mpv 的回调线程直接摸这个类。
 final class MPVMetalViewController: UIViewController {
+    private(set) var videoOutput = PlayerVideoOutputState()
     private let engine: MPVEngine
     private let metalLayer = MPVMetalLayer()
     private var stableSurfaceSize: CGSize = .zero
@@ -597,6 +614,8 @@ final class MPVMetalViewController: UIViewController {
 
 
         engine.start(renderingInto: metalLayer)
+        videoOutput.isBackgrounded = UIApplication.shared.applicationState == .background
+        engine.setVideoEnabled(videoOutput.isEnabled)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleDidEnterBackground),
@@ -676,8 +695,22 @@ final class MPVMetalViewController: UIViewController {
     deinit {
     }
 
-    @objc private func handleDidEnterBackground() { engine.enterBackground() }
-    @objc private func handleWillEnterForeground() { engine.enterForeground() }
+    func setVideoPresentation(_ presentation: PlayerSurfacePresentation) {
+        let previous = videoOutput.isEnabled
+        videoOutput.presentation = presentation
+        if isViewLoaded, previous != videoOutput.isEnabled {
+            engine.setVideoEnabled(videoOutput.isEnabled)
+        }
+    }
+
+    private func setBackgrounded(_ backgrounded: Bool) {
+        let previous = videoOutput.isEnabled
+        videoOutput.isBackgrounded = backgrounded
+        if previous != videoOutput.isEnabled { engine.setVideoEnabled(videoOutput.isEnabled) }
+    }
+
+    @objc private func handleDidEnterBackground() { setBackgrounded(true) }
+    @objc private func handleWillEnterForeground() { setBackgrounded(false) }
 }
 
 enum PlatformInfo {
@@ -697,7 +730,10 @@ final class MPVPlayerSession {
     let surfaceOwnership = PlayerSurfaceOwnership()
     var surfacePresentation: PlayerSurfacePresentation {
         get { surfaceOwnership.presentation }
-        set { surfaceOwnership.presentation = newValue }
+        set {
+            surfaceOwnership.presentation = newValue
+            viewController.setVideoPresentation(newValue)
+        }
     }
     var onEvent: ((PlayerPlaybackEvent) -> Void)? {
         didSet { viewController.onEvent = onEvent }
