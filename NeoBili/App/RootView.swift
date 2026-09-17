@@ -28,7 +28,7 @@ struct RootView: View {
     @State private var nowPlaying = NowPlayingStore()
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
-    @State private var themeIcon = ThemeIconController()
+    @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     @State private var search = SearchViewModel()
     @State private var isSearchPresented = false

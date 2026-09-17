@@ -30,8 +30,8 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         CFBundleDisplayName: NeoBili
-        CFBundleShortVersionString: "1.0.4"
-        CFBundleVersion: "5"
+        CFBundleShortVersionString: "1.0.5"
+        CFBundleVersion: "6"
         NSPhotoLibraryAddUsageDescription: 保存登录二维码到相册，便于在哔哩哔哩 App 的扫一扫里从相册识别登录。
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
