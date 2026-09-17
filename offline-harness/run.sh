@@ -24,6 +24,7 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Models/CommentModels.swift" \
    "$APP/Core/Networking/APIClient.swift" \
    "$APP/Core/Networking/BiliAPI.swift" \
+   "$APP/Core/Networking/AppRecommendationPage.swift" \
    "$APP/Core/Networking/BiliPassport.swift" \
    "$APP/Core/Networking/WBISigner.swift" \
    "$APP/Core/Networking/DeviceIdentity.swift" \
@@ -125,3 +126,11 @@ swiftc -swift-version 6 -parse-as-library \
     "$HARNESS/src/LiveFeedRegression.swift" \
     -o "$BUILD_DIR/live-feed"
 "$BUILD_DIR/live-feed"
+
+# 主题图标请求循环（真实控制器 + 桩端点）：成功提交后不得因上报滞后
+# 无限重提交——那是 v1.0.3 引入的发热根因。
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Core/UI/ThemeIconController.swift" \
+    "$HARNESS/src/ThemeIconRegression.swift" \
+    -o "$BUILD_DIR/theme-icon"
+"$BUILD_DIR/theme-icon"
