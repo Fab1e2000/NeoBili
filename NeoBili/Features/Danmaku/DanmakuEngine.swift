@@ -121,6 +121,7 @@ final class DanmakuEngine: UIView {
         scrollTracks = scrollTracks.map { _ in [] }
         staticTracks = staticTracks.map { _ in nil }
         activeCount = 0
+        stopTicking()
         injectedThrough = time
         cursorIndex = items.firstIndex { $0.time >= time } ?? items.count
     }
@@ -246,10 +247,13 @@ final class DanmakuEngine: UIView {
     // MARK: - 逐帧推进
 
     private func startTickingIfNeeded() {
-        guard window != nil, displayLink == nil,
+        guard window != nil, displayLink == nil, activeCount > 0,
               !isSuppressed,
               !(mode == .video && isTimelinePaused) else { return }
         let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        // Text motion does not need to drive a ProMotion display at 120 Hz.
+        // Let the system lower the rate when energy constraints require it.
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         link.add(to: .main, forMode: .common)
         displayLink = link
         lastTick = CACurrentMediaTime()

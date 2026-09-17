@@ -2,6 +2,13 @@ import Foundation
 
 enum PlayerSurfacePresentation: Equatable { case page, mini }
 
+/// Returning to the app must not enable video for a title-only mini player.
+struct PlayerVideoOutputState {
+    var presentation: PlayerSurfacePresentation = .page
+    var isBackgrounded = false
+    var isEnabled: Bool { presentation == .page && !isBackgrounded }
+}
+
 @MainActor
 protocol PlayerSurfaceOwnershipObserver: AnyObject {
     func playerSurfaceOwnershipDidChange()

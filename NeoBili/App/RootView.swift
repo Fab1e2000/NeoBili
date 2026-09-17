@@ -130,6 +130,9 @@ struct RootView: View {
                 ) }
         }
         // 底部内容直接延伸，不加系统渐变模糊。
+        #if PERFORMANCE_DEMO
+        .overlay(alignment: .topTrailing) { PerformanceDemoControl(store: nowPlaying) }
+        #endif
         .scrollEdgeEffectHidden(true, for: .bottom)
         .appTheme()
         .environment(nowPlaying)

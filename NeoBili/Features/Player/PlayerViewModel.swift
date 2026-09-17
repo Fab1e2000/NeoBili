@@ -44,9 +44,6 @@ final class PlayerViewModel {
     private(set) var selectedVideoQuality: Int?
     private(set) var selectedAudioQuality: Int?
     private var qualityRequestID = UUID()
-    /// 界面侧位置更新节流（10Hz）：进度条/时间/弹幕共用这一个节拍。
-    private var lastPositionUITick: UInt64 = 0
-    private static let positionUITickInterval: UInt64 = 100_000_000
     private var qualityFetchTask: Task<PlayURLData, Error>?
     private var isFetchingQuality = false
     /// 换源期间保留最后一次播放/暂停意图，防止新内核默认播放覆盖用户暂停。
@@ -670,12 +667,7 @@ final class PlayerViewModel {
         case .position(let position):
             guard hasRenderedFirstFrame, !isLoading, (!isSwitchingQuality || isFetchingQuality),
                   resumeState.accept(position: position) else { return }
-            // time-pos 事件本来按视频帧率到达（合批后仍有每秒几十次）；
-            // 界面只需要 10Hz：进度条、时间标签和弹幕注入在这个频率下
-            // 与逐帧完全一致，每秒却省下几十次 @Observable 失效与 body 重算。
-            let now = DispatchTime.now().uptimeNanoseconds
-            guard now - lastPositionUITick >= Self.positionUITickInterval else { return }
-            lastPositionUITick = now
+            // MPVEngine limits progress delivery before dispatching to the main queue.
             currentTime = position
             danmaku?.update(currentTime: position)
             if abs(position - lastSavedPosition) >= 5 { savePlaybackProgress() }

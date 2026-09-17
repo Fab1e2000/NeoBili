@@ -18,7 +18,8 @@ final class MiniPlayerTransitionTests: XCTestCase {
         let activeScene = try XCTUnwrap(scene)
         let previous = activeScene.keyWindow
         let fixture = MiniTransitionFixture()
-        let host = UIHostingController(rootView: MiniTransitionHost(fixture: fixture))
+        let host = UIHostingController(rootView: MiniTransitionHost(fixture: fixture)
+            .environment(\.verticalSizeClass, .regular))
         let window = UIWindow(windowScene: activeScene)
         window.frame = activeScene.coordinateSpace.bounds
         window.rootViewController = host
@@ -35,7 +36,14 @@ final class MiniPlayerTransitionTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertTrue(fixture.didAppear, "The native presentation must finish before its return destination changes")
+        let presented = try XCTUnwrap(host.presentedViewController as? ZoomHost)
+        presented.traitOverrides.verticalSizeClass = .compact
         try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(fixture.presentedSizeClass, .compact,
+                       "Full-screen layout must receive the presented controller's traits, not a frozen portrait environment")
+        presented.traitOverrides.verticalSizeClass = .regular
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(fixture.presentedSizeClass, .regular)
         let mini = try XCTUnwrap(fixture.miniView)
         let target = mini.convert(mini.bounds, to: window)
         XCTAssertGreaterThan(target.width, 100)
@@ -125,6 +133,7 @@ private final class MiniTransitionFixture {
     var sourceID = "card"
     var didAppear = false
     var didDismiss = false
+    var presentedSizeClass: UserInterfaceSizeClass?
     @ObservationIgnored weak var miniView: UIView?
 }
 
@@ -150,12 +159,23 @@ private struct MiniTransitionHost: View {
             }
             .mediaZoomCover(isPresented: $fixture.isPresented, entrySourceID: "card", namespace: transition, onDismiss: { fixture.didDismiss = true }) {
                 Color(red: 0, green: 1, blue: 0).ignoresSafeArea()
+                    .overlay { PresentedSizeClassProbe(fixture: fixture) }
                     .background {
                         VideoPagePresentationObserver {
                             fixture.didAppear = true
                         }
                     }
             }
+    }
+}
+
+private struct PresentedSizeClassProbe: View {
+    let fixture: MiniTransitionFixture
+    @Environment(\.verticalSizeClass) private var sizeClass
+    var body: some View {
+        Color.clear.onChange(of: sizeClass, initial: true) { _, value in
+            fixture.presentedSizeClass = value
+        }
     }
 }
 
