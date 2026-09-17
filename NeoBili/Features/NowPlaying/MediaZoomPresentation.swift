@@ -64,8 +64,18 @@ private struct MediaZoomPresenter<Content: View>: UIViewControllerRepresentable 
     }
 
     func updateUIViewController(_ controller: Presenter, context: Context) {
-        // Carry the exact SwiftUI environment across the UIKit hosting boundary.
-        controller.content = AnyView(content.environment(\.self, context.environment))
+        // Transfer app dependencies only. Copying the entire environment freezes
+        // the presenting page's size classes, scene phase and presentation state.
+        let environment = context.environment
+        controller.content = AnyView(content
+            .environment(environment[NowPlayingStore.self])
+            .environment(environment[AccountStore.self])
+            .environment(environment[ActionFeedback.self])
+            .environment(environment[ThemeIconController.self])
+            .environment(\.videoTransitionNamespace, namespace)
+            .environment(\.hidesPortraitVideos, environment.hidesPortraitVideos)
+            .appTheme()
+            .appTextSize())
         controller.presentation = $isPresented
         controller.shouldPresent = shouldPresent
         controller.entrySourceID = entrySourceID

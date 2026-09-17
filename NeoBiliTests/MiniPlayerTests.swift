@@ -5,6 +5,28 @@ import SwiftUI
 
 @MainActor
 final class MiniPlayerTests: XCTestCase {
+    func testTitleOnlyPlaybackKeepsVideoDisabledAcrossForegroundAndSessionChanges() {
+        var state = PlayerVideoOutputState()
+        XCTAssertTrue(state.isEnabled)
+        state.presentation = .mini
+        XCTAssertFalse(state.isEnabled)
+        state.isBackgrounded = true
+        state.isBackgrounded = false
+        XCTAssertFalse(state.isEnabled, "Foregrounding a title-only player must not resume video decoding")
+        state.isBackgrounded = true
+        state.presentation = .page
+        XCTAssertFalse(state.isEnabled)
+        state.isBackgrounded = false
+        XCTAssertTrue(state.isEnabled)
+
+        let session = MPVPlayerSession(configuration: .init())
+        defer { session.stop() }
+        session.surfacePresentation = .mini
+        XCTAssertFalse(session.viewController.videoOutput.isEnabled)
+        session.surfacePresentation = .page
+        XCTAssertTrue(session.viewController.videoOutput.isEnabled)
+    }
+
     func testImmediateReturnKeepsEntryAnchorWithoutBlockingGestures() {
         let region = PlayerReturnGestureGuard.RegionView()
         region.verticalOnly = true
