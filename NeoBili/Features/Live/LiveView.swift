@@ -217,7 +217,6 @@ private struct LiveFeedPage: View {
             isAwayFromTop = away
         }
         .scrollBounceBehavior(.always, axes: .vertical)
-        .scrollEdgeEffectStyle(.soft, for: .top)
         .scrollEdgeEffectHidden(true, for: .bottom)
         .accessibilityAction(named: "刷新直播", startRefresh)
     }

@@ -10,7 +10,7 @@ struct FollowingPageBackground: View {
     var body: some View {
         FollowingPageEdgeShape(side: side, progress: motion.progress,
                                topInset: topInset, bottomInset: bottomInset)
-            .fill(Color(uiColor: .systemBackground))
+            .fill(Color(uiColor: .systemGroupedBackground))
     }
 }
 
@@ -54,16 +54,24 @@ private struct FollowingPageEdgeShape: Shape {
     }
 }
 
-/// 选择器展开时的全宽顶部模糊，浓度跟随展开进度；下缘与页头对齐成切边。
+/// 选择器展开时的全宽顶部模糊，浓度跟随展开进度；盖住页头后再柔和渐隐一小段。
 /// 单独一个视图读取逐帧的进度，拖动时不会让整个关注页重算。
 struct FollowingExpandedTopBlur: View {
+    private static let fadeLength: CGFloat = 24
+
     let motion: FollowingSidebarMotion
     let topInset: CGFloat
 
     var body: some View {
+        // 与系统默认的顶部边缘效果一致：页头以下再柔和渐隐一小段，不画分界线。
+        let height = topInset + Self.fadeLength
         Rectangle()
             .fill(.ultraThinMaterial)
-            .frame(height: topInset)
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0),
+                                         .init(color: .black, location: topInset / height),
+                                         .init(color: .clear, location: 1)],
+                                 startPoint: .top, endPoint: .bottom))
+            .frame(height: height)
             .offset(y: -topInset)
             .opacity(motion.progress)
             .allowsHitTesting(false)

@@ -20,7 +20,7 @@ struct HomeFeedCollection: UIViewRepresentable {
     let onRefresh: () -> Void
     let onOpenLastSeen: () -> Void
     var onOpenMine: () -> Void = {}
-    /// 标题栏固定在外层时，列表里不再插入页头行，顶部边缘改为清晰切边。
+    /// 标题栏固定在外层时，列表里不再插入页头行。
     var pinsTitleBar = HomeTitleBarSettings.defaultValue
     /// 列表忽略安全区铺满全屏，状态栏（+ 固定标题栏）和标签栏的高度由外层量好传入。
     var safeInsets = EdgeInsets()
@@ -84,7 +84,8 @@ struct HomeFeedCollection: UIViewRepresentable {
         coordinator.apply(rows)
     }
 
-    private var topEdgeStyle: UIScrollEdgeEffect.Style { pinsTitleBar ? .hard : .soft }
+    /// 固定标题栏时交给系统默认效果（与其它主页面一致：不画分界线，内容滑入时柔和模糊）。
+    private var topEdgeStyle: UIScrollEdgeEffect.Style { pinsTitleBar ? .automatic : .soft }
 
     /// 列表内的页头自带上下留白，顶部只补 4pt；固定标题栏时卡片紧贴栏下，补回网格留白。
     private func applyInsets(to view: UICollectionView) {

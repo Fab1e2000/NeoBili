@@ -86,7 +86,9 @@ struct FollowingView: View {
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
                 }
-                .background(Color(uiColor: .systemGroupedBackground))
+                // 底板与推荐页一样用分组灰底，白色卡片才分得出层次；凹口后面这层反过来用白色，
+                // 侧栏展开时凹口仍清楚可见。
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
                 // 列表缩小后自带的顶部渐变只覆盖列表宽度，展开选择器时补一层全宽的顶部模糊。
                 .overlay(alignment: .top) {
                     FollowingExpandedTopBlur(motion: sidebarMotion, topInset: geometry.safeAreaInsets.top)
@@ -171,7 +173,7 @@ struct FollowingView: View {
             }
             // 切换标签只淡入动态；列表本身保持不透明，顶部模糊立即出现。
             .opacity(feedOpacity * refreshOpacity * tabContentOpacity)
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .background(Color(uiColor: .systemGroupedBackground))
             // 手势观察器不参与纵向布局，避免独立零高占位产生默认间距。
             .background(alignment: .top) {
                 ShortPullRefresh(
@@ -204,9 +206,7 @@ struct FollowingView: View {
         }
         // 即使内容不足一屏也允许下拉刷新。
         .scrollBounceBehavior(.always, axes: .vertical)
-        // 与直播页一致：页头下缘是清晰的切边，而不是渐隐。
-        .scrollEdgeEffectStyle(.hard, for: .top)
-            .scrollEdgeEffectHidden(true, for: .bottom)
+        .scrollEdgeEffectHidden(true, for: .bottom)
         .scrollDisabled((isRefreshing && refreshOpacity < 1) || pendingSelectionID != nil)
         // 下拉刷新与推荐页一致，不显示提示框；只在切换 UP 主等待数据时给个小菊花。
         .overlay(alignment: .top) {
