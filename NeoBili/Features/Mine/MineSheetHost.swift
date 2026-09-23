@@ -21,6 +21,7 @@ private struct MineSheetHost: ViewModifier {
                     .appTextSize()
                     .tint(.primary)
                     .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
                     .presentationCornerRadius(32)
             }
     }

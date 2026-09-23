@@ -42,16 +42,10 @@ struct MineView: View {
             // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触入口行。
             .leftEdgeTapDeadZone()
             .background(Color(uiColor: .systemGroupedBackground))
+            // 与服务卡片（收藏、历史等）一致：系统居中标题，右上角是关闭按钮。
+            .navigationTitle("我的")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // 与 Apple Music 账户卡片一致：标题靠左，右上角是关闭按钮。
-                ToolbarItem(placement: .topBarLeading) {
-                    Text("我的")
-                        .font(.title3.weight(.semibold))
-                        .fixedSize()
-                        .accessibilityAddTraits(.isHeader)
-                }
-                .sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("关闭", systemImage: "xmark") { dismiss() }
                         .labelStyle(.iconOnly)
