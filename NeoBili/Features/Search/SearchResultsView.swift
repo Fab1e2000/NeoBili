@@ -51,7 +51,7 @@ struct SearchResultsView: View {
                         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
                         // 搜索结果里没有 cid，所以预取要先取一次详情再取播放地址。
                         // 详情会一起缓存下来，进入视频页时不会重复请求。
-                        .task { await VideoPreparationCache.shared.prefetch(bvid: item.bvid) }
+                        .task { await VideoPreparationCache.shared.prefetchWhenSettled(bvid: item.bvid) }
                     }
                 }
                 if let message = viewModel.loadMoreError {

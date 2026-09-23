@@ -9,7 +9,9 @@ struct CoverThumbnail: View {
 
     var body: some View {
         GeometryReader { proxy in
-            BiliImage(url: url)
+            // 封面框的尺寸就是解码目标：不必等图片自己测量，也不会因为占位图和
+            // 真图的比例不同而按两个尺寸各解码一次。
+            BiliImage(url: url, targetSize: proxy.size)
                 .aspectRatio(contentMode: .fill)
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
@@ -76,43 +78,55 @@ struct VideoCoverThumbnail: View {
         )
     }
 
+    /// 渐变只贴住封面下缘，下面两个角跟封面一致。
+    private var scrimShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            bottomLeadingRadius: bottomCornerRadius ?? cornerRadius,
+            bottomTrailingRadius: bottomCornerRadius ?? cornerRadius,
+            style: .continuous
+        )
+    }
+
     var body: some View {
-        ZStack(alignment: .bottom) {
-            CoverThumbnail(url: url, aspectRatio: aspectRatio)
-                .overlay(alignment: .bottom) {
-                    LinearGradient(
+        // 只裁剪封面图片本身，渐变和文字画在裁剪外面，文字也不加阴影：
+        // 裁剪里套着多层内容、以及文字阴影，都会让系统每帧额外做离屏渲染，
+        // 一屏十几张卡叠起来会把渲染时间顶到 120Hz 的上限。
+        // 文字的可读性改由加深的渐变保证。
+        CoverThumbnail(url: url, aspectRatio: aspectRatio)
+            .clipShape(shape)
+            .overlay(alignment: .bottom) {
+                scrimShape
+                    .fill(LinearGradient(
                         stops: [
                             .init(color: .clear, location: 0),
-                            .init(color: .black.opacity(0.08), location: 0.4),
-                            .init(color: .black.opacity(0.45), location: 1)
+                            .init(color: .black.opacity(0.2), location: 0.4),
+                            .init(color: .black.opacity(0.6), location: 1)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
-                    )
-                    .frame(height: 46)
-                }
+                    ))
+                    .frame(height: 52)
+            }
+            .overlay(alignment: .bottom) {
+                HStack(spacing: 6) {
+                    if !playText.isEmpty {
+                        HStack(spacing: 2) {
+                            Image(systemName: "play.rectangle")
+                            Text(playText)
+                        }
+                    }
 
-            HStack(spacing: 6) {
-                if !playText.isEmpty {
-                    HStack(spacing: 2) {
-                        Image(systemName: "play.rectangle")
-                        Text(playText)
+                    Spacer(minLength: 0)
+
+                    if !duration.isEmpty {
+                        Text(duration)
                     }
                 }
-
-                Spacer(minLength: 0)
-
-                if !duration.isEmpty {
-                    Text(duration)
-                }
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 6)
             }
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.8), radius: 2, y: 1)
-            .padding(.horizontal, 8)
-            .padding(.bottom, 6)
-        }
-        .clipShape(shape)
     }
 }
 
@@ -261,9 +275,69 @@ private actor DecodeGate {
     }
 }
 
+/// 限制同时进行的图片预取数量。
+private actor PrefetchGate {
+    static let shared = PrefetchGate()
+    private static let limit = 6
+    private var active = 0
+
+    func tryEnter() -> Bool {
+        guard active < Self.limit else { return false }
+        active += 1
+        return true
+    }
+
+    func leave() { active -= 1 }
+}
+
+/// 主线程可以同步读取的已解码图片索引，让已加载或已预取的图在视图创建的
+/// 第一帧就画出来，不先闪一帧空白。只引用 `BiliImageCache` 里同一批 UIImage，
+/// 系统内存紧张时 NSCache 会自行清空。
+enum BiliImageMemoryCache {
+    nonisolated(unsafe) private static let storage: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 300
+        cache.totalCostLimit = 48 * 1_024 * 1_024
+        return cache
+    }()
+
+    static func image(for url: URL, pixelSize: ImagePixelSize) -> UIImage? {
+        storage.object(forKey: key(url, pixelSize))
+    }
+
+    static func insert(_ image: UIImage, for url: URL, pixelSize: ImagePixelSize) {
+        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+        storage.setObject(image, forKey: key(url, pixelSize), cost: cost)
+    }
+
+    private static func key(_ url: URL, _ pixelSize: ImagePixelSize) -> NSString {
+        "\(pixelSize.width)x\(pixelSize.height) \(url.absoluteString)" as NSString
+    }
+}
+
 enum BiliImageLoader {
+    /// 列表预取：在卡片进入屏幕前下载并解码，结果进缓存。尺寸必须和卡片
+    /// 显示时请求的一致才能命中；失败不影响之后的正常加载。
+    static func prefetch(_ url: URL?, pointSize: CGSize, scale: CGFloat) {
+        guard let url, let pixelSize = ImagePixelSize(points: pointSize, scale: scale),
+              BiliImageMemoryCache.image(for: url, pixelSize: pixelSize) == nil else { return }
+        Task(priority: .utility) {
+            // 预取只是锦上添花：同时进行的数量有上限，超出的直接放弃，
+            // 等卡片显示时再正常加载，不和屏幕上的图片抢网络。
+            guard await PrefetchGate.shared.tryEnter() else { return }
+            _ = try? await load(url, pixelSize: pixelSize)
+            await PrefetchGate.shared.leave()
+        }
+    }
+
     /// nil requests an original; on-screen cards always supply physical pixels.
     static func load(_ url: URL, pixelSize: ImagePixelSize? = nil) async throws -> UIImage {
+        let image = try await decoded(url, pixelSize: pixelSize)
+        if let pixelSize { BiliImageMemoryCache.insert(image, for: url, pixelSize: pixelSize) }
+        return image
+    }
+
+    private static func decoded(_ url: URL, pixelSize: ImagePixelSize?) async throws -> UIImage {
         try await BiliImageCache.shared.image(for: url, pixelSize: pixelSize) {
             let data = try await BiliImageDataLoader.shared.data(for: url)
             await DecodeGate.shared.enter()
@@ -288,20 +362,36 @@ enum BiliImageLoader {
 /// Geometry observation leaves the caller's aspect ratio and layout untouched.
 struct BiliImage: View {
     let url: URL?
+    /// 调用方已经知道的显示尺寸（点）。给了就不用等布局测量：第一帧就能按这个
+    /// 尺寸取缓存或开始加载，也和列表预取用同一个缓存键。
+    var targetSize: CGSize? = nil
     @Environment(\.displayScale) private var displayScale
     @State private var image: Image?
     @State private var loadedURL: URL?
     @State private var failed = false
-    @State private var pixelSize: ImagePixelSize?
+    @State private var measuredSize: ImagePixelSize?
 
     private struct Request: Hashable {
         let url: URL?
         let pixelSize: ImagePixelSize?
     }
 
+    private var pixelSize: ImagePixelSize? {
+        if let targetSize { return ImagePixelSize(points: targetSize, scale: displayScale) }
+        return measuredSize
+    }
+
+    /// 自己加载好的图优先；还没加载时，已经解码过（或被预取过）的图直接画，不先闪空白。
+    private var displayedImage: Image? {
+        if loadedURL == url, let image { return image }
+        guard let url, let pixelSize,
+              let cached = BiliImageMemoryCache.image(for: url, pixelSize: pixelSize) else { return nil }
+        return Image(uiImage: cached)
+    }
+
     var body: some View {
         Group {
-            if let image {
+            if let image = displayedImage {
                 image.resizable()
             } else if failed {
                 ZStack {
@@ -314,9 +404,7 @@ struct BiliImage: View {
                     .overlay(LoadingTaskAnchor().controlSize(.small))
             }
         }
-        .onGeometryChange(for: ImagePixelSize?.self) { [displayScale] proxy in
-            ImagePixelSize(points: proxy.size, scale: displayScale)
-        } action: { pixelSize = $0 }
+        .modifier(MeasuredPixelSize(enabled: targetSize == nil, scale: displayScale, size: $measuredSize))
         .task(id: Request(url: url, pixelSize: pixelSize)) {
             await load()
         }
@@ -333,11 +421,41 @@ struct BiliImage: View {
             return
         }
         guard let pixelSize else { return }
-        do {
-            let loaded = try await BiliImageLoader.load(url, pixelSize: pixelSize)
-            if !Task.isCancelled { image = Image(uiImage: loaded) }
-        } catch {
-            if !Task.isCancelled { failed = true }
+        if let cached = BiliImageMemoryCache.image(for: url, pixelSize: pixelSize) {
+            image = Image(uiImage: cached)
+            return
+        }
+        // 网络抖动或请求排队超时不应让图片一直停在失败图标：稍等后再试两次。
+        for attempt in 0..<3 {
+            do {
+                let loaded = try await BiliImageLoader.load(url, pixelSize: pixelSize)
+                if !Task.isCancelled { image = Image(uiImage: loaded) }
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                guard attempt < 2 else {
+                    failed = true
+                    return
+                }
+                do { try await Task.sleep(for: .seconds(attempt == 0 ? 1 : 3)) } catch { return }
+            }
+        }
+    }
+}
+
+/// 没有给出显示尺寸的图片才需要等布局测量自己的大小。
+private struct MeasuredPixelSize: ViewModifier {
+    let enabled: Bool
+    let scale: CGFloat
+    @Binding var size: ImagePixelSize?
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.onGeometryChange(for: ImagePixelSize?.self) { proxy in
+                ImagePixelSize(points: proxy.size, scale: scale)
+            } action: { size = $0 }
+        } else {
+            content
         }
     }
 }

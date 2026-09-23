@@ -418,6 +418,16 @@ struct Harness {
 
         let oddTail = HomeFeedRow.group([video("a"), video("b"), video("c")])
         expect(oddTail.count == 2, "奇数尾部单独成行")
+
+        let nativeItems = HomeFeedRow.collectionItems(mixed)
+        expect(nativeItems.map(\.id) == ["video-a", "video-b", "last-seen-marker", "video-c"],
+               "原生列表每张卡独占格子，分隔条位置保持不变")
+        expect(Set(nativeItems.map(\.id)).count == nativeItems.count, "相邻卡片不再共用行标识")
+        let replaced = HomeFeedRow.collectionItems(HomeFeedRow.group([video("new-a"), video("b")]))
+        expect(replaced.last?.id == "video-b", "替换左卡不改变右卡的宿主身份")
+        expect(HomeFeedRow.collectionItems(oddTail).map(\.id) == ["video-a", "video-b", "video-c"],
+               "奇数尾卡无需补一个共享宿主占位项")
+        expect(HomeFeedRow.collectionItems([]).isEmpty, "空列表不产生原生格子")
     }
 
     // MARK: EnvironmentAction

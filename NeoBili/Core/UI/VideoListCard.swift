@@ -63,6 +63,25 @@ struct VideoListCard: View {
     var animatesEntrance = true
 
     var body: some View {
+        VideoListCardContent(coverURL: coverURL, title: title, author: author,
+                             playCount: playCount, durationText: durationText,
+                             showsCardChrome: showsCardChrome)
+            .equatable()
+            .videoCardEntrance(enabled: animatesEntrance)
+    }
+}
+
+/// Only immutable presentation values participate in equality. Buttons, menus,
+/// entrance state and environment-driven appearance remain outside this boundary.
+private struct VideoListCardContent: View, Equatable {
+    let coverURL: URL?
+    let title: String
+    let author: String
+    let playCount: Int
+    let durationText: String
+    let showsCardChrome: Bool
+
+    var body: some View {
         HStack(alignment: .top, spacing: VideoListCardLayout.imageTextSpacing) {
             CoverThumbnail(url: coverURL)
                 .frame(width: VideoListCardLayout.imageWidth)
@@ -128,6 +147,5 @@ struct VideoListCard: View {
             }
         }
         .contentShape(Rectangle())
-        .videoCardEntrance(enabled: animatesEntrance)
     }
 }

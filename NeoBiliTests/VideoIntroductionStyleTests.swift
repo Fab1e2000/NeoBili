@@ -206,7 +206,7 @@ private final class IntroductionSnapshotHost {
         window.isHidden = true
         window.rootViewController = nil
         previousWindow?.makeKey()
-        OrientationLock.shared.supportedOrientations = previousOrientation
+        OrientationLock.shared.request(previousOrientation)
         previousWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
         window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: previousOrientation)) { _ in }
     }

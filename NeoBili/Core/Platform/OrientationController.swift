@@ -16,30 +16,35 @@ enum OrientationController {
         lock(to: .portrait)
     }
 
-    private static func lock(to orientation: UIInterfaceOrientationMask) {
-        let previous = OrientationLock.shared.supportedOrientations
-        OrientationLock.shared.supportedOrientations = orientation
+    static func setPlaybackOrientation(_ orientation: UIInterfaceOrientationMask, owner: UUID) {
+        guard OrientationLock.shared.request(orientation, owner: owner) else { return }
+        apply(orientation)
+    }
 
+    static func endPlaybackOrientation(owner: UUID) {
+        guard OrientationLock.shared.endPlayback(owner: owner) else { return }
+        apply(.portrait)
+    }
+
+    private static func lock(to orientation: UIInterfaceOrientationMask) {
+        guard OrientationLock.shared.request(orientation) else { return }
+        apply(orientation)
+    }
+
+    private static func apply(_ orientation: UIInterfaceOrientationMask) {
         guard let scene = UIApplication.shared.connectedScenes
             .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
-        else {
-            OrientationLock.shared.supportedOrientations = previous
-            return
-        }
+        else { return }
 
-        // 视频页是 fullScreenCover 呈现出来的控制器，UIKit 判定方向时看的是最
-        // 上面那一个。只刷新 rootViewController 的话，这次几何请求可能按旧的
-        // 方向集被驳回：屏幕没转，而界面已经按全屏排好版了。
+        // Update the presented controller as well as the root before requesting rotation.
         for controller in presentationChain(of: scene) {
             controller.setNeedsUpdateOfSupportedInterfaceOrientations()
         }
 
-        scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { _ in
-            // 请求失败时把方向集改回去。否则方向集和屏幕上真正的方向会长期
-            // 不一致，下一次切换也跟着错。
-            Task { @MainActor in
-                OrientationLock.shared.supportedOrientations = previous
-            }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { error in
+            // Keep the desired mask. A rejected or delayed request must never restore
+            // an old portrait mask after a newer fullscreen request has taken effect.
+            NSLog("Orientation geometry request failed: %@", error.localizedDescription)
         }
     }
 

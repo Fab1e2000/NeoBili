@@ -758,6 +758,7 @@ final class MPVPlayerSession {
 
     func play() {
         guard !isStopped else { return }
+        PlaybackAudioSession.activateOnce()
         viewController.play()
     }
 

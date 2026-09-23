@@ -8,12 +8,14 @@ private enum VideoActionBarLayout {
 
 /// 视频页的操作栏：点赞、不喜欢、投币、收藏、分享。
 ///
-/// 五项等分整行宽度，每项是一颗圆形的 Liquid Glass 按钮，数字写在圆下面。
-/// 使用原生玻璃按钮；普通操作长按后松手执行，持续按住执行扩展操作。
+/// 五项等分整行宽度，每项是一颗圆形按钮，数字写在圆下面。
+/// 参考 Apple Music 专辑页的「随机播放 / 添加」：内容里的按钮不用玻璃，平时是浅灰填充，
+/// 点亮后换成主题色实心。普通操作长按后松手执行，持续按住执行扩展操作。
 ///
 /// 圆里只放图标：数字放进圆里会把它撑成胶囊，五颗并排也放不下。
 /// 数字挪到圆下方之后，「不喜欢」也能把文字写全。
 struct VideoActionBar: View {
+    @Environment(\.appThemeColor) private var themeColor
     let likeCount: Int
     let coinCount: Int
     let favoriteCount: Int
@@ -41,7 +43,7 @@ struct VideoActionBar: View {
     var body: some View {
         HStack(spacing: 0) {
             item(
-                symbol: "hand.thumbsup",
+                icon: "VideoActionLike",
                 caption: likeCount.biliCountText,
                 isActive: isLiked,
                 label: isLiked ? "取消点赞" : "点赞",
@@ -52,7 +54,7 @@ struct VideoActionBar: View {
 
             // 点踩没有公开的计数，官方这里显示的也是文字而不是数字。
             item(
-                symbol: "hand.thumbsdown",
+                icon: "VideoActionDislike",
                 caption: "不喜欢",
                 isActive: isDisliked,
                 label: isDisliked ? "取消不喜欢" : "不喜欢",
@@ -60,7 +62,7 @@ struct VideoActionBar: View {
             )
 
             item(
-                symbol: "bitcoinsign.circle",
+                icon: "VideoActionCoin",
                 caption: coinCount.biliCountText,
                 isActive: isCoined,
                 label: isCoined ? "已投币" : "投币",
@@ -68,7 +70,7 @@ struct VideoActionBar: View {
             )
 
             item(
-                symbol: "star",
+                icon: "VideoActionFavorite",
                 caption: favoriteCount.biliCountText,
                 isActive: isFavorited,
                 label: isFavorited ? "取消收藏" : "收藏",
@@ -86,22 +88,23 @@ struct VideoActionBar: View {
     }
 
     private func item(
-        symbol: String, caption: String, isActive: Bool, label: String,
+        icon: String, caption: String, isActive: Bool, label: String,
         hint: String? = nil, action: @escaping () -> Void,
         longPressAction: (() -> Void)? = nil
     ) -> some View {
         VStack(spacing: VideoActionBarLayout.captionSpacing) {
-            VideoHoldButton(symbol: isActive ? "\(symbol).fill" : symbol,
+            VideoHoldButton(icon: icon,
                             isActive: isActive, label: label,
                             secondaryLabel: hint, action: action, secondaryAction: longPressAction)
-                .frame(width: 48, height: 48)
+                .tint(themeColor)
+                .frame(width: 52, height: 52)
             captionText(caption)
         }
         .frame(maxWidth: .infinity)
     }
 
     private var shareItem: some View {
-        item(symbol: "arrowshape.turn.up.right", caption: shareCount.biliCountText,
+        item(icon: "VideoActionShare", caption: shareCount.biliCountText,
              isActive: false, label: "分享", action: { showsShare = true })
             .disabled(shareURL == nil)
     }
@@ -116,9 +119,9 @@ struct VideoActionBar: View {
     }
 }
 
-/// Native UIKit glass retains system highlight and material behavior.
+/// 原生 UIKit 按钮，按下时的高亮由系统处理。
 private struct VideoHoldButton: UIViewRepresentable {
-    let symbol: String
+    let icon: String
     let isActive: Bool
     let label: String
     let secondaryLabel: String?
@@ -126,14 +129,16 @@ private struct VideoHoldButton: UIViewRepresentable {
     let secondaryAction: (() -> Void)?
     @Environment(\.isEnabled) private var isEnabled
 
-    func makeUIView(context: Context) -> HoldGlassButton { HoldGlassButton() }
+    func makeUIView(context: Context) -> HoldButton { HoldButton() }
 
-    func updateUIView(_ button: HoldGlassButton, context: Context) {
-        var config = isActive ? UIButton.Configuration.prominentGlass() : .glass()
-        config.image = UIImage(systemName: symbol)
+    func updateUIView(_ button: HoldButton, context: Context) {
+        var config = UIButton.Configuration.filled()
+        // 点亮时底色留空，跟随主题色（tintColor）。
+        config.baseBackgroundColor = isActive ? nil : .tertiarySystemFill
+        config.baseForegroundColor = isActive ? .white : .label
+        config.image = UIImage(named: icon)
         config.cornerStyle = .capsule
         config.contentInsets = .zero
-        config.preferredSymbolConfigurationForImage = .init(pointSize: 19)
         button.configuration = config
         button.isEnabled = isEnabled
         button.accessibilityLabel = label
@@ -141,14 +146,14 @@ private struct VideoHoldButton: UIViewRepresentable {
         button.primary = action
         button.secondary = secondaryAction
         button.accessibilityCustomActions = secondaryLabel.map {
-            [UIAccessibilityCustomAction(name: $0, target: button, selector: #selector(HoldGlassButton.accessibleSecondary))]
+            [UIAccessibilityCustomAction(name: $0, target: button, selector: #selector(HoldButton.accessibleSecondary))]
         }
     }
 
-    static func dismantleUIView(_ uiView: HoldGlassButton, coordinator: ()) { uiView.cancelHold() }
+    static func dismantleUIView(_ uiView: HoldButton, coordinator: ()) { uiView.cancelHold() }
 }
 
-private final class HoldGlassButton: UIButton, UIGestureRecognizerDelegate {
+private final class HoldButton: UIButton, UIGestureRecognizerDelegate {
     var primary: (() -> Void)?
     var secondary: (() -> Void)?
     private var pending: Task<Void, Never>?

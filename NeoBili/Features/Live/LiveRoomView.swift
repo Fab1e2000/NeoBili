@@ -13,6 +13,7 @@ struct LiveRoomView: View {
     @State private var isIntroductionExpanded = false
     @State private var detailsHeaderHeight: CGFloat = 160
     @State private var isFullScreen = false
+    @State private var orientationOwner = UUID()
     @State private var controlsVisible = false
     @State private var controlsSafeArea = EdgeInsets()
     @State private var reloadID = 0
@@ -103,7 +104,7 @@ struct LiveRoomView: View {
             hideTask?.cancel()
             if !keepsPlaybackOnDismiss { player.stop() }
             danmaku.stop()
-            OrientationController.enterPortrait()
+            OrientationController.endPlaybackOrientation(owner: orientationOwner)
         }
     }
 
@@ -190,7 +191,7 @@ struct LiveRoomView: View {
         GeometryReader { geometry in
             let bottomPadding = max(8, bottomInset)
             // 用剩余高度承载弹幕；长简介或小屏幕仍可滚动，并保留可用的弹幕视口。
-            let panelHeight = max(200, geometry.size.height - detailsHeaderHeight - 18 - 14 - bottomPadding)
+            let panelHeight = max(200, geometry.size.height - detailsHeaderHeight - 14 - 14 - bottomPadding)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 14) {
@@ -203,9 +204,7 @@ struct LiveRoomView: View {
                             Label(error, systemImage: "wifi.exclamationmark")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
-                                .padding(16)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
                         }
                     }
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
@@ -215,7 +214,7 @@ struct LiveRoomView: View {
                         .frame(height: panelHeight)
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 18)
+                .padding(.top, 14)
                 .padding(.bottom, bottomPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -224,9 +223,9 @@ struct LiveRoomView: View {
             .scrollEdgeEffectHidden(true, for: .bottom)
         }
         .background(Color(uiColor: .systemBackground))
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14))
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))
         .background {
-            UnevenRoundedRectangle(topLeadingRadius: 14, topTrailingRadius: 14)
+            UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12)
                 .fill(Color(uiColor: .systemBackground))
                 .ignoresSafeArea(edges: .bottom)
         }
@@ -254,15 +253,15 @@ struct LiveRoomView: View {
     private func toggleFullScreen() {
         isFullScreen.toggle()
         if isFullScreen { applyFullScreenOrientation() }
-        else { OrientationController.enterPortrait() }
+        else { OrientationController.endPlaybackOrientation(owner: orientationOwner) }
         controlsVisible = true
         scheduleHide()
     }
 
     private func applyFullScreenOrientation() {
-        if VideoFullscreenOrientation.preferred(for: player.displayAspectRatio) == .portrait {
-            OrientationController.enterPortrait()
-        } else { OrientationController.enterLandscape() }
+        let orientation = VideoFullscreenOrientation.preferred(for: player.displayAspectRatio)
+        OrientationController.setPlaybackOrientation(
+            orientation == .portrait ? .portrait : .landscape, owner: orientationOwner)
     }
 
     private func scheduleHide(afterInteraction: Bool = true) {

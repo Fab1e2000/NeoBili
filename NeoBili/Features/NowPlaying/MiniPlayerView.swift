@@ -15,18 +15,19 @@ extension View {
 private struct TabMiniPlayerHost: ViewModifier {
     let isActive: () -> Bool
     let transitionNamespace: Namespace.ID?
+    @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @Environment(NowPlayingStore.self) private var store
 
     @ViewBuilder
     func body(content: Content) -> some View {
         // 保留全屏页下方的附件，使 zoom 退出始终有稳定的标题栏目标。
         if #available(iOS 26.1, *) {
-            content.tabViewBottomAccessory(isEnabled: store.hasMedia && isActive()) {
+            content.tabViewBottomAccessory(isEnabled: miniPlayerEnabled && store.hasMedia && isActive()) {
                 MiniPlayerBar(transitionNamespace: transitionNamespace)
             }
         } else {
             content.tabViewBottomAccessory {
-                if store.hasMedia && isActive() {
+                if miniPlayerEnabled && store.hasMedia && isActive() {
                     MiniPlayerBar(transitionNamespace: transitionNamespace)
                 }
             }
@@ -37,11 +38,12 @@ private struct TabMiniPlayerHost: ViewModifier {
 private struct SheetMiniPlayerHost: ViewModifier {
     let isActive: () -> Bool
     let transitionNamespace: Namespace.ID?
+    @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @Environment(NowPlayingStore.self) private var store
 
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom, spacing: 0) {
-            if store.hasMedia && isActive() {
+            if miniPlayerEnabled && store.hasMedia && isActive() {
                 MiniPlayerBar(transitionNamespace: transitionNamespace)
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22))
                     .padding(.horizontal, 12)
@@ -108,6 +110,7 @@ struct MiniPlayerBar: View {
             }
             .padding(.horizontal, isInline ? 8 : 12)
             .padding(.vertical, isInline ? 2 : 6)
+            .contentShape(Rectangle())
             .accessibilityElement(children: .contain)
             .accessibilityAction(named: "关闭播放器", store.close)
             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 22))
@@ -127,8 +130,11 @@ struct MiniPlayerBar: View {
             .background {
                 // Keep the native page-transition anchor outside the menu preview.
                 if let transitionNamespace {
-                    MediaZoomSource(id: NowPlayingStore.miniPlayerTransitionSourceID,
-                                    namespace: transitionNamespace)
+                    MiniPlayerSourceReadiness(request: store.pendingPresentationID, onReady: store.miniPlayerSourceDidLayout)
+                        .videoTransitionSource(NowPlayingStore.miniPlayerTransitionSourceID,
+                                               in: transitionNamespace)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
             }
         }
@@ -250,5 +256,32 @@ struct MiniPlayerControls: View {
         }
         .accessibilityLabel(title)
         .accessibilityIdentifier(identifier)
+    }
+}
+
+/// Wait for a real window and nonempty geometry, then present on the next main
+/// turn, after SwiftUI has registered the accessory's matched transition source.
+private struct MiniPlayerSourceReadiness: UIViewRepresentable {
+    let request: UUID?
+    let onReady: (UUID) -> Void
+    func makeUIView(context: Context) -> AnchorView { AnchorView() }
+    func updateUIView(_ view: AnchorView, context: Context) {
+        view.request = request
+        view.onReady = onReady
+        view.setNeedsLayout()
+    }
+    final class AnchorView: UIView {
+        var request: UUID?
+        var onReady: ((UUID) -> Void)?
+        override func didMoveToWindow() { super.didMoveToWindow(); setNeedsLayout() }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard let request, window != nil, bounds.width > 0, bounds.height > 0 else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.request == request, self.window != nil else { return }
+                self.request = nil
+                self.onReady?(request)
+            }
+        }
     }
 }

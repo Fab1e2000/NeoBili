@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 一个连续色层覆盖状态栏、画面和下缘间距，全部由同一段滚动距离驱动。
 struct InlineVideoCollapseOverlay: View {
+    @Environment(\.appThemeColor) private var themeColor
     let progress: Double
     let videoHeight: CGFloat
     let topInset: CGFloat
@@ -17,7 +18,7 @@ struct InlineVideoCollapseOverlay: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color.accentColor
+            themeColor
                 .frame(height: videoHeight + topInset + 10)
                 .offset(y: -topInset)
                 .opacity(progress)

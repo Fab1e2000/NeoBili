@@ -4,7 +4,7 @@ import UIKit
 import Darwin
 import os
 
-struct PerformanceSample: Codable {
+struct PerformanceSample: Codable, Sendable {
     let timestamp: Date
     let elapsed: Double
     let stage: String
@@ -24,7 +24,7 @@ struct PerformanceSample: Codable {
     let videoOutputRequested: Bool?
 }
 
-struct PerformanceRecording: Codable {
+struct PerformanceRecording: Codable, Sendable {
     let schemaVersion = 1
     let started: Date
     let finished: Date?
@@ -47,6 +47,7 @@ final class PerformanceDemo {
     private(set) var latest: PerformanceSample?
     private(set) var fileURL: URL?
     private(set) var error: String?
+    @ObservationIgnored private let persistenceQueue = DispatchQueue(label: "com.elsterlee.NeoBili.performance.persistence", qos: .utility)
     @ObservationIgnored private var samples: [PerformanceSample] = []
     @ObservationIgnored private var notes: [String] = []
     @ObservationIgnored private var sampler: Task<Void, Never>?
@@ -73,7 +74,7 @@ final class PerformanceDemo {
         }
     }
 
-    func start() {
+    func start(captureScroll: Bool = true) {
         guard !recording else { return }
         samples = []; notes = []; error = nil
         started = Date(); origin = ProcessInfo.processInfo.systemUptime
@@ -86,6 +87,7 @@ final class PerformanceDemo {
         fileURL = directory.appending(path: "run-\(Int(started.timeIntervalSince1970)).json")
         recording = true
         mark("手动采集")
+        if captureScroll { FeedScrollProbe.attached?.startManualRecording() }
         sampler = Task { [weak self] in
             while !Task.isCancelled {
                 self?.sample()
@@ -101,6 +103,7 @@ final class PerformanceDemo {
     }
 
     func stop() {
+        FeedScrollProbe.attached?.stop()
         let wasAutomatic = automatic
         scenario?.cancel(); scenario = nil
         automatic = false
@@ -156,16 +159,23 @@ final class PerformanceDemo {
             os: UIDevice.current.systemVersion,
             build: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "?") Release performance demo",
             processorCount: ProcessInfo.processInfo.processorCount, notes: notes, samples: samples)
-        do {
-            let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
-            try encoder.encode(record).write(to: fileURL, options: .atomic)
-            // A stable path makes retrieval possible without guessing timestamps.
-            try encoder.encode(record).write(to: fileURL.deletingLastPathComponent().appending(path: "latest.json"), options: .atomic)
-        } catch { self.error = error.localizedDescription }
+        // Keep periodic diagnostic I/O out of the measured main-thread workload.
+        // FIFO ordering prevents an older checkpoint from replacing the final save.
+        persistenceQueue.async { [weak self] in
+            do {
+                let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+                let data = try encoder.encode(record)
+                try data.write(to: fileURL, options: .atomic)
+                try data.write(to: fileURL.deletingLastPathComponent().appending(path: "latest.json"), options: .atomic)
+            } catch {
+                let message = error.localizedDescription
+                Task { @MainActor [weak self] in self?.error = message }
+            }
+        }
     }
 
     func runAutomatic() {
-        stop(); start(); automatic = true
+        stop(); start(captureScroll: false); automatic = true
         oldIdleTimer = UIApplication.shared.isIdleTimerDisabled
         UIApplication.shared.isIdleTimerDisabled = true
         scenario = Task { [weak self] in
@@ -266,7 +276,7 @@ struct PerformanceDemoControl: View {
                             LabeledContent("内存 footprint", value: sample.footprintMiB.map { String(format: "%.1f MiB", $0) } ?? "—")
                             LabeledContent("热状态", value: ["正常", "轻度", "严重", "临界"][min(sample.thermal, 3)])
                         }
-                        Text("每秒采样。电量与热状态不等于功耗；功耗请结合 Instruments Power Profiler。不会记录账号凭据或视频地址。")
+                        Text("CPU 与内存每秒采样；推荐页拖动与惯性滚动同时记录显示回调间隔（不等于实际呈现帧率）。电量与热状态不等于功耗；功耗请结合 Instruments Power Profiler。不会记录账号凭据或视频地址。")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     Section {

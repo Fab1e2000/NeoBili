@@ -40,6 +40,7 @@ extension VideoDetailRoute: Identifiable {
 /// 它本身不持有播放器；视频、详情、评论和滚动状态由 `NowPlayingStore` 管理。
 /// 页面退出时根据小窗设置继续播放，播放器不会随页面销毁。
 struct VideoPage: View {
+    @Environment(\.appThemeColor) private var themeColor
     @Environment(NowPlayingStore.self) private var store
     /// 点赞、投币这些操作都要求登录，按钮点下去时据此决定是执行还是提示登录。
     @Environment(AccountStore.self) private var account
@@ -214,7 +215,7 @@ struct VideoPage: View {
                             .fill(Color(uiColor: .systemBackground))
                     }
                     .background(alignment: .top) {
-                        Color.accentColor.opacity(collapseProgress)
+                        themeColor.opacity(collapseProgress)
                             .frame(height: 12)
                             .allowsHitTesting(false)
                     }
@@ -512,97 +513,62 @@ struct VideoPage: View {
     }
 
     private var descriptionSection: some View {
-        @Bindable var store = store
-
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if let detail = viewModel?.detail {
-                    infoBlock(detail)
-                        .padding(.vertical, 14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                RelatedVideosSection(
-                    videos: viewModel?.related ?? [],
-                    isLoading: viewModel?.isLoadingRelated ?? false,
-                    onSelect: store.openRelated
-                )
-                .padding(.top, 14)
-                .padding(.bottom, 16)
-            }
-            .background {
-                PausedVideoCollapseScroll(consume: consumeVideoScroll, end: finishVideoCollapse, canConsume: canConsumeVideoScroll,
-                                          canContinue: canContinueCollapseMomentum)
-                    .allowsHitTesting(false)
-            }
-        }
-        .scrollBounceBehavior(.always, axes: .vertical)
-        // 收起再展开时回到原来的滚动位置。
-        .scrollPosition($store.descriptionScroll)
-        // 简介和相关视频共用普通页面底色。
-        .background(Color(uiColor: .systemBackground))
+        VideoDescriptionContent(store: store, viewModel: viewModel,
+                                components: viewModel?.detail.map(infoComponents) ?? [],
+                                consume: consumeVideoScroll, end: finishVideoCollapse,
+                                canConsume: canConsumeVideoScroll, canContinue: canContinueCollapseMomentum)
     }
 
-    /// 简介区。顺序照官方客户端：先「谁发的」，再标题和元信息，
-    /// 然后是标签、操作栏、合集，最后才是分P。
-    private func infoBlock(_ detail: VideoDetail) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            GlassEffectContainer(spacing: 8) {
-                VStack(spacing: 14) {
-                    VideoOwnerRow(
-                        owner: detail.owner,
-                        avatarURL: detail.secureAvatarURL,
-                        card: viewModel?.ownerCard,
-                        isFollowing: viewModel?.relation?.isFollowing ?? false,
-                        onToggleFollow: {
-                            Task { await viewModel?.toggleFollow(isLoggedIn: account.isLoggedIn) }
-                        },
-                        onOpenSpace: {
-                            spacePath.append(FollowedUp(
-                                mid: detail.owner.mid,
-                                uname: detail.owner.name,
-                                face: detail.owner.face,
-                                hasUpdate: false
-                            ))
-                        }
-                    )
-                    VideoIntroductionCard(
-                        title: detail.title, stat: detail.stat, pubdate: detail.pubdate, desc: detail.desc,
-                        isExpanded: Binding(get: { store.isDescriptionExpanded },
-                                            set: { store.isDescriptionExpanded = $0 })
-                    )
-                }
-            }
-            .padding(.horizontal, Self.contentInset)
+    /// Each component owns one stable cell. Expanding the introduction never
+    /// resizes or rebinds the owner row above it.
+    private func infoComponents(_ detail: VideoDetail) -> [VideoDescriptionComponent] {
+        var result: [VideoDescriptionComponent] = []
+        result.append(VideoDescriptionComponent("owner", revision: [AnyHashable(detail.owner), AnyHashable(viewModel?.ownerCard), viewModel?.relation?.isFollowing ?? false]) {
+            VideoOwnerRow(owner: detail.owner, avatarURL: detail.secureAvatarURL,
+                          card: viewModel?.ownerCard,
+                          isFollowing: viewModel?.relation?.isFollowing ?? false,
+                          onToggleFollow: { Task { await viewModel?.toggleFollow(isLoggedIn: account.isLoggedIn) } },
+                          onOpenSpace: {
+                              spacePath.append(FollowedUp(mid: detail.owner.mid, uname: detail.owner.name,
+                                                          face: detail.owner.face, hasUpdate: false))
+                          })
+                .padding(.horizontal, Self.contentInset)
+                .padding(.top, 14)
 
-            if let tags = viewModel?.tags, !tags.isEmpty {
+        })
+        result.append(VideoDescriptionComponent(introduction:
+            VideoIntroductionCard(title: detail.title, stat: detail.stat, pubdate: detail.pubdate, desc: detail.desc,
+                                  isExpanded: Binding(get: { store.isDescriptionExpanded }, set: { store.isDescriptionExpanded = $0 }))))
+        if let tags = viewModel?.tags, !tags.isEmpty {
+            result.append(VideoDescriptionComponent("tags", revision: [AnyHashable(tags)]) {
                 VideoTagsRow(tags: tags, horizontalInset: Self.contentInset) { tag in
                     spacePath.append(VideoTagSearchRoute(keyword: tag.tagName))
                 }
-            }
-
-            actionBar(detail)
-                .padding(.horizontal, Self.contentInset)
-
-            if let season = detail.ugcSeason, !season.episodes.isEmpty {
-                UgcSeasonRow(
-                    season: season,
-                    currentIndex: currentEpisodeIndex(in: season),
-                    onTap: { isShowingSeason = true }
-                )
-                .padding(.horizontal, Self.contentInset)
-            }
-
-            if detail.pages.count > 1 {
-                VideoPartsRow(
-                    parts: detail.pages,
-                    currentIndex: currentPartIndex(in: detail),
-                    onTap: { isShowingParts = true }
-                )
-                .padding(.horizontal, Self.contentInset)
+            })
+        }
+        result.append(VideoDescriptionComponent("actions", revision: [AnyHashable(viewModel?.relation),
+                               viewModel?.likeCount ?? 0, viewModel?.coinCount ?? 0, viewModel?.favoriteCount ?? 0,
+                               viewModel?.displayedIsLiked ?? false, detail.stat.share]) {
+            actionBar(detail).padding(.horizontal, Self.contentInset)
+        })
+        if let season = detail.ugcSeason, !season.episodes.isEmpty {
+            result.append(VideoDescriptionComponent("season", revision: [AnyHashable(season), AnyHashable(currentEpisodeIndex(in: season))]) {
+                UgcSeasonRow(season: season, currentIndex: currentEpisodeIndex(in: season), onTap: { isShowingSeason = true })
+                    .padding(.horizontal, Self.contentInset)
+            })
+        }
+        if detail.pages.count > 1 {
+            result.append(VideoDescriptionComponent("parts", revision: [AnyHashable(detail.pages), AnyHashable(currentPartIndex(in: detail))]) {
+                VideoPartsRow(parts: detail.pages, currentIndex: currentPartIndex(in: detail), onTap: { isShowingParts = true })
+                    .padding(.horizontal, Self.contentInset)
+            })
+        }
+        return result.enumerated().map { index, component in
+            if component.introduction != nil { return component }
+            return VideoDescriptionComponent(component.id, revision: component.revision) {
+                component.content.padding(.bottom, index == result.count - 1 ? 6 : 14)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func actionBar(_ detail: VideoDetail) -> some View {

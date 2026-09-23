@@ -5,6 +5,7 @@ import SwiftUI
 /// 上半是动态原文（作者、正文、图片或视频卡片），下半接评论区，
 /// 和官方客户端的动态详情页一个结构。
 struct DynamicDetailView: View {
+    @Environment(\.appThemeColor) private var themeColor
     let entry: DynamicEntry
     /// 点赞状态直接读写所属列表的 DynamicFeedModel：详情页点完返回
     /// 列表、或在列表点完再进详情，两边看到的是同一份本地叠加状态。
@@ -213,7 +214,7 @@ struct DynamicDetailView: View {
             Text(text)
         }
         .font(.footnote)
-        .foregroundStyle(isHighlighted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+        .foregroundStyle(isHighlighted ? AnyShapeStyle(themeColor) : AnyShapeStyle(.secondary))
     }
 
     private func countText(_ count: Int, zero: String) -> String {

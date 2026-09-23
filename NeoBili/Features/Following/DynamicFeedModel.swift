@@ -25,6 +25,8 @@ final class DynamicFeedModel {
     private(set) var isLoadingMore = false
     private(set) var errorMessage: String?
 
+    /// 随已提交列表维护的身份索引；不参与视图观察。
+    @ObservationIgnored private var entryIDs: Set<String> = []
     /// 下一页的游标。空串表示要从头取。
     private var offset = ""
     private var page = 1
@@ -115,6 +117,7 @@ final class DynamicFeedModel {
     private func applyRefresh(_ feed: DynamicFeedPage) {
         entriesGeneration += 1
         entries = Self.removingDuplicates(feed.entries)
+        entryIDs = Set(entries.map(\.id))
         FollowingReadStore.shared.observe(entries)
         offset = feed.offset
         hasMore = feed.hasMore && !feed.offset.isEmpty
@@ -122,13 +125,21 @@ final class DynamicFeedModel {
     }
 
     /// 滚到列表尾部附近时取下一页。失败就静默收手，再滚一次会自动重试。
-    func loadMoreIfNeeded(current entry: DynamicEntry) async {
+    func loadMoreIfNeeded(current entry: DynamicEntry, lastVisibleID: String? = nil) async {
         guard likeStore.sessionID == accountSessionID, hasMore, !isLoading, !isLoadingMore, pendingRefresh == nil,
-              let index = entries.firstIndex(of: entry),
-              index >= entries.count - 4
+              entryIDs.contains(entry.id),
+              entry.id == lastVisibleID || entries.suffix(4).contains(where: { $0.id == entry.id })
         else { return }
 
-        await loadReplacementPage()
+        // 行滑出视口会取消可见性 task，但已经发出的分页应完成并进入缓存。
+        // 否则快速滚动时其他尾行撞上 isLoadingMore 后，可能没有新的事件重试。
+        // 刷新及账号切换仍由 loadGeneration / accountSessionID 拦截旧响应。
+        let generation = loadGeneration
+        let task = Task {
+            guard self.loadGeneration == generation else { return }
+            await self.loadReplacementPage()
+        }
+        await task.value
     }
 
     func loadReplacementPage() async {
@@ -144,9 +155,10 @@ final class DynamicFeedModel {
             page += 1
             offset = feed.offset
             hasMore = feed.hasMore && !feed.offset.isEmpty && !feed.items.isEmpty
-            FollowingReadStore.shared.observe(feed.entries)
-            let existing = Set(entries.map(\.id))
-            entries.append(contentsOf: Self.removingDuplicates(feed.entries).filter { !existing.contains($0.id) })
+            // 每页只转换一次；去重集合随分页增量维护，长列表不再反复扫描历史内容。
+            let incoming = feed.entries.filter { entryIDs.insert($0.id).inserted }
+            FollowingReadStore.shared.observe(incoming)
+            entries.append(contentsOf: incoming)
         } catch {
             // 翻页失败不打扰用户：列表里已有的内容仍然能看。
         }

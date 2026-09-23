@@ -19,10 +19,12 @@ struct VideoPartsRow: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 48)
+            .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+            .contentShape(Capsule())
         }
-        .buttonStyle(.glass)
-        .tint(.primary)
-        .controlSize(.large)
+        .buttonStyle(.plain)
         .accessibilityLabel("分P，\(progressText)，展开分P列表")
     }
 

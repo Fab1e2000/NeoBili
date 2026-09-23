@@ -15,7 +15,19 @@ import UIKit
 final class CommentEmoteStore {
     static let shared = CommentEmoteStore()
 
-    private var originals: [URL: UIImage] = [:]
+    @Observable
+    final class Original {
+        var image: UIImage?
+    }
+    // Each comment observes only the URLs it renders, not the whole image dictionary.
+    @ObservationIgnored private var originals: [URL: Original] = [:]
+
+    private func original(for url: URL) -> Original {
+        if let existing = originals[url] { return existing }
+        let entry = Original()
+        originals[url] = entry
+        return entry
+    }
     private var loading: Set<URL> = []
     private let scaledCache: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
@@ -30,7 +42,7 @@ final class CommentEmoteStore {
         if let cached = scaledCache.object(forKey: key) {
             return Image(uiImage: cached)
         }
-        guard let original = originals[url] else { return nil }
+        guard let original = original(for: url).image else { return nil }
         let scaled = Self.scaled(original, toHeight: height)
         scaledCache.setObject(scaled, forKey: key, cost: Self.pixelCost(scaled))
         return Image(uiImage: scaled)
@@ -41,7 +53,7 @@ final class CommentEmoteStore {
         await withTaskGroup(of: Void.self) { group in
             for emote in emotes {
                 guard let url = emote.secureURL else { continue }
-                guard originals[url] == nil, !loading.contains(url) else { continue }
+                guard original(for: url).image == nil, !loading.contains(url) else { continue }
                 loading.insert(url)
                 group.addTask { [weak self] in
                     await self?.load(url: url)
@@ -52,7 +64,8 @@ final class CommentEmoteStore {
 
     /// 仅供间距测试：把现成图片塞进原图缓存，让渲染不依赖网络。
     func insertOriginalForTesting(_ image: UIImage, for url: URL) {
-        originals[url] = Self.trimmed(image) ?? image
+        scaledCache.removeAllObjects()
+        original(for: url).image = Self.trimmed(image) ?? image
     }
 
     private func load(url: URL) async {
@@ -71,7 +84,7 @@ final class CommentEmoteStore {
             return Self.trimmed(original) ?? original
         }.value
         guard let prepared else { return }
-        originals[url] = prepared
+        original(for: url).image = prepared
     }
 
     private static func pixelCost(_ image: UIImage) -> Int {
@@ -157,6 +170,8 @@ struct CommentEmoteText: View {
     /// 所以单独传一份进来。
     let textStyle: Font.TextStyle
     var prefix: String = ""
+    /// 隐藏的高度探针共享可见正文的图片请求，仅观察已加载的表情。
+    var loadsEmotes = true
 
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.commentTimeJump) private var timeJump
@@ -171,39 +186,33 @@ struct CommentEmoteText: View {
                 timeJump?(seconds)
                 return .handled
             })
-            .task(id: message) {
+            .task(id: emotes) {
+                guard loadsEmotes, !emotes.isEmpty else { return }
                 await store.preload(Array(emotes.values))
             }
     }
 
     private var composed: Text {
-        segments.reduce(Text(prefix).foregroundColor(.secondary)) { partial, segment in
+        // 一次组合只求一次字号；每个表情不再反复创建 UIFontMetrics / traits。
+        let scaledFont = emotes.isEmpty ? nil : scaledFont
+        let baseline = ((scaledFont?.descender ?? 0) * Self.baselineOffsetRatio).rounded()
+        return CommentEmoteSegments.prepared(message: message, emotes: emotes)
+            .reduce(Text(prefix).foregroundColor(.secondary)) { partial, segment in
             switch segment {
             case .text(let value):
                 return partial + (timeJump == nil ? Text(value) : Text(CommentTimeLinks.attributed(value)))
             case .emote(let literal, let emote):
                 guard let url = emote.secureURL,
-                      let image = store.image(for: url, height: emoteHeight(for: emote))
+                      let font = scaledFont,
+                      let image = store.image(for: url, height: emoteHeight(for: emote, font: font))
                 else {
                     // 还没下载好就先显示原来那段文字，不留空洞。
                     return partial + Text(literal)
                 }
                 // 往下沉一点，见 `emoteBaselineOffset`。
-                return partial + Text(image).baselineOffset(emoteBaselineOffset)
+                return partial + Text(image).baselineOffset(baseline)
             }
         }
-    }
-
-    /// 表情相对基线往下沉的量（负值向下）。
-    ///
-    /// `Text` 里的行内图片是底边贴基线排的，而中文字面框要伸到基线**以下**
-    /// 一段——汉字没有降部，整行的视觉底边就落在基线之下，图片于是显得被
-    /// 架高了。这里按降部高度的一半把图片压下去，对齐汉字的视觉底边。
-    ///
-    /// 取一半而不是取满：取满是对齐 `g`/`y` 这类降部字母的最低点，中文行里
-    /// 表情会低于汉字底边，显得往下掉。
-    private var emoteBaselineOffset: CGFloat {
-        (scaledFont.descender * Self.baselineOffsetRatio).rounded()
     }
 
     /// 降部高度的取用比例。0 就是回到 SwiftUI 默认的基线对齐。
@@ -223,11 +232,11 @@ struct CommentEmoteText: View {
     /// 高度从 `UIFontMetrics` 按当前档位现算，不经过 `@ScaledMetric`——
     /// 后者不跟随本 App 注入的档位（文字在变、表情基准值不变），
     /// 表情大小会和文字脱节。
-    private func emoteHeight(for emote: CommentEmote) -> CGFloat {
+    private func emoteHeight(for emote: CommentEmote, font: UIFont) -> CGFloat {
         if emote.heightMultiplier >= 2 {
-            return (scaledFont.pointSize * emote.heightMultiplier).rounded()
+            return (font.pointSize * emote.heightMultiplier).rounded()
         }
-        return scaledFont.ascender.rounded()
+        return font.ascender.rounded()
     }
 
     /// 当前档位下这套样式的实际字体。
@@ -279,46 +288,4 @@ struct CommentEmoteText: View {
         }
     }
 
-    private enum Segment {
-        case text(String)
-        case emote(String, CommentEmote)
-    }
-
-    /// 扫描正文，把方括号里能在表情表中查到的那些切出来。
-    ///
-    /// 只认表情表里真实存在的键：正文里本来就可能有 `[捂脸]` 这种没有对应图片的
-    /// 方括号内容，那些必须原样留着。
-    private var segments: [Segment] {
-        guard !emotes.isEmpty else { return [.text(message)] }
-
-        var result: [Segment] = []
-        var plain = ""
-        var index = message.startIndex
-
-        while index < message.endIndex {
-            guard message[index] == "[",
-                  let close = message[index...].firstIndex(of: "]")
-            else {
-                plain.append(message[index])
-                index = message.index(after: index)
-                continue
-            }
-
-            let literal = String(message[index...close])
-            if let emote = emotes[literal] {
-                if !plain.isEmpty {
-                    result.append(.text(plain))
-                    plain = ""
-                }
-                result.append(.emote(literal, emote))
-                index = message.index(after: close)
-            } else {
-                plain.append(message[index])
-                index = message.index(after: index)
-            }
-        }
-
-        if !plain.isEmpty { result.append(.text(plain)) }
-        return result
-    }
 }

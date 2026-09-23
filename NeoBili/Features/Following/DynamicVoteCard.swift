@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct DynamicVoteCard: View {
+    @Environment(\.appThemeColor) private var themeColor
     let vote: DynamicVote
     let dynamicID: String
     @State private var selectedVote: DynamicVote?
@@ -8,7 +9,7 @@ struct DynamicVoteCard: View {
     var body: some View {
         Button { selectedVote = vote } label: {
             HStack(spacing: 12) {
-                Image(systemName: "chart.bar.xaxis").font(.title2).foregroundStyle(.tint)
+                Image(systemName: "chart.bar.xaxis").font(.title2).foregroundStyle(themeColor)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(vote.title).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
                     Text("\(vote.participantCount.biliCountText) 人参与 · 查看投票")
@@ -29,6 +30,7 @@ struct DynamicVoteCard: View {
 }
 
 private struct DynamicVoteSheet: View {
+    @Environment(\.appThemeColor) private var themeColor
     let vote: DynamicVote
     let dynamicID: String
     @Environment(AccountStore.self) private var account
@@ -64,7 +66,7 @@ private struct DynamicVoteSheet: View {
                                     Text(option.text).frame(maxWidth: .infinity, alignment: .leading)
                                     if locked { Text("\(option.count.biliCountText) 票").font(.caption).foregroundStyle(.secondary) }
                                     Image(systemName: selection.contains(option.id) ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(selection.contains(option.id) ? Color.accentColor : Color.secondary)
+                                        .foregroundStyle(selection.contains(option.id) ? themeColor : Color.secondary)
                                 }
                                 .padding(12)
                                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))

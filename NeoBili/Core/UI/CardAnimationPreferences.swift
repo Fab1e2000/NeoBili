@@ -3,20 +3,20 @@ import SwiftUI
 /// Shared dynamic-property storage keeps card modifiers responsive to settings
 /// without adding an observable singleton or rebuilding the app's whole root.
 struct CardAnimationPreferences: DynamicProperty {
+    @Environment(\.videoCardAnimationSource) private var source
     @Environment(\.videoCardAnimationOverrides) private var sourceOverrides
     @AppStorage(CardAnimationSettings.masterKey) private var master = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.videoEnterKey) private var videoEnter = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.videoExitKey) private var videoExit = CardAnimationSettings.defaultValue
-    @AppStorage(CardAnimationSettings.dynamicEnterKey) private var dynamicEnter = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExit = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEnter = CardAnimationSettings.defaultValue
 
     func isEnabled(category: CardAnimationCategory, phase: CardAnimationPhase) -> Bool {
-        guard master else { return false }
+        guard master, CardAnimationSettings.supports(category: category, phase: phase, source: source) else { return false }
         switch (category, phase) {
         case (.video, .enter): return sourceOverrides.enter ?? videoEnter
         case (.video, .exit): return sourceOverrides.exit ?? videoExit
-        case (.dynamic, .enter): return dynamicEnter
+        case (.dynamic, .enter): return false
         case (.dynamic, .exit): return dynamicExit
         case (.page, _): return pageEnter
         }
@@ -36,6 +36,7 @@ extension EnvironmentValues {
 /// Each page observes only its two optional overrides. Missing values keep
 /// following the pre-existing video preferences, without a migration write.
 struct VideoCardAnimationPreferences: DynamicProperty {
+    let source: VideoCardAnimationSource
     @AppStorage(CardAnimationSettings.masterKey) private var master = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.videoEnterKey) private var legacyEnter = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.videoExitKey) private var legacyExit = CardAnimationSettings.defaultValue
@@ -43,6 +44,7 @@ struct VideoCardAnimationPreferences: DynamicProperty {
     @AppStorage private var exit: Bool?
 
     init(source: VideoCardAnimationSource) {
+        self.source = source
         _enter = AppStorage(CardAnimationSettings.storageKey(source: source, phase: .enter))
         _exit = AppStorage(CardAnimationSettings.storageKey(source: source, phase: .exit))
     }
@@ -50,7 +52,8 @@ struct VideoCardAnimationPreferences: DynamicProperty {
     var overrides: VideoCardAnimationOverrides { VideoCardAnimationOverrides(enter: enter, exit: exit) }
 
     func isEnabled(phase: CardAnimationPhase) -> Bool {
-        master && (phase == .enter ? (enter ?? legacyEnter) : (exit ?? legacyExit))
+        master && CardAnimationSettings.supports(category: .video, phase: phase, source: source)
+            && (phase == .enter ? (enter ?? legacyEnter) : (exit ?? legacyExit))
     }
 }
 

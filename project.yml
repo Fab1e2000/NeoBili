@@ -26,6 +26,7 @@ targets:
     info:
       path: NeoBili/Info.plist
       properties:
+        CADisableMinimumFrameDurationOnPhone: true
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

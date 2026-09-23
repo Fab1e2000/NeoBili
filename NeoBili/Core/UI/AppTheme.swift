@@ -49,10 +49,16 @@ private struct AppThemeModifier: ViewModifier {
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     func body(content: Content) -> some View {
         let color = AppTheme.selected(themeID).color
-        content.tint(color).accentColor(color)
+        // Explicit accent-colored artwork keeps the theme; standard controls
+        // use adaptive label color, including navigation buttons and close icons.
+        content.environment(\.appThemeColor, color).accentColor(color).tint(.primary)
     }
 }
 
 extension View {
     func appTheme() -> some View { modifier(AppThemeModifier()) }
+}
+
+extension EnvironmentValues {
+    @Entry var appThemeColor: Color = AppTheme.selected(AppTheme.defaultID).color
 }

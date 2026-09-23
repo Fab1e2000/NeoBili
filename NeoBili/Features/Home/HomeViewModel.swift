@@ -25,6 +25,16 @@ enum HomeFeedRow: Identifiable {
         }
     }
 
+    /// Preserve row/marker ordering while giving each card its own native cell.
+    static func collectionItems(_ rows: [HomeFeedRow]) -> [HomeFeedItem] {
+        rows.flatMap { row -> [HomeFeedItem] in
+            switch row {
+            case .videos(let videos): videos.map(HomeFeedItem.video)
+            case .lastSeen: [.lastSeen]
+            }
+        }
+    }
+
     static func group(_ items: [HomeFeedItem]) -> [HomeFeedRow] {
         var rows: [HomeFeedRow] = []
         var pending: [VideoSummary] = []
@@ -101,6 +111,9 @@ final class HomeViewModel {
     }
 
     func didShowReplacement(_ id: String) {
+        // 每张卡出现都会调用。@Observable 不比较新旧值，集合里没有这个 id 时
+        // remove 也算一次修改，会让读过它的每一行跟着重算，所以先判断再删。
+        guard replacementAnimationIDs.contains(id) else { return }
         replacementAnimationIDs.remove(id)
     }
 
@@ -150,7 +163,15 @@ final class HomeViewModel {
          reportUninterested: @escaping (VideoSummary) async throws -> Void = BiliAPI.markRecommendationUninterested,
          fetchRecommendations: @escaping (Int) async throws -> [VideoSummary] = BiliAPI.recommendFeed) {
         self.reportUninterested = reportUninterested
+        #if PERFORMANCE_DEMO
+        if ProcessInfo.processInfo.arguments.contains("--feed-record") || ProcessInfo.processInfo.arguments.contains("--feed-replay") {
+            self.fetchRecommendations = { try await PerformanceFeedSource.shared.fetch($0) }
+        } else {
+            self.fetchRecommendations = fetchRecommendations
+        }
+        #else
         self.fetchRecommendations = fetchRecommendations
+        #endif
     }
 
     func loadInitial() async {
@@ -175,11 +196,14 @@ final class HomeViewModel {
     }
 
     func loadMoreIfNeeded(current video: VideoSummary, hidingKnownPortraitVideos hidesPortraitVideos: Bool = false) async {
-        let visibleVideos = videos.hidingKnownPortraitVideos(hidesPortraitVideos)
-        guard let index = visibleVideos.firstIndex(of: video) else { return }
-        if index >= visibleVideos.count - 5, !isLoading {
-            await startLoad(reason: .loadMore, replacingActiveLoad: false)
-        }
+        guard !isLoading else { return }
+        // 每张卡出现都会调用：只从末尾往前看最后 5 张可见视频，
+        // 不在滚动时把整个列表过滤一遍。
+        let tail = videos.reversed().lazy
+            .filter { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos) }
+            .prefix(5)
+        guard tail.contains(where: { $0.bvid == video.bvid }) else { return }
+        await startLoad(reason: .loadMore, replacingActiveLoad: false)
     }
 
     func loadReplacementPage() async {

@@ -4,6 +4,28 @@ import Foundation
 @Observable
 final class SearchViewModel {
     var query: String = ""
+    private(set) var hotSearches: [HotSearchItem] = []
+    private(set) var isLoadingHotSearches = false
+    private(set) var hotSearchError: String?
+
+    func loadHotSearches() async {
+        guard hotSearches.isEmpty, !isLoadingHotSearches else { return }
+        isLoadingHotSearches = true
+        hotSearchError = nil
+        defer { isLoadingHotSearches = false }
+        do {
+            let payload: HotSearchPayload = try await APIClient.shared.getRaw(
+                url: URL(string: "https://s.search.bilibili.com/main/hotword")!,
+                additionalHeaders: SearchRequest.headers(keyword: ""))
+            guard !Task.isCancelled else { return }
+            if payload.code != 0 { throw BiliAPIError.apiError(code: payload.code, message: "热搜暂时不可用") }
+            var seen = Set<String>()
+            hotSearches = payload.list.filter { !$0.keyword.isEmpty && seen.insert($0.keyword).inserted }
+        } catch {
+            if !Task.isCancelled { hotSearchError = error.localizedDescription }
+        }
+    }
+
     /// 打字过程中的候选词。
     private(set) var suggestions: [SearchSuggestion] = []
     private(set) var results: [SearchResultItem] = []
@@ -128,4 +150,17 @@ final class SearchViewModel {
             // 静默失败：搜索本身仍然可用。
         }
     }
+}
+
+struct HotSearchPayload: Decodable {
+    let code: Int
+    let list: [HotSearchItem]
+}
+
+struct HotSearchItem: Decodable, Identifiable {
+    let keyword: String
+    let showName: String?
+    var id: String { keyword }
+    var title: String { showName.flatMap { $0.isEmpty ? nil : $0 } ?? keyword }
+    enum CodingKeys: String, CodingKey { case keyword; case showName = "show_name" }
 }

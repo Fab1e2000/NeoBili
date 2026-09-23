@@ -67,6 +67,8 @@ final class LiveDanmakuModel {
     private var receiveLoop: Task<Void, Never>?
     private var connectGeneration = 0
     private var isLoadingHistory = false
+    @ObservationIgnored private var pendingMessages: [Message] = []
+    @ObservationIgnored private var messageFlushTask: Task<Void, Never>?
 
     static let messageLimit = 200
     private static let messageTrimmedCount = 150
@@ -94,6 +96,9 @@ final class LiveDanmakuModel {
         session?.invalidateAndCancel()
         session = nil
         connection = .idle
+        messageFlushTask?.cancel()
+        messageFlushTask = nil
+        pendingMessages.removeAll(keepingCapacity: true)
         messages = []
         superChats = []
         popularity = nil
@@ -338,12 +343,31 @@ final class LiveDanmakuModel {
         append(message: message)
     }
 
-    private func append(message: Message) {
-        messages.append(message)
-        if messages.count > Self.messageLimit {
-            messages.removeFirst(messages.count - Self.messageTrimmedCount)
-        }
+    func append(message: Message) {
+        // The fullscreen renderer stays real-time. Only the SwiftUI history list
+        // coalesces bursts, so it does not diff 200 rows for every network message.
         flowEngine?.enqueue(text: message.text, color: message.color ?? 0xFF_FFFF)
+        pendingMessages.append(message)
+        if pendingMessages.count > Self.messageLimit {
+            pendingMessages.removeFirst(pendingMessages.count - Self.messageTrimmedCount)
+        }
+        guard messageFlushTask == nil else { return }
+        messageFlushTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+            self?.flushMessages()
+        }
+    }
+
+    func flushMessages() {
+        messageFlushTask?.cancel()
+        messageFlushTask = nil
+        guard !pendingMessages.isEmpty else { return }
+        var updated = messages + pendingMessages
+        pendingMessages.removeAll(keepingCapacity: true)
+        if updated.count > Self.messageLimit {
+            updated.removeFirst(updated.count - Self.messageTrimmedCount)
+        }
+        messages = updated
     }
 
     private func append(superChat value: Any?) {

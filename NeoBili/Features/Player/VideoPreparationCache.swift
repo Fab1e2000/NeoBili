@@ -129,6 +129,14 @@ actor VideoPreparationCache {
     }
 
     /// 卡片出现在屏幕上时调用。推荐卡已经有 cid；搜索卡没有，所以先取一次详情。
+    /// Reuse the recommendation feed's dwell policy across all scrolling lists.
+    /// Cancellation before the delay expires never enters the network queue.
+    func prefetchWhenSettled(bvid: String, cid: Int? = nil) async {
+        do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+        guard !Task.isCancelled else { return }
+        await prefetch(bvid: bvid, cid: cid)
+    }
+
     func prefetch(bvid: String, cid: Int? = nil) async {
         guard !Task.isCancelled else { return }
         removeExpiredValues()

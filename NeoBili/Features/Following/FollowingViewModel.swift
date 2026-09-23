@@ -56,7 +56,22 @@ final class FollowingViewModel {
     /// 页面本身负责把纵向滚动位置送回顶部。
     private var upFeeds: [Int: DynamicFeedModel] = [:]
 
+    private struct CarouselInputs: Equatable {
+        let ups: [FollowedUp]
+        let rooms: [LiveRoom]
+        let readThrough: [String: Int]
+        let latest: [Int: Int]
+        let priorityUntil: [String: Double]
+    }
+    @ObservationIgnored private var carouselCache: (inputs: CarouselInputs, items: [FollowingSelection])?
+
     var carouselItems: [FollowingSelection] {
+        // Read every dependency even on a cache hit, so Observation still tracks
+        // account refreshes, live status, unread changes and priority expiration.
+        let inputs = CarouselInputs(ups: ups, rooms: liveDirectory.rooms,
+                                    readThrough: readStore.readThrough, latest: readStore.latest,
+                                    priorityUntil: readStore.priorityUntil)
+        if let carouselCache, carouselCache.inputs == inputs { return carouselCache.items }
         let rooms = Dictionary(liveDirectory.rooms.map { ($0.uid, $0) }, uniquingKeysWith: { first, _ in first })
         var displayed = ups.map { up in
             FollowedUp(mid: up.mid, uname: up.uname, face: up.face,
@@ -68,8 +83,10 @@ final class FollowingViewModel {
             FollowedUp(mid: $0.uid, uname: $0.username, face: $0.faceURL?.absoluteString ?? "",
                        hasUpdate: false, liveRoomID: $0.roomID)
         }
-        return [.all] + FollowedUp.orderedForSidebar(displayed, keepsPriority: readStore.keepsPriority)
+        let items: [FollowingSelection] = [.all] + FollowedUp.orderedForSidebar(displayed, keepsPriority: readStore.keepsPriority)
             .map(FollowingSelection.up)
+        carouselCache = (inputs, items)
+        return items
     }
 
     func liveRoom(for up: FollowedUp) -> LiveRoom? {

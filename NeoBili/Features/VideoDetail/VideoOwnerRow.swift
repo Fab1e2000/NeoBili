@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// 简介顶部的 UP 主胶囊。两个独立动作共享一层玻璃背景。
+/// 简介顶部独立容器中的 UP 主行。
 struct VideoOwnerRow: View {
+    @Environment(\.appThemeColor) private var themeColor
     let owner: VideoOwner
     let avatarURL: URL?
     /// 粉丝数、投稿数。名片还没回来时这一行不显示。
@@ -43,10 +44,7 @@ struct VideoOwnerRow: View {
 
             followButton
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 12)
-        .padding(.vertical, 8)
-        .glassEffect(.regular, in: Capsule())
+        .mediaDetailContainer()
     }
 
     private var subtitle: String? {
@@ -69,7 +67,7 @@ struct VideoOwnerRow: View {
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, 16)
                 .frame(minHeight: 36)
-                .background(isFollowing ? Color.primary.opacity(0.08) : Color.accentColor, in: Capsule())
+                .background(isFollowing ? Color(uiColor: .tertiarySystemFill) : themeColor, in: Capsule())
                 .frame(minHeight: 48)
                 .contentShape(Rectangle())
         }

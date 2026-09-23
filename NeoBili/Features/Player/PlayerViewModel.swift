@@ -516,8 +516,8 @@ final class PlayerViewModel {
     func pause() {
         savePlaybackProgress()
         danmaku?.setPaused(true)
-        guard isPlaying || qualityPlaybackIntent != nil else { return }
-        if qualityPlaybackIntent != nil { qualityPlaybackIntent = false }
+        guard !isStopped else { return }
+        if qualityPlaybackIntent != nil || !hasRenderedFirstFrame { qualityPlaybackIntent = false }
         session.pause()
         isPlaying = false
         reportWatchProgress(resumeState.isCompleted ? -1 : currentTime)
@@ -647,7 +647,7 @@ final class PlayerViewModel {
             }
             // mpv 的音频输出已经建好，这里是重试音频会话激活的安全窗口：
             // 启动时那次可能失败，失败的会话不会出现在系统的「正在播放」里。
-            PlaybackAudioSession.activateOnce()
+            if isPlaying { PlaybackAudioSession.activateOnce() }
         case .playing(let playing):
             danmaku?.setPaused(!playing)
             if qualityPlaybackIntent == false, playing {

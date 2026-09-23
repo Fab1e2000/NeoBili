@@ -2,19 +2,8 @@ import SwiftUI
 import UIKit
 import Observation
 
-/// 首页刷新动画的全部可调参数。
-///
-/// 三段式：松手后旧卡片原地缓慢淡出；数据没回来就停在很淡的残留上（可以无限久）；
-/// 数据到达后残留淡尽，新卡从镜头前上方落下。
-///
-/// 退出动画作用在真实的卡片视图上，只改一个 opacity——不位移、不缩放、不截图。
-/// 之前用滚动视图的位图做残影，位图和真实视图的位置总对不齐，就是"闪到下方"的来源。
-/// 这些数字是拍脑袋的初值，真机上边看边改就行，改完不用动别的地方。
-/// 界面动画的快慢。倍率越大越快，实际时长是基准时长除以倍率。
-/// 设置页给两条滑杆：退出（旧内容离场）和进入（新内容登场）。
-///
-/// 目前管两处：首页下拉刷新的淡出/落位，以及三个主页面之间的切换。
-/// 键名里的 feed 是历史遗留，改了会丢掉用户已经存下的档位，所以留着。
+/// 刷新退出、卡片原位淡入和主页面淡入的速度设置。
+/// 保留原有存储键，让用户已选的速度继续生效。
 enum AnimationSpeedSettings {
     static let exitSpeedKey = "neobili.feedExitSpeed"
     static let enterSpeedKey = "neobili.feedEnterSpeed"
@@ -43,42 +32,15 @@ enum FeedRefreshTuning {
     ///
     /// 早先的版本会在中途停在一个很淡的浓度上等数据，好处是慢网络下画面不全空，
     /// 代价是那个停顿看起来像卡死——尤其把速度调快之后，停顿来得更早也更明显。
-    /// 现在不再等：淡出自己走完，数据没到就是空屏，到了再让新卡片落位。
+    /// 现在不再等：淡出自己走完，数据没到就是空屏，到了再让新卡片淡入。
     static let fadeExitDuration: Double = 0.9
 
     static func fadeExit(speed: Double) -> Double {
         fadeExitDuration / AnimationSpeedSettings.clamped(speed)
     }
 
-    // MARK: 落位（新内容）
-
-    /// 新卡起始位置在屏幕上方多远。
-    static let dropRise: CGFloat = 170
-    /// 起始比最终大，等于离镜头更近。
-    static let dropScale: CGFloat = 1.24
-    /// 绕 X 轴前倾，配合 perspective 做出"朝着用户的上方"。
-    static let dropTilt: Double = -16
-    static let dropPerspective: CGFloat = 0.55
-    /// 相邻两行的落位间隔（倍率为 1 时）。
-    static let staggerDuration: Double = 0.055
-    /// 限制行间错峰的最大延迟，不限制播放动画的卡片数量。
-    static let staggerRows = 4
-    /// 单行落位的基准时长。
-    static let landingDuration: Double = 0.55
-    static let landingBounce: Double = 0.08
-
-    static func stagger(speed: Double) -> Double { staggerDuration / AnimationSpeedSettings.clamped(speed) }
-
-    static func landing(speed: Double) -> Animation {
-        .snappy(duration: landingDuration / AnimationSpeedSettings.clamped(speed), extraBounce: landingBounce)
-    }
-
-    /// 落位窗口：这段时间内新建出来的行才播落位动画。
-    /// 关掉之后再新建的行（比如用户滚下去又滚回来）保持原样，
-    /// 否则就成了"滚到哪掉到哪"。
-    static func landingWindow(speed: Double) -> Double {
-        (landingDuration + staggerDuration * Double(staggerRows)) / AnimationSpeedSettings.clamped(speed)
-    }
+    // MARK: 原位淡入
+    static let fadeInDuration: Double = 0.25
 
     // MARK: 下拉过程
 
@@ -87,36 +49,20 @@ enum FeedRefreshTuning {
     static let pullFade: Double = 0.18
 }
 
-/// 新卡的落位变换。`progress` 0 = 起始（镜头前上方），1 = 落到位。
-struct FeedDropInEffect: ViewModifier {
+/// Only opacity changes; card geometry and hit-testing bounds stay fixed.
+struct FeedFadeInEffect: ViewModifier {
     var progress: Double
-
-    func body(content: Content) -> some View {
-        let remaining = 1 - progress
-        content
-            .scaleEffect(1 + (FeedRefreshTuning.dropScale - 1) * remaining)
-            .rotation3DEffect(
-                .degrees(FeedRefreshTuning.dropTilt * remaining),
-                axis: (x: 1, y: 0, z: 0),
-                perspective: FeedRefreshTuning.dropPerspective
-            )
-            .offset(y: -FeedRefreshTuning.dropRise * remaining)
-            .opacity(progress)
-    }
+    func body(content: Content) -> some View { content.opacity(progress) }
 }
 
-/// 包住首页的一行卡片，负责刷新完成后的落位动画。
+/// 包住首页的一行卡片，负责刷新完成后的淡入动画。
 ///
 /// 刷新会把新视频插到列表最前面，行的 id 跟着变，所以首屏这几行在刷新后是
-/// **全新的视图**而不是沿用下来的——落位动画因此必须在创建时就能自己跑起来，
+/// **全新的视图**而不是沿用下来的——淡入动画因此必须在创建时就能自己跑起来，
 /// 光靠 `onChange(of: generation)` 是等不到的。行一出生就是全透明的起始态，
-/// 不会先闪一下已经落位的样子。
-struct FeedDropInRow<Content: View>: View {
-    let index: Int
-    let generation: Int
-    /// 保留刷新调用方的窗口参数；新卡片入场不再受窗口或行数限制。
-    let landing: Bool
-    /// 落位速度倍率，来自设置页。
+/// 不会先闪一下已经淡入的样子。
+struct FeedFadeInRow<Content: View>: View {
+    /// 淡入速度倍率，来自设置页。
     let speed: Double
     let reduceMotion: Bool
     let category: CardAnimationCategory
@@ -128,17 +74,11 @@ struct FeedDropInRow<Content: View>: View {
     @State private var legacyStart: TimeInterval?
 
     init(
-        index: Int,
-        generation: Int,
-        landing: Bool,
         speed: Double,
         reduceMotion: Bool,
         category: CardAnimationCategory = .video,
         @ViewBuilder content: () -> Content
     ) {
-        self.index = index
-        self.generation = generation
-        self.landing = landing
         self.speed = speed
         self.reduceMotion = reduceMotion
         self.category = category
@@ -169,11 +109,10 @@ struct FeedDropInRow<Content: View>: View {
         TimedVideoEntrance(start: legacyStart, speed: speed, enabled: animatable) {
             content
         }
-        .task(id: generation) {
+        .task {
             // A stored monotonic start replaces per-row delayed Tasks and
-            // implicit spring transactions. Recycled rows resume that clock.
-            let delay = Double(min(index, FeedRefreshTuning.staggerRows - 1)) * FeedRefreshTuning.stagger(speed: speed)
-            legacyStart = ProcessInfo.processInfo.systemUptime + (animatable ? delay : 0)
+            // implicit animation transactions. Recycled rows resume that clock.
+            legacyStart = ProcessInfo.processInfo.systemUptime
         }
     }
 
@@ -190,14 +129,15 @@ private struct VideoCardEntrance: ViewModifier {
     var enabled = true
     var category: CardAnimationCategory = .video
     @Environment(\.videoEntranceProvided) private var provided
+    @Environment(\.videoCardAnimationSource) private var source
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var speed = AnimationSpeedSettings.defaultSpeed
 
     func body(content: Content) -> some View {
-        if provided || !enabled {
+        if provided || !enabled || !CardAnimationSettings.supports(category: category, phase: .enter, source: source) {
             content
         } else {
-            FeedDropInRow(index: 0, generation: 0, landing: true, speed: speed, reduceMotion: reduceMotion, category: category) {
+            FeedFadeInRow(speed: speed, reduceMotion: reduceMotion, category: category) {
                 content
             }
         }
@@ -215,13 +155,49 @@ extension View {
 }
 
 
-struct VideoEntranceScope {
+struct VideoEntranceScope: Equatable {
     let ids: Set<String>
     let generation: Int
     let clock: VideoEntranceClock
 
     @MainActor func start(for id: String) -> TimeInterval? {
-        clock.generation == generation ? clock.starts[id] : nil
+        clock.generation == generation ? clock.start(for: id) : nil
+    }
+
+    /// 列表每次重算都会生成新的 scope；内容相同就视为没变，卡片不必跟着重算。
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.clock === rhs.clock && lhs.generation == rhs.generation && lhs.ids == rhs.ids
+    }
+}
+
+/// 由调用方直接给出入场起点的版本，不经过环境里的入场时钟。
+///
+/// 放进 UIKit 列表格子（UIHostingConfiguration）里的 SwiftUI 内容，刚被复用、换上
+/// 新内容时对时钟的观察有时收不到变化通知，卡片会一直停在入场起点（透明）。
+/// 这类列表由 UIKit 一侧监听时钟，在配置格子时把起点直接传进来。
+struct TimedFeedEntrance<Content: View>: View {
+    let start: TimeInterval?
+    let speed: Double
+    let reduceMotion: Bool
+    let category: CardAnimationCategory
+    @ViewBuilder var content: Content
+    private var animations = CardAnimationPreferences()
+
+    init(start: TimeInterval?, speed: Double, reduceMotion: Bool,
+         category: CardAnimationCategory = .video, @ViewBuilder content: () -> Content) {
+        self.start = start
+        self.speed = speed
+        self.reduceMotion = reduceMotion
+        self.category = category
+        self.content = content()
+    }
+
+    var body: some View {
+        TimedVideoEntrance(start: start, speed: speed,
+                           enabled: !reduceMotion && animations.isEnabled(category: category, phase: .enter)) {
+            content
+        }
+        .environment(\.videoEntranceProvided, true)
     }
 }
 
@@ -234,9 +210,15 @@ private struct TimedVideoEntrance<Content: View>: View {
 
     private var finished: Bool { start != nil && finishedStart == start }
 
-    private var spring: Spring {
-        .snappy(duration: FeedRefreshTuning.landingDuration / AnimationSpeedSettings.clamped(speed),
-                extraBounce: FeedRefreshTuning.landingBounce)
+    private var duration: Double {
+        FeedRefreshTuning.fadeInDuration / AnimationSpeedSettings.clamped(speed)
+    }
+
+    private var progress: Double {
+        guard enabled, !finished else { return 1 }
+        guard start != nil else { return 0 }
+        let fraction = min(1, elapsed / duration)
+        return fraction * fraction * (3 - 2 * fraction)
     }
 
     private var elapsed: TimeInterval {
@@ -247,10 +229,8 @@ private struct TimedVideoEntrance<Content: View>: View {
     var body: some View {
         // Disabled effects never wait for a clock or suppress hit testing.
         // TimelineView has no running display link once settled or disabled.
-        TimelineView(.animation(paused: !enabled || start == nil || finished || elapsed >= spring.settlingDuration)) { _ in
-            let progress = !enabled || finished ? 1 : (start == nil ? 0 : (elapsed >= spring.settlingDuration
-                ? 1 : spring.value(target: 1.0, time: elapsed)))
-            content.modifier(FeedDropInEffect(progress: progress))
+        TimelineView(.animation(paused: !enabled || start == nil || finished || elapsed >= duration)) { _ in
+            content.modifier(FeedFadeInEffect(progress: progress))
         }
         .allowsHitTesting(!enabled || finished || start != nil)
         .onChange(of: enabled) { _, enabled in
@@ -262,8 +242,10 @@ private struct TimedVideoEntrance<Content: View>: View {
                 return
             }
             guard enabled, start != nil, !finished else { return }
+            // 滚动时懒加载重新创建的卡片早已淡入：直接返回，不再多写一次状态让整张卡重算。
+            guard elapsed < duration else { return }
             let delay = max(0, (start ?? 0) - ProcessInfo.processInfo.systemUptime)
-            let remaining = max(0, spring.settlingDuration - elapsed) + delay
+            let remaining = max(0, duration - elapsed) + delay
             do { try await Task.sleep(for: .seconds(remaining)) } catch { return }
             finishedStart = start
         }

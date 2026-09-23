@@ -57,7 +57,7 @@ final class ShortRefreshTests: XCTestCase {
         tab.selectedIndex = 0
         let original = Delegate()
         tab.delegate = original
-        let observer = HomeTabReselectionObserver.Coordinator()
+        let observer = TabReselectionObserver.Coordinator()
         let reselected = expectation(description: "重复点击推荐")
         observer.onReselect = { reselected.fulfill() }
         observer.attach(from: home)
@@ -79,11 +79,10 @@ final class ShortRefreshTests: XCTestCase {
         let host = UIHostingController(rootView: TabView {
             Tab("推荐", systemImage: "house.fill") {
                 NavigationStack { Text("推荐内容") }
-                    .background {
-                        HomeTabReselectionObserver { reselected.fulfill() }.frame(width: 0, height: 0)
-                    }
             }
-            Tab("我的", systemImage: "person.crop.circle") { Text("我的") }
+            Tab("搜索", systemImage: "magnifyingglass", role: .search) { Text("搜索") }
+        }.background {
+            TabReselectionObserver { reselected.fulfill() }.frame(width: 0, height: 0)
         })
         window.rootViewController = host
         window.makeKeyAndVisible()
@@ -96,10 +95,12 @@ final class ShortRefreshTests: XCTestCase {
             return controller.children.compactMap(findTab).first
         }
         let tab = try XCTUnwrap(findTab(host))
-        XCTAssertTrue(tab.delegate is HomeTabReselectionObserver.Coordinator)
-        let first = try XCTUnwrap(tab.tabs.first)
-        tab.selectedTab = first
-        XCTAssertEqual(tab.delegate?.tabBarController?(tab, shouldSelectTab: first), true)
+        XCTAssertTrue(tab.delegate is TabReselectionObserver.Coordinator)
+        let search = try XCTUnwrap(tab.tabs.last)
+        XCTAssertEqual(tab.delegate?.tabBarController?(tab, shouldSelectTab: search), true)
+        try await Task.sleep(for: .milliseconds(50))
+        tab.selectedTab = search
+        XCTAssertEqual(tab.delegate?.tabBarController?(tab, shouldSelectTab: search), true)
         await fulfillment(of: [reselected], timeout: 1)
     }
 

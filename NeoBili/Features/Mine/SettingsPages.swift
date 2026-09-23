@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PlaybackSettingsView: View {
-    @AppStorage(DanmakuSettings.coloredEnabledKey) private var coloredDanmaku = true
+    @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @AppStorage("neobili.preferredQuality") private var preferredQuality = 64
     @AppStorage(PlaybackQuality.audioStorageKey) private var preferredAudioQuality = 0
 
@@ -20,10 +20,11 @@ struct PlaybackSettingsView: View {
                 }
             }
             Section("弹幕") {
-                Toggle("彩色弹幕", isOn: $coloredDanmaku)
+                NavigationLink("弹幕设置") { DanmakuSettingsView() }
             }
             Section("播放方式") {
-                Text("退出视频页面后，视频会在底部迷你播放器中继续播放。点击播放条可返回视频，点击关闭按钮可结束播放。")
+                Toggle("启用缩略播放器", isOn: $miniPlayerEnabled)
+                Text(miniPlayerEnabled ? "退出视频页面后在底部继续播放，底部标签栏可随滚动收缩。" : "退出视频页面后停止播放，底部标签栏始终保持展开。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -117,6 +118,7 @@ struct DisplaySettingsView: View {
 }
 
 struct InteractionSettingsView: View {
+    @Environment(\.appThemeColor) private var themeColor
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     @AppStorage(LeftEdgeTapDeadZone.storageKey) private var deadZoneWidth = LeftEdgeTapDeadZone.defaultWidth
     @State private var showsDeadZonePreview = false
@@ -148,9 +150,9 @@ struct InteractionSettingsView: View {
         .overlay(alignment: .leading) {
             if showsDeadZonePreview {
                 Rectangle()
-                    .fill(Color.accentColor.opacity(0.22))
+                    .fill(themeColor.opacity(0.22))
                     .overlay(alignment: .trailing) {
-                        Rectangle().fill(Color.accentColor.opacity(0.85)).frame(width: 1.5)
+                        Rectangle().fill(themeColor.opacity(0.85)).frame(width: 1.5)
                     }
                     .frame(width: deadZoneWidth)
                     .ignoresSafeArea()
@@ -217,7 +219,7 @@ struct AboutSettingsView: View {
     }
 }
 
-private extension View {
+extension View {
     func settingsPage(_ title: String) -> some View {
         leftEdgeTapDeadZone()
             .navigationTitle(title)

@@ -85,15 +85,14 @@ struct FavoritesView: View {
         guard folderRemovals.begin(folder.id) else { return }
         defer { folderRemovals.finish(folder.id) }
         let sessionID = account.sessionID
-        var removedIndex: Int?
-        withAnimation { removedIndex = folderRemovals.remove(folder.id, from: &folders) }
+        let removedIndex = folderRemovals.remove(folder.id, from: &folders)
         do {
             guard await feedback.confirmRemoval("已移除收藏夹"),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.deleteFavoriteFolders(folderIDs: [folder.id])
         } catch {
             if let removedIndex {
-                withAnimation { folderRemovals.restore(folder, at: removedIndex, in: &folders) }
+                folderRemovals.restore(folder, at: removedIndex, in: &folders)
             }
             if !error.isCancellation { feedback.show(error.localizedDescription) }
         }
@@ -249,14 +248,13 @@ struct FavoriteFolderView: View {
         // 同一视频的转场源在共享命名空间里撞 id。
         .videoTransitionSource("fav-\(summary?.bvid ?? "")", in: videoTransition)
         // 移除动效第一段：原地淡出、占位不变，列表此时不动。
-        .cardFadeOut(isRemoving: removals.hiddenIDs.contains(media.id))
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
             await loadMoreIfNeeded(current: media)
             if let summary {
                 // 收藏没有 cid，预取会先取一次详情再取播放地址。
-                await VideoPreparationCache.shared.prefetch(bvid: summary.bvid)
+                await VideoPreparationCache.shared.prefetchWhenSettled(bvid: summary.bvid)
             }
         }
     }
@@ -336,29 +334,23 @@ struct FavoriteFolderView: View {
     /// 同 `HistoryView.delete`：先移走卡片再发请求，失败了放回原位。
     /// 移除后提供短暂撤销入口，超时再提交请求。
     ///
-    /// 动效拆成两段顺序执行（`CardRemovalAnimation`）：先原地淡出，完全
-    /// 看不见后空位才收拢、下方卡片上移补位——两段同时进行会出现叠影。
+    /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
     private func remove(_ media: FavMedia) async {
         guard videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
         defer { removals.finish(media.id) }
         let sessionID = account.sessionID
         var removedIndex: Int?
         do {
-            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.menuDismissWaitMilliseconds, source: .favorites)
-            withAnimation(CardRemovalAnimation.fade(source: .favorites)) { removals.hide(media.id) }
-            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.fadeMilliseconds, source: .favorites)
-            withAnimation(CardRemovalAnimation.collapse(source: .favorites)) {
-                removedIndex = removals.remove(media.id, from: &videos)
-            }
+            removals.hide(media.id)
+            removedIndex = removals.remove(media.id, from: &videos)
             guard await feedback.confirmRemoval("已移出收藏夹"),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.removeFavorite(folderID: folder.id, aid: media.id)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
-            withAnimation(CardRemovalAnimation.collapse(source: .favorites)) { videos.removeAll { $0.id == media.id } }
-            try? await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.collapseMilliseconds, source: .favorites)
+            videos.removeAll { $0.id == media.id }
         } catch {
             if let removedIndex {
-                withAnimation(CardRemovalAnimation.collapse(source: .favorites)) { removals.restore(media, at: removedIndex, in: &videos) }
+                removals.restore(media, at: removedIndex, in: &videos)
             }
             if !error.isCancellation { feedback.show(error.localizedDescription) }
         }

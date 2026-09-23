@@ -5,6 +5,24 @@ import XCTest
 
 @MainActor
 final class DanmakuRegressionTests: XCTestCase {
+    func testAppearanceFiltersOnlyFixedDanmakuAndUpdatesOpacityAndSize() throws {
+        for top in [false, true] {
+            for bottom in [false, true] {
+                let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
+                engine.area = 1
+                engine.applyAppearance(fontSize: 21, opacity: 0.4, blockTop: top, blockBottom: bottom)
+                engine.prepare(items: [DanmakuItem(time: 0, text: "顶部", mode: 5, color: 0xFFFFFF),
+                                       DanmakuItem(time: 0, text: "底部", mode: 4, color: 0xFFFFFF),
+                                       DanmakuItem(time: 0, text: "滚动", mode: 1, color: 0xFFFFFF)])
+                engine.update(currentTime: 0)
+                XCTAssertEqual(engine.layer.sublayers?.count, 3 - (top ? 1 : 0) - (bottom ? 1 : 0))
+                XCTAssertEqual(engine.fontSize, 21)
+                XCTAssertEqual(engine.alpha, 0.4, accuracy: 0.001)
+                engine.clear(keepTimelineAt: 0)
+            }
+        }
+    }
+
     func testVideoColorFieldKeepsItsPositionWhenFontSizeIsMissing() {
         let items = DanmakuLoader.parse(Data("<i><d p=\"1,1,,16711680,0,0,u,1\">红色</d></i>".utf8))
         XCTAssertEqual(items.first?.color, 0xFF0000)
@@ -16,6 +34,7 @@ final class DanmakuRegressionTests: XCTestCase {
             "cmd": "DANMU_MSG", "info": [[0, 1, 25, 0xFF0000], "红色", [123, "观众"]]
         ])
         model.handleFrame(LivePacketCodec.packet(op: 5, protover: 0, seq: 1, body: data))
+        model.flushMessages()
         XCTAssertEqual(model.messages.last?.color, 0xFF0000)
     }
 
@@ -142,6 +161,7 @@ final class DanmakuRegressionTests: XCTestCase {
         let model = LiveDanmakuModel()
         let body = Data(#"{"cmd":"DANMU_MSG","info":[[0,1,25,16777215],"正常弹幕",[123,"观众",0]]}"#.utf8)
         model.handleFrame(LivePacketCodec.packet(op: 5, protover: 0, seq: 1, body: body))
+        model.flushMessages()
         XCTAssertEqual(model.messages.first?.text, "正常弹幕")
         XCTAssertEqual(model.messages.first?.name, "观众")
     }
@@ -151,6 +171,7 @@ final class DanmakuRegressionTests: XCTestCase {
         let body = Data(#"{"cmd":"DANMU_MSG","info":[[],"消息",[123,"观众"]]}"#.utf8)
         let packet = LivePacketCodec.packet(op: 5, protover: 0, seq: 1, body: body)
         model.handleFrame(packet + packet)
+        model.flushMessages()
         XCTAssertEqual(model.messages.count, 2)
         model.handleFrame(Data(repeating: 0, count: 16))
         XCTAssertTrue(LivePacketCodec.splitConcatenated(Data(repeating: 0, count: 16)).isEmpty)

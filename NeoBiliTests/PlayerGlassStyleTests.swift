@@ -637,7 +637,7 @@ private final class PlayerGlassSnapshotHost {
         window.isHidden = true
         window.rootViewController = nil
         previousKeyWindow?.makeKey()
-        OrientationLock.shared.supportedOrientations = previousOrientation
+        OrientationLock.shared.request(previousOrientation)
         previousKeyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
         window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: previousOrientation)) { _ in }
     }

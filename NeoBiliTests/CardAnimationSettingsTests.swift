@@ -14,13 +14,14 @@ final class CardAnimationSettingsTests: XCTestCase {
         XCTAssertTrue(clock.starts.values.allSatisfy { $0 == 0 })
     }
 
-    func testEveryCustomAnimationDefaultsToEnabled() throws {
+    func testOnlyAllowedCardEntrancesDefaultToEnabled() throws {
         let suite = "neobili.card-animations.tests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         for category in CardAnimationCategory.allCases {
             for phase in [CardAnimationPhase.enter, .exit] {
-                XCTAssertTrue(CardAnimationSettings.isEnabled(category: category, phase: phase, defaults: defaults))
+                let expected = category == .page || (category == .dynamic && phase == .exit)
+                XCTAssertEqual(CardAnimationSettings.isEnabled(category: category, phase: phase, defaults: defaults), expected)
             }
         }
     }
@@ -38,8 +39,8 @@ final class CardAnimationSettingsTests: XCTestCase {
         }
         defaults.set(true, forKey: CardAnimationSettings.masterKey)
         XCTAssertFalse(CardAnimationSettings.isEnabled(category: .video, phase: .enter, defaults: defaults))
-        XCTAssertTrue(CardAnimationSettings.isEnabled(category: .video, phase: .exit, defaults: defaults))
-        XCTAssertTrue(CardAnimationSettings.isEnabled(category: .dynamic, phase: .enter, defaults: defaults))
+        XCTAssertFalse(CardAnimationSettings.isEnabled(category: .video, phase: .exit, defaults: defaults))
+        XCTAssertFalse(CardAnimationSettings.isEnabled(category: .dynamic, phase: .enter, defaults: defaults))
         XCTAssertFalse(CardAnimationSettings.isEnabled(category: .dynamic, phase: .exit, defaults: defaults))
         XCTAssertTrue(CardAnimationSettings.isEnabled(category: .page, phase: .enter, defaults: defaults))
     }
@@ -49,13 +50,14 @@ final class CardAnimationSettingsTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         for source in VideoCardAnimationSource.allCases {
-            XCTAssertTrue(CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: source, defaults: defaults))
-            XCTAssertTrue(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: source, defaults: defaults))
+            XCTAssertEqual(CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: source, defaults: defaults),
+                           [.recommendation, .live, .search].contains(source))
+            XCTAssertEqual(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: source, defaults: defaults), [.recommendation, .live].contains(source))
         }
         defaults.set(false, forKey: CardAnimationSettings.videoEnterKey)
         for source in VideoCardAnimationSource.allCases {
             XCTAssertFalse(CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: source, defaults: defaults))
-            XCTAssertTrue(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: source, defaults: defaults))
+            XCTAssertEqual(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: source, defaults: defaults), [.recommendation, .live].contains(source))
         }
     }
 
@@ -69,7 +71,7 @@ final class CardAnimationSettingsTests: XCTestCase {
         XCTAssertTrue(CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: .search, defaults: defaults))
         XCTAssertFalse(CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: .recommendation, defaults: defaults))
         XCTAssertFalse(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: .history, defaults: defaults))
-        XCTAssertTrue(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: .favorites, defaults: defaults))
+        XCTAssertFalse(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: .favorites, defaults: defaults))
 
         defaults.set(false, forKey: CardAnimationSettings.masterKey)
         XCTAssertFalse(CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: .search, defaults: defaults))
@@ -83,7 +85,7 @@ final class CardAnimationSettingsTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(false, forKey: CardAnimationSettings.storageKey(source: .space, phase: .enter))
-        XCTAssertTrue(CardAnimationSettings.isEnabled(category: .dynamic, phase: .enter, source: .space, defaults: defaults))
+        XCTAssertFalse(CardAnimationSettings.isEnabled(category: .dynamic, phase: .enter, source: .space, defaults: defaults))
         defaults.set(false, forKey: CardAnimationSettings.dynamicEnterKey)
         XCTAssertFalse(CardAnimationSettings.isEnabled(category: .dynamic, phase: .enter, source: .space, defaults: defaults))
         XCTAssertTrue(CardAnimationSettings.isEnabled(category: .page, phase: .enter, source: .space, defaults: defaults))
@@ -92,13 +94,38 @@ final class CardAnimationSettingsTests: XCTestCase {
     func testSettingsOnlyExposeExistingCustomAnimationPhases() {
         XCTAssertEqual(VideoCardAnimationSource.recommendation.supportedPhases, [.enter, .exit])
         XCTAssertEqual(VideoCardAnimationSource.live.supportedPhases, [.enter, .exit])
-        for source in [VideoCardAnimationSource.search, .space] {
-            XCTAssertEqual(source.supportedPhases, [.enter])
-        }
+        XCTAssertEqual(VideoCardAnimationSource.search.supportedPhases, [.enter])
+        XCTAssertTrue(VideoCardAnimationSource.space.supportedPhases.isEmpty)
         for source in [VideoCardAnimationSource.favorites, .history, .watchLater] {
-            XCTAssertEqual(source.supportedPhases, [.exit])
+            XCTAssertTrue(source.supportedPhases.isEmpty)
         }
         XCTAssertTrue(VideoCardAnimationSource.collection.supportedPhases.isEmpty)
         XCTAssertTrue(VideoCardAnimationSource.relatedVideos.supportedPhases.isEmpty)
     }
+    func testSavedOverridesCannotReenableRemovedEntrances() throws {
+        let suite = "neobili.removed-entrances.tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: CardAnimationSettings.videoEnterKey)
+        defaults.set(true, forKey: CardAnimationSettings.dynamicEnterKey)
+        for source in VideoCardAnimationSource.allCases {
+            defaults.set(true, forKey: CardAnimationSettings.storageKey(source: source, phase: .enter))
+            XCTAssertEqual(CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: source, defaults: defaults),
+                           [.recommendation, .live, .search].contains(source))
+            XCTAssertFalse(CardAnimationSettings.isEnabled(category: .dynamic, phase: .enter, source: source, defaults: defaults))
+        }
+        XCTAssertFalse(CardAnimationSettings.isEnabled(category: .video, phase: .enter, defaults: defaults))
+    }
+
+    func testPersonalListsIgnoreLegacyExitOverrides() throws {
+        let suite = "neobili.removed-exits.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: CardAnimationSettings.videoExitKey)
+        for source in [VideoCardAnimationSource.favorites, .history, .watchLater] {
+            defaults.set(true, forKey: CardAnimationSettings.storageKey(source: source, phase: .exit))
+            XCTAssertFalse(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: source, defaults: defaults))
+        }
+    }
+
 }

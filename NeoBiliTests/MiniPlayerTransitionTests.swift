@@ -36,7 +36,7 @@ final class MiniPlayerTransitionTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertTrue(fixture.didAppear, "The native presentation must finish before its return destination changes")
-        let presented = try XCTUnwrap(host.presentedViewController as? ZoomHost)
+        let presented = try XCTUnwrap(host.presentedViewController)
         presented.traitOverrides.verticalSizeClass = .compact
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(fixture.presentedSizeClass, .compact,
@@ -129,8 +129,13 @@ final class MiniPlayerTransitionTests: XCTestCase {
 
 @MainActor @Observable
 private final class MiniTransitionFixture {
-    var isPresented = false
-    var sourceID = "card"
+    var presentation = MediaPresentationState()
+    var isPresented: Bool {
+        get { presentation.destination != nil }
+        set { presentation.destination = newValue ? .player : nil }
+    }
+
+    init() { presentation.prepareSource("card") }
     var didAppear = false
     var didDismiss = false
     var presentedSizeClass: UserInterfaceSizeClass?
@@ -145,23 +150,29 @@ private struct MiniTransitionHost: View {
         Color.white
             .overlay(alignment: .topLeading) {
                 Color.red.frame(width: 180, height: 100)
-                    .videoTransitionSource("card", in: transition)
+                    .matchedTransitionSource(id: fixture.presentation.source(for: "card").nativeID, in: transition)
                     .padding(20)
             }
             .overlay {
                 MiniPlayerContainer(
                     content: Color.blue
                         .overlay { MiniTransitionViewProbe { fixture.miniView = $0 } }
-                        .videoTransitionSource(NowPlayingStore.miniPlayerTransitionSourceID, in: transition),
+                        .matchedTransitionSource(id: fixture.presentation.source(for: NowPlayingStore.miniPlayerTransitionSourceID).nativeID, in: transition),
                     aspectRatio: 16.0 / 9, anchor: CGPoint(x: 0, y: 0.8), reduceMotion: false,
                     onAnchorChange: { _ in }
                 )
             }
-            .mediaZoomCover(isPresented: $fixture.isPresented, entrySourceID: "card", namespace: transition, onDismiss: { fixture.didDismiss = true }) {
+            .fullScreenCover(item: Binding(
+                get: { fixture.presentation.destination },
+                set: { fixture.presentation.destination = $0 }
+            ), onDismiss: { fixture.didDismiss = true }) { _ in
                 Color(red: 0, green: 1, blue: 0).ignoresSafeArea()
+                    .presentationBackground(.clear)
+                    .navigationTransition(.zoom(sourceID: MediaPresentationState.Source.player, in: transition))
                     .overlay { PresentedSizeClassProbe(fixture: fixture) }
                     .background {
                         VideoPagePresentationObserver {
+                            fixture.presentation.completeEntrance(returningTo: NowPlayingStore.miniPlayerTransitionSourceID)
                             fixture.didAppear = true
                         }
                     }

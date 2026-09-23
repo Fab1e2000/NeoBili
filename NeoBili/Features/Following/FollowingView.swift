@@ -24,15 +24,12 @@ struct FollowingView: View {
     @State private var listPosition = ScrollPosition(edge: .top)
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = true
-    @AppStorage(CardAnimationSettings.dynamicEnterKey) private var dynamicEnterEnabled = true
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = true
     @State private var isRefreshing = false
     @State private var pullState = 0
     @State private var refreshOpacity = 1.0
-    @State private var landingGeneration = 0
-    @State private var landingWindow = false
+    @State private var feedGeneration = 0
     @State private var refreshTask: Task<Void, Never>?
     @State private var feedOpacity = 1.0
     @State private var selectionTransitionTask: Task<Void, Never>?
@@ -114,7 +111,7 @@ struct FollowingView: View {
             listPosition.scrollTo(edge: .top)
             viewModel = FollowingViewModel()
         }
-        .resolvePortraitVideos(viewModel.activeFeed.entries.compactMap(\.video), batchID: landingGeneration, animationCategory: .dynamic) {
+        .resolvePortraitVideos(viewModel.activeFeed.entries.compactMap(\.video), batchID: feedGeneration, animationCategory: .dynamic) {
             let feed = viewModel.activeFeed
             await feed.loadReplacementPage()
             return feed.entries.compactMap(\.video)
@@ -140,14 +137,14 @@ struct FollowingView: View {
 
     }
 
-    private var animatesCardEntrance: Bool { cardAnimationsEnabled && dynamicEnterEnabled && !reduceMotion }
     private var animatesCardExit: Bool { cardAnimationsEnabled && dynamicExitEnabled && !reduceMotion }
 
     private var list: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                feedContent.opacity(feedOpacity * refreshOpacity)
+                feedContent
             }
+            .opacity(feedOpacity * refreshOpacity)
             .background(Color(uiColor: .secondarySystemGroupedBackground))
             // 手势观察器不参与纵向布局，避免独立零高占位产生默认间距。
             .background(alignment: .top) {
@@ -281,9 +278,6 @@ struct FollowingView: View {
                 feedOpacity = 1
             }
         }
-        .onChange(of: animatesCardEntrance) { _, enabled in
-            if !enabled { landingWindow = false }
-        }
         .onDisappear {
             isFollowingVisible = false
             isAvatarMenuPresented = false
@@ -337,25 +331,11 @@ struct FollowingView: View {
                         .padding()
                 }
             }
-            ForEach(Array(visibleEntries.enumerated()), id: \.element.id) { index, entry in
-                FeedDropInRow(index: index, generation: landingGeneration,
-                              landing: landingWindow, speed: enterSpeed, reduceMotion: reduceMotion, category: .dynamic) {
-                    card(for: entry)
-                }
+            ForEach(visibleEntries) { entry in
+                card(for: entry, lastVisibleID: visibleEntries.last?.id)
                     .videoEntranceIdentity(entry.video?.bvid)
-                    .onScrollVisibilityChange(threshold: 0.1) { visible in
-                        if visible { FollowingReadStore.shared.markViewed(entry) }
-                    }
                     .padding(.horizontal, DynamicCardLayout.pageHorizontalInset)
                     .padding(.vertical, DynamicCardLayout.cardVerticalSpacing)
-                    .task { await feed.loadMoreIfNeeded(current: entry) }
-                    .task {
-                        // 视频动态露面就先把播放地址取回来，点开时通常已经有结果了。
-                        if let video = entry.video,
-                           video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
-                            await VideoPreparationCache.shared.prefetch(bvid: video.bvid)
-                        }
-                    }
             }
 
             if feed.isLoadingMore {
@@ -375,7 +355,6 @@ struct FollowingView: View {
         isRefreshing = true
         pullState = 0
         refreshOpacity = 1
-        landingWindow = false
         let model = viewModel
         let feed = model.activeFeed
         let duration = animatesCardExit ? FeedRefreshTuning.fadeExit(speed: exitSpeed) : 0
@@ -395,17 +374,10 @@ struct FollowingView: View {
             }
             // 离页或切换 UP 后只完成原数据源的提交，不改新页面的动画状态。
             guard !Task.isCancelled else { feed.commitStagedRefresh(id: stagingID); return }
-            landingWindow = animatesCardEntrance
             feed.commitStagedRefresh(id: stagingID)
             refreshOpacity = 1
-            landingGeneration += 1
+            feedGeneration += 1
             isRefreshing = false
-            if landingWindow {
-                try? await CardAnimationSettings.waitWhileEnabled(for: FeedRefreshTuning.landingWindow(speed: enterSpeed),
-                                                                 category: .dynamic, phase: .enter)
-                guard !Task.isCancelled else { return }
-                landingWindow = false
-            }
             refreshTask = nil
         }
     }
@@ -416,7 +388,6 @@ struct FollowingView: View {
         pendingSelectionID = nil
         isRefreshing = false
         pullState = 0
-        landingWindow = false
         refreshOpacity = 1
     }
 
@@ -424,11 +395,11 @@ struct FollowingView: View {
         LoadingTaskAnchor()
     }
 
-    private func card(for entry: DynamicEntry) -> some View {
-        DynamicCard(
+    private func card(for entry: DynamicEntry, lastVisibleID: String?) -> some View {
+        DynamicFeedCard(
             entry: entry,
-            isLiked: viewModel.activeFeed.isLiked(entry),
-            likeCount: viewModel.activeFeed.likeCount(entry),
+            feed: viewModel.activeFeed,
+            lastVisibleID: lastVisibleID,
             onOpenVideo: { open(entry) },
             // 卡片头像和轮盘中央头像都可以进入 UP 主页。
             onOpenAuthor: {
@@ -495,28 +466,16 @@ struct FollowingView: View {
                 targetFeed.commitStagedRefresh(id: stagingID)
                 return
             }
-            // 同一帧提交目标、数据和落位状态，避免闪过空状态或半成品列表。
+            // 同一帧提交目标和数据，避免闪过空状态或半成品列表。
             targetFeed.commitStagedRefresh(id: stagingID)
             model.select(target)
             pendingSelectionID = nil
             listPosition.scrollTo(edge: .top)
 
-            // 缓存命中和首次网络加载都在内容就绪后触发同一套卡片落位。
-            // 不提前淡入整页，否则数据稍后到达时会直接出现而没有动效。
-            landingWindow = animatesCardEntrance
-            landingGeneration += 1
+            // 更新过滤批次；新卡片直接显示，不再等待进入动画。
+            feedGeneration += 1
             feedOpacity = 1
 
-            if landingWindow {
-                do {
-                    try await CardAnimationSettings.waitWhileEnabled(for: FeedRefreshTuning.landingWindow(speed: enterSpeed),
-                                                                    category: .dynamic, phase: .enter)
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled else { return }
-                landingWindow = false
-            }
             selectionTransitionTask = nil
         }
     }

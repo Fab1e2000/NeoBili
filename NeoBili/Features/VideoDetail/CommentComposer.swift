@@ -224,13 +224,14 @@ private struct CommentOutsideTapObserver: UIViewRepresentable {
 
 /// 与单行输入框共用 48pt 外径，不叠加系统 controlSize 的额外内边距。
 private struct CommentSendButtonStyle: ButtonStyle {
+    @Environment(\.appThemeColor) private var themeColor
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .frame(width: 48, height: 48)
             .foregroundStyle(isEnabled ? Color.white : Color.secondary)
-            .glassEffect(.regular.tint(isEnabled ? Color.accentColor : Color.clear).interactive(), in: Circle())
+            .glassEffect(.regular.tint(isEnabled ? themeColor : Color.clear).interactive(), in: Circle())
             .contentShape(Circle())
             .scaleEffect(configuration.isPressed ? 0.95 : 1)
     }

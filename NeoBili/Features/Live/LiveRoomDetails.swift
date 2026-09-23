@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// 与视频详情的名片使用相同的头像、内边距和关注按钮尺寸。
+/// 与视频详情共用独立容器的主播信息。
 struct LiveRoomOwnerRow: View {
+    @Environment(\.appThemeColor) private var themeColor
     let room: LiveRoom
     let card: SpaceCard?
     let isFollowing: Bool?
@@ -51,7 +52,7 @@ struct LiveRoomOwnerRow: View {
                     .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, 16)
                     .frame(minHeight: 36)
-                    .background(isFollowing == true || isOwnAccount ? Color.primary.opacity(0.08) : Color.accentColor,
+                    .background(isFollowing == true || isOwnAccount ? Color(uiColor: .tertiarySystemFill) : themeColor,
                                 in: Capsule())
                     .frame(minHeight: 48)
                     .contentShape(Rectangle())
@@ -61,15 +62,12 @@ struct LiveRoomOwnerRow: View {
             .accessibilityLabel(isFollowing == true ? "取消关注 \(name)" : "\(followTitle) \(name)")
             .accessibilityIdentifier("live.owner.follow")
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 12)
-        .padding(.vertical, 8)
-        .glassEffect(.regular, in: Capsule())
+        .mediaDetailContainer()
         .accessibilityIdentifier("live.owner")
     }
 }
 
-/// 完整标题与直播元信息共享一张玻璃卡，轻点整张卡片展开简介/公告。
+/// 标题与直播元信息的独立容器，轻点展开简介/公告。
 struct LiveRoomIntroductionCard: View {
     let room: LiveRoom
     let isOffline: Bool
@@ -84,7 +82,7 @@ struct LiveRoomIntroductionCard: View {
     var body: some View {
         if hasDetails {
             card
-                .contentShape(RoundedRectangle(cornerRadius: 24))
+                .contentShape(Rectangle())
                 .onTapGesture(perform: toggleDetails)
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("直播简介")
@@ -107,16 +105,15 @@ struct LiveRoomIntroductionCard: View {
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, hasDetails ? 36 : 0)
+                .padding(.trailing, hasDetails ? 24 : 0)
                 .accessibilityIdentifier("live.introduction.title")
                 .overlay(alignment: .topTrailing) {
                     if hasDetails {
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.secondary)
-                            .frame(width: 44, height: 44)
+                            .frame(height: titleLineHeight)
                             .accessibilityHidden(true)
-                            .offset(x: 8, y: (titleLineHeight - 44) / 2)
                     }
                 }
 
@@ -144,9 +141,8 @@ struct LiveRoomIntroductionCard: View {
                 .accessibilityIdentifier("live.introduction.description")
             }
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+        .mediaDetailContainer()
     }
 
     private func toggleDetails() {

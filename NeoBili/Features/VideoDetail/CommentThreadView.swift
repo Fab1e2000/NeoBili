@@ -53,6 +53,8 @@ struct CommentThreadView: View {
     private var replies: [Comment] { viewModel.allReplies(for: root) }
 
     var body: some View {
+        let replies = replies
+        let tailIDs = Set(replies.suffix(3).map(\.id))
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -66,14 +68,17 @@ struct CommentThreadView: View {
                     sectionHeader
 
                     ForEach(replies) { reply in
-                        CommentRow(comment: reply, viewModel: viewModel, showsReplies: false)
-                            .padding(.horizontal, CommentLayout.pageHorizontalInset)
-                            .padding(.vertical, CommentLayout.rowVerticalPadding)
-                            .task { await loadMoreIfNeeded(current: reply) }
-
-                        if reply.id != replies.last?.id {
-                            Divider()
-                                .padding(.leading, CommentLayout.pageHorizontalInset)
+                        VStack(alignment: .leading, spacing: 0) {
+                            CommentRow(comment: reply, viewModel: viewModel, showsReplies: false)
+                                .padding(.horizontal, CommentLayout.pageHorizontalInset)
+                                .padding(.vertical, CommentLayout.rowVerticalPadding)
+                            if reply.id != replies.last?.id {
+                                Divider().padding(.leading, CommentLayout.pageHorizontalInset)
+                            }
+                        }
+                        .task(id: tailIDs.contains(reply.id) ? replies.last?.id : nil) {
+                            guard tailIDs.contains(reply.id) else { return }
+                            await viewModel.loadMoreRepliesIfNeeded(current: reply, root: root)
                         }
                     }
 
@@ -140,10 +145,4 @@ struct CommentThreadView: View {
         }
     }
 
-    /// 滚到末尾再翻一页。和一级评论那边同一个规矩。
-    private func loadMoreIfNeeded(current reply: Comment) async {
-        guard viewModel.hasMoreReplies(root), !viewModel.isLoadingReplies(root) else { return }
-        guard replies.suffix(3).contains(where: { $0.id == reply.id }) else { return }
-        await viewModel.loadMoreReplies(for: root)
-    }
 }

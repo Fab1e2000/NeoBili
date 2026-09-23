@@ -16,7 +16,21 @@ enum CommentTimeLinks {
     )
     private static let linkDetector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
+    private final class CachedText: NSObject {
+        let value: AttributedString
+        init(_ value: AttributedString) { self.value = value }
+    }
+
+    // NSCache is thread-safe and bounded; no font, theme or playback handler is cached.
+    nonisolated(unsafe) private static let preparedText: NSCache<NSString, CachedText> = {
+        let cache = NSCache<NSString, CachedText>()
+        cache.countLimit = 512
+        cache.totalCostLimit = 2 * 1024 * 1024
+        return cache
+    }()
+
     static func matches(in text: String) -> [Match] {
+        guard text.contains(":") || text.contains("：") else { return [] }
         let full = NSRange(text.startIndex..., in: text)
         let candidates = pattern.matches(in: text, range: full)
         guard !candidates.isEmpty else { return [] }
@@ -30,6 +44,8 @@ enum CommentTimeLinks {
     }
 
     static func attributed(_ text: String) -> AttributedString {
+        let key = text as NSString
+        if let cached = preparedText.object(forKey: key) { return cached.value }
         var result = AttributedString()
         var cursor = text.startIndex
         for match in matches(in: text) {
@@ -41,6 +57,7 @@ enum CommentTimeLinks {
             cursor = range.upperBound
         }
         result += AttributedString(text[cursor...])
+        preparedText.setObject(CachedText(result), forKey: key, cost: text.utf16.count * 8 + 128)
         return result
     }
 

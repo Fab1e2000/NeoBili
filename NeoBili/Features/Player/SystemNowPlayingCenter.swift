@@ -1,3 +1,4 @@
+import AVFAudio
 import MediaPlayer
 import UIKit
 
@@ -20,6 +21,7 @@ final class SystemNowPlayingCenter {
     private let infoCenter = MPNowPlayingInfoCenter.default()
     private let commandCenter = MPRemoteCommandCenter.shared()
     private var commandTargets: [Any] = []
+    private var interruptionObserver: NSObjectProtocol?
     private var activeSessionID: UUID?
     private var metadata: SystemMediaMetadata?
     private var duration: TimeInterval = 0
@@ -36,6 +38,17 @@ final class SystemNowPlayingCenter {
 
     private init() {
         setCommandsEnabled(false)
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let rawValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: rawValue) == .began else { return }
+            // mpv uses CoreAudio directly, so the system cannot pause its timeline for us.
+            // Keep playback paused after the interruption; only an explicit play resumes it.
+            MainActor.assumeIsolated { self?.pauseHandler?() }
+        }
 
         commandTargets.append(commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in self?.playHandler?() }

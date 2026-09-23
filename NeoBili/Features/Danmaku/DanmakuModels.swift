@@ -20,6 +20,10 @@ struct DanmakuItem: Sendable {
 }
 
 enum DanmakuSettings {
+    static let fontScaleKey = "danmaku.fontScale"
+    static let opacityKey = "danmaku.opacity"
+    static let blockTopKey = "danmaku.blockTop"
+    static let blockBottomKey = "danmaku.blockBottom"
     static let coloredEnabledKey = "danmaku.colored.enabled"
     static let videoEnabledKey = "danmaku.video.enabled"
     static let liveEnabledKey = "danmaku.live.enabled"

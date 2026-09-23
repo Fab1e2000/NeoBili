@@ -11,6 +11,27 @@ import UIKit
 @MainActor
 final class OrientationLock {
     static let shared = OrientationLock()
-    var supportedOrientations: UIInterfaceOrientationMask = .portrait
-    private init() {}
+    private(set) var supportedOrientations: UIInterfaceOrientationMask = .portrait
+    private(set) var playbackOwner: UUID?
+
+    // Internal construction keeps ownership tests independent of the application's singleton.
+    init() {}
+
+    @discardableResult
+    func request(_ orientation: UIInterfaceOrientationMask, owner: UUID? = nil) -> Bool {
+        // Background pages may appear again during a native presentation/rotation.
+        // Their default portrait request cannot override the fullscreen player.
+        guard owner != nil || playbackOwner == nil else { return false }
+        if let owner { playbackOwner = owner }
+        guard supportedOrientations != orientation else { return false }
+        supportedOrientations = orientation
+        return true
+    }
+
+    @discardableResult
+    func endPlayback(owner: UUID) -> Bool {
+        guard playbackOwner == owner else { return false }
+        playbackOwner = nil
+        return request(.portrait)
+    }
 }

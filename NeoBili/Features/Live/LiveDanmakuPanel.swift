@@ -3,6 +3,10 @@ import SwiftUI
 /// 全屏时铺在直播画面上的实时飘幕层。引擎挂在模型上，
 /// 新弹幕到达即从右缘进入，不依赖任何播放时间轴。
 struct LiveDanmakuFlowView: UIViewRepresentable {
+    @AppStorage(DanmakuSettings.fontScaleKey) private var fontScale = 1.0
+    @AppStorage(DanmakuSettings.opacityKey) private var opacity = 1.0
+    @AppStorage(DanmakuSettings.blockTopKey) private var blockTop = false
+    @AppStorage(DanmakuSettings.blockBottomKey) private var blockBottom = false
     @AppStorage(DanmakuSettings.coloredEnabledKey) private var coloredEnabled = true
     let model: LiveDanmakuModel
 
@@ -15,7 +19,7 @@ struct LiveDanmakuFlowView: UIViewRepresentable {
 
     func updateUIView(_ engine: DanmakuEngine, context: Context) {
         engine.coloredEnabled = coloredEnabled
-        engine.fontSize = 18
+        engine.applyAppearance(fontSize: 18 * fontScale, opacity: opacity, blockTop: blockTop, blockBottom: blockBottom)
         engine.area = 0.5
     }
 
@@ -29,9 +33,6 @@ struct LiveDanmakuPanel: View {
     @Bindable var model: LiveDanmakuModel
     @AppStorage(DanmakuSettings.liveEnabledKey) private var flowEnabled = DanmakuSettings.defaultValue
 
-    @State private var position = ScrollPosition(edge: .bottom)
-    @State private var lastScrollAt = Date.distantPast
-    @State private var scrollTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,11 +40,9 @@ struct LiveDanmakuPanel: View {
             if !model.superChats.isEmpty {
                 superChatStrip
             }
-            messageList
+            LiveDanmakuMessageList(model: model)
         }
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
+        .mediaDetailContainer()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("直播间弹幕")
     }
@@ -73,7 +72,6 @@ struct LiveDanmakuPanel: View {
             .buttonStyle(.plain)
             .accessibilityLabel(flowEnabled ? "关闭飘幕" : "开启飘幕")
         }
-        .padding(.horizontal, 14)
         .padding(.bottom, 8)
     }
 
@@ -89,13 +87,24 @@ struct LiveDanmakuPanel: View {
                         .frame(width: 240)
                     }
                 }
-                .padding(.horizontal, 12)
                 .padding(.bottom, 8)
             }
         }
     }
 
-    private var messageList: some View {
+    private static func popularityText(_ value: Int) -> String {
+        value >= 10_000 ? String(format: "%.1f万人气", Double(value) / 10_000) : "\(value) 人气"
+    }
+}
+
+/// Message arrival invalidates only the scrolling list, not its header and SC cards.
+private struct LiveDanmakuMessageList: View {
+    let model: LiveDanmakuModel
+    @State private var position = ScrollPosition(edge: .bottom)
+    @State private var lastScrollAt = Date.distantPast
+    @State private var scrollTask: Task<Void, Never>?
+
+    var body: some View {
         ScrollView {
                 LazyVStack(alignment: .leading, spacing: 7) {
                     ForEach(model.messages) { message in
@@ -103,7 +112,6 @@ struct LiveDanmakuPanel: View {
                             .id(message.id)
                     }
                 }
-                .padding(.horizontal, 14)
                 .padding(.bottom, 6)
             }
             .onChange(of: model.messages.last?.id) { _, _ in
@@ -131,9 +139,6 @@ struct LiveDanmakuPanel: View {
         }
     }
 
-    private static func popularityText(_ value: Int) -> String {
-        value >= 10_000 ? String(format: "%.1f万人气", Double(value) / 10_000) : "\(value) 人气"
-    }
 }
 
 /// 单条弹幕：[粉丝牌] 名字：内容；表情弹幕（dm_type=1）整条渲染成图片。

@@ -134,3 +134,10 @@ swiftc -swift-version 6 -parse-as-library \
     "$HARNESS/src/ThemeIconRegression.swift" \
     -o "$BUILD_DIR/theme-icon"
 "$BUILD_DIR/theme-icon"
+
+# 缩略播放器退出期间的快速展开、关闭和切换媒体，不启动 UI 或网络。
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/NowPlaying/MediaPresentationState.swift" \
+    "$HARNESS/src/MiniPlayerInteractionRegression.swift" \
+    -o "$BUILD_DIR/mini-player-interaction"
+"$BUILD_DIR/mini-player-interaction"

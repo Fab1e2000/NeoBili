@@ -18,7 +18,6 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
     @State private var targetCount = 0
     @State private var replacing = false
     @State private var replacementPages = 0
-    @State private var preparing = false
 
     private func identifiers(_ videos: [Video]) -> [String] {
         videos.enumerated().map { $0.element.dimensionLookupBVID ?? "unavailable-\($0.offset)" }
@@ -39,9 +38,7 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
                 $0.append(VideoEntranceScope(ids: Set(batch.ids), generation: batchID, clock: entranceClock))
             }
             .overlay {
-                if preparing, entranceClock.starts.isEmpty, !videos.isEmpty {
-                    LoadingTaskAnchor()
-                }
+                VideoEntrancePreparingOverlay(clock: entranceClock, hasVideos: !videos.isEmpty)
             }
             .onChange(of: animatesEntrance) { _, enabled in
                 if !enabled { entranceClock.finishAnimations() }
@@ -64,7 +61,7 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
                 }
                 previousBatch = current
                 replacing = false
-                preparing = true
+                entranceClock.isPreparing = true
                 entranceClock.prepare(ids: currentIDs, generation: batchID, reset: reset)
 
                 if enabled || current.minimumSeconds > 0 {
@@ -86,8 +83,20 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
                     replacing = false
                 }
                 entranceClock.admit(approved.compactMap(\.dimensionLookupBVID), animated: animatesEntrance)
-                preparing = false
+                entranceClock.isPreparing = false
             }
+    }
+}
+
+/// 单独观察整批判断的进度，入列和准备状态的变化不会让外层列表跟着重算。
+private struct VideoEntrancePreparingOverlay: View {
+    let clock: VideoEntranceClock
+    let hasVideos: Bool
+
+    var body: some View {
+        if clock.isPreparing, !clock.hasStarts, hasVideos {
+            LoadingTaskAnchor()
+        }
     }
 }
 

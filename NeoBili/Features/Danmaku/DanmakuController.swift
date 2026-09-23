@@ -86,6 +86,10 @@ final class DanmakuController {
 
 /// 弹幕层的 SwiftUI 桥。只在这里创建/销毁 UIKit 引擎并把它接给控制器。
 struct DanmakuView: UIViewRepresentable {
+    @AppStorage(DanmakuSettings.fontScaleKey) private var fontScale = 1.0
+    @AppStorage(DanmakuSettings.opacityKey) private var opacity = 1.0
+    @AppStorage(DanmakuSettings.blockTopKey) private var blockTop = false
+    @AppStorage(DanmakuSettings.blockBottomKey) private var blockBottom = false
     @AppStorage(DanmakuSettings.coloredEnabledKey) private var coloredEnabled = true
     let controller: DanmakuController
     var isFullScreen = false
@@ -102,7 +106,7 @@ struct DanmakuView: UIViewRepresentable {
         engine.coloredEnabled = coloredEnabled
         engine.area = 0.5
         // 全屏观看距离更远，字号跟随 PiliPlus 的两档设置（内联 1.0 / 全屏 1.2）。
-        engine.fontSize = isFullScreen ? 18 : 15
+        engine.applyAppearance(fontSize: (isFullScreen ? 18 : 15) * fontScale, opacity: opacity, blockTop: blockTop, blockBottom: blockBottom)
         // 抑制（画面收起）时引擎整体短路：不注入、不推进，播放事件也不会
         // 唤醒它；隐藏属性让已上屏的冻结弹幕一并消失，恢复显示时由下一次
         // update/seek 继续正常注入。

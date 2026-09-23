@@ -3,11 +3,16 @@ import SwiftUI
 /// 独立搜索 Tab 的内容；输入框只挂在本 Tab 的导航栈上。
 struct SearchPage: View {
     let viewModel: SearchViewModel
+    @Binding var isFocused: Bool
+    @Environment(\.appThemeColor) private var themeColor
     let onSubmit: (String?) -> Void
     @State private var history = SearchHistory.shared
 
     var body: some View {
-        Group {
+        // Keep the search bar and its lifecycle above a stable container.
+        // Group distributes modifiers onto the changing content branch, which
+        // can recreate the input and invoke onDisappear on the first character.
+        VStack(spacing: 0) {
             if viewModel.isShowingSuggestions {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -26,30 +31,16 @@ struct SearchPage: View {
                 SearchResultsView(viewModel: viewModel)
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            Text("搜索历史").font(.headline)
-                            Spacer()
-                            Button("清空", systemImage: "trash") { history.clear() }
-                                .labelStyle(.iconOnly)
-                                .frame(width: 44, height: 44)
-                                .disabled(history.keywords.isEmpty)
-                                .accessibilityLabel("清空搜索历史")
-                                .accessibilityIdentifier("search.clearHistory")
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
-                        if history.keywords.isEmpty {
-                            Text("暂无搜索历史")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 20)
-                        }
-                        ForEach(history.keywords, id: \.self) { keyword in
-                            searchRow(keyword, keyword: keyword, symbol: "clock.arrow.circlepath")
-                            Divider().padding(.horizontal, 20)
-                        }
+                    VStack(alignment: .leading, spacing: 12) {
+                        historySection
+                        hotSearchSection
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
@@ -59,9 +50,93 @@ struct SearchPage: View {
             // 仅背景越过键盘安全区；列表仍正常避让键盘和搜索栏。
             Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
         }
-        .navigationTitle("搜索")
-        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaBar(edge: .top, spacing: 0) {
+            HomeSearchBar(text: Binding(get: { viewModel.query }, set: { viewModel.query = $0 }),
+                          isFocused: $isFocused,
+                          onSubmit: { onSubmit(nil) },
+                          onCancel: { isFocused = false })
+                .frame(height: 56)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
+        }
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .task { await viewModel.loadHotSearches() }
+        .onDisappear { isFocused = false }
+        .toolbar(.hidden, for: .navigationBar)
         .onAppear { OrientationController.enterPortrait() }
+    }
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                sectionTitle("搜索历史")
+                Spacer()
+                Button("清空", systemImage: "trash") { history.clear() }
+                    .font(.caption)
+                    .labelStyle(.iconOnly)
+                    .frame(width: 44, height: 36)
+                    .disabled(history.keywords.isEmpty)
+                    .accessibilityLabel("清空搜索历史")
+                    .accessibilityIdentifier("search.clearHistory")
+            }
+            if history.keywords.isEmpty {
+                Text("暂无搜索历史").font(.caption).foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                WrappingCapsuleLayout(spacing: 8) {
+                    ForEach(history.keywords, id: \.self) { keyword in
+                        Button { onSubmit(keyword) } label: {
+                            Text(keyword)
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+                                .frame(minHeight: 40)
+                                .contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityLabel(keyword)
+                    }
+                }
+            }
+        }
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title).font(.subheadline.weight(.semibold))
+            .frame(height: 36, alignment: .leading)
+    }
+
+    private var hotSearchSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionTitle("热搜")
+            if viewModel.isLoadingHotSearches {
+                ProgressView().frame(maxWidth: .infinity).padding(8)
+            } else if let error = viewModel.hotSearchError {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(error).font(.caption).foregroundStyle(.secondary)
+                    Button("重新加载") { Task { await viewModel.loadHotSearches() } }
+                        .font(.caption)
+                }.padding(.vertical, 8)
+            } else if viewModel.hotSearches.isEmpty {
+                Text("暂无热搜").font(.caption).foregroundStyle(.secondary).padding(.vertical, 8)
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 2), spacing: 0) {
+                ForEach(Array(viewModel.hotSearches.enumerated()), id: \.element.id) { index, item in
+                    Button { onSubmit(item.keyword) } label: {
+                        HStack(spacing: 6) {
+                            Text(String(index + 1)).font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(index < 3 ? themeColor : Color.secondary).frame(width: 20)
+                            Text(item.title).font(.caption).foregroundStyle(.primary)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(minHeight: 40)
+                        .contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel("第\(index + 1)名，\(item.title)")
+                }
+            }
+        }
     }
 
     private func searchRow(_ title: String, keyword: String, symbol: String? = nil) -> some View {

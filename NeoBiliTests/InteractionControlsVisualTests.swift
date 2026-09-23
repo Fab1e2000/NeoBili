@@ -26,7 +26,7 @@ final class InteractionControlsVisualTests: XCTestCase {
             window.isHidden = true
             window.rootViewController = nil
             previousWindow?.makeKey()
-            OrientationLock.shared.supportedOrientations = orientation
+            OrientationLock.shared.request(orientation)
             previousWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
             scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { _ in }
         }

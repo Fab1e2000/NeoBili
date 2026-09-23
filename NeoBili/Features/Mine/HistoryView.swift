@@ -129,13 +129,12 @@ struct HistoryView: View {
         // 同一视频的转场源在共享命名空间里撞 id。
         .videoTransitionSource("history-\(summary?.bvid ?? "")", in: videoTransition)
         // 移除动效第一段：原地淡出、占位不变，列表此时不动。
-        .cardFadeOut(isRemoving: removals.hiddenIDs.contains(item.id))
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
             await loadMoreIfNeeded(current: item)
             if let summary {
-                await VideoPreparationCache.shared.prefetch(
+                await VideoPreparationCache.shared.prefetchWhenSettled(
                     bvid: summary.bvid,
                     cid: summary.cid > 0 ? summary.cid : nil
                 )
@@ -232,29 +231,23 @@ struct HistoryView: View {
     /// 卡片一直杵在那儿，看起来就是「点了没反应，过一会儿才消失」。
     /// 失败时按原位放回去并说明原因。
     ///
-    /// 动效拆成两段顺序执行（`CardRemovalAnimation`）：先原地淡出，完全
-    /// 看不见后空位才收拢、下方卡片上移补位——两段同时进行会出现叠影。
+    /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
     private func delete(_ item: HistoryItem) async {
         guard items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
         defer { removals.finish(item.id) }
         let sessionID = account.sessionID
         var removedIndex: Int?
         do {
-            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.menuDismissWaitMilliseconds, source: .history)
-            withAnimation(CardRemovalAnimation.fade(source: .history)) { removals.hide(item.id) }
-            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.fadeMilliseconds, source: .history)
-            withAnimation(CardRemovalAnimation.collapse(source: .history)) {
-                removedIndex = removals.remove(item.id, from: &items)
-            }
+            removals.hide(item.id)
+            removedIndex = removals.remove(item.id, from: &items)
             guard await feedback.confirmRemoval("已移除历史记录"),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.deleteHistory(kid: item.kidParam)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
-            withAnimation(CardRemovalAnimation.collapse(source: .history)) { items.removeAll { $0.id == item.id } }
-            try? await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.collapseMilliseconds, source: .history)
+            items.removeAll { $0.id == item.id }
         } catch {
             if let removedIndex {
-                withAnimation(CardRemovalAnimation.collapse(source: .history)) { removals.restore(item, at: removedIndex, in: &items) }
+                removals.restore(item, at: removedIndex, in: &items)
             }
             if !error.isCancellation { feedback.show(error.localizedDescription) }
         }

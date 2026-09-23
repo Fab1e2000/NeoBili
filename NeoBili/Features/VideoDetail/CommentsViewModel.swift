@@ -33,7 +33,10 @@ final class CommentsViewModel {
         }
     }
 
+    @ObservationIgnored private var commentIDs: Set<Int> = []
+    @ObservationIgnored private var replyIDs: [Int: Set<Int>] = [:]
     private var nextPage = 1
+    private let fetchReplies: @MainActor (Int, Int, Int, Int) async throws -> CommentReplyPage
     private let fetchComments: @MainActor (Int, Int, Int) async throws -> CommentPage
 
     /// 只显示服务器确认返回的新评论，不构造虚假的本地发送成功记录。
@@ -46,7 +49,8 @@ final class CommentsViewModel {
             var replies = loadedReplies[root] ?? comments.first(where: { $0.rpid == root })?.replies ?? []
             if !replies.contains(where: { $0.rpid == comment.rpid }) { replies.insert(comment, at: 0) }
             loadedReplies[root] = replies
-        } else if !comments.contains(where: { $0.rpid == comment.rpid }) {
+            replyIDs[root] = Set(replies.map(\.id))
+        } else if commentIDs.insert(comment.id).inserted {
             comments.insert(comment, at: 0)
             totalCount += 1
         }
@@ -97,12 +101,16 @@ final class CommentsViewModel {
     }
 
     init(oid: Int, type: Int,
+         fetchReplies: @escaping @MainActor (Int, Int, Int, Int) async throws -> CommentReplyPage = {
+             try await BiliAPI.commentReplies(oid: $0, type: $1, rootId: $2, page: $3)
+         },
          fetchComments: @escaping @MainActor (Int, Int, Int) async throws -> CommentPage = {
              try await BiliAPI.comments(oid: $0, type: $1, page: $2)
          }) {
         self.oid = oid
         self.type = type
         self.fetchComments = fetchComments
+        self.fetchReplies = fetchReplies
     }
 
     /// 视频评论区的便利入口：`type` 固定是 1。
@@ -125,7 +133,9 @@ final class CommentsViewModel {
         // 只有接近末尾的那几条才触发翻页，中间的评论滚过时不会重复请求。
         guard comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
         isLoadingMore = true
-        await loadNextPage()
+        // 与动态流一致：行离屏不会丢弃已经开始的续页，也不会让后续尾行错过触发。
+        let task = Task { await self.loadNextPage() }
+        await task.value
         isLoadingMore = false
     }
 
@@ -166,6 +176,7 @@ final class CommentsViewModel {
     func setExpandedForTesting(rootId: Int, replies: [Comment]) {
         expandedCommentIDs.insert(rootId)
         loadedReplies[rootId] = replies
+        replyIDs[rootId] = Set(replies.map(\.id))
     }
 
     func shouldShowAllReplies(_ comment: Comment) -> Bool {
@@ -200,17 +211,20 @@ final class CommentsViewModel {
     func loadMoreReplies(for comment: Comment) async {
         let rootId = comment.id
         guard !loadingReplyIDs.contains(rootId) else { return }
+        guard replyNextPage[rootId] == nil || moreRepliesIDs.contains(rootId) || replyErrors[rootId] != nil else { return }
         replyErrors[rootId] = nil
         loadingReplyIDs.insert(rootId)
         defer { loadingReplyIDs.remove(rootId) }
 
         let page = replyNextPage[rootId] ?? 1
         do {
-            let result = try await BiliAPI.commentReplies(oid: oid, type: type, rootId: rootId, page: page)
+            let result = try await fetchReplies(oid, type, rootId, page)
+            try Task.checkCancellation()
             let incoming = result.replies ?? []
             var all = loadedReplies[rootId] ?? []
-            let existingIDs = Set(all.map(\.id))
-            all.append(contentsOf: incoming.filter { !existingIDs.contains($0.id) })
+            var known = replyIDs[rootId] ?? []
+            all.append(contentsOf: incoming.filter { known.insert($0.id).inserted })
+            replyIDs[rootId] = known
             loadedReplies[rootId] = all
             replyNextPage[rootId] = page + 1
 
@@ -220,10 +234,19 @@ final class CommentsViewModel {
                 moreRepliesIDs.insert(rootId)
             }
         } catch {
+            guard !error.isCancellation else { return }
             // 保留已显示的预览/回复和页码，允许重试这一页。
             moreRepliesIDs.remove(rootId)
             replyErrors[rootId] = error.localizedDescription
         }
+    }
+
+    /// 楼中楼的分页边界也由模型判断，视图只传入当前行。
+    func loadMoreRepliesIfNeeded(current reply: Comment, root: Comment) async {
+        guard hasMoreReplies(root), !isLoadingReplies(root), replyErrors[root.id] == nil,
+              allReplies(for: root).suffix(3).contains(where: { $0.id == reply.id }) else { return }
+        let task = Task { await self.loadMoreReplies(for: root) }
+        await task.value
     }
 
     func retry() async {
@@ -250,8 +273,7 @@ final class CommentsViewModel {
                 return
             }
             // 热门排序下相邻两页偶尔会返回同一条评论，重复的会让 ForEach 的 id 冲突。
-            var existingIDs = Set(comments.map(\.id))
-            comments.append(contentsOf: newComments.filter { existingIDs.insert($0.id).inserted })
+            comments.append(contentsOf: newComments.filter { commentIDs.insert($0.id).inserted })
             nextPage += 1
             if comments.count >= totalCount {
                 hasMore = false

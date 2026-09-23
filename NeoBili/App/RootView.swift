@@ -6,19 +6,6 @@ extension EnvironmentValues {
     @Entry var videoTransitionNamespace: Namespace.ID?
 }
 
-extension View {
-    /// 把这个视图登记成 zoom 转场的起点。命名空间还没准备好时原样返回。
-    @ViewBuilder
-    func videoTransitionSource(_ id: String, in namespace: Namespace.ID?) -> some View {
-        if let namespace {
-            matchedTransitionSource(id: id, in: namespace)
-                .background { MediaZoomSource(id: id, namespace: namespace) }
-        } else {
-            self
-        }
-    }
-}
-
 /// 主页面保持独立导航与数据状态。
 enum MainTab: Hashable {
     case home, following, live, mine, search
@@ -29,11 +16,10 @@ struct RootView: View {
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
+    @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     @State private var search = SearchViewModel()
-    @State private var isSearchPresented = false
-    @FocusState private var isSearchFocused: Bool
-    @State private var searchReturnTab: MainTab = .home
+    @State private var isSearchFocused = false
     @Environment(\.scenePhase) private var scenePhase
     @Namespace private var videoTransition
 
@@ -59,39 +45,38 @@ struct RootView: View {
         return TabView(selection: tabSelection) {
             Tab("直播", systemImage: "dot.radiowaves.left.and.right", value: MainTab.live) {
                 LiveView(onOpenRoom: openLiveRoom)
-                .opacity(tabContentOpacity)
+                .opacity(tabContentOpacity).tint(.primary)
             }
             Tab("推荐", systemImage: "house.fill", value: MainTab.home) {
-                HomeView().opacity(tabContentOpacity)
+                HomeView().opacity(tabContentOpacity).tint(.primary)
             }
             Tab("关注", systemImage: "person.2.fill", value: MainTab.following) {
-                FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") }).id(account.sessionID).opacity(tabContentOpacity)
+                FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") }).id(account.sessionID).opacity(tabContentOpacity).tint(.primary)
             }
             Tab("我的", systemImage: "person.crop.circle", value: MainTab.mine) {
-                MineView().opacity(tabContentOpacity)
+                MineView().opacity(tabContentOpacity).tint(.primary)
             }
             Tab("搜索", systemImage: "magnifyingglass", value: MainTab.search, role: .search) {
                 NavigationStack {
-                    SearchPage(viewModel: search, onSubmit: submitSearch)
+                    SearchPage(viewModel: search, isFocused: $isSearchFocused, onSubmit: submitSearch)
                 }
-                // 搜索仅属于这一条导航栈，退出时不会迁移到其它 Tab 的顶部。
-                .searchable(text: $search.query, isPresented: $isSearchPresented, prompt: "搜索视频")
-                .searchFocused($isSearchFocused)
-                .onSubmit(of: .search) { submitSearch(nil) }
+                .tint(.primary)
                 .background {
                     Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
                 }
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
-        .tabMiniPlayerHost(isActive: { !nowPlaying.isServiceSheetPresented }, transitionNamespace: videoTransition)
-        .tabViewSearchActivation(.searchTabSelection)
-        .onChange(of: isSearchPresented) { wasPresented, presented in
-            // 取消搜索一次返回原页面；失去键盘焦点本身不结束搜索。
-            guard wasPresented, !presented, displayedTab == .search,
-                  !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented else { return }
-            switchTab(to: searchReturnTab)
+        .background {
+            TabReselectionObserver {
+                guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented else { return }
+                if displayedTab == .search { isSearchFocused = true }
+                if displayedTab == .home { NotificationCenter.default.post(name: .homeTabReselected, object: nil) }
+            }.frame(width: 0, height: 0)
         }
+        .tint(AppTheme.selected(themeID).color)
+        .tabBarMinimizeBehavior(miniPlayerEnabled ? .onScrollDown : .never)
+        .onChange(of: miniPlayerEnabled) { nowPlaying.applyMiniPlayerSetting() }
+        .tabMiniPlayerHost(isActive: { !nowPlaying.isServiceSheetPresented }, transitionNamespace: videoTransition)
         .task(id: search.trimmedQuery) { await search.loadSuggestions() }
         .onChange(of: search.trimmedQuery) {
             if search.trimmedQuery.isEmpty { search.reset() }
@@ -104,14 +89,14 @@ struct RootView: View {
         .actionFeedbackOverlay()
         // 视频页由最外层持有，播放器和整页状态统一由 NowPlayingStore 管理；
         // 视频页退出后由 store 将播放器交给小窗，关闭小窗时才释放。
-        .mediaZoomCover(isPresented: Binding(
-            get: { nowPlaying.isExpanded && !nowPlaying.isServiceSheetPresented },
-            set: {
+        .fullScreenCover(item: Binding(
+            get: { nowPlaying.isServiceSheetPresented ? nil : nowPlaying.videoPresentation },
+            set: { destination in
                 guard !nowPlaying.isServiceSheetPresented else { return }
-                if $0 { nowPlaying.isExpanded = true } else { nowPlaying.dismissVideoPage() }
+                if destination != nil { nowPlaying.isExpanded = true }
+                else { nowPlaying.dismissVideoPage() }
             }
-        ), entrySourceID: nowPlaying.transitionSourceID, namespace: videoTransition,
-           onDismiss: nowPlaying.finishDismissal) {
+        ), onDismiss: nowPlaying.finishDismissal) { _ in
             Group {
                 if let player = nowPlaying.livePlayer {
                     LiveRoomView(player: player, keepsPlaybackOnDismiss: true,
@@ -120,9 +105,11 @@ struct RootView: View {
                     VideoPage()
                 }
             }
-                // 视频页有自己的 UIHostingController，不会继承根视图注入的文字
-                // 档位（会退回跟随系统设置），必须在这里再补一次。
                 .appTextSize()
+                .presentationBackground(.clear)
+                .presentationContentInteraction(.resizes)
+                .navigationTransition(.zoom(sourceID: MediaPresentationState.Source.player,
+                                            in: videoTransition))
                 .background { VideoPagePresentationObserver(
                     onDidAppear: nowPlaying.videoPageDidAppear,
                     onInteractionBegan: nowPlaying.videoPageInteractionBegan,
@@ -167,7 +154,7 @@ struct RootView: View {
     private func submitSearch(_ keyword: String?) {
         search.submit(keyword: keyword)
         guard search.hasSubmittedSearch else { return }
-        // 保持搜索 Tab 呈现，只收键盘，避免搜索框先退出底栏又进入导航栏。
+        // 提交后保留顶部搜索框，只收起键盘。
         isSearchFocused = false
     }
 
@@ -189,18 +176,13 @@ struct RootView: View {
 
     private func switchTab(to tab: MainTab) {
         // 重复点当前 Tab 是"回到顶部/刷新"的手势，
-        // 由 HomeTabReselectionObserver 单独接管，这里不插手。
+        // 由 TabReselectionObserver 单独接管，这里不插手。
         guard tab != displayedTab else { return }
 
         tabSwitchTask?.cancel()
 
         // 关注页由动态卡片负责入场，避免整页先淡入、数据就绪后卡片再入场。
-        if tab == .search {
-            searchReturnTab = displayedTab
-        } else {
-            isSearchFocused = false
-            isSearchPresented = false
-        }
+        isSearchFocused = false
         guard animatesPageEntrance, tab != .following, tab != .search else {
             finishTabEntrance()
             displayedTab = tab

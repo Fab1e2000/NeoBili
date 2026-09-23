@@ -104,12 +104,11 @@ struct WatchLaterView: View {
         // A。应用侧无法分辨菜单归属，只能等菜单完全收起再长按下一张卡。
         .videoTransitionSource("wl-\(summary?.bvid ?? "")", in: videoTransition)
         // 移除动效第一段：原地淡出、占位不变，列表此时不动。
-        .cardFadeOut(isRemoving: removals.hiddenIDs.contains(item.id))
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
             if let summary {
-                await VideoPreparationCache.shared.prefetch(
+                await VideoPreparationCache.shared.prefetchWhenSettled(
                     bvid: summary.bvid,
                     cid: summary.cid > 0 ? summary.cid : nil
                 )
@@ -143,8 +142,7 @@ struct WatchLaterView: View {
 
     /// 同 `HistoryView.delete`：先移走卡片再发请求，失败了放回原位。
     ///
-    /// 动效拆成两段顺序执行（`CardRemovalAnimation`）：先原地淡出，完全
-    /// 看不见后空位才收拢、下方卡片上移补位——两段同时进行会出现叠影。
+    /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
     private func remove(_ item: WatchLaterItem) async {
         guard let aid = item.aid else { return }
         guard items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
@@ -152,21 +150,16 @@ struct WatchLaterView: View {
         let sessionID = account.sessionID
         var removedIndex: Int?
         do {
-            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.menuDismissWaitMilliseconds, source: .watchLater)
-            withAnimation(CardRemovalAnimation.fade(source: .watchLater)) { removals.hide(item.id) }
-            try await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.fadeMilliseconds, source: .watchLater)
-            withAnimation(CardRemovalAnimation.collapse(source: .watchLater)) {
-                removedIndex = removals.remove(item.id, from: &items)
-            }
+            removals.hide(item.id)
+            removedIndex = removals.remove(item.id, from: &items)
             guard await feedback.confirmRemoval("已移出稍后再看"),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.removeWatchLater(aid: aid)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
-            withAnimation(CardRemovalAnimation.collapse(source: .watchLater)) { items.removeAll { $0.id == item.id } }
-            try? await CardRemovalAnimation.wait(milliseconds: CardRemovalAnimation.collapseMilliseconds, source: .watchLater)
+            items.removeAll { $0.id == item.id }
         } catch {
             if let removedIndex {
-                withAnimation(CardRemovalAnimation.collapse(source: .watchLater)) { removals.restore(item, at: removedIndex, in: &items) }
+                removals.restore(item, at: removedIndex, in: &items)
             }
             if !error.isCancellation { feedback.show(error.localizedDescription) }
         }

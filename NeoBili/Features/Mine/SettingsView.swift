@@ -9,6 +9,8 @@ struct SettingsView: View {
             Section("播放") {
                 NavigationLink("播放与画质") { PlaybackSettingsView() }
                     .accessibilityIdentifier("settings.playback")
+                NavigationLink("弹幕设置") { DanmakuSettingsView() }
+                    .accessibilityIdentifier("settings.danmaku")
                 NavigationLink("播放器手势") { PlayerGestureSettingsView() }
                     .accessibilityIdentifier("settings.playerGestures")
             }

@@ -89,7 +89,7 @@ struct FavoriteFolderSheet: View {
 
                     if selection.contains(folder.id) {
                         Image(systemName: "checkmark")
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(.primary)
                     }
                 }
                 .contentShape(Rectangle())

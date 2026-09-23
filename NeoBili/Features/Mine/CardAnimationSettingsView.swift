@@ -2,13 +2,12 @@ import SwiftUI
 
 struct CardAnimationSettingsView: View {
     @AppStorage(CardAnimationSettings.masterKey) private var enabled = CardAnimationSettings.defaultValue
-    @AppStorage(CardAnimationSettings.dynamicEnterKey) private var dynamicEnter = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExit = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEnter = CardAnimationSettings.defaultValue
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
 
-    private var enabledEffects: [Bool] { [enabled, dynamicEnter, dynamicExit, pageEnter] }
+    private var enabledEffects: [Bool] { [enabled, dynamicExit, pageEnter] }
 
     var body: some View {
         Form {
@@ -17,10 +16,14 @@ struct CardAnimationSettingsView: View {
                     .accessibilityIdentifier("settings.cardAnimations.enabled")
             }
 
-            Section("视频卡片") {
+            Section {
                 ForEach(VideoCardAnimationSource.allCases.filter { !$0.supportedPhases.isEmpty && $0 != .live }) { source in
                     VideoCardAnimationSettingsLink(source: source)
                 }
+            } header: {
+                Text("视频卡片")
+            } footer: {
+                Text("推荐、直播和搜索页面的卡片以原位淡入方式出现。")
             }
             .disabled(!enabled)
 
@@ -30,8 +33,6 @@ struct CardAnimationSettingsView: View {
             .disabled(!enabled)
 
             Section("动态卡片") {
-                Toggle("进入动画", isOn: $dynamicEnter)
-                    .accessibilityIdentifier("settings.cardAnimations.dynamicEnter")
                 Toggle("退出动画", isOn: $dynamicExit)
                     .accessibilityIdentifier("settings.cardAnimations.dynamicExit")
             }
@@ -104,7 +105,7 @@ private struct VideoCardSourceAnimationSettingsView: View {
         Form {
             Section {
                 if source.supportedPhases.contains(.enter) {
-                    Toggle("进入动画", isOn: Binding(get: { enter ?? legacyEnter }, set: { enter = $0 }))
+                    Toggle("原位淡入", isOn: Binding(get: { enter ?? legacyEnter }, set: { enter = $0 }))
                         .accessibilityIdentifier("settings.cardAnimations.\(source.rawValue).enter")
                 }
                 if source.supportedPhases.contains(.exit) {

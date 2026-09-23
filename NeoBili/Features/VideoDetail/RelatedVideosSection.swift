@@ -20,6 +20,8 @@ struct RelatedVideosSection: View {
     }
 
     var body: some View {
+        let visibleVideos = visibleVideos
+        let lastVideoID = visibleVideos.last?.id
         // Lazy 化：相关视频一次二三十条，普通 VStack 会把全部封面同时
         // 送去下载和解码，打开视频页就是一次 CPU/带宽尖峰。行的外观与
         // 分隔线逻辑保持不变。
@@ -57,7 +59,7 @@ struct RelatedVideosSection: View {
                     .padding(.vertical, 4)
                     // 出现在屏幕上就先把播放地址取回来，点开时通常已经有结果了。
                     .task {
-                        await VideoPreparationCache.shared.prefetch(
+                        await VideoPreparationCache.shared.prefetchWhenSettled(
                             bvid: video.bvid,
                             cid: video.cid
                         )
@@ -65,7 +67,7 @@ struct RelatedVideosSection: View {
 
                     // 分隔线与推荐内容的左右边缘对齐；
                     // 最后一条不画，列表末尾不该悬着一根线。
-                    if video.id != visibleVideos.last?.id {
+                    if video.id != lastVideoID {
                         Divider()
                     }
                 }

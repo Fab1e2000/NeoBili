@@ -37,17 +37,21 @@ struct CommentsList: View {
     @Environment(ActionFeedback.self) private var feedback
 
     var body: some View {
+        let comments = viewModel.comments
+        let lastCommentID = comments.last?.id
         LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(viewModel.comments) { comment in
-                CommentRow(comment: comment, viewModel: viewModel)
-                    .padding(.horizontal, CommentLayout.pageHorizontalInset)
-                    .padding(.vertical, CommentLayout.rowVerticalPadding)
-                    .task { await viewModel.loadMoreIfNeeded(current: comment) }
-
-                // 最后一条下面不画线：列表末尾悬着一根分隔线看起来像还没加载完。
-                if comment.id != viewModel.comments.last?.id {
-                    Divider()
-                        .padding(.leading, CommentLayout.pageHorizontalInset)
+            ForEach(comments) { comment in
+                VStack(alignment: .leading, spacing: 0) {
+                    CommentRow(comment: comment, viewModel: viewModel)
+                        .padding(.horizontal, CommentLayout.pageHorizontalInset)
+                        .padding(.vertical, CommentLayout.rowVerticalPadding)
+                    if comment.id != lastCommentID {
+                        Divider().padding(.leading, CommentLayout.pageHorizontalInset)
+                    }
+                }
+                .task(id: comments.suffix(5).contains(where: { $0.id == comment.id }) ? lastCommentID : nil) {
+                    guard comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
+                    await viewModel.loadMoreIfNeeded(current: comment)
                 }
             }
 
@@ -141,15 +145,6 @@ struct CommentRow: View {
     /// 就是全部回复，再画一块会套娃。
     var showsReplies = true
 
-    @Environment(AccountStore.self) private var account
-    @Environment(\.openCommentThread) private var openCommentThread
-    @Environment(\.replyToComment) private var replyToComment
-
-    /// 正文是否已经展开。每条评论各自记住自己的状态。
-    @State private var isMessageExpanded = false
-    @State private var fullMessageHeight: CGFloat = 0
-    @State private var collapsedMessageHeight: CGFloat = 0
-
     var body: some View {
         HStack(alignment: .top, spacing: CommentLayout.avatarTextSpacing) {
             BiliImage(url: comment.member.secureAvatarURL)
@@ -165,7 +160,7 @@ struct CommentRow: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
 
-                messageText
+                ExpandableCommentMessage(comment: comment)
                     .padding(.top, CommentLayout.textVerticalSpacing)
 
                 if !comment.pictures.isEmpty {
@@ -176,12 +171,11 @@ struct CommentRow: View {
                         .padding(.top, CommentLayout.textVerticalSpacing)
                 }
 
-                metaRow
+                CommentMetaRow(comment: comment, viewModel: viewModel)
                     .padding(.top, CommentLayout.actionRowGap)
 
-                if showsReplies, comment.rcount > 0 || !(viewModel.submittedReplies[comment.id] ?? []).isEmpty {
-                    replySection
-                        .padding(.top, CommentLayout.replyBlockGap)
+                if showsReplies {
+                    CommentReplyPreview(comment: comment, viewModel: viewModel)
                 }
             }
 
@@ -192,15 +186,22 @@ struct CommentRow: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+}
+
+private struct CommentMetaRow: View {
+    let comment: Comment
+    let viewModel: CommentsViewModel
+    @Environment(\.replyToComment) private var replyToComment
+
     /// 时间 + 点赞按钮那一行。
-    private var metaRow: some View {
+    var body: some View {
         HStack(spacing: 12) {
             Text(comment.relativeTime)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
             HStack(spacing: 8) {
-                likeButton
+                CommentLikeButton(comment: comment, viewModel: viewModel)
                 if let replyToComment {
                     Button { replyToComment(comment) } label: {
                         CommentActionLabel(title: "回复", symbol: "arrowshape.turn.up.left")
@@ -212,7 +213,14 @@ struct CommentRow: View {
         }
     }
 
-    private var likeButton: some View {
+}
+
+private struct CommentLikeButton: View {
+    let comment: Comment
+    let viewModel: CommentsViewModel
+    @Environment(AccountStore.self) private var account
+
+    var body: some View {
         let isLiked = viewModel.isLiked(comment)
         let count = viewModel.likeCount(comment)
 
@@ -229,13 +237,22 @@ struct CommentRow: View {
         .accessibilityAddTraits(isLiked ? [.isSelected] : [])
     }
 
+}
+
+/// 高度变化和展开状态只更新正文，不重建头像、操作行或楼中楼。
+struct ExpandableCommentMessage: View {
+    let comment: Comment
+    @State private var isMessageExpanded = false
+    @State private var overflowMessageHeight: CGFloat = 0
+    @State private var collapsedMessageHeight: CGFloat = 0
+
     // MARK: - 正文展开折叠
 
     /// 正文和「展开」按钮。
     ///
     /// 以前这里是个返回两个视图的 ViewBuilder，交给外层 VStack 去排；现在收成
     /// 一个 VStack，外层每一段的间距才能一眼看清。
-    private var messageText: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: CommentLayout.textVerticalSpacing) {
             messageBody
                 .foregroundStyle(.primary)
@@ -260,7 +277,7 @@ struct CommentRow: View {
                 .accessibilityLabel(isMessageExpanded ? "收起评论正文" : "展开评论正文")
                 .font(.caption.weight(.medium))
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.primary)
             }
         }
     }
@@ -270,23 +287,28 @@ struct CommentRow: View {
                          font: .subheadline, textStyle: .subheadline)
     }
 
-    /// 用相同宽度和表情渲染测量两种高度，换行、字体和表情加载都会重新判断。
+    private var measuredMessageBody: some View {
+        CommentEmoteText(message: comment.message, emotes: comment.emotes,
+                         font: .subheadline, textStyle: .subheadline, loadsEmotes: false)
+    }
+
+    /// 只比较六行和七行即可知道是否溢出，不为收起的长文排版全部内容。
     private var messageMeasurements: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
-                messageBody
+                measuredMessageBody
                     .lineLimit(CommentLayout.collapsedMessageLines)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(width: geometry.size.width, alignment: .leading)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
                         collapsedMessageHeight = $0
                     }
-                messageBody
-                    .lineLimit(nil)
+                measuredMessageBody
+                    .lineLimit(CommentLayout.collapsedMessageLines + 1)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(width: geometry.size.width, alignment: .leading)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                        fullMessageHeight = $0
+                        overflowMessageHeight = $0
                     }
             }
             .hidden()
@@ -296,7 +318,20 @@ struct CommentRow: View {
     }
 
     private var canExpandMessage: Bool {
-        fullMessageHeight > collapsedMessageHeight + 0.5
+        overflowMessageHeight > collapsedMessageHeight + 0.5
+    }
+
+}
+
+private struct CommentReplyPreview: View {
+    let comment: Comment
+    let viewModel: CommentsViewModel
+    @Environment(\.openCommentThread) private var openCommentThread
+
+    var body: some View {
+        if comment.rcount > 0 || !(viewModel.submittedReplies[comment.id] ?? []).isEmpty {
+            replySection.padding(.top, CommentLayout.replyBlockGap)
+        }
     }
 
     // MARK: - 楼中楼展开
@@ -342,7 +377,7 @@ struct CommentRow: View {
             if viewModel.shouldShowAllReplies(comment) {
                 Text("查看全部回复")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.primary)
             }
 
         }
@@ -383,7 +418,7 @@ struct CommentActionLabel: View {
             Text(title)
         }
         .font(.caption2)
-        .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+        .foregroundStyle(isSelected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.secondary))
         .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 8)
         .frame(minWidth: 44, minHeight: 32)

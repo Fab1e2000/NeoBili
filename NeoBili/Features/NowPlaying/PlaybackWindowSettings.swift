@@ -5,8 +5,7 @@ enum PlaybackWindowSettings {
     static let defaultValue = true
 
     static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
-        // 底部播放器始终可用，忽略旧版本保存的悬浮小窗开关。
-        true
+        defaults.object(forKey: storageKey) as? Bool ?? defaultValue
     }
 }
 

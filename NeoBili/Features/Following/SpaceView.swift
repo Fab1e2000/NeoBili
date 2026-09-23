@@ -5,6 +5,7 @@ import SwiftUI
 /// 排版参考 B 站客户端的空间页，但只保留看内容需要的部分：充电、大航海、
 /// 特别关注这些和播放无关的入口都不做。
 struct SpaceView: View {
+    @Environment(\.appThemeColor) private var themeColor
     let up: FollowedUp
 
     @Environment(NowPlayingStore.self) private var nowPlaying
@@ -210,7 +211,7 @@ struct SpaceView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
-                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .background(themeColor, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                     }
 
                     if viewModel.card?.isVIP == true {
@@ -253,7 +254,7 @@ struct SpaceView: View {
                 // 没设置过头图（或者名片还没回来）时给一层渐变，
                 // 比让图片控件显示「图裂了」的占位好看得多。
                 LinearGradient(
-                    colors: [Color.accentColor.opacity(0.55), Color.accentColor.opacity(0.15)],
+                    colors: [themeColor.opacity(0.55), themeColor.opacity(0.15)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -324,7 +325,7 @@ struct SpaceView: View {
         if isActive {
             button.buttonStyle(.glass).foregroundStyle(.secondary)
         } else {
-            button.buttonStyle(.glassProminent).tint(.accentColor)
+            button.buttonStyle(.glassProminent).tint(themeColor)
         }
     }
 
@@ -389,7 +390,7 @@ struct SpaceView: View {
                     )
                 }
                 // 空间投稿列表里没有 cid，预取要先取一次详情再取播放地址。
-                .task { await VideoPreparationCache.shared.prefetch(bvid: video.bvid) }
+                .task { await VideoPreparationCache.shared.prefetchWhenSettled(bvid: video.bvid) }
             }
 
             if viewModel.isLoadingMoreVideos {
@@ -423,22 +424,18 @@ struct SpaceView: View {
                 }
             }
             ForEach(visibleEntries) { entry in
-                DynamicCard(
+                DynamicFeedCard(
                     entry: entry,
-                    isLiked: feed.isLiked(entry),
-                    likeCount: feed.likeCount(entry),
+                    feed: feed,
+                    lastVisibleID: visibleEntries.last?.id,
                     onOpenVideo: { open(entry) },
                     // 已经在这个 UP 的空间里了，头像不再是入口。
                     onOpenAuthor: nil,
                     onLike: { like(entry) },
                     onOpenDetail: { detailEntry = entry }
                 )
-                .videoCardEntrance(category: .dynamic)
                 .videoEntranceIdentity(entry.video?.bvid)
                 .videoTransitionSource("space-dynamic-\(entry.id)", in: dynamicTransition)
-                .onScrollVisibilityChange(threshold: 0.1) { visible in
-                    if visible { FollowingReadStore.shared.markViewed(entry) }
-                }
                 .contextMenu {
                     if let video = entry.video,
                        video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
@@ -447,13 +444,6 @@ struct SpaceView: View {
                 }
                 .padding(.horizontal, DynamicCardLayout.pageHorizontalInset)
                 .padding(.vertical, DynamicCardLayout.cardVerticalSpacing)
-                .task { await feed.loadMoreIfNeeded(current: entry) }
-                .task {
-                    if let video = entry.video,
-                       video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
-                        await VideoPreparationCache.shared.prefetch(bvid: video.bvid)
-                    }
-                }
             }
 
             if feed.isLoadingMore {

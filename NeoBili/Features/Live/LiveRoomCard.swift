@@ -4,6 +4,16 @@ struct LiveRoomCard: View {
     let room: LiveRoom
 
     var body: some View {
+        LiveRoomCardContent(room: room)
+            .equatable()
+            .videoCardEntrance()
+    }
+}
+
+private struct LiveRoomCardContent: View, Equatable {
+    let room: LiveRoom
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             CoverThumbnail(url: room.coverURL)
                 .overlay(alignment: .bottom) {
@@ -59,6 +69,5 @@ struct LiveRoomCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(room.username)，\(room.title)，\(room.isLive ? "直播中" : "未开播")")
         .accessibilityHint("打开直播间")
-        .videoCardEntrance()
     }
 }

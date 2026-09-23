@@ -11,7 +11,6 @@ struct HomeSearchBar: UIViewRepresentable {
     var onClearHistory: () -> Void = {}
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -43,10 +42,11 @@ struct HomeSearchBar: UIViewRepresentable {
         // 不打断中文输入法的组合文字。
         if field.text != text, field.markedTextRange == nil || text.isEmpty { bar.text = text }
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-        field.font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
-        view.tintColor = UIColor(AppTheme.selected(themeID).color)
+        let font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
+        if field.font != font { field.font = font }
+        view.tintColor = .label
         view.delete.isEnabled = canClearHistory
-        view.setActions(focused: isFocused, empty: text.isEmpty,
+        view.setActions(focused: isFocused, empty: text.isEmpty && canClearHistory,
                         animated: !reduceMotion && view.window != nil)
         guard field.isFirstResponder != isFocused else { return }
         DispatchQueue.main.async { [weak view, weak coordinator = context.coordinator] in
@@ -80,7 +80,7 @@ struct HomeSearchBar: UIViewRepresentable {
             cancelStyle.contentInsets = .zero
             cancelStyle.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
             cancel.configuration = cancelStyle
-            cancel.accessibilityLabel = "退出搜索"
+            cancel.accessibilityLabel = "收起键盘"
             var deleteStyle = UIButton.Configuration.glass()
             deleteStyle.image = UIImage(systemName: "trash")
             deleteStyle.cornerStyle = .capsule

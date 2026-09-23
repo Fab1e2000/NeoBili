@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 稿件标签，横向一排胶囊。
+/// 稿件标签，横向一排浅灰填充的胶囊（内容里的按钮不用玻璃）。
 ///
 /// 标签数量不定，长标签也常见，所以整行可以横向滚动而不是折行——折行会让
 /// 简介区高度随视频不同上下跳。左右留白用 `.contentMargins` 而不是给内容加
@@ -13,23 +13,20 @@ struct VideoTagsRow: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            // 相邻玻璃按钮统一合成，上下预留按压形变和光晕的空间。
-            GlassEffectContainer(spacing: 0) {
-                HStack(spacing: 8) {
-                    ForEach(tags) { tag in
-                        Button { onSelect(tag) } label: {
-                            Text(tag.tagName)
-                                .font(.caption)
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                        }
-                        .buttonStyle(.glass)
-                        .buttonBorderShape(.capsule)
-                        .contentShape(Capsule())
-                        .controlSize(.small)
-                        .tint(.primary)
-                        .accessibilityLabel("搜索标签：\(tag.tagName)")
+            HStack(spacing: 8) {
+                ForEach(tags) { tag in
+                    Button { onSelect(tag) } label: {
+                        Text(tag.tagName)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 28)
+                            .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+                            .contentShape(Capsule())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("搜索标签：\(tag.tagName)")
                 }
             }
             .padding(.vertical, 8)

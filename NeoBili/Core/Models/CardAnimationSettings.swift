@@ -16,9 +16,10 @@ enum VideoCardAnimationSource: String, CaseIterable, Identifiable, Sendable {
     var supportedPhases: [CardAnimationPhase] {
         switch self {
         case .recommendation, .live: [.enter, .exit]
-        case .search, .space: [.enter]
+        case .search: [.enter]
+        case .space: []
         case .relatedVideos: [] // Detail recommendations always appear immediately.
-        case .favorites, .history, .watchLater: [.exit]
+        case .favorites, .history, .watchLater: []
         case .collection: [] // The collection picker uses native interactions.
         }
     }
@@ -64,13 +65,25 @@ enum CardAnimationSettings {
         }
     }
 
+    /// Entrance effects are a page capability, not a preference. Old saved
+    /// overrides cannot re-enable them on pages where the effect was removed.
+    static func supports(category: CardAnimationCategory, phase: CardAnimationPhase,
+                         source: VideoCardAnimationSource?) -> Bool {
+        switch category {
+        case .video: return source?.supportedPhases.contains(phase) == true
+        case .dynamic: return phase == .exit
+        case .page: return true
+        }
+    }
+
     static func isEnabled(
         category: CardAnimationCategory,
         phase: CardAnimationPhase,
         source: VideoCardAnimationSource? = nil,
         defaults: UserDefaults = .standard
     ) -> Bool {
-        guard value(for: masterKey, defaults: defaults) else { return false }
+        guard supports(category: category, phase: phase, source: source),
+              value(for: masterKey, defaults: defaults) else { return false }
         if category == .video, let source,
            let override = defaults.object(forKey: storageKey(source: source, phase: phase)) as? Bool {
             return override

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ThemeSettingsView: View {
+    @Environment(\.appThemeColor) private var themeColor
     @Environment(ThemeIconController.self) private var themeIcon
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     private let columns = [GridItem(.adaptive(minimum: 82), spacing: 12)]
@@ -13,15 +14,15 @@ struct ThemeSettingsView: View {
                         .font(.headline)
                     HStack {
                         Label("主题预览", systemImage: "heart.fill")
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(themeColor)
                         Spacer()
                         Text("已应用")
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(themeColor)
                             .padding(.horizontal, 14).padding(.vertical, 8)
-                            .background(Color.accentColor.opacity(0.14), in: Capsule())
+                            .background(themeColor.opacity(0.14), in: Capsule())
                     }
-                    Text("用于选中状态、按钮、播放器收起条及桌面图标。页面背景和文字仍跟随系统的浅色／深色外观。")
+                    Text("用于底部标签栏、自定义图标及自定义装饰。系统控件的文字和图标跟随浅色／深色外观。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 .padding(18)

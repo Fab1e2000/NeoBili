@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// SwiftUI 的 selection 不保证在重复点击当前标签时改变，观察 UIKit 的选择事件。
-struct HomeTabReselectionObserver: UIViewControllerRepresentable {
+struct TabReselectionObserver: UIViewControllerRepresentable {
     let onReselect: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -63,28 +63,20 @@ struct HomeTabReselectionObserver: UIViewControllerRepresentable {
             original = nil
         }
         func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
+            let reselected = tabBarController.selectedViewController === viewController
             let allowed = original?.tabBarController?(tabBarController, shouldSelect: viewController) ?? true
-            if allowed, tabBarController.selectedViewController === viewController,
-               containsHome(viewController) {
+            if allowed, reselected {
                 notifyReselection()
             }
             return allowed
         }
         func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
+            let reselected = tabBarController.selectedTab === tab
             let allowed = original?.tabBarController?(tabBarController, shouldSelectTab: tab) ?? true
-            if allowed, tabBarController.selectedTab === tab, let viewController = tab.viewController, containsHome(viewController) {
+            if allowed, reselected {
                 notifyReselection()
             }
             return allowed
-        }
-
-        private func containsHome(_ viewController: UIViewController) -> Bool {
-            var ancestor = probe
-            while let current = ancestor {
-                if current === viewController { return true }
-                ancestor = current.parent
-            }
-            return false
         }
 
         private func notifyReselection() {
@@ -111,4 +103,8 @@ struct HomeTabReselectionObserver: UIViewControllerRepresentable {
             return super.forwardingTarget(for: selector)
         }
     }
+}
+
+extension Notification.Name {
+    static let homeTabReselected = Notification.Name("NeoBili.homeTabReselected")
 }

@@ -19,6 +19,20 @@ final class DanmakuEngine: UIView {
 
     var mode: Mode = .video
     var coloredEnabled = true
+    private var blockTop = false
+    private var blockBottom = false
+
+    func applyAppearance(fontSize: CGFloat, opacity: Double, blockTop: Bool, blockBottom: Bool) {
+        let size = min(40, max(8, fontSize.isFinite ? fontSize : 15))
+        if self.fontSize != size || self.blockTop != blockTop || self.blockBottom != blockBottom {
+            clear(keepTimelineAt: max(0, injectedThrough))
+            self.fontSize = size
+            self.blockTop = blockTop
+            self.blockBottom = blockBottom
+            setNeedsLayout()
+        }
+        alpha = min(1, max(0.1, opacity.isFinite ? opacity : 1))
+    }
     /// 弹幕铺满的高度比例；0.5 即上半屏（B 站与 PiliPlus 的默认值）。
     var area: CGFloat = 0.5
     var scrollDuration: TimeInterval = 7
@@ -185,6 +199,7 @@ final class DanmakuEngine: UIView {
     }
 
     private func present(_ item: DanmakuItem) {
+        if !item.isScroll && (item.isTop ? blockTop : blockBottom) { return }
         guard bounds.width > 10, activeCount < Self.maximumActiveLayers else { return }
         rebuildTracks()
         guard let layer = Self.bitmap(for: item.text, color: coloredEnabled ? item.color : 0xFFFFFF, fontSize: fontSize, cache: bitmapCache,

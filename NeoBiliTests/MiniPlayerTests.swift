@@ -34,26 +34,32 @@ final class MiniPlayerTests: XCTestCase {
         let gate = PlayerReturnGestureGuard.DelegateGate(region: region, recognizer: pan)
         XCTAssertTrue(gate.gestureRecognizerShouldBegin(pan))
 
-        let host = ZoomHost(rootView: AnyView(Color.clear))
-        XCTAssertEqual(host.sourceID(entryID: "card", isDismissing: false), "card")
-        XCTAssertEqual(host.sourceID(entryID: "card", isDismissing: true), "card")
-        XCTAssertEqual(host.sourceID(entryID: "card", isDismissing: true), "card")
-        // UIKit restores appearance when an interrupted return is cancelled.
-        host.viewDidAppear(false)
-        XCTAssertEqual(host.sourceID(entryID: "card", isDismissing: true), NowPlayingStore.miniPlayerTransitionSourceID)
+        var presentation = MediaPresentationState()
+        presentation.prepareSource("card")
+        presentation.destination = .player
+        XCTAssertEqual(presentation.source(for: "card"), .player)
+        presentation.destination = nil
+        presentation.completeEntrance(returningTo: NowPlayingStore.miniPlayerTransitionSourceID)
+        XCTAssertEqual(presentation.source(for: "card"), .player,
+                       "An immediate return must keep the entry anchor")
+        // A cancelled return restores the native destination, then its source.
+        presentation.destination = .player
+        presentation.completeEntrance(returningTo: NowPlayingStore.miniPlayerTransitionSourceID)
+        XCTAssertEqual(presentation.source(for: NowPlayingStore.miniPlayerTransitionSourceID), .player)
+        XCTAssertEqual(presentation.source(for: "card"), .content("card"))
         XCTAssertTrue(gate.gestureRecognizerShouldBegin(pan))
     }
 
     func testLiveMiniPlayerReusesSessionAndCancelledDismissalRestoresPage() throws {
-        let store = NowPlayingStore()
+        let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
-        store.openLive(LiveRoom(roomID: 1, title: "直播测试", username: "主播"), from: "live-card")
+        store.openLiveAndMount(LiveRoom(roomID: 1, title: "直播测试", username: "主播"), from: "live-card")
         let live = try XCTUnwrap(store.livePlayer)
         let session = live.session
         XCTAssertNil(store.route)
-        XCTAssertEqual(store.transitionSourceID, "live-card")
+        XCTAssertEqual(store.transitionSourceID, NowPlayingStore.miniPlayerTransitionSourceID)
         store.videoPageDidAppear()
-        XCTAssertEqual(store.transitionSourceID, "live-card")
+        XCTAssertEqual(store.transitionSourceID, NowPlayingStore.miniPlayerTransitionSourceID)
         store.videoPageInteractionBegan()
         store.dismissVideoPage()
         XCTAssertEqual(session.surfacePresentation, .page)
@@ -75,12 +81,12 @@ final class MiniPlayerTests: XCTestCase {
         let store = NowPlayingStore()
         defer { store.close() }
         let room = LiveRoom(roomID: 1, title: "直播测试", username: "主播")
-        store.open(route(), from: "video-card")
-        store.openLive(room, from: "live-card")
+        store.openAndMount(route(), from: "video-card")
+        store.openLiveAndMount(room, from: "live-card")
         XCTAssertNil(store.player)
         XCTAssertNil(store.route)
         XCTAssertNotNil(store.livePlayer)
-        store.open(route(), from: "video-card")
+        store.openAndMount(route(), from: "video-card")
         XCTAssertNil(store.livePlayer)
         XCTAssertNotNil(store.player)
         store.close()
@@ -115,7 +121,7 @@ final class MiniPlayerTests: XCTestCase {
             defaults.set(miniEnabled, forKey: PlaybackWindowSettings.storageKey)
             let store = NowPlayingStore(defaults: defaults)
             defer { store.close() }
-            store.open(route(), from: "card")
+            store.openAndMount(route(), from: "card")
             store.videoPageDidAppear()
             let player = try XCTUnwrap(store.player)
             let source = store.transitionSourceID
@@ -138,14 +144,14 @@ final class MiniPlayerTests: XCTestCase {
             XCTAssertTrue(store.player === player)
             store.dismissVideoPage()
             store.finishDismissal()
-            XCTAssertTrue(store.isMiniPlayerPresented)
+            XCTAssertEqual(store.isMiniPlayerPresented, miniEnabled)
         }
     }
 
     func testInteractiveCancellationBeforeBindingChangeClearsFrozenLayout() throws {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
-        store.open(route(), from: "card")
+        store.openAndMount(route(), from: "card")
         store.videoPageInteractionBegan()
         XCTAssertNotNil(store.dismissalPlaybackPhase)
         store.videoPageInteractionEnded(cancelled: true)
@@ -154,11 +160,60 @@ final class MiniPlayerTests: XCTestCase {
         XCTAssertFalse(store.isMiniPlayerPresented)
     }
 
-    func testPersistentPlayerIgnoresLegacyDisabledPreference() throws {
+    func testRealTabAccessoryMountsBeforePresentingPage() async throws {
+        let defaults = try makeDefaults()
+        let store = NowPlayingStore(defaults: defaults)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = UIHostingController(rootView: MiniAnchorFixture(store: store).defaultAppStorage(defaults))
+        window.makeKeyAndVisible()
+        defer { store.close(); window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        try await Task.sleep(for: .milliseconds(100))
+        store.open(route(cid: nil), from: "fixture-card")
+        XCTAssertNil(store.videoPresentation)
+        for _ in 0..<20 {
+            try await Task.sleep(for: .milliseconds(50))
+            if store.videoPresentation != nil { break }
+        }
+        XCTAssertEqual(store.videoPresentation, .player, "A real accessory layout must release the pending presentation")
+        XCTAssertNil(store.pendingPresentationID)
+        XCTAssertEqual(store.matchedTransitionSource(for: "fixture-card"), .content("fixture-card"))
+        XCTAssertEqual(store.matchedTransitionSource(for: NowPlayingStore.miniPlayerTransitionSourceID), .player)
+    }
+
+    func testMiniSourceMustMountBeforeExpansionAndRejectsStaleReadiness() throws {
+        let store = NowPlayingStore(defaults: try makeDefaults())
+        defer { store.close() }
+        store.open(route(), from: "first-card")
+        let first = try XCTUnwrap(store.pendingPresentationID)
+        XCTAssertNil(store.videoPresentation)
+        XCTAssertTrue(store.isMiniPlayerPresented)
+        XCTAssertEqual(store.matchedTransitionSource(for: "first-card"), .content("first-card"))
+        XCTAssertEqual(store.matchedTransitionSource(for: NowPlayingStore.miniPlayerTransitionSourceID), .player)
+        store.open(route(), from: "second-card")
+        let second = try XCTUnwrap(store.pendingPresentationID)
+        store.miniPlayerSourceDidLayout(request: first)
+        XCTAssertNil(store.videoPresentation)
+        store.finishDismissal()
+        XCTAssertNotNil(store.player)
+        store.miniPlayerSourceDidLayout(request: second)
+        XCTAssertEqual(store.videoPresentation, .player)
+        store.dismissVideoPage()
+        store.finishDismissal()
+        XCTAssertTrue(store.isMiniPlayerPresented)
+        store.open(route(), from: "third-card")
+        let cancelled = try XCTUnwrap(store.pendingPresentationID)
+        store.close()
+        store.miniPlayerSourceDidLayout(request: cancelled)
+        XCTAssertNil(store.videoPresentation)
+    }
+
+    func testMiniPlayerPreferenceDefaultsOnAndRespectsChanges() throws {
         let defaults = try makeDefaults()
         XCTAssertTrue(PlaybackWindowSettings.isEnabled(in: defaults))
         defaults.set(false, forKey: PlaybackWindowSettings.storageKey)
-        XCTAssertTrue(PlaybackWindowSettings.isEnabled(in: defaults))
+        XCTAssertFalse(PlaybackWindowSettings.isEnabled(in: defaults))
         defaults.set(true, forKey: PlaybackWindowSettings.storageKey)
         XCTAssertTrue(PlaybackWindowSettings.isEnabled(in: defaults))
     }
@@ -167,7 +222,7 @@ final class MiniPlayerTests: XCTestCase {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
         let video = route()
-        store.open(video, from: "test-card")
+        store.openAndMount(video, from: "test-card")
         let player = try XCTUnwrap(store.player)
         let session = player.session
         XCTAssertEqual(session.surfacePresentation, .page)
@@ -220,29 +275,24 @@ final class MiniPlayerTests: XCTestCase {
         XCTAssertTrue(store.isDescriptionExpanded)
     }
 
-    func testLegacyDisabledOptionStillRetainsPlaybackAfterDismissal() throws {
+    func testDisabledMiniPlayerStopsAfterDismissalCompletes() throws {
         let defaults = try makeDefaults()
         defaults.set(false, forKey: PlaybackWindowSettings.storageKey)
         let store = NowPlayingStore(defaults: defaults)
         defer { store.close() }
-        store.open(route(), from: "test-card")
+        store.openAndMount(route(), from: "test-card")
+        store.videoPageDidAppear()
+        XCTAssertEqual(store.matchedTransitionSource(for: "test-card"), .player)
         let player = try XCTUnwrap(store.player)
-        let route = store.route
-        player.session.onEvent?(.firstFrame)
         player.session.onEvent?(.playing(true))
-
         store.dismissVideoPage()
         XCTAssertTrue(store.player === player)
-        XCTAssertTrue(player.isPlaying)
-        XCTAssertTrue(store.isMiniPlayerPresented)
-        XCTAssertEqual(player.session.surfacePresentation, .page)
+        XCTAssertFalse(store.isMiniPlayerPresented)
         store.finishDismissal()
-        XCTAssertEqual(store.route, route)
-        XCTAssertTrue(store.player === player)
-        XCTAssertTrue(player.isPlaying)
-        XCTAssertTrue(store.isMiniPlayerPresented)
-        XCTAssertEqual(player.session.surfacePresentation, .mini)
-        XCTAssertFalse(store.isVideoPageDismissalInProgress)
+        XCTAssertNil(store.route)
+        XCTAssertNil(store.player)
+        XCTAssertFalse(player.isPlaying)
+        XCTAssertFalse(store.isMiniPlayerPresented)
     }
 
     func testReopeningDuringDismissalReusesPlayerAndIgnoresOldCompletion() throws {
@@ -251,10 +301,10 @@ final class MiniPlayerTests: XCTestCase {
         let store = NowPlayingStore(defaults: defaults)
         defer { store.close() }
         let video = route()
-        store.open(video, from: "test-card")
+        store.openAndMount(video, from: "test-card")
         let oldPlayer = try XCTUnwrap(store.player)
         store.dismissVideoPage()
-        store.open(video, from: "test-card")
+        store.openAndMount(video, from: "test-card")
         let newPlayer = try XCTUnwrap(store.player)
         store.finishDismissal()
         XCTAssertTrue(newPlayer === oldPlayer)
@@ -265,11 +315,11 @@ final class MiniPlayerTests: XCTestCase {
         XCTAssertNil(store.dismissalPlaybackPhase)
     }
 
-    func testLegacyPreferenceChangeDoesNotClosePersistentPlayer() throws {
+    func testDisablingMiniPlayerClosesExistingMiniPlayer() throws {
         let defaults = try makeDefaults()
         let store = NowPlayingStore(defaults: defaults)
         defer { store.close() }
-        store.open(route(), from: "test-card")
+        store.openAndMount(route(), from: "test-card")
         let player = try XCTUnwrap(store.player)
         player.session.onEvent?(.playing(true))
         store.dismissVideoPage()
@@ -278,16 +328,16 @@ final class MiniPlayerTests: XCTestCase {
 
         defaults.set(false, forKey: PlaybackWindowSettings.storageKey)
         store.applyMiniPlayerSetting()
-        XCTAssertTrue(store.player === player)
-        XCTAssertNotNil(store.route)
-        XCTAssertTrue(store.isMiniPlayerPresented)
-        XCTAssertTrue(player.isPlaying)
+        XCTAssertNil(store.player)
+        XCTAssertNil(store.route)
+        XCTAssertFalse(store.isMiniPlayerPresented)
+        XCTAssertFalse(player.isPlaying)
     }
 
     func testExplicitCloseClearsPlaybackAndIgnoresLatePlayerEvents() throws {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
-        store.open(route(), from: "test-card")
+        store.openAndMount(route(), from: "test-card")
         let player = try XCTUnwrap(store.player)
         player.session.onEvent?(.playing(true))
         store.dismissVideoPage()
@@ -314,29 +364,29 @@ final class MiniPlayerTests: XCTestCase {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
         let video = route()
-        store.open(video, from: "first-card")
+        store.openAndMount(video, from: "first-card")
         let player = try XCTUnwrap(store.player)
         store.dismissVideoPage()
-        store.open(video, from: "second-card")
+        store.openAndMount(video, from: "second-card")
         store.finishDismissal()
 
         XCTAssertTrue(store.isExpanded)
         XCTAssertFalse(store.isMiniPlayerPresented)
         XCTAssertTrue(store.player === player)
         XCTAssertEqual(store.route, video)
-        XCTAssertEqual(store.transitionSourceID, "second-card")
+        XCTAssertEqual(store.transitionSourceID, NowPlayingStore.miniPlayerTransitionSourceID)
         XCTAssertEqual(player.session.surfacePresentation, .page)
     }
 
     func testLateDismissalCannotCloseANewVideo() throws {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
-        store.open(route(), from: "first-card")
+        store.openAndMount(route(), from: "first-card")
         let oldPlayer = try XCTUnwrap(store.player)
         oldPlayer.session.onEvent?(.playing(true))
         store.dismissVideoPage()
         let next = route(cid: 2)
-        store.open(next, from: "next-card")
+        store.openAndMount(next, from: "next-card")
         let newPlayer = try XCTUnwrap(store.player)
         store.finishDismissal()
 
@@ -353,7 +403,7 @@ final class MiniPlayerTests: XCTestCase {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
         let video = route(cid: nil)
-        store.open(video, from: "dynamic-card")
+        store.openAndMount(video, from: "dynamic-card")
         let detail = try XCTUnwrap(store.detailViewModel)
         XCTAssertNil(store.player)
 
@@ -409,7 +459,7 @@ final class MiniPlayerTests: XCTestCase {
     func testDockingAnchorSurvivesServiceHostChangesAndAnotherDismissal() throws {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
-        store.open(route(), from: "test-card")
+        store.openAndMount(route(), from: "test-card")
         let anchor = CGPoint(x: 0, y: 0.62)
         store.miniPlayerAnchor = anchor
         store.dismissVideoPage()
@@ -429,7 +479,7 @@ final class MiniPlayerTests: XCTestCase {
     func testPlayerCreatedAfterCIDBecomesAvailableInheritsMiniOwnership() throws {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
-        store.open(route(cid: nil), from: "dynamic-card")
+        store.openAndMount(route(cid: nil), from: "dynamic-card")
         store.dismissVideoPage()
         XCTAssertTrue(store.isMiniPlayerPresented)
         XCTAssertNil(store.player)
@@ -442,7 +492,7 @@ final class MiniPlayerTests: XCTestCase {
     func testPlayerCreatedDuringDismissalKeepsPageOwnershipUntilCompletion() throws {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
-        store.open(route(cid: nil), from: "dynamic-card")
+        store.openAndMount(route(cid: nil), from: "dynamic-card")
         store.videoPageDidAppear()
         store.dismissVideoPage()
         store.selectPart(cid: 9)
@@ -471,11 +521,17 @@ final class MiniPlayerTests: XCTestCase {
         let defaults = try makeDefaults()
         let store = NowPlayingStore(defaults: defaults)
         defer { store.close() }
-        store.open(route(), from: "entry-card")
-        XCTAssertEqual(store.transitionSourceID, "entry-card")
+        store.openAndMount(route(), from: "entry-card")
+        XCTAssertEqual(store.videoPresentation, .player)
+        XCTAssertEqual(store.matchedTransitionSource(for: "entry-card"), .content("entry-card"))
+        store.applyMiniPlayerSetting()
+        XCTAssertEqual(store.matchedTransitionSource(for: "entry-card"), .content("entry-card"))
         store.videoPageDidAppear()
-        XCTAssertEqual(store.transitionSourceID, "entry-card")
+        XCTAssertEqual(store.transitionSourceID, NowPlayingStore.miniPlayerTransitionSourceID)
+        XCTAssertEqual(store.matchedTransitionSource(for: "entry-card"), .content("entry-card"))
+        XCTAssertEqual(store.matchedTransitionSource(for: NowPlayingStore.miniPlayerTransitionSourceID), .player)
         store.dismissVideoPage()
+        XCTAssertNil(store.videoPresentation)
         let player = try XCTUnwrap(store.player)
         XCTAssertEqual(player.session.surfacePresentation, .page)
         store.finishDismissal()
@@ -491,7 +547,7 @@ final class MiniPlayerTests: XCTestCase {
     func testOpenRelatedThenDismissNotifiesTheReplacementSessionAndPreservesZoomTarget() throws {
         let store = NowPlayingStore(defaults: try makeDefaults())
         defer { store.close() }
-        store.open(route(), from: "entry-card")
+        store.openAndMount(route(), from: "entry-card")
         store.videoPageDidAppear()
         let oldPlayer = try XCTUnwrap(store.player)
         let related = VideoSummary(
@@ -509,7 +565,7 @@ final class MiniPlayerTests: XCTestCase {
 
         store.dismissVideoPage()
         XCTAssertEqual(mountedMini.observed, [.page], "The page retains its pixels during the shrink animation")
-        XCTAssertEqual(store.transitionSourceID, "entry-card")
+        XCTAssertEqual(store.transitionSourceID, NowPlayingStore.miniPlayerTransitionSourceID)
         store.finishDismissal()
         XCTAssertEqual(mountedMini.observed, [.page, .mini], "The native completion actively wakes the replacement's already-mounted mini")
         XCTAssertTrue(store.player === replacement)
@@ -576,4 +632,27 @@ final class MiniPlayerTests: XCTestCase {
         XCTAssertLessThan(extreme.dy, 0)
     }
 
+}
+
+@MainActor private extension NowPlayingStore {
+    func openAndMount(_ route: VideoDetailRoute, from source: String) {
+        open(route, from: source)
+        if let request = pendingPresentationID { miniPlayerSourceDidLayout(request: request) }
+    }
+    func openLiveAndMount(_ room: LiveRoom, from source: String) {
+        openLive(room, from: source)
+        if let request = pendingPresentationID { miniPlayerSourceDidLayout(request: request) }
+    }
+}
+
+private struct MiniAnchorFixture: View {
+    let store: NowPlayingStore
+    @Namespace private var transition
+    var body: some View {
+        TabView {
+            Color.clear.tabItem { Label("测试", systemImage: "play") }
+        }
+        .tabMiniPlayerHost(transitionNamespace: transition)
+        .environment(store)
+    }
 }

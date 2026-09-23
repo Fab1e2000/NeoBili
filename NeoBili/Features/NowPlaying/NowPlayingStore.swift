@@ -40,17 +40,21 @@ final class NowPlayingStore {
             livePlayer = model
             liveLoadTask = Task { await model.load() }
         }
-        transitionSourceID = sourceID
         isVideoPageDismissalInProgress = false
         isVideoPageInteractionInProgress = false
         dismissalPlaybackPhase = nil
-        activeSession?.surfacePresentation = .page
-        isMiniPlayerPresented = false
-        isExpanded = true
+        requestPageExpansion(from: sourceID)
     }
 
-    /// 全屏视频页是否正在显示。
-    var isExpanded = false
+    private var presentationState = MediaPresentationState()
+    var videoPresentation: MediaPresentationState.Destination? { presentationState.destination }
+
+    /// The native cover's item is the single source of presentation state.
+    var isExpanded: Bool {
+        get { presentationState.destination != nil }
+        set { presentationState.destination = newValue ? .player : nil }
+    }
+    private(set) var pendingPresentationID: UUID?
     private(set) var isMiniPlayerPresented = false
     private(set) var isVideoPageDismissalInProgress = false
     private(set) var isVideoPageInteractionInProgress = false
@@ -66,24 +70,53 @@ final class NowPlayingStore {
     private(set) var selectedCid: Int?
 
     /// 两个列表各自的滚动位置，切换视频页内容时回到原处。
-    var descriptionScroll = ScrollPosition(edge: .top)
+    var descriptionScroll = VideoDescriptionScrollState()
     var commentsScroll = ScrollPosition(edge: .top)
 
     static let miniPlayerTransitionSourceID = "neobili.mini-player"
 
-    /// 本次呈现的入口固定不变；UIKit 的来源回调独立选择退出目标。
-    private(set) var transitionSourceID = ""
-    private var cardTransitionSourceID = ""
+    /// Keep the entry identity for diagnostics; only the matching source moves.
+    var transitionSourceID: String { presentationState.entrySourceID }
+
+    func matchedTransitionSource(for id: String) -> MediaPresentationState.Source {
+        presentationState.source(for: id)
+    }
+
+    /// Mount the accessory before presenting so UIKit can resolve its zoom geometry.
+    private func requestPageExpansion(from cardID: String) {
+        let usesMini = PlaybackWindowSettings.isEnabled(in: defaults)
+        presentationState.prepareSource(usesMini ? Self.miniPlayerTransitionSourceID : cardID)
+        if usesMini && !isExpanded {
+            isMiniPlayerPresented = true
+            activeSession?.surfacePresentation = .mini
+            pendingPresentationID = UUID()
+        } else {
+            pendingPresentationID = nil
+            activeSession?.surfacePresentation = .page
+            isMiniPlayerPresented = false
+            isExpanded = true
+        }
+    }
+
+    func miniPlayerSourceDidLayout(request: UUID) {
+        guard pendingPresentationID == request, hasMedia else { return }
+        pendingPresentationID = nil
+        activeSession?.surfacePresentation = .page
+        isMiniPlayerPresented = false
+        isExpanded = true
+    }
 
     /// 视频页里点相关视频是就地替换，这里记着来路，供左上角返回按钮逐级回退。
     private var history: [VideoDetailRoute] = []
     private var loadTasks: [Task<Void, Never>] = []
     private var playerLoadTask: Task<Void, Never>?
 
+    private let defaults: UserDefaults
+
     init(configuration: VideoPlaybackConfiguration = .fastStart, defaults: UserDefaults = .standard) {
         // configuration 形参保留给测试注入使用；线上路径每次都读 `.current`。
         _ = configuration
-        _ = defaults
+        self.defaults = defaults
     }
 
     /// 服务 sheet 打开期间，由它承载视频模态，根 TabView 暂停呈现。
@@ -102,21 +135,16 @@ final class NowPlayingStore {
     /// 点的是正在播的那个视频时只重新显示，不重新加载，进度也不会丢。
     func open(_ newRoute: VideoDetailRoute, from sourceID: String) {
         if livePlayer != nil { close() }
-        let needsRestart = isVideoPageDismissalInProgress && !isMiniPlayerPresented
         isVideoPageDismissalInProgress = false
         isVideoPageInteractionInProgress = false
         dismissalPlaybackPhase = nil
-        cardTransitionSourceID = sourceID
-        transitionSourceID = sourceID
-        if route?.bvid == newRoute.bvid, !needsRestart {
-            activeSession?.surfacePresentation = .page
-            isMiniPlayerPresented = false
-            isExpanded = true
+        if route?.bvid == newRoute.bvid {
+            requestPageExpansion(from: sourceID)
             return
         }
         history.removeAll()
         start(newRoute)
-        isExpanded = true
+        requestPageExpansion(from: sourceID)
     }
 
     /// 视频页里点相关视频：就地换掉当前视频，旧的压进历史。
@@ -162,10 +190,13 @@ final class NowPlayingStore {
         }
     }
 
-    /// 保留出现通知接口；禁止在此时改写正在使用的转场标识。
+    /// Move the matched source only after entrance finishes. The cover's native
+    /// navigationTransition and its source ID remain unchanged throughout.
     func videoPageDidAppear() {
-        guard isExpanded, hasMedia, !isVideoPageInteractionInProgress else { return }
-        // The native source provider chooses the return anchor without mutating this ID.
+        guard isExpanded, hasMedia, !isVideoPageInteractionInProgress,
+              !isVideoPageDismissalInProgress else { return }
+        presentationState.completeEntrance(returningTo: PlaybackWindowSettings.isEnabled(in: defaults)
+            ? Self.miniPlayerTransitionSourceID : presentationState.entrySourceID)
     }
 
     /// UIKit begins the interactive transition before SwiftUI changes its binding.
@@ -208,28 +239,29 @@ final class NowPlayingStore {
         )
         isVideoPageDismissalInProgress = true
         // 缩放退出完成前，视频像素仍留在原页面，底部缩略图提供转场目标。
-        isMiniPlayerPresented = true
+        isMiniPlayerPresented = PlaybackWindowSettings.isEnabled(in: defaults)
         isExpanded = false
     }
 
     func expandMiniPlayer() {
+        pendingPresentationID = nil
         guard hasMedia else { return }
         isVideoPageDismissalInProgress = false
         isVideoPageInteractionInProgress = false
         dismissalPlaybackPhase = nil
-        transitionSourceID = Self.miniPlayerTransitionSourceID
+        presentationState.prepareSource(Self.miniPlayerTransitionSourceID)
         activeSession?.surfacePresentation = .page
         isMiniPlayerPresented = false
         isExpanded = true
     }
 
     func applyMiniPlayerSetting() {
-        // 兼容旧设置通知；常驻播放条不再响应历史小窗开关。
-        if isExpanded { videoPageDidAppear() }
+        if !PlaybackWindowSettings.isEnabled(in: defaults), !isExpanded, !isVideoPageDismissalInProgress { close() }
     }
 
     /// 关闭视频页并彻底停止播放。
     func close() {
+        pendingPresentationID = nil
         liveLoadTask?.cancel()
         liveLoadTask = nil
         livePlayer?.stop()
@@ -253,7 +285,8 @@ final class NowPlayingStore {
     /// card. In that case `open` has made the new page expanded again, so the
     /// stale callback must not tear down the new route and player.
     func finishDismissal() {
-        guard !isExpanded else { return }
+        guard !isExpanded, pendingPresentationID == nil else { return }
+        guard PlaybackWindowSettings.isEnabled(in: defaults) else { close(); return }
         isVideoPageDismissalInProgress = false
         isVideoPageInteractionInProgress = false
         dismissalPlaybackPhase = nil
@@ -286,7 +319,7 @@ final class NowPlayingStore {
         selectedCid = newRoute.cid
         section = .description
         isDescriptionExpanded = false
-        descriptionScroll = ScrollPosition(edge: .top)
+        descriptionScroll = VideoDescriptionScrollState()
         commentsScroll = ScrollPosition(edge: .top)
         commentsViewModel = nil
 

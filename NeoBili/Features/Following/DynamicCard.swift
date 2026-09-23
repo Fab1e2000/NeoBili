@@ -26,6 +26,7 @@ enum DynamicCardLayout {
 ///
 /// 三块内容按需出现：正文、图片、视频。底部是转发数、评论、点赞。
 struct DynamicCard: View {
+    @Environment(\.appThemeColor) private var themeColor
     let entry: DynamicEntry
     let isLiked: Bool
     let likeCount: Int
@@ -79,7 +80,6 @@ struct DynamicCard: View {
             if let video = entry.video,
                video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
                 videoBlock(video)
-                    .videoCardEntrance(category: .dynamic)
                     .videoEntranceIdentity(video.bvid)
             }
 
@@ -93,7 +93,7 @@ struct DynamicCard: View {
                         .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
                 }
         )
-        .resolvePortraitVideos([entry.video].compactMap { $0 }, animationCategory: .dynamic)
+        // 视频过滤与入场时钟由列表统一管理，避免每张卡片再创建一套任务。
     }
 
     // MARK: - UP 主
@@ -155,7 +155,7 @@ struct DynamicCard: View {
                 }
                 .font(.caption)
                 .buttonStyle(.plain)
-                .foregroundStyle(.tint)
+                .foregroundStyle(themeColor)
             }
         }
         .padding(.horizontal, DynamicCardLayout.contentInset)
@@ -242,7 +242,7 @@ struct DynamicCard: View {
             Text(text)
         }
         .font(.caption)
-        .foregroundStyle(isHighlighted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+        .foregroundStyle(isHighlighted ? AnyShapeStyle(themeColor) : AnyShapeStyle(.secondary))
     }
 
     private func countText(_ count: Int, zero: String) -> String {
