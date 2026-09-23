@@ -52,6 +52,12 @@ struct VideoPage: View {
     @State private var isShowingSeason = false
     @State private var isShowingParts = false
     @State private var isShowingFavoriteFolders = false
+    @State private var isShowingDanmakuComposer = false
+    /// 发弹幕面板的草稿和位置：没发出去就关掉时保留。
+    @State private var danmakuDraft = ""
+    @State private var danmakuMode = DanmakuMode.scroll
+    /// 打开面板前视频在播放，关闭后恢复。
+    @State private var resumesAfterDanmaku = false
     /// 头像点开的 UP 主空间页。视频页本身是 fullScreenCover，不在任何
     /// 导航栈里，所以自己带一个栈来推空间页。
     @State private var spacePath = NavigationPath()
@@ -73,7 +79,7 @@ struct VideoPage: View {
             }
         }
         return NavigationStack(path: $spacePath) {
-            videoPageRoot
+            withSheets(videoPageRoot)
                 // 视频页自己不显示导航栏；推入 UP 主空间页后由那一页显示。
                 .toolbarVisibility(.hidden, for: .navigationBar)
                 .navigationDestination(for: FollowedUp.self) { up in
@@ -89,6 +95,54 @@ struct VideoPage: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { store.player?.savePlaybackProgress() }
+        }
+    }
+
+    /// 视频页上弹出的面板：合集、分 P、发弹幕、收藏夹。单独拆出来以减轻主体的类型推断负担。
+    private func withSheets(_ content: some View) -> some View {
+        content
+        .sheet(isPresented: $isShowingSeason) {
+            if let season = viewModel?.detail?.ugcSeason {
+                UgcSeasonSheet(
+                    season: season,
+                    currentBvid: store.route?.bvid,
+                    onSelect: store.openEpisode
+                )
+                .appTextSize()
+            }
+        }
+        .sheet(isPresented: $isShowingParts) {
+            if let detail = viewModel?.detail, detail.pages.count > 1 {
+                VideoPartsSheet(
+                    parts: detail.pages,
+                    currentCid: store.activeCid ?? detail.cid,
+                    coverURL: store.route?.secureCoverURL,
+                    onSelect: { part in store.selectPart(cid: part.cid) }
+                )
+                .appTextSize()
+            }
+        }
+        .modifier(DanmakuComposerPresentation(
+            isPresented: $isShowingDanmakuComposer, draft: $danmakuDraft, mode: $danmakuMode,
+            send: sendDanmaku,
+            onDismiss: {
+                if resumesAfterDanmaku { store.player?.play() }
+                resumesAfterDanmaku = false
+            }
+        ))
+        .sheet(isPresented: $isShowingFavoriteFolders) {
+            if let mid = account.profile?.mid, let aid = viewModel?.detail?.aid {
+                FavoriteFolderSheet(ownerMid: mid, videoAid: aid) { add, remove in
+                    Task {
+                        await viewModel?.updateFavorites(
+                            add: add,
+                            remove: remove,
+                            isLoggedIn: account.isLoggedIn
+                        )
+                    }
+                }
+                .appTextSize()
+            }
         }
     }
 
@@ -153,7 +207,8 @@ struct VideoPage: View {
                         .safeAreaBar(edge: .top, spacing: 0) {
                             VideoSectionBar(
                                 selection: $store.section,
-                                commentCount: viewModel?.detail?.stat.reply ?? 0
+                                commentCount: viewModel?.detail?.stat.reply ?? 0,
+                                onSendDanmaku: sendDanmakuAction
                             )
                         }
                     .background(Color(uiColor: .systemBackground))
@@ -238,41 +293,6 @@ struct VideoPage: View {
         // 评论里的配图点开看大图。视频页本身就是 fullScreenCover，
         // 查看器挂在它内部而不是根视图上。
         .imageViewerHost()
-        .sheet(isPresented: $isShowingSeason) {
-            if let season = viewModel?.detail?.ugcSeason {
-                UgcSeasonSheet(
-                    season: season,
-                    currentBvid: store.route?.bvid,
-                    onSelect: store.openEpisode
-                )
-                .appTextSize()
-            }
-        }
-        .sheet(isPresented: $isShowingParts) {
-            if let detail = viewModel?.detail, detail.pages.count > 1 {
-                VideoPartsSheet(
-                    parts: detail.pages,
-                    currentCid: store.activeCid ?? detail.cid,
-                    coverURL: store.route?.secureCoverURL,
-                    onSelect: { part in store.selectPart(cid: part.cid) }
-                )
-                .appTextSize()
-            }
-        }
-        .sheet(isPresented: $isShowingFavoriteFolders) {
-            if let mid = account.profile?.mid, let aid = viewModel?.detail?.aid {
-                FavoriteFolderSheet(ownerMid: mid, videoAid: aid) { add, remove in
-                    Task {
-                        await viewModel?.updateFavorites(
-                            add: add,
-                            remove: remove,
-                            isLoggedIn: account.isLoggedIn
-                        )
-                    }
-                }
-                .appTextSize()
-            }
-        }
         // 操作结果统一交给那个非模态浮层。用 alert 的话，视频页本身是
         // fullScreenCover，弹窗会和它抢 present，页面会被弹走。
         .onChange(of: viewModel?.actionMessage) { _, message in
@@ -548,6 +568,32 @@ struct VideoPage: View {
             },
             onPickFavoriteFolder: presentFavoriteFolders
         )
+    }
+
+    /// 详情加载好之后才显示「发弹幕」。
+    private var sendDanmakuAction: (() -> Void)? {
+        guard viewModel?.detail != nil else { return nil }
+        return openDanmakuComposer
+    }
+
+    /// 与 PiliPlus 一致：打开发弹幕面板时暂停，弹幕出现在暂停的那一刻，关掉面板后继续播放。
+    private func openDanmakuComposer() {
+        guard account.isLoggedIn else {
+            viewModel?.actionMessage = "请先登录"
+            return
+        }
+        resumesAfterDanmaku = store.player?.isPlaying == true
+        store.player?.pause()
+        isShowingDanmakuComposer = true
+    }
+
+    private func sendDanmaku(_ text: String, mode: DanmakuMode) async throws {
+        guard let detail = viewModel?.detail else { return }
+        let player = store.player
+        try await BiliAPI.shootDanmaku(cid: store.activeCid ?? detail.cid, bvid: detail.bvid, message: text,
+                                       progress: player?.currentTime ?? 0, mode: mode.rawValue)
+        player?.danmaku?.appendSent(text: text, mode: mode)
+        feedback.show("弹幕已发送")
     }
 
     /// 收藏夹选择弹窗要用当前账号的 mid 去查收藏夹，未登录时没有可查的东西。

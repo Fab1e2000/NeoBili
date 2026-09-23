@@ -5,13 +5,15 @@ import SwiftUI
 private enum VideoSectionBarLayout {
     /// 分段控件与屏幕左右边缘的距离。
     static let horizontalPadding: CGFloat = 16
+    /// 分段控件靠左、限宽，右侧留给「发弹幕」。
+    static let pickerMaxWidth: CGFloat = 220
     /// 分段控件上方的留白。
     static let topPadding: CGFloat = 8
     /// 分段控件与下方内容的间距。
     static let bottomPadding: CGFloat = 6
 }
 
-/// 播放器下方、内容区上方的选项栏，切换简介和评论。
+/// 播放器下方、内容区上方的选项栏：左侧切换简介和评论，右侧是「发弹幕」（布局参考 PiliPlus）。
 ///
 /// 用系统的分段控件（`Picker` + `.pickerStyle(.segmented)`）：选中态、按下态、
 /// 深浅色、动态字体、无障碍全部跟着系统走，iOS 26 上还自带 Liquid Glass 的观感。
@@ -23,15 +25,31 @@ struct VideoSectionBar: View {
     /// 评论总数，跟在「评论」后面显示。还没加载出来（为 0）时不显示，
     /// 免得先出现一个 0 再跳成真实数字。
     var commentCount: Int = 0
+    /// 打开发弹幕面板。为 nil（详情还没加载好）时不显示按钮。
+    var onSendDanmaku: (() -> Void)?
 
     var body: some View {
-        Picker("视频内容", selection: animatedSelection) {
-            ForEach(VideoPageSection.allCases) { section in
-                Text(title(for: section)).tag(section)
+        HStack(spacing: 12) {
+            Picker("视频内容", selection: animatedSelection) {
+                ForEach(VideoPageSection.allCases) { section in
+                    Text(title(for: section)).tag(section)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: VideoSectionBarLayout.pickerMaxWidth)
+
+            Spacer(minLength: 0)
+
+            if let onSendDanmaku {
+                Button("发弹幕", systemImage: "text.bubble", action: onSendDanmaku)
+                    .font(.footnote.weight(.medium))
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .tint(.primary)
+                    .accessibilityIdentifier("video.sendDanmaku")
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
         .padding(.horizontal, VideoSectionBarLayout.horizontalPadding)
         .padding(.top, VideoSectionBarLayout.topPadding)
         .padding(.bottom, VideoSectionBarLayout.bottomPadding)

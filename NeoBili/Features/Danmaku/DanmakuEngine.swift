@@ -159,6 +159,14 @@ final class DanmakuEngine: UIView {
         present(DanmakuItem(time: 0, text: text, mode: 1, color: color))
     }
 
+    // MARK: - 自己发送的弹幕
+
+    /// 发送成功后立即上屏，不等时间轴走到它。
+    func presentImmediately(_ item: DanmakuItem) {
+        guard !isSuppressed else { return }
+        present(item)
+    }
+
     // MARK: - 轨道分配与摆放
 
     private var scrollTrackCount: Int {
