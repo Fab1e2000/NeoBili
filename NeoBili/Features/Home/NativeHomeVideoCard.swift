@@ -30,7 +30,8 @@ struct NativeHomeVideoCard: UIViewRepresentable {
         private let duration = UILabel()
         private let playIcon = UIImageView()
         private let gradient = CAGradientLayer()
-        private var fallbackTitle: UIHostingController<AnyView>?
+        /// 不能预排版的标题（含 emoji，或排版参数还没量好）用它显示。
+        private let fallbackTitle = UILabel()
         private var titleHeight: CGFloat = 40
         private var configuration: Configuration?
         private var configuredTypeSize: DynamicTypeSize?
@@ -61,9 +62,13 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                                UIColor.black.withAlphaComponent(0.6).cgColor]
             gradient.locations = [0, 0.4, 1]
             layer.addSublayer(gradient)
-            for view in [title, owner, playCount, duration, playIcon, avatar] { addSubview(view) }
+            for view in [title, fallbackTitle, owner, playCount, duration, playIcon, avatar] { addSubview(view) }
             title.contentMode = .topLeft
             title.tintColor = .label
+            fallbackTitle.numberOfLines = 2
+            fallbackTitle.lineBreakMode = .byTruncatingTail
+            fallbackTitle.textColor = .label
+            fallbackTitle.isHidden = true
             owner.textColor = .secondaryLabel
             owner.lineBreakMode = .byTruncatingTail
             playCount.textColor = .white
@@ -128,19 +133,16 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                let image = PreparedTitle.image(for: key) {
                 title.image = image
                 title.isHidden = false
-                fallbackTitle?.view.removeFromSuperview()
-                fallbackTitle = nil
+                fallbackTitle.isHidden = true
+                fallbackTitle.attributedText = nil
             } else {
                 title.isHidden = true
-                let content = AnyView(PreparedCardTitle(title: video.title, width: titleWidth)
-                    .environment(\.dynamicTypeSize, dynamicTypeSize)
-                    .environment(\.displayScale, scale))
-                if let fallbackTitle { fallbackTitle.rootView = content }
-                else {
-                    let host = UIHostingController(rootView: content)
-                    host.view.backgroundColor = .clear
-                    fallbackTitle = host
-                    addSubview(host.view)
+                fallbackTitle.isHidden = false
+                if let metrics {
+                    fallbackTitle.attributedText = PreparedTitle.fixedLineHeightTitle(video.title, fontSize: fontSize, metrics: metrics)
+                } else {
+                    fallbackTitle.font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+                    fallbackTitle.text = video.title
                 }
             }
             let coverSize = CGSize(width: titleWidth + 16, height: (titleWidth + 16) / HomeCardLayout.coverAspectRatio)
@@ -172,7 +174,9 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             gradient.frame = CGRect(x: 0, y: coverHeight - 52, width: width, height: 52)
             let titleFrame = CGRect(x: 8, y: coverHeight + 8, width: max(0, width - 16), height: titleHeight)
             title.frame = titleFrame
-            fallbackTitle?.view.frame = titleFrame
+            // UILabel 会把文字在自身高度内垂直居中；按实际内容高度贴顶放置，和标题图一致。
+            let fallbackHeight = min(titleHeight, fallbackTitle.sizeThatFits(titleFrame.size).height)
+            fallbackTitle.frame = CGRect(origin: titleFrame.origin, size: CGSize(width: titleFrame.width, height: fallbackHeight))
             let ownerY = titleFrame.maxY + 7
             avatar.frame = CGRect(x: 8, y: ownerY, width: 16, height: 16)
             let ownerHeight = owner.font.lineHeight

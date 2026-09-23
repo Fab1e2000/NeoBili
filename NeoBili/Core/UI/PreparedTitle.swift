@@ -117,6 +117,24 @@ enum PreparedTitle {
         !title.unicodeScalars.contains { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x2000) }
     }
 
+    /// 不能预排版（含 emoji）的标题交给 `UILabel` 显示时用的文字：每行行高固定为两行框的一半。
+    ///
+    /// 彩色 emoji 的字形比汉字高，按自然行高排版时含 emoji 的那一行会被撑高，两行超出
+    /// 标题框。固定行高后两行正好填满标题框，和预排版的标题图对齐。
+    static func fixedLineHeightTitle(_ title: String, fontSize: CGFloat, metrics: Metrics) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        let lineHeight = metrics.boxHeight / 2
+        paragraph.minimumLineHeight = lineHeight
+        paragraph.maximumLineHeight = lineHeight
+        paragraph.lineBreakMode = .byTruncatingTail
+        paragraph.lineBreakStrategy = .standard
+        return NSAttributedString(string: title, attributes: [
+            .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
+            .foregroundColor: UIColor.label,
+            .paragraphStyle: paragraph
+        ])
+    }
+
     /// 取缓存；没有就在当前线程（主线程）排一次并存进缓存。预热完成前返回 nil。
     @MainActor
     static func image(for key: Key) -> UIImage? {
@@ -226,6 +244,9 @@ struct PreparedCardTitle: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(2, reservesSpace: true)
                 .foregroundStyle(.primary)
+                // emoji 会把所在行撑高：顶端对齐，多出的高度只往下延伸，不会压到上方的封面。
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(height: PreparedTitle.metrics(fontSize: fontSize)?.boxHeight, alignment: .topLeading)
         }
     }
 }
