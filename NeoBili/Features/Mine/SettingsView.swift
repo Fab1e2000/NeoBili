@@ -1,62 +1,66 @@
 import SwiftUI
 
+/// 设置首页。按「外观 → 页面 → 播放 → 内容与交互 → 账号」排列：
+/// 越常调整、越影响整体观感的越靠前；每行右侧给出当前值，不必点进去就能看到。
 struct SettingsView: View {
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
+    @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
+    @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
     @AppStorage(HomeTitleBarSettings.storageKey) private var pinsHomeTitleBar = HomeTitleBarSettings.defaultValue
+    @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
+    @State private var durationFilter = VideoDurationFilterSettings.shared
 
     var body: some View {
         Form {
+            Section("外观") {
+                row("主题色", value: AppTheme.selected(themeID).name, id: "theme") { ThemeSettingsView() }
+                row("文字大小", value: DisplaySettingsView.label(for: textSizeIndex), id: "display") { DisplaySettingsView() }
+                row("动画", value: cardAnimationsEnabled ? "开启" : "关闭", id: "cardAnimations") { CardAnimationSettingsView() }
+            }
+
+            Section("页面") {
+                row("标签栏", value: MainTabSettings.order(from: tabOrder).map(\.title).joined(separator: " · "),
+                    id: "tabBar") { TabBarSettingsView() }
+                row("推荐页", value: HomeTitleBarSettings.summary(pinned: pinsHomeTitleBar), id: "home") { HomePageSettingsView() }
+                row("关注页", id: "following") { FollowingSettingsView() }
+            }
+
             Section("播放") {
-                NavigationLink("播放与画质") { PlaybackSettingsView() }
-                    .accessibilityIdentifier("settings.playback")
-                NavigationLink("弹幕设置") { DanmakuSettingsView() }
-                    .accessibilityIdentifier("settings.danmaku")
-                NavigationLink("播放器手势") { PlayerGestureSettingsView() }
-                    .accessibilityIdentifier("settings.playerGestures")
+                row("播放与画质", id: "playback") { PlaybackSettingsView() }
+                row("弹幕", id: "danmaku") { DanmakuSettingsView() }
+                row("播放器手势", id: "playerGestures") { PlayerGestureSettingsView() }
             }
 
-            Section("内容") {
-                NavigationLink("内容过滤") { ContentFilterSettingsView() }
-                    .accessibilityIdentifier("settings.contentFilter")
-                NavigationLink("关注页") { FollowingSettingsView() }
-                    .accessibilityIdentifier("settings.following")
-            }
-
-            Section("界面与交互") {
-                NavigationLink {
-                    ThemeSettingsView()
-                } label: {
-                    LabeledContent("主题色", value: AppTheme.selected(themeID).name)
-                }
-                .accessibilityIdentifier("settings.theme")
-                NavigationLink("文字大小") { DisplaySettingsView() }
-                    .accessibilityIdentifier("settings.display")
-                NavigationLink {
-                    CardAnimationSettingsView()
-                } label: {
-                    LabeledContent("动画", value: cardAnimationsEnabled ? "开启" : "关闭")
-                }
-                .accessibilityIdentifier("settings.cardAnimations")
-                NavigationLink("滚动与防误触") { InteractionSettingsView() }
-                    .accessibilityIdentifier("settings.scrolling")
-                // 两套独立实现：随内容滚动 · 模糊（HomeView）/ 固定 · 切边（HomePinnedHomeView）。
-                Picker("推荐页标题栏", selection: $pinsHomeTitleBar) {
-                    Text("随内容滚动 · 模糊").tag(false)
-                    Text("固定 · 切边").tag(true)
-                }
-                .accessibilityIdentifier("settings.homeTopEdge")
+            Section("内容与交互") {
+                row("内容过滤", value: contentFilterSummary, id: "contentFilter") { ContentFilterSettingsView() }
+                row("滚动与防误触", id: "scrolling") { InteractionSettingsView() }
             }
 
             Section {
-                NavigationLink("账号管理") { AccountSettingsView() }
-                    .accessibilityIdentifier("settings.account")
-                NavigationLink("关于") { AboutSettingsView() }
-                    .accessibilityIdentifier("settings.about")
+                row("账号管理", id: "account") { AccountSettingsView() }
+                row("关于", id: "about") { AboutSettingsView() }
             }
         }
         .leftEdgeTapDeadZone()
         .navigationTitle("系统设置")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var contentFilterSummary: String {
+        let active = (hidesPortraitVideos ? 1 : 0) + (durationFilter.minimumMinutes > 0 ? 1 : 0)
+        return active == 0 ? "未开启" : "\(active) 项"
+    }
+
+    private func row<Destination: View>(_ title: String, value: String? = nil, id: String,
+                                        @ViewBuilder destination: @escaping () -> Destination) -> some View {
+        NavigationLink(destination: destination) {
+            if let value {
+                LabeledContent(title, value: value)
+            } else {
+                Text(title)
+            }
+        }
+        .accessibilityIdentifier("settings.\(id)")
     }
 }

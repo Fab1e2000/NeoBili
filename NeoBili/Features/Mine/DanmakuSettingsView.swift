@@ -38,7 +38,7 @@ struct DanmakuSettingsView: View {
                 }
             }
         }
-        .settingsPage("弹幕设置")
+        .settingsPage("弹幕")
     }
 }
 

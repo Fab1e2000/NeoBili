@@ -19,14 +19,12 @@ struct PlaybackSettingsView: View {
                     }
                 }
             }
-            Section("弹幕") {
-                NavigationLink("弹幕设置") { DanmakuSettingsView() }
-            }
-            Section("播放方式") {
-                Toggle("启用缩略播放器", isOn: $miniPlayerEnabled)
+            Section {
+                Toggle("缩略播放器", isOn: $miniPlayerEnabled)
+            } header: {
+                Text("播放方式")
+            } footer: {
                 Text(miniPlayerEnabled ? "退出视频页面后在底部继续播放，底部标签栏可随滚动收缩。" : "退出视频页面后停止播放，底部标签栏始终保持展开。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
         }
         .settingsPage("播放与画质")
@@ -46,16 +44,34 @@ struct ContentFilterSettingsView: View {
 
     var body: some View {
         Form {
-            Section("画幅") {
+            Section {
                 Toggle("隐藏竖屏视频", isOn: $hidesPortraitVideos)
+            } header: {
+                Text("画幅")
+            } footer: {
+                Text("应用于推荐、关注、搜索、收藏、历史等视频列表。")
             }
-            Section("时长") {
-                Stepper(value: $durationFilter.minimumMinutes, in: 0...1440) {
-                    LabeledContent("最短视频时长", value: durationFilter.minimumMinutes == 0 ? "不限制" : "\(durationFilter.minimumMinutes) 分钟")
+            Section {
+                // 原来是 1 分钟一档的步进器，想设到 10 分钟要连点十次；改为常用档位。
+                Picker("最短视频时长", selection: $durationFilter.minimumMinutes) {
+                    ForEach(durationOptions, id: \.self) { minutes in
+                        Text(minutes == 0 ? "不限制" : "\(minutes) 分钟").tag(minutes)
+                    }
                 }
+            } header: {
+                Text("时长")
+            } footer: {
+                Text("短于这个时长的视频会从这些列表中隐藏。")
             }
         }
         .settingsPage("内容过滤")
+    }
+
+    /// 常用档位；旧版本步进器存下的非整档值也保留为一个选项，不会被悄悄改掉。
+    private var durationOptions: [Int] {
+        let presets = [0, 1, 2, 3, 5, 10, 15, 20, 30, 60]
+        let current = durationFilter.minimumMinutes
+        return presets.contains(current) ? presets : (presets + [current]).sorted()
     }
 }
 
@@ -93,9 +109,16 @@ struct FollowingSettingsView: View {
 struct DisplaySettingsView: View {
     @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
 
+    private static let labels = ["最小", "较小", "小", "标准", "大", "较大", "最大"]
+
+    static func label(for index: Int) -> String {
+        labels[min(max(index, 0), labels.count - 1)]
+    }
+
     var body: some View {
         Form {
             Section {
+                LabeledContent("当前档位", value: Self.label(for: textSizeIndex))
                 Text("正文预览：这段文字会随档位一起变化")
                     .font(.body)
                     .dynamicTypeSize(AppTextSize.size(at: textSizeIndex))
@@ -111,6 +134,10 @@ struct DisplaySettingsView: View {
                     Text("大").font(.title3)
                 }
                 .dynamicTypeSize(.large)
+                Button("恢复标准") { textSizeIndex = AppTextSize.defaultIndex }
+                    .disabled(textSizeIndex == AppTextSize.defaultIndex)
+            } footer: {
+                Text("App 内统一使用这里的文字大小，不跟随系统设置。")
             }
         }
         .settingsPage("文字大小")
@@ -126,16 +153,20 @@ struct InteractionSettingsView: View {
 
     var body: some View {
         Form {
-            Section("滚动") {
+            Section {
                 VStack(alignment: .leading, spacing: 10) {
                     LabeledContent("下拉刷新距离", value: "\(Int(HomeRefreshSettings.clamped(refreshDistance))) pt")
                         .monospacedDigit()
                     Slider(value: $refreshDistance, in: HomeRefreshSettings.range, step: 5)
-                        .accessibilityLabel("推荐与关注下拉刷新距离")
+                        .accessibilityLabel("下拉刷新距离")
                         .accessibilityValue("\(Int(refreshDistance)) 点")
                 }
+            } header: {
+                Text("滚动")
+            } footer: {
+                Text("推荐、直播和关注页共用。距离越短，越容易触发刷新。")
             }
-            Section("防误触") {
+            Section {
                 VStack(alignment: .leading, spacing: 10) {
                     LabeledContent("左缘触控死区", value: "\(Int(deadZoneWidth)) pt")
                         .monospacedDigit()
@@ -144,6 +175,10 @@ struct InteractionSettingsView: View {
                         .accessibilityLabel("左缘触控死区宽度")
                         .accessibilityValue("\(Int(deadZoneWidth)) 点")
                 }
+            } header: {
+                Text("防误触")
+            } footer: {
+                Text("屏幕左缘这一窄条内的点按不生效，避免侧滑返回时误点到卡片。拖动滑杆时会高亮显示范围。")
             }
         }
         .settingsPage("滚动与防误触")
@@ -204,7 +239,6 @@ struct AboutSettingsView: View {
         Form {
             Section {
                 LabeledContent("版本", value: appVersion)
-                LabeledContent("界面修订", value: "settings-by-source-20260910")
                 LabeledContent("播放内核", value: "mpv (MPVKit)")
                 LabeledContent("接口与交互参考", value: "PiliPlus / MeloX")
             }

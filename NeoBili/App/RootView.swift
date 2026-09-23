@@ -9,17 +9,13 @@ extension EnvironmentValues {
     @Entry var tabContentOpacity: Double = 1
 }
 
-/// 主页面保持独立导航与数据状态。
-enum MainTab: Hashable {
-    case home, following, live, search
-}
-
 struct RootView: View {
     @State private var nowPlaying = NowPlayingStore()
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
     @AppStorage(HomeTitleBarSettings.storageKey) private var pinsHomeTitleBar = HomeTitleBarSettings.defaultValue
+    @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     @State private var search = SearchViewModel()
@@ -38,7 +34,9 @@ struct RootView: View {
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEntranceEnabled = CardAnimationSettings.defaultValue
     /// 当前页面。点下去立刻就换，高亮跟着立刻走。
-    @State private var displayedTab: MainTab = .home
+    @State private var displayedTab = MainTabSettings.launchTab(
+        from: UserDefaults.standard.string(forKey: MainTabSettings.launchKey) ?? ""
+    )
     /// 新页面的浓度：切换那一刻置 0，随后淡入。
     @State private var tabContentOpacity: Double = 1
     @State private var tabSwitchTask: Task<Void, Never>?
@@ -47,21 +45,13 @@ struct RootView: View {
         @Bindable var nowPlaying = nowPlaying
 
         return TabView(selection: tabSelection) {
-            Tab("直播", systemImage: "dot.radiowaves.left.and.right", value: MainTab.live) {
-                LiveView(onOpenRoom: openLiveRoom)
-                .tint(.primary)
-            }
-            Tab("推荐", systemImage: "house.fill", value: MainTab.home) {
-                // 标题栏的两套实现由设置切换，各自持有列表和数据。
-                Group {
-                    if pinsHomeTitleBar { HomePinnedHomeView() } else { HomeView() }
+            // 顺序来自设置；各页以自身为 id，调整顺序不会重建页面和丢失状态。
+            ForEach(MainTabSettings.order(from: tabOrder)) { tab in
+                Tab(tab.title, systemImage: tab.systemImage, value: tab) {
+                    page(for: tab)
                 }
-                .tint(.primary)
             }
-            Tab("关注", systemImage: "person.2.fill", value: MainTab.following) {
-                FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") }).id(account.sessionID).tint(.primary)
-            }
-            Tab("搜索", systemImage: "magnifyingglass", value: MainTab.search, role: .search) {
+            Tab(MainTab.search.title, systemImage: MainTab.search.systemImage, value: MainTab.search, role: .search) {
                 NavigationStack {
                     SearchPage(viewModel: search, isFocused: $isSearchFocused, onSubmit: submitSearch)
                 }
@@ -157,6 +147,27 @@ struct RootView: View {
             if !enabled { finishTabEntrance() }
         }
         .onChange(of: account.sessionID) { nowPlaying.close() }
+    }
+
+    @ViewBuilder
+    private func page(for tab: MainTab) -> some View {
+        switch tab {
+        case .live:
+            LiveView(onOpenRoom: openLiveRoom)
+                .tint(.primary)
+        case .home:
+            // 标题栏的两套实现由设置切换，各自持有列表和数据。
+            Group {
+                if pinsHomeTitleBar { HomePinnedHomeView() } else { HomeView() }
+            }
+            .tint(.primary)
+        case .following:
+            FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") })
+                .id(account.sessionID)
+                .tint(.primary)
+        case .search:
+            EmptyView()
+        }
     }
 
     private func submitSearch(_ keyword: String?) {
