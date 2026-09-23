@@ -8,7 +8,7 @@ final class PortraitVideoStore {
     // 旧值 50：一次滚一页（20 张无缓存画幅卡片）就是 20 路并发详情请求，
     // 带宽和 CPU 双尖峰，还极易触发接口风控连累正常请求。6 路足够在
     // 半秒内消化一页，请求集合不变，只改节奏。
-    private static let maximumConcurrentRequests = 6
+    static let defaultMaximumConcurrentRequests = 6
 
     struct Request: Sendable {
         let bvid: String
@@ -37,6 +37,7 @@ final class PortraitVideoStore {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let loader: @MainActor (String) async throws -> Metadata
+    @ObservationIgnored private let maximumConcurrentRequests: Int
     /// 取消标志由 cancellation handler 同步设置，排队出列时不会错过取消信号。
     private final class CancellationFlag: @unchecked Sendable {
         private let lock = NSLock()
@@ -64,16 +65,19 @@ final class PortraitVideoStore {
     @ObservationIgnored private var activeRequests = 0
 
     convenience init(defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init,
+                     maximumConcurrentRequests: Int = defaultMaximumConcurrentRequests,
                      loader: @escaping @MainActor (String) async throws -> VideoDimension?) {
-        self.init(defaults: defaults, now: now, metadataLoader: { bvid in
+        self.init(defaults: defaults, now: now, maximumConcurrentRequests: maximumConcurrentRequests, metadataLoader: { bvid in
             Metadata(dimension: try await loader(bvid), durationSeconds: nil)
         })
     }
 
     init(defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init,
+         maximumConcurrentRequests: Int = defaultMaximumConcurrentRequests,
          metadataLoader: @escaping @MainActor (String) async throws -> Metadata) {
         self.defaults = defaults
         self.now = now
+        self.maximumConcurrentRequests = max(1, maximumConcurrentRequests)
         self.loader = metadataLoader
         let saved = defaults.data(forKey: Self.storageKey)
             .flatMap { try? JSONDecoder().decode([String: Entry].self, from: $0) } ?? [:]
@@ -116,7 +120,7 @@ final class PortraitVideoStore {
         }
         var iterator = pending.makeIterator()
         await withTaskGroup(of: Void.self) { group in
-            for _ in 0..<Self.maximumConcurrentRequests {
+            for _ in 0..<maximumConcurrentRequests {
                 guard !Task.isCancelled, let request = iterator.next() else { break }
                 group.addTask { await self.resolveOne(request.bvid, requiringDuration: request.requiringDuration) }
             }
@@ -169,7 +173,7 @@ final class PortraitVideoStore {
     }
 
     private func startQueuedRequests() {
-        while activeRequests < Self.maximumConcurrentRequests, !queue.isEmpty {
+        while activeRequests < maximumConcurrentRequests, !queue.isEmpty {
             let bvid = queue.removeFirst()
             guard let request = requests[bvid], request.task == nil else { continue }
             let cancelled = request.subscribers.filter { $0.value.flag.isCancelled }.map(\.key)

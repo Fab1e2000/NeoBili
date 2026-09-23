@@ -1,30 +1,30 @@
 import SwiftUI
 
 struct HomeView: View {
+    private static let avatarTransitionID = "mine-avatar-home"
+
     @Environment(NowPlayingStore.self) private var nowPlaying
-    @Environment(\.openMine) private var openMine
-    @AppStorage(HomeTitleBarSettings.storageKey) private var pinsTitleBar = HomeTitleBarSettings.defaultValue
-    /// 列表要避让的上下距离（状态栏 + 固定标题栏、标签栏），量好交给 UIKit 列表。
-    @State private var safeInsets = EdgeInsets()
-    @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(AccountStore.self) private var account
+    @Environment(\.openMine) private var openMine
+    @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
-    @State private var viewModel = HomeViewModel()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @AppStorage(HomeTitleBarSettings.storageKey) private var pinsTitleBar = HomeTitleBarSettings.defaultValue
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     /// 刷新动画的快慢，设置页可调。
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
-    @State private var refreshTask: Task<Void, Never>?
+
+    @State private var viewModel = HomeViewModel()
     @State private var feedController = HomeFeedScrollController()
-    @State private var reselectCount = 0
+    /// 列表要避让的上下距离（状态栏 + 固定标题栏、标签栏），量好交给 UIKit 列表。
+    @State private var safeInsets = EdgeInsets()
+    @State private var refreshTask: Task<Void, Never>?
     @State private var shortcutTask: Task<Void, Never>?
     @State private var isRefreshing = false
-
-    /// 刷新的三段式可视化：旧卡片原地淡出，新卡片按行落位。
-    /// 参数集中在 FeedRefreshTuning 里。
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// 松手启动淡出；网络请求并行进行，新内容等淡出结束后再落位。
-    /// 全程只有这一个量在变，卡片本身不位移，所以不会出现错位。
+    /// 刷新的三段式可视化：松手启动淡出，网络请求并行进行，新内容等淡出结束后再落位。
+    /// 全程只有这一个量在变，卡片本身不位移，所以不会出现错位。参数集中在 FeedRefreshTuning 里。
     @State private var listOpacity: Double = 1
     @State private var exitTiming: FeedRefreshExitTiming?
     /// 每次刷新加一，驱动每一行重新播落位动画。
@@ -57,24 +57,19 @@ struct HomeView: View {
                 // Returning to this tab always restores the app's portrait lock.
                 OrientationController.enterPortrait()
             }
-        .onReceive(NotificationCenter.default.publisher(for: .homeTabReselected)) { _ in
-            guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented else { return }
-            reselectCount += 1
-        }
-        .resolvePortraitVideos(viewModel.videos, batchID: landingGeneration) {
-            await viewModel.loadReplacementPage()
-            return viewModel.videos
-        }
-        .videoCardAnimationSource(.recommendation)
-        .onChange(of: animatesExit) { _, enabled in
-            guard !enabled else { return }
-            // A settings change must also restore an already fading feed while
-            // its request remains in flight.
-            withAnimation(nil) { listOpacity = 1; exitTiming = nil }
-        }
+            .onTabReselected(.home, perform: scrollToTopOrRefresh)
+            .resolvePortraitVideos(viewModel.videos, batchID: landingGeneration) {
+                await viewModel.loadReplacementPage()
+                return viewModel.videos
+            }
+            .videoCardAnimationSource(.recommendation)
+            .onChange(of: animatesExit) { _, enabled in
+                guard !enabled else { return }
+                // A settings change must also restore an already fading feed while
+                // its request remains in flight.
+                withAnimation(nil) { listOpacity = 1; exitTiming = nil }
+            }
     }
-
-    private static let avatarTransitionID = "mine-avatar-home"
 
     private var feed: some View {
         ZStack {
@@ -103,21 +98,24 @@ struct HomeView: View {
                 startRefresh()
             }
         }
-        .onChange(of: reselectCount) {
-            guard shortcutTask == nil, !isRefreshing else { return }
-            if feedController.isAwayFromTop {
-                feedController.scrollToTop(animated: true)
-                // 回顶动画结束前忽略重复点击，避免误触发刷新。
-                shortcutTask = Task {
-                    try? await Task.sleep(for: .milliseconds(300))
-                    shortcutTask = nil
-                }
-            } else {
-                startRefresh()
-            }
-        }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
+    }
+
+    /// 重复点「推荐」标签：不在顶部时回到顶部，已在顶部时刷新。
+    private func scrollToTopOrRefresh() {
+        guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented,
+              shortcutTask == nil, !isRefreshing else { return }
+        if feedController.isAwayFromTop {
+            feedController.scrollToTop(animated: true)
+            // 回顶动画结束前忽略重复点击，避免误触发刷新。
+            shortcutTask = Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                shortcutTask = nil
+            }
+        } else {
+            startRefresh()
+        }
     }
 
     private func startRefresh(scrollToTop: Bool = false) {

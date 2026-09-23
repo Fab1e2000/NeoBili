@@ -45,9 +45,7 @@ struct RootView: View {
     @State private var tabSwitchTask: Task<Void, Never>?
 
     var body: some View {
-        @Bindable var nowPlaying = nowPlaying
-
-        return TabView(selection: tabSelection) {
+        TabView(selection: tabSelection) {
             // 顺序和显示与否来自设置；各页以自身为 id，调整顺序不会重建页面和丢失状态。
             ForEach(visibleTabs) { tab in
                 Tab(tab.title, systemImage: tab.systemImage, value: tab) {
@@ -67,10 +65,11 @@ struct RootView: View {
         .background {
             TabReselectionObserver {
                 guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented else { return }
-                if displayedTab == .search { isSearchFocused = true }
-                if displayedTab == .home { NotificationCenter.default.post(name: .homeTabReselected, object: nil) }
-                if displayedTab == .live { NotificationCenter.default.post(name: .liveTabReselected, object: nil) }
-                if displayedTab == .following { NotificationCenter.default.post(name: .followingTabReselected, object: nil) }
+                if displayedTab == .search {
+                    isSearchFocused = true
+                } else {
+                    NotificationCenter.default.post(name: .mainTabReselected, object: displayedTab)
+                }
             }.frame(width: 0, height: 0)
         }
         .tint(AppTheme.selected(themeID).color)
@@ -89,39 +88,13 @@ struct RootView: View {
         .actionFeedbackOverlay()
         // 视频页由最外层持有，播放器和整页状态统一由 NowPlayingStore 管理；
         // 视频页退出后由 store 将播放器交给小窗，关闭小窗时才释放。
-        .fullScreenCover(item: Binding(
-            get: { nowPlaying.isServiceSheetPresented ? nil : nowPlaying.videoPresentation },
-            set: { destination in
-                guard !nowPlaying.isServiceSheetPresented else { return }
-                if destination != nil { nowPlaying.isExpanded = true }
-                else { nowPlaying.dismissVideoPage() }
-            }
-        ), onDismiss: nowPlaying.finishDismissal) { _ in
-            Group {
-                if let player = nowPlaying.livePlayer {
-                    LiveRoomView(player: player, keepsPlaybackOnDismiss: true,
-                                 onReturn: nowPlaying.dismissVideoPage)
-                } else {
-                    VideoPage()
-                }
-            }
-                .appTextSize()
-                .presentationBackground(.clear)
-                .presentationContentInteraction(.resizes)
-                .navigationTransition(.zoom(sourceID: MediaPresentationState.Source.player,
-                                            in: videoTransition))
-                .background { VideoPagePresentationObserver(
-                    onDidAppear: nowPlaying.videoPageDidAppear,
-                    onInteractionBegan: nowPlaying.videoPageInteractionBegan,
-                    onInteractionEnded: nowPlaying.videoPageInteractionEnded
-                ) }
-        }
+        .videoPagePresenter(isActive: { !nowPlaying.isServiceSheetPresented }, namespace: videoTransition)
         // 「我的」页面由根部统一呈现；各页头像通过环境里的 openMine 打开它。
         .mineSheetHost()
-        // 底部内容直接延伸，不加系统渐变模糊。
         #if PERFORMANCE_DEMO
         .overlay(alignment: .topTrailing) { PerformanceDemoControl(store: nowPlaying) }
         #endif
+        // 底部内容直接延伸，不加系统渐变模糊。
         .scrollEdgeEffectHidden(true, for: .bottom)
         .appTheme()
         .environment(nowPlaying)
@@ -174,7 +147,9 @@ struct RootView: View {
                 .id(account.sessionID)
                 .tint(.primary)
         case .watchLater, .favorites, .history:
+            // 列表只在首次出现时加载，换账号后要整页重建，否则会留着上个账号的内容。
             LibraryTabPage(tab: tab)
+                .id(account.sessionID)
                 .tint(.primary)
         case .search:
             EmptyView()

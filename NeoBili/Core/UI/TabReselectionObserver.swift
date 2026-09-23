@@ -106,7 +106,15 @@ struct TabReselectionObserver: UIViewControllerRepresentable {
 }
 
 extension Notification.Name {
-    static let homeTabReselected = Notification.Name("NeoBili.homeTabReselected")
-    static let liveTabReselected = Notification.Name("NeoBili.liveTabReselected")
-    static let followingTabReselected = Notification.Name("NeoBili.followingTabReselected")
+    /// 重复点当前标签。`object` 是被点的 `MainTab`。
+    static let mainTabReselected = Notification.Name("NeoBili.mainTabReselected")
+}
+
+extension View {
+    /// 重复点标签栏上的 `tab` 时执行，通常是「不在顶部就回顶部，在顶部就刷新」。
+    func onTabReselected(_ tab: MainTab, perform action: @escaping () -> Void) -> some View {
+        onReceive(NotificationCenter.default.publisher(for: .mainTabReselected)) { notification in
+            if notification.object as? MainTab == tab { action() }
+        }
+    }
 }

@@ -2,45 +2,54 @@ import SwiftUI
 
 /// 「关注」Tab：动态流与可收起的侧边关注选择器。
 struct FollowingView: View {
-    @Environment(\.tabContentOpacity) private var tabContentOpacity
     var onOpenLiveRoom: (LiveRoom) -> Void = { _ in }
+
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Namespace private var dynamicTransition
+
+    // 设置
+    @AppStorage(FollowingSidebarSide.storageKey) private var sidebarSide: FollowingSidebarSide = .left
+    @AppStorage(FollowingSidebarDwellSettings.storageKey) private var sidebarDwellDuration = FollowingSidebarDwellSettings.defaultDuration
+    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
+    @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
+    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
+    @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = CardAnimationSettings.defaultValue
+    @AppStorage(CardAnimationSettings.dynamicRefreshEnterKey) private var dynamicEnterEnabled = CardAnimationSettings.defaultValue
+
+    // 数据与导航
     @State private var viewModel = FollowingViewModel()
     @State private var path: [FollowedUp] = []
     /// 正在看哪条动态的详情。有值时推入详情页。
-    @Namespace private var dynamicTransition
     @State private var detailEntry: DynamicEntry?
+    @State private var isFollowingVisible = false
+    @State private var liveRefreshGeneration = 0
+
+    // 侧边选择器
     /// 轮盘拖动时的视觉焦点；只有停稳后才提交给 ViewModel。
     @State private var focusedTargetID: FollowingSelection.ID = .all
-    @AppStorage(FollowingSidebarSide.storageKey) private var sidebarSide: FollowingSidebarSide = .left
-    @AppStorage(FollowingSidebarDwellSettings.storageKey) private var sidebarDwellDuration = FollowingSidebarDwellSettings.defaultDuration
     @State private var isSidebarExpanded = false
     @State private var sidebarMotion = FollowingSidebarMotion()
+    @State private var isAvatarMenuPresented = false
+    @State private var selectionTransitionTask: Task<Void, Never>?
+    @State private var pendingSelectionID: FollowingSelection.ID?
+
+    // 列表滚动与刷新
     @State private var listPosition = ScrollPosition(edge: .top)
     @State private var isAwayFromTop = false
     @State private var shortcutTask: Task<Void, Never>?
-    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
-    @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
-    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = true
-    @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = true
-    @AppStorage(CardAnimationSettings.dynamicRefreshEnterKey) private var dynamicEnterEnabled = CardAnimationSettings.defaultValue
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
     @State private var isRefreshing = false
-    @State private var refreshOpacity = 1.0
-    @State private var feedGeneration = 0
     @State private var refreshTask: Task<Void, Never>?
+    @State private var refreshOpacity = 1.0
     @State private var feedOpacity = 1.0
-    @State private var selectionTransitionTask: Task<Void, Never>?
-    @State private var pendingSelectionID: FollowingSelection.ID?
-    @State private var isFollowingVisible = false
-    @State private var isAvatarMenuPresented = false
-    @State private var liveRefreshGeneration = 0
+    @State private var feedGeneration = 0
 
     private struct LiveRefreshContext: Hashable {
         let isActive: Bool
@@ -285,7 +294,7 @@ struct FollowingView: View {
             }
         }
         // 与推荐页一致：重复点「关注」标签，不在顶部时回到顶部，已在顶部时刷新。
-        .onReceive(NotificationCenter.default.publisher(for: .followingTabReselected)) { _ in
+        .onTabReselected(.following) {
             guard account.isLoggedIn, shortcutTask == nil, !isRefreshing, !isSidebarExpanded,
                   path.isEmpty, detailEntry == nil else { return }
             if isAwayFromTop {

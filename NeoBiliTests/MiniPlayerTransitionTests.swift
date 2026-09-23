@@ -154,13 +154,14 @@ private struct MiniTransitionHost: View {
                     .padding(20)
             }
             .overlay(alignment: .bottomLeading) {
-                // 停在左下方的小窗替身，只提供转场终点。
+                // 小窗替身，只提供转场终点。尺寸和位置沿用原浮动小窗在 402×874 屏上
+                // 停靠左下（锚点 0, 0.8）时的实际布局：16:9、宽约 227pt、中心约在 y=639。
                 Color.blue
                     .overlay { MiniTransitionViewProbe { fixture.miniView = $0 } }
                     .matchedTransitionSource(id: fixture.presentation.source(for: NowPlayingStore.miniPlayerTransitionSourceID).nativeID, in: transition)
-                    .frame(width: 192, height: 108)
-                    .padding(.leading, 12)
-                    .padding(.bottom, 160)
+                    .frame(width: 227, height: 128)
+                    .padding(.leading, 24)
+                    .padding(.bottom, 171)
             }
             .fullScreenCover(item: Binding(
                 get: { fixture.presentation.destination },

@@ -79,7 +79,7 @@ final class PortraitVideoStoreTests: XCTestCase {
 
     func testConcurrentListsShareRequestsAndLimitConcurrency() async {
         let probe = Probe()
-        let store = PortraitVideoStore(defaults: defaults()) { await probe.load($0) }
+        let store = PortraitVideoStore(defaults: defaults(), maximumConcurrentRequests: 2) { await probe.load($0) }
         let first = Task { await store.resolve(["A"]) }
         let duplicate = Task { await store.resolve(["A"]) }
         let second = Task { await store.resolve(["B"]) }
@@ -101,7 +101,7 @@ final class PortraitVideoStoreTests: XCTestCase {
 
     func testCancellingListStopsRemainingLookupsButKeepsSharedResult() async {
         let probe = Probe()
-        let store = PortraitVideoStore(defaults: defaults()) { await probe.load($0) }
+        let store = PortraitVideoStore(defaults: defaults(), maximumConcurrentRequests: 1) { await probe.load($0) }
         let task = Task { await store.resolve(["A", "B"]) }
         await waitUntil { probe.pending.count == 1 }
         task.cancel()

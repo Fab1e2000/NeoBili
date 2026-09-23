@@ -80,15 +80,22 @@ struct LiveView: View {
 }
 
 private struct LiveFeedPage: View {
+    /// 当前显示的那一页才响应标签栏的重复点击。
+    let isActive: Bool
+    let onSelectRecommended: () -> Void
+    let onOpenRoom: (LiveRoom, String) -> Void
+
+    @Environment(AccountStore.self) private var account
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.tabContentOpacity) private var tabContentOpacity
-    @Environment(AccountStore.self) private var account
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
+    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
+    private var animations = VideoCardAnimationPreferences(source: .live)
+
     @State private var model: LiveFeedModel
     @State private var entranceClock = VideoEntranceClock()
     @State private var previousEntranceGeneration: Int?
-    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     @State private var refreshTask: Task<Void, Never>?
     @State private var isRefreshing = false
     @State private var refreshID = UUID()
@@ -96,11 +103,6 @@ private struct LiveFeedPage: View {
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var isAwayFromTop = false
     @State private var shortcutTask: Task<Void, Never>?
-    private var animations = VideoCardAnimationPreferences(source: .live)
-    /// 当前显示的那一页才响应标签栏的重复点击。
-    let isActive: Bool
-    let onSelectRecommended: () -> Void
-    let onOpenRoom: (LiveRoom, String) -> Void
 
     init(model: LiveFeedModel, isActive: Bool, onSelectRecommended: @escaping () -> Void,
          onOpenRoom: @escaping (LiveRoom, String) -> Void) {
@@ -159,7 +161,7 @@ private struct LiveFeedPage: View {
             if !enabled { withAnimation(nil) { listOpacity = 1 } }
         }
         // 与推荐页一致：重复点「直播」标签，不在顶部时回到顶部，已在顶部时刷新。
-        .onReceive(NotificationCenter.default.publisher(for: .liveTabReselected)) { _ in
+        .onTabReselected(.live) {
             guard isActive, shortcutTask == nil, !isRefreshing else { return }
             if isAwayFromTop {
                 withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .top) }
