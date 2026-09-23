@@ -4,6 +4,7 @@ import UIKit
 /// Scroll persistence does not publish per-frame offsets back through SwiftUI.
 @MainActor
 final class VideoDescriptionScrollState {
+    /// 离列表顶部滚了多远（不含顶部边距），顶部边距变化后仍能恢复到同一位置。
     var offset: CGFloat = 0
 }
 
@@ -96,7 +97,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             let savedOffset = scrollState.offset
             view.reloadData()
             view.layoutIfNeeded()
-            view.setContentOffset(CGPoint(x: 0, y: savedOffset), animated: false)
+            view.setContentOffset(CGPoint(x: 0, y: savedOffset - view.adjustedContentInset.top), animated: false)
         } else {
             // Both section counts are already published to the data source.
             // Reload them atomically: separate reloads make UIKit validate one
@@ -192,7 +193,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             }.margins(.all, 0).minSize(height: 0)
         }
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            scrollState?.offset = scrollView.contentOffset.y
+            scrollState?.offset = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
         }
         func collectionView(_ view: UICollectionView, prefetchItemsAt paths: [IndexPath]) {
             for path in paths where path.section == 1 && path.item < videos.count {
@@ -392,6 +393,10 @@ struct VideoDescriptionContent: View {
         VideoDescriptionCollection(videos: videos, components: rows,
                                    scrollState: store.descriptionScroll, onSelect: store.openRelated,
                                    consume: consume, end: end, canConsume: canConsume, canContinue: canContinue)
+            // SwiftUI 会把 UIKit 列表摆在安全区内，顶部栏下面就只剩页面底色；铺进去之后内容才能
+            // 从选择器下滑过，由系统给出与评论页一致的顶部模糊。被覆盖的高度由 UIKit 按安全区
+            // 自动计入顶部边距，不用另外补。
+            .ignoresSafeArea(.container, edges: .top)
             .resolvePortraitVideos(all)
     }
 }
