@@ -6,9 +6,6 @@ struct LiveView: View {
     @State private var recommended: LiveFeedModel
     @State private var following: LiveFeedModel
     @State private var source: LiveFeedModel.Source = .recommended
-    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
-    /// 标题栏随内容滚动时两页共用的页头状态（见 `LiveCollapsingHeader`）。
-    @State private var header = LiveHeaderState()
     let onOpenRoom: (LiveRoom, String) -> Void
 
     init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom, String) -> Void) {
@@ -39,20 +36,14 @@ struct LiveView: View {
             ))
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
-            // 标题栏固定：标题和下方的切换器一起常驻顶部栏；两页各用系统原生的顶部模糊，
-            // 翻页时跟着各自的页面走。
+            // 标题和下方的切换器常驻顶部栏，不受「标题栏」设置影响：两页左右翻页，
+            // 标题放进列表会随页面横移或被切换器隔开，固定在顶部最稳定。
+            // 两页各用系统原生的顶部模糊，翻页时跟着各自的页面走。
             .safeAreaBar(edge: .top, spacing: 0) {
-                if pinsTitleBar {
-                    VStack(spacing: 0) {
-                        title
-                        sourcePicker
-                    }
-                }
-            }
-            // 随内容滚动：同一份页头浮在两页上方，位置跟随当前页的滚动，翻页时不跟着横移。
-            .overlay(alignment: .top) {
-                if !pinsTitleBar {
-                    LiveCollapsingHeader(state: header) { title } picker: { sourcePicker }
+                VStack(spacing: 0) {
+                    PageHeader(title: "直播", transitionID: "mine-avatar-live")
+                        .padding(.horizontal, 20)
+                    sourcePicker
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
@@ -68,11 +59,6 @@ struct LiveView: View {
         }
     }
 
-    private var title: some View {
-        PageHeader(title: "直播", transitionID: "mine-avatar-live")
-            .padding(.horizontal, 20)
-    }
-
     private var sourcePicker: LiveSourcePicker {
         LiveSourcePicker(selection: selection, showsFollowing: account.isLoggedIn)
     }
@@ -85,7 +71,6 @@ struct LiveView: View {
 
     private func page(_ model: LiveFeedModel) -> some View {
         LiveFeedPage(model: model, isActive: model.source == source,
-                     header: pinsTitleBar ? nil : header,
                      onSelectRecommended: { selection.wrappedValue = .recommended },
                      onOpenRoom: onOpenRoom)
             .frame(maxHeight: .infinity)
@@ -96,8 +81,6 @@ struct LiveView: View {
 private struct LiveFeedPage: View {
     /// 当前显示的那一页才响应标签栏的重复点击。
     let isActive: Bool
-    /// 标题栏随内容滚动时两页共用的页头状态；固定时为 nil。
-    let header: LiveHeaderState?
     let onSelectRecommended: () -> Void
     let onOpenRoom: (LiveRoom, String) -> Void
 
@@ -120,11 +103,10 @@ private struct LiveFeedPage: View {
     @State private var isAwayFromTop = false
     @State private var shortcutTask: Task<Void, Never>?
 
-    init(model: LiveFeedModel, isActive: Bool, header: LiveHeaderState?,
+    init(model: LiveFeedModel, isActive: Bool,
          onSelectRecommended: @escaping () -> Void, onOpenRoom: @escaping (LiveRoom, String) -> Void) {
         _model = State(initialValue: model)
         self.isActive = isActive
-        self.header = header
         self.onSelectRecommended = onSelectRecommended
         self.onOpenRoom = onOpenRoom
     }
@@ -230,7 +212,6 @@ private struct LiveFeedPage: View {
             }
         }
         .scrollPosition($scrollPosition)
-        .liveCollapsingHeaderScroll(state: header, isActive: isActive, position: $scrollPosition)
         .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 1 } action: { _, away in
             isAwayFromTop = away
         }
