@@ -63,9 +63,6 @@ final class PortraitVideoStore {
     @ObservationIgnored private var queue: [String] = []
     @ObservationIgnored private var activeRequests = 0
 
-    var queuedRequestCount: Int { requests.values.filter { $0.task == nil }.count }
-    func subscriberCount(for bvid: String) -> Int { requests[bvid]?.subscribers.count ?? 0 }
-
     convenience init(defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init,
                      loader: @escaping @MainActor (String) async throws -> VideoDimension?) {
         self.init(defaults: defaults, now: now, metadataLoader: { bvid in

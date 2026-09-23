@@ -3,12 +3,6 @@ import Foundation
 /// Endpoint-level calls, kept separate from the transport (`APIClient`) so
 /// feature view models only ever talk to this facade.
 enum BiliAPI {
-    static func popularVideos(page: Int) async throws -> PopularFeedPage {
-        try await APIClient.shared.get(
-            path: "x/web-interface/popular",
-            params: ["pn": String(page), "ps": "20"]
-        )
-    }
 
     /// 使用 PiliPlus 的 App 推荐接口，列表刷新与分页仍由原 ViewModel 管理。
     static func recommendFeed(freshIndex: Int) async throws -> [VideoSummary] {

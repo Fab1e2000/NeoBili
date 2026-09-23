@@ -3,6 +3,9 @@ import SwiftUI
 struct HomeView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(\.openMine) private var openMine
+    @AppStorage(HomeTitleBarSettings.storageKey) private var pinsTitleBar = HomeTitleBarSettings.defaultValue
+    /// 列表要避让的上下距离（状态栏 + 固定标题栏、标签栏），量好交给 UIKit 列表。
+    @State private var safeInsets = EdgeInsets()
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(AccountStore.self) private var account
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
@@ -35,8 +38,14 @@ struct HomeView: View {
         #if DEBUG
         let _ = SearchLatencyProbe.body("HomeView")
         #endif
-        // 页头属于列表内容，滚走后只留下状态栏的滚动边缘效果。
+        // 标题栏两种样式：随内容滚动时页头是列表第一行；固定时挂在顶部栏，卡片从下面滑过。
         feed
+            .safeAreaBar(edge: .top, spacing: 0) {
+                if pinsTitleBar {
+                    PageHeader(title: "推荐", transitionID: Self.avatarTransitionID)
+                        .padding(.horizontal, 20)
+                }
+            }
             .background(Color(uiColor: .systemGroupedBackground))
             .task { await viewModel.loadInitial() }
             // 登录/退出后同一套推荐接口在服务端会切到个性化/通用推流，
@@ -65,6 +74,8 @@ struct HomeView: View {
         }
     }
 
+    private static let avatarTransitionID = "mine-avatar-home"
+
     private var feed: some View {
         ZStack {
             HomeFeedCollection(
@@ -77,12 +88,15 @@ struct HomeView: View {
                 controller: feedController,
                 onRefresh: { startRefresh() },
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
-                onOpenMine: { openMine("mine-avatar-home") },
+                onOpenMine: { openMine(Self.avatarTransitionID) },
+                pinsTitleBar: pinsTitleBar,
+                safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity
             )
             .opacity(animatesExit ? listOpacity : 1)
-            // 内容从状态栏和标签栏下面滑过；列表通过 adjustedContentInset 留出安全区。
+            // 内容从状态栏、标题栏和标签栏下面滑过；被忽略的这段安全区量出来补进列表边距。
             .ignoresSafeArea()
+            .onGeometryChange(for: EdgeInsets.self, of: \.safeAreaInsets) { safeInsets = $0 }
 
             // 加载、出错、全被过滤这些状态单独观察，isLoading 翻转时不重算整个列表。
             HomeFeedStatusOverlay(viewModel: viewModel, hidesPortraitVideos: hidesPortraitVideos) {

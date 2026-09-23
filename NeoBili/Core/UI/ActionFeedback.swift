@@ -43,10 +43,6 @@ final class ActionFeedback {
 
     func undo() { finish(commit: false) }
 
-    func report(_ error: Error?, successText: String) {
-        show(error.map { $0.localizedDescription } ?? successText)
-    }
-
     private func scheduleExpiry(after duration: Duration, token request: UUID? = nil) {
         let request = request ?? UUID()
         token = request

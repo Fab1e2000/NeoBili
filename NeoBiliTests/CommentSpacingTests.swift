@@ -50,36 +50,6 @@ final class CommentSpacingTests: XCTestCase {
         }
     }
 
-    /// 同一条评论「展开」和「收起」两种状态下，灰块底部到分隔线的距离必须一样。
-    /// 以前只测过收起状态，展开后最后一行从按钮换成了别的内容时会露出不一致。
-    func testReplyBlockToDividerGapMatchesBetweenExpandedAndCollapsed() throws {
-        let replies = [
-            "用户甲：第一层",
-            "用户乙：第二层",
-            "用户丙：第三层",
-            "用户丁：第四层",
-            "用户戊：第五层",
-            "用户己：第六层"
-        ]
-        let collapsed = try makeComment(rpid: 1, message: "主评论内容", rcount: 6, replies: replies)
-
-        let expandedVM = CommentsViewModel(aid: 1)
-        expandedVM.setExpandedForTesting(
-            rootId: collapsed.id,
-            replies: try makeComment(rpid: 1, message: "主评论内容", rcount: 6, replies: replies).replies ?? []
-        )
-        let collapsedVM = CommentsViewModel(aid: 1)
-
-        let collapsedGap = try measureGapBelowReplyBlock(for: collapsed, viewModel: collapsedVM)
-        let expandedGap = try measureGapBelowReplyBlock(for: collapsed, viewModel: expandedVM)
-        XCTAssertEqual(
-            collapsedGap,
-            expandedGap,
-            accuracy: 1,
-            "收起时灰块到分隔线 \(collapsedGap)，展开时 \(expandedGap)——两种状态不一致"
-        )
-    }
-
     func testSingleLongReplyIsFullyVisibleWithoutExtraBottomSpacing() throws {
         let short = try makeComment(rpid: 10, message: "正文", rcount: 1, replies: ["简短回复"])
         let long = try makeComment(rpid: 11, message: "正文", rcount: 1,
@@ -98,8 +68,6 @@ final class CommentSpacingTests: XCTestCase {
         let comment = try makeComment(rpid: 12, message: "正文", rcount: 2, replies: ["预览回复"])
         let model = CommentsViewModel(aid: 1)
         XCTAssertTrue(model.shouldShowAllReplies(comment))
-        model.setExpandedForTesting(rootId: comment.id, replies: comment.replies ?? [])
-        XCTAssertFalse(model.shouldShowAllReplies(comment))
     }
 
     // MARK: - 渲染与取样

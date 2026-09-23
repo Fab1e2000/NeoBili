@@ -141,18 +141,12 @@ final class CommentsViewModel {
 
     // MARK: - 楼中楼
 
-    /// 已经点开楼中楼的那些评论。
-    private(set) var expandedCommentIDs: Set<Int> = []
     /// 评论 rpid -> 已经完整取回的回复。没有取过的用接口自带的预览。
     private(set) var loadedReplies: [Int: [Comment]] = [:]
     private(set) var loadingReplyIDs: Set<Int> = []
     private(set) var moreRepliesIDs: Set<Int> = []
     private var replyNextPage: [Int: Int] = [:]
     private(set) var replyErrors: [Int: String] = [:]
-
-    func isExpanded(_ comment: Comment) -> Bool {
-        expandedCommentIDs.contains(comment.id)
-    }
 
     func isLoadingReplies(_ comment: Comment) -> Bool {
         loadingReplyIDs.contains(comment.id)
@@ -162,42 +156,22 @@ final class CommentsViewModel {
         moreRepliesIDs.contains(comment.id)
     }
 
-    /// 展开时用完整列表，收起时用接口跟着一级评论一起返回的那几条预览。
+    /// 评论卡片上的楼中楼预览：自己刚发的回复加上接口跟着一级评论返回的那几条。
+    /// 完整列表在单独页面，见 `allReplies(for:)`。
     func replies(for comment: Comment) -> [Comment] {
-        if isExpanded(comment), let loaded = loadedReplies[comment.id] {
-            return loaded
-        }
         var known: Set<Int> = []
         return ((submittedReplies[comment.id] ?? []) + (comment.replies ?? []))
             .filter { known.insert($0.rpid).inserted }
     }
 
-    /// 仅供间距测试：跳过网络直接把楼中楼置为展开状态。
-    func setExpandedForTesting(rootId: Int, replies: [Comment]) {
-        expandedCommentIDs.insert(rootId)
-        loadedReplies[rootId] = replies
-        replyIDs[rootId] = Set(replies.map(\.id))
-    }
-
     func shouldShowAllReplies(_ comment: Comment) -> Bool {
-        replyErrors[comment.id] != nil || (!isExpanded(comment) && comment.rcount > replies(for: comment).count)
-    }
-
-    /// 就地展开楼中楼。
-    ///
-    /// 界面上已经没有入口了——「查看全部回复」和点击楼中楼区块现在都走单独页面。
-    /// 保留它是因为 `DynamicFeatureTests` 还在覆盖"重复展开不会收起"这条行为。
-    func expandReplies(for comment: Comment) async {
-        expandedCommentIDs.insert(comment.id)
-        guard comment.rcount > (comment.replies ?? []).count || replyErrors[comment.id] != nil else { return }
-        guard loadedReplies[comment.id] == nil || replyErrors[comment.id] != nil else { return }
-        await loadMoreReplies(for: comment)
+        replyErrors[comment.id] != nil || comment.rcount > replies(for: comment).count
     }
 
     /// 单独页面用的完整回复列表。
     ///
-    /// 和 `replies(for:)` 不同，它不看展开状态：卡片上那一小块预览仍然只显示
-    /// 接口跟着一级评论一起返回的那几条，不会因为进过一次单独页面就变长。
+    /// 和 `replies(for:)` 不同：卡片上那一小块预览仍然只显示接口跟着一级评论
+    /// 一起返回的那几条，不会因为进过一次单独页面就变长。
     func allReplies(for comment: Comment) -> [Comment] {
         loadedReplies[comment.id] ?? comment.replies ?? []
     }

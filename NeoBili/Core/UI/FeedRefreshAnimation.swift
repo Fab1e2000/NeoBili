@@ -41,12 +41,6 @@ enum FeedRefreshTuning {
 
     // MARK: 原位淡入
     static let fadeInDuration: Double = 0.25
-
-    // MARK: 下拉过程
-
-    /// 下拉到阈值时列表淡掉的幅度，是退出动画的预告，也代替原来那颗提示胶囊。
-    /// 松手后就从这个浓度接着往下淡，中间没有跳变。
-    static let pullFade: Double = 0.18
 }
 
 /// Only opacity changes; card geometry and hit-testing bounds stay fixed.
@@ -118,7 +112,6 @@ struct FeedFadeInRow<Content: View>: View {
 
 }
 
-
 extension EnvironmentValues {
     @Entry var videoEntranceProvided = false
     @Entry var videoEntranceID: String? = nil
@@ -153,7 +146,6 @@ extension View {
         environment(\.videoEntranceID, id)
     }
 }
-
 
 struct VideoEntranceScope: Equatable {
     let ids: Set<String>
@@ -257,29 +249,6 @@ private struct TimedVideoEntrance<Content: View>: View {
         let speed: Double
     }
 
-}
-
-
-/// 刷新分隔条沿用整批视频的入场起点，包括屏幕外的提示条。
-private struct VideoBatchEntrance: ViewModifier {
-    private var animations = CardAnimationPreferences()
-    @Environment(\.videoEntranceClocks) private var scopes
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var speed = AnimationSpeedSettings.defaultSpeed
-
-    func body(content: Content) -> some View {
-        let scope = scopes.first
-        let start = scope.flatMap { scope in
-            scope.clock.generation == scope.generation ? scope.clock.starts.values.min() : nil
-        }
-        TimedVideoEntrance(start: start, speed: speed, enabled: !reduceMotion && animations.isEnabled(category: .video, phase: .enter)) {
-            content
-        }
-    }
-}
-
-extension View {
-    func videoBatchEntrance() -> some View { modifier(VideoBatchEntrance()) }
 }
 
 /// The request and exit run concurrently; fast responses wait only for the

@@ -33,12 +33,6 @@ final class VideoLikeStore {
         overrides[aid] = liked
     }
 
-    /// 拿到可信的新快照（比如成功写入后的接口回包）时清掉差量。
-    /// 普通列表刷新拿到的快照不算——它可能是写入前的旧值。
-    func clearOverride(aid: Int) {
-        overrides[aid] = nil
-    }
-
     /// 会话级单例：持有它的模型（动态流、视频页）都创建在拿不到
     /// SwiftUI 环境的位置，注入反而要穿透好几层构造链。
     static let shared = VideoLikeStore()

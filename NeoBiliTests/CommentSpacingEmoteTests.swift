@@ -60,44 +60,6 @@ final class CommentSpacingEmoteTests: XCTestCase {
         return (snapshot.blockGap, CGFloat(snapshot.dividerTop - lastInk - 1))
     }
 
-    /// rcount 与预览条数相等的小楼中楼：收起时没有「查看全部」按钮，
-    /// 灰块以**表情行**收尾；展开后以「收起回复」**按钮**收尾。
-    /// 两种状态的底部间距必须一致。
-    func testBottomGapMatchesBetweenEmoteEndingAndButtonEnding() throws {
-        let emoteJSON = """
-        {"[doge]":{"url":"\(Self.emoteURLString)","meta":{"size":1}}}
-        """
-        let json = """
-        {"rpid":1,"ctime":1700000000,"like":108,"rcount":2,
-        "member":{"uname":"某位用户","avatar":""},"content":{"message":"主评论内容"},
-        "replies":[
-        {"rpid":1001,"ctime":1700000000,"like":0,"rcount":0,"member":{"uname":"甲","avatar":""},"content":{"message":"甲：第一层"}},
-        {"rpid":1002,"ctime":1700000000,"like":0,"rcount":0,"member":{"uname":"乙","avatar":""},"content":{"message":"乙：看这个[doge]","emote":\(emoteJSON)}}
-        ]}
-        """
-        let comment = try JSONDecoder().decode(Comment.self, from: Data(json.utf8))
-
-        let collapsed = try measure(comment: comment, viewModel: CommentsViewModel(aid: 1))
-        let expandedVM = CommentsViewModel(aid: 1)
-        expandedVM.setExpandedForTesting(rootId: comment.id, replies: comment.replies ?? [])
-        let expanded = try measure(comment: comment, viewModel: expandedVM)
-
-        XCTAssertEqual(
-            collapsed.blockGap,
-            expanded.blockGap,
-            accuracy: 1,
-            "收起（表情行收尾）灰块底到分隔线 \(collapsed.blockGap)，展开（按钮收尾）\(expanded.blockGap)"
-        )
-        // 表情底边贴基线，与中文字墨迹底边平齐：墨迹差应接近 0。
-        // 超过 1pt 说明表情又偏离了基线（或含表情的行被撑高了）。
-        XCTAssertEqual(
-            collapsed.inkGap,
-            expanded.inkGap,
-            accuracy: 1,
-            "收起（表情行收尾）末行墨迹到分隔线 \(collapsed.inkGap)，展开（按钮收尾）\(expanded.inkGap)"
-        )
-    }
-
     /// 末行带表情的楼中楼 vs 末行纯文字的楼中楼：墨迹到分隔线的空白也必须一致，
     /// 否则不同评论之间会一松一紧。
     func testInkGapMatchesBetweenEmoteAndPlainTextEndings() throws {

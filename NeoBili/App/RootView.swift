@@ -14,7 +14,6 @@ struct RootView: View {
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
-    @AppStorage(HomeTitleBarSettings.storageKey) private var pinsHomeTitleBar = HomeTitleBarSettings.defaultValue
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
     @AppStorage(MainTabSettings.hiddenKey) private var hiddenTabs: String?
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
@@ -168,11 +167,8 @@ struct RootView: View {
             LiveView(onOpenRoom: openLiveRoom)
                 .tint(.primary)
         case .home:
-            // 标题栏的两套实现由设置切换，各自持有列表和数据。
-            Group {
-                if pinsHomeTitleBar { HomePinnedHomeView() } else { HomeView() }
-            }
-            .tint(.primary)
+            HomeView()
+                .tint(.primary)
         case .following:
             FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") })
                 .id(account.sessionID)

@@ -107,11 +107,5 @@ extension VideoDimensionProviding {
         return PortraitVideoStore.shared.isPortrait(bvid: bvid) == false
     }
 
-    @MainActor
-    var isKnownPortraitVideo: Bool {
-        if let dimension, dimension.isValid { return dimension.isPortrait }
-        guard let bvid = dimensionLookupBVID else { return false }
-        return PortraitVideoStore.shared.isPortrait(bvid: bvid) == true
-    }
 }
 

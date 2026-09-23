@@ -153,14 +153,14 @@ private struct MiniTransitionHost: View {
                     .matchedTransitionSource(id: fixture.presentation.source(for: "card").nativeID, in: transition)
                     .padding(20)
             }
-            .overlay {
-                MiniPlayerContainer(
-                    content: Color.blue
-                        .overlay { MiniTransitionViewProbe { fixture.miniView = $0 } }
-                        .matchedTransitionSource(id: fixture.presentation.source(for: NowPlayingStore.miniPlayerTransitionSourceID).nativeID, in: transition),
-                    aspectRatio: 16.0 / 9, anchor: CGPoint(x: 0, y: 0.8), reduceMotion: false,
-                    onAnchorChange: { _ in }
-                )
+            .overlay(alignment: .bottomLeading) {
+                // 停在左下方的小窗替身，只提供转场终点。
+                Color.blue
+                    .overlay { MiniTransitionViewProbe { fixture.miniView = $0 } }
+                    .matchedTransitionSource(id: fixture.presentation.source(for: NowPlayingStore.miniPlayerTransitionSourceID).nativeID, in: transition)
+                    .frame(width: 192, height: 108)
+                    .padding(.leading, 12)
+                    .padding(.bottom, 160)
             }
             .fullScreenCover(item: Binding(
                 get: { fixture.presentation.destination },

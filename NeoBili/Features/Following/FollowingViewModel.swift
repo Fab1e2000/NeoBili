@@ -121,11 +121,6 @@ final class FollowingViewModel {
         return model
     }
 
-    func loadSelectedIfNeeded() async {
-        let model = activeFeed
-        await model.loadInitial()
-    }
-
     func loadInitial() async {
         async let upList: Void = loadUpsIfNeeded()
         async let live: Void = liveDirectory.refresh()

@@ -25,11 +25,6 @@ final class SearchLatencyProbe: NSObject {
         shared.bodyCounts[name, default: 0] += 1
     }
 
-    static func focusChanged(_ focused: Bool) {
-        guard enabled else { return }
-        shared.record("focus_changed", extra: ["focused": focused])
-    }
-
     func run(focus: @MainActor (Bool) -> Void,
              query: () -> String, isSearching: () -> Bool, cancel: () -> Void) async {
         guard Self.enabled, !started else { return }

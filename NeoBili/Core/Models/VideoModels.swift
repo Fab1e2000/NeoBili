@@ -87,15 +87,6 @@ struct VideoSummary: Decodable, Identifiable, Hashable, VideoDimensionProviding 
     }
 }
 
-struct PopularFeedPage: Decodable {
-    let list: [VideoSummary]
-    let noMore: Bool
-    enum CodingKeys: String, CodingKey {
-        case list
-        case noMore = "no_more"
-    }
-}
-
 struct VideoPart: Decodable, Identifiable, Hashable, Sendable {
     let cid: Int
     let page: Int

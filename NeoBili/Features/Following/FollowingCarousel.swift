@@ -22,7 +22,6 @@ enum FollowingSidebarDwellSettings {
 
 enum FollowingSidebarLayout {
     static let transitionDuration: TimeInterval = 0.24
-    static let contentDisplacement: CGFloat = FollowingSidebarPhysics.displacement
     static let countKey = "neobili.followingSidebarCount"
     static let counts = [5, 7, 9, 11]
     static let defaultCount = 7
@@ -1041,7 +1040,6 @@ private struct AllDynamicsAvatar: View {
             .rotationEffect(.degrees(rotation))
     }
 }
-
 
 /// 将横向展开手势直接挂到页面 UIScrollView，避免被卡片和 SwiftUI 滚动手势抢走。
 struct FollowingPageSwipeObserver: UIViewRepresentable {

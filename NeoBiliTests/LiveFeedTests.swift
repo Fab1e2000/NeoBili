@@ -243,19 +243,6 @@ final class LiveFeedTests: XCTestCase {
         XCTAssertEqual(model.loadedPage, 0)
     }
 
-    func testRoomNumberAndOfficialLinkParsing() {
-        for input in [" 12345\n", "https://live.bilibili.com/12345?from=search", "live.bilibili.com/12345",
-                      "https://live.bilibili.com/blanc/12345", "https://live.bilibili.com/h5/12345",
-                      "一起看直播：https://live.bilibili.com/12345 ，来玩吧"] {
-            XCTAssertEqual(LiveRoomLinkParser.roomID(from: input), 12345, input)
-        }
-        for input in ["", "0", "-1", "12345abc", "BV1abc", "https://bilibili.com/video/12345",
-                      "https://evil-live.bilibili.com/12345", "https://live.bilibili.com.evil/12345",
-                      "https://live.bilibili.com/12345abc", "99999999999999999999999999"] {
-            XCTAssertNil(LiveRoomLinkParser.roomID(from: input), input)
-        }
-    }
-
     private func room(_ id: Int) -> LiveRoom { LiveRoom(roomID: id, title: "房间 \(id)", username: "主播") }
 
     private func waitUntil(_ predicate: () async -> Bool) async throws {

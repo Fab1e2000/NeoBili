@@ -137,15 +137,6 @@ final class SystemNowPlayingCenter {
         publish()
     }
 
-    /// 手势退出的提交帧上不要立刻刷锁屏：`playbackState` 和 `nowPlayingInfo`
-    /// 各是一次同步 IPC，偶尔要几十毫秒，会砸在退出动画的第一帧上。晚一个
-    /// runloop 再刷，用户无感。
-    func updatePlaybackStateAfterNextRunloop(isPlaying: Bool, sessionID: UUID) {
-        DispatchQueue.main.async { [weak self] in
-            self?.updatePlaybackState(isPlaying: isPlaying, sessionID: sessionID)
-        }
-    }
-
     func deactivate(sessionID: UUID) {
         guard activeSessionID == sessionID else { return }
         artworkTask?.cancel()

@@ -1,6 +1,14 @@
 import SwiftUI
 import UIKit
 
+/// 推荐页标题栏的两种样式，设置里切换：
+/// - 随内容滚动（默认）：标题和头像是列表第一行，滚走后状态栏处柔和渐隐；
+/// - 固定在顶部：标题栏常驻，卡片从下面滑过，下缘清晰切边（与直播、关注页一致）。
+enum HomeTitleBarSettings {
+    static let storageKey = "neobili.homePinnedTitleBar"
+    static let defaultValue = false
+}
+
 /// 推荐页列表的滚动控制，给标签栏「回顶 / 刷新」和刷新后回顶使用。
 @MainActor
 final class HomeFeedScrollController {
@@ -39,6 +47,10 @@ struct HomeFeedCollection: UIViewRepresentable {
     let onRefresh: () -> Void
     let onOpenLastSeen: () -> Void
     var onOpenMine: () -> Void = {}
+    /// 标题栏固定在外层时，列表里不再插入页头行，顶部边缘改为清晰切边。
+    var pinsTitleBar = HomeTitleBarSettings.defaultValue
+    /// 列表忽略安全区铺满全屏，状态栏（+ 固定标题栏）和标签栏的高度由外层量好传入。
+    var safeInsets = EdgeInsets()
     /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身不透明，顶部模糊不受影响。
     var contentOpacity: Double = 1
 
@@ -57,15 +69,12 @@ struct HomeFeedCollection: UIViewRepresentable {
         // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
         view.alwaysBounceVertical = true
         view.showsHorizontalScrollIndicator = false
-        // 不在导航控制器里时，默认的 .automatic 只在「能滚动」时才把安全区算进边距。
-        // 刷新淡出期间会暂停滚动，那一刻顶部边距少了状态栏的高度，列表会跳上去，
-        // 恢复滚动后位置也回不来。这里始终计入安全区。
-        view.contentInsetAdjustmentBehavior = .always
-        // 页头自带上下留白，顶部只补 4pt，避免导航栏式的大段空白。
-        view.contentInset = UIEdgeInsets(top: 4, left: 0,
-                                         bottom: HomeCardLayout.verticalInset, right: 0)
-        // 卡片从顶部滑过时给一层渐隐（iOS 26 的 scroll edge effect），底部不加。
-        view.topEdgeEffect.style = .soft
+        // 边距全部由 safeInsets 给出，不让 UIKit 自动叠加安全区：挂上固定标题栏后
+        // 列表拿到的系统安全区是 0；而自动模式下刷新暂停滚动的那一刻边距会跳变。
+        view.contentInsetAdjustmentBehavior = .never
+        applyInsets(to: view)
+        // 卡片从顶部滑过时的 iOS 26 scroll edge effect，底部不加。
+        view.topEdgeEffect.style = topEdgeStyle
         view.bottomEdgeEffect.isHidden = true
         view.delegate = coordinator
         view.prefetchDataSource = coordinator
@@ -86,6 +95,9 @@ struct HomeFeedCollection: UIViewRepresentable {
             context.animate { coordinator.applyContentOpacityToVisibleCells() }
         }
         coordinator.onOpenMine = onOpenMine
+        coordinator.showsHeaderRow = !pinsTitleBar
+        applyInsets(to: view)
+        if view.topEdgeEffect.style != topEdgeStyle { view.topEdgeEffect.style = topEdgeStyle }
         coordinator.state.setRefreshing(isRefreshing)
         coordinator.pull.threshold = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
         coordinator.pull.enabled = !isRefreshing
@@ -97,6 +109,23 @@ struct HomeFeedCollection: UIViewRepresentable {
         controller.collectionView = view
         coordinator.update(environment: context.environment, hidesPortraitVideos: hidesPortraitVideos)
         coordinator.apply(rows)
+    }
+
+    private var topEdgeStyle: UIScrollEdgeEffect.Style { pinsTitleBar ? .hard : .soft }
+
+    /// 列表内的页头自带上下留白，顶部只补 4pt；固定标题栏时卡片紧贴栏下，补回网格留白。
+    private func applyInsets(to view: UICollectionView) {
+        let inset = UIEdgeInsets(top: safeInsets.top + (pinsTitleBar ? HomeCardLayout.verticalInset : 4), left: 0,
+                                 bottom: safeInsets.bottom + HomeCardLayout.verticalInset, right: 0)
+        guard view.contentInset != inset else { return }
+        // 安全区量出来之前列表可能已按旧边距停在顶部；边距变了要把它一并移到新的顶部，
+        // 否则第一排卡片会被状态栏或标题栏挡住。
+        let wasAtTop = view.contentOffset.y <= -view.adjustedContentInset.top + 1
+        view.contentInset = inset
+        view.verticalScrollIndicatorInsets = UIEdgeInsets(top: safeInsets.top, left: 0, bottom: safeInsets.bottom, right: 0)
+        if wasAtTop {
+            view.setContentOffset(CGPoint(x: view.contentOffset.x, y: -view.adjustedContentInset.top), animated: false)
+        }
     }
 
     static func dismantleUIView(_ view: UICollectionView, coordinator: Coordinator) {
@@ -155,6 +184,9 @@ struct HomeFeedCollection: UIViewRepresentable {
         var onRefresh: () -> Void = {}
         var onOpenLastSeen: () -> Void = {}
         var onOpenMine: () -> Void = {}
+        /// 标题栏随内容滚动时，页头作为列表第一行。
+        var showsHeaderRow = true
+        private var hasHeaderRow = false
         private static let headerID = "home-page-header"
         var contentOpacity: CGFloat = 1
         let state = HomeFeedCellState()
@@ -278,6 +310,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 return Self.sameContent(old, row) ? nil : id
             }
             let structureChanged = dataSource.snapshot().sectionIdentifiers.isEmpty || latest != latestIDs || earlier != earlierIDs || marker != hasMarker
+                || showsHeaderRow != hasHeaderRow
             // 没有变化时直接返回：刷新淡出、滚动开关这些状态也会触发这里。
             guard structureChanged || !changed.isEmpty || needsReconfigureAll else { return }
 
@@ -292,10 +325,14 @@ struct HomeFeedCollection: UIViewRepresentable {
             latestIDs = latest
             earlierIDs = earlier
             hasMarker = marker
+            hasHeaderRow = showsHeaderRow
 
             var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
-            snapshot.appendSections([.header, .latest])
-            snapshot.appendItems([Self.headerID], toSection: .header)
+            if showsHeaderRow {
+                snapshot.appendSections([.header])
+                snapshot.appendItems([Self.headerID], toSection: .header)
+            }
+            snapshot.appendSections([.latest])
             snapshot.appendItems(latest, toSection: .latest)
             if marker {
                 snapshot.appendSections([.marker])

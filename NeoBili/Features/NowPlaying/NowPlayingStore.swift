@@ -59,8 +59,6 @@ final class NowPlayingStore {
     private(set) var isVideoPageDismissalInProgress = false
     private(set) var isVideoPageInteractionInProgress = false
     private(set) var dismissalPlaybackPhase: InlineVideoPlaybackPhase?
-    /// 根页面和服务 sheet 共用停靠位置，切换承载页面时不跳回默认角落。
-    var miniPlayerAnchor = CGPoint(x: 1, y: 1)
 
     /// 视频下方停在简介还是评论。
     var section: VideoPageSection = .description

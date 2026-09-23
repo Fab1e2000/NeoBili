@@ -76,15 +76,4 @@ final class DynamicFeatureTests: XCTestCase {
         XCTAssertTrue(restored.readThrough.isEmpty)
     }
 
-    func testExpandedRepliesCannotBeCollapsedByOpeningAgain() async throws {
-        let json = """
-        {"rpid":1,"ctime":1,"like":0,"rcount":1,"member":{"uname":"作者","avatar":""},"content":{"message":"正文"}}
-        """
-        let comment = try JSONDecoder().decode(Comment.self, from: Data(json.utf8))
-        let model = CommentsViewModel(aid: 1)
-        model.setExpandedForTesting(rootId: 1, replies: [comment])
-        await model.expandReplies(for: comment)
-        XCTAssertTrue(model.isExpanded(comment))
-        XCTAssertEqual(model.replies(for: comment).count, 1)
-    }
 }

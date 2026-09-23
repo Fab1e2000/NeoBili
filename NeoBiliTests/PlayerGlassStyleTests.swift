@@ -264,66 +264,6 @@ final class PlayerGlassStyleTests: XCTestCase {
         }
     }
 
-    func testMiniPlayerGlassSizingVariantsOnRealDevice() async throws {
-        let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
-        defer { host.close() }
-        // The previous fixture may have left a landscape scene transition in
-        // flight. Read geometry only after this window and its host settle.
-        try await host.show(Color.black)
-        let size = host.window.bounds.size
-        let insets = host.window.safeAreaInsets
-        try await host.show(
-                VStack(spacing: 24) {
-                    Text("小窗控件 · 三种真实画幅")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                    HStack(alignment: .top, spacing: 16) {
-                        miniSpecimen(width: 144, height: 81, name: "mini-wide", recorder: host.frameRecorder)
-                        miniSpecimen(width: 157.5, height: 280, name: "mini-portrait", recorder: host.frameRecorder)
-                    }
-                    miniSpecimen(width: 220, height: 124, name: "mini-large", recorder: host.frameRecorder)
-                    Spacer(minLength: 0)
-                }
-                .padding(16)
-                .padding(.top, insets.top)
-                .padding(.bottom, insets.bottom)
-                .frame(width: size.width, height: size.height, alignment: .top)
-                .background(PlayerGlassFrameProbe(name: "mini-fixture", recorder: host.frameRecorder))
-                .background(Color(white: 0.08))
-                .ignoresSafeArea()
-                .preferredColorScheme(.dark)
-                .environment(\.dynamicTypeSize, .large)
-        )
-        XCTAssertLessThan(host.window.bounds.width, host.window.bounds.height)
-        let rootFrame = host.controller.view.convert(host.controller.view.bounds, to: host.window)
-        assertEqualFrames(rootFrame, host.window.bounds, "The hosting view must fill the portrait window")
-        let canvasFrame = try XCTUnwrap(host.frameRecorder.frames["mini-fixture"])
-        assertEqualFrames(canvasFrame, host.window.bounds, "The mini fixture must fill the portrait window")
-        let safeBounds = host.window.bounds.inset(by: host.window.safeAreaInsets).insetBy(dx: 16, dy: 16)
-        let specimens: [(String, CGSize)] = [
-            ("mini-wide", CGSize(width: 144, height: 81)),
-            ("mini-portrait", CGSize(width: 157.5, height: 280)),
-            ("mini-large", CGSize(width: 220, height: 124))
-        ]
-        var frames: [CGRect] = []
-        for (name, expectedSize) in specimens {
-            let frame = try XCTUnwrap(host.frameRecorder.frames[name], "Missing UIKit frame for \(name)")
-            XCTAssertEqual(frame.width, expectedSize.width, accuracy: 0.5, name)
-            XCTAssertEqual(frame.height, expectedSize.height, accuracy: 0.5, name)
-            XCTAssertTrue(safeBounds.insetBy(dx: -0.5, dy: -0.5).contains(frame),
-                          "\(name) is clipped: \(frame), available: \(safeBounds)")
-            for other in frames {
-                XCTAssertFalse(frame.intersects(other), "Mini fixtures must not overlap")
-            }
-            frames.append(frame)
-        }
-        let geometry = XCTAttachment(string: "window=\(host.window.bounds)\nscene=\(String(describing: host.window.windowScene?.interfaceOrientation))\nhost=\(rootFrame)\ncanvas=\(canvasFrame)\nsafe=\(safeBounds)\nspecimens=\(host.frameRecorder.frames)")
-        geometry.name = "player-glass-mini-size-variants-geometry"
-        geometry.lifetime = .keepAlways
-        add(geometry)
-        attachSnapshot("mini-size-variants", from: host)
-    }
-
     func testFullscreenQualityMenusUseTheBlackSidebarsOnRealDevice() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
@@ -384,23 +324,6 @@ final class PlayerGlassStyleTests: XCTestCase {
             geometry.lifetime = .keepAlways
             add(geometry)
             attachSnapshot(name, from: host)
-        }
-    }
-
-    private func miniSpecimen(width: CGFloat, height: CGFloat, name: String,
-                              recorder: PlayerGlassFrameRecorder) -> some View {
-        VStack(spacing: 8) {
-            Text(String(format: "%g × %g", Double(width), Double(height)))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.white.opacity(0.7))
-            PlayerGlassFixtureBackdrop()
-                .overlay {
-                    MiniPlayerControls(isPlaying: true, canControlPlayback: true,
-                                       onExpand: {}, onTogglePlayback: {}, onClose: {})
-                }
-                .frame(width: width, height: height)
-                .background(PlayerGlassFrameProbe(name: name, recorder: recorder))
-                .clipShape(RoundedRectangle(cornerRadius: 18))
         }
     }
 
@@ -666,7 +589,6 @@ private struct PlayerGlassFixtureBackdrop: View {
         .allowsHitTesting(false)
     }
 }
-
 
 /// Records the actual UIKit placement in UIWindow coordinates, independently
 /// of SwiftUI's logical/global coordinate space and PlayerChromeLayout math.

@@ -334,11 +334,10 @@ private struct CommentReplyPreview: View {
         }
     }
 
-    // MARK: - 楼中楼展开
+    // MARK: - 楼中楼预览
 
     private var replySection: some View {
         let replies = viewModel.replies(for: comment)
-        let isExpanded = viewModel.isExpanded(comment)
 
         return VStack(alignment: .leading, spacing: CommentLayout.replySpacing) {
             ForEach(replies) { reply in
@@ -355,11 +354,6 @@ private struct CommentReplyPreview: View {
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .task(id: isExpanded && reply.id == replies.last?.id && viewModel.hasMoreReplies(comment)) {
-                        if isExpanded, reply.id == replies.last?.id, viewModel.hasMoreReplies(comment) {
-                            await viewModel.loadMoreReplies(for: comment)
-                        }
-                    }
             }
 
             if viewModel.isLoadingReplies(comment) {

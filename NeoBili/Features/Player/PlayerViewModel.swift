@@ -215,12 +215,6 @@ final class PlayerViewModel {
         sleepDeadline != nil || sleepsAfterVideoEnd
     }
 
-    /// 剩余时间（分钟），给界面显示用。只在倒计时休眠时有值。
-    var sleepRemainingMinutes: Int? {
-        guard let sleepDeadline else { return nil }
-        return max(0, Int(ceil(sleepDeadline.timeIntervalSinceNow / 60)))
-    }
-
     func setSleepTimer(_ option: SleepOption) {
         cancelSleepTimer()
         selectedSleepOption = option
@@ -466,34 +460,6 @@ final class PlayerViewModel {
         SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
         isPlaying = false
         isLoading = false
-    }
-
-    /// 退出动画期间保留渲染表面，同时阻止迟到的切源任务重新开播。
-    ///
-    /// 这个调用发生在手势提交的同一帧：UIKit 正要开始原生 zoom 退出动画，
-    /// 主线程上任何同步的内核暂停（要抢 mpv 核心锁）或锁屏刷新（同步 IPC）
-    /// 都会让动画的第一帧迟到，表现就是松手瞬间的停顿。所以这里只翻状态位：
-    /// 内核暂停排队执行，锁屏状态晚一个 runloop 再刷；进度已由
-    /// `dismissVideoPage` 顶部落盘，不在这里重复写 UserDefaults。
-    func pauseForDismissal() {
-        qualityRequestID = UUID()
-        qualityFetchTask?.cancel()
-        qualityFetchTask = nil
-        recoveryTask?.cancel()
-        recoveryTask = nil
-        let wasAudible = isPlaying || qualityPlaybackIntent != nil
-        if qualityPlaybackIntent != nil { qualityPlaybackIntent = false }
-        isPlaying = false
-        danmaku?.setPaused(true)
-        // 首帧尚未到达时 isPlaying 可能为 false，仍须暂停内核。
-        session.pauseAsync()
-        if wasAudible {
-            reportWatchProgress(resumeState.isCompleted ? -1 : currentTime)
-            SystemNowPlayingCenter.shared.updatePlaybackStateAfterNextRunloop(
-                isPlaying: false,
-                sessionID: systemMediaSessionID
-            )
-        }
     }
 
     /// 弹幕开关打开时创建控制器并开始拉取弹幕；已创建就跳过。
