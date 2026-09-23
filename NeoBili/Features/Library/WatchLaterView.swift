@@ -26,6 +26,7 @@ struct WatchLaterView: View {
         Group {
             if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos) {
                 LoadingTaskAnchor()
+                    .scrollingPageHeaderAbove()
             } else if let errorMessage, items.isEmpty {
                 ContentUnavailableView {
                     Label("稍后再看加载失败", systemImage: "flag.slash")
@@ -34,20 +35,24 @@ struct WatchLaterView: View {
                 } actions: {
                     Button("重试") { Task { await reload() } }
                 }
+                .scrollingPageHeaderAbove()
             } else if !isLoading, visibleItems.isEmpty {
                 ContentUnavailableView(
                     items.isEmpty ? "稍后再看是空的" : "没有可显示的视频",
                     systemImage: items.isEmpty ? "flag.checkered" : "rectangle.slash"
                 )
+                .scrollingPageHeaderAbove()
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        ScrollingPageHeaderRow()
                         ForEach(visibleItems) { item in
                             row(item)
                         }
                     }
                 }
                 .background(Color(uiColor: .systemGroupedBackground))
+                .tracksPageHeaderPull()
             }
         }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。

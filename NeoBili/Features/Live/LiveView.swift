@@ -6,6 +6,7 @@ struct LiveView: View {
     @State private var recommended: LiveFeedModel
     @State private var following: LiveFeedModel
     @State private var source: LiveFeedModel.Source = .recommended
+    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
     let onOpenRoom: (LiveRoom, String) -> Void
 
     init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom, String) -> Void) {
@@ -36,19 +37,15 @@ struct LiveView: View {
             ))
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
-            // 页头常驻为顶部栏；两页各用系统原生的顶部模糊，翻页时跟着各自的页面走。
+            // 标题栏固定：标题和下方的切换器一起常驻顶部栏；两页各用系统原生的顶部模糊，
+            // 翻页时跟着各自的页面走。随内容滚动：标题和切换器放进每一页的列表（见 `LiveFeedPage.feed`）。
             .safeAreaBar(edge: .top, spacing: 0) {
-                VStack(spacing: 0) {
-                    PageHeader(title: "直播", transitionID: "mine-avatar-live")
-                        .padding(.horizontal, 20)
-                    Picker("直播内容", selection: selection) {
-                        Text("推荐").tag(LiveFeedModel.Source.recommended)
-                        if account.isLoggedIn { Text("关注").tag(LiveFeedModel.Source.following) }
+                if pinsTitleBar {
+                    VStack(spacing: 0) {
+                        PageHeader(title: "直播", transitionID: "mine-avatar-live")
+                            .padding(.horizontal, 20)
+                        sourcePicker
                     }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("live.feedSource")
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
@@ -64,6 +61,10 @@ struct LiveView: View {
         }
     }
 
+    private var sourcePicker: LiveSourcePicker {
+        LiveSourcePicker(selection: selection, showsFollowing: account.isLoggedIn)
+    }
+
     private var selection: Binding<LiveFeedModel.Source> {
         Binding(get: { source }, set: { value in
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { source = value }
@@ -72,16 +73,22 @@ struct LiveView: View {
 
     private func page(_ model: LiveFeedModel) -> some View {
         LiveFeedPage(model: model, isActive: model.source == source,
+                     sourcePicker: pinsTitleBar ? nil : sourcePicker,
                      onSelectRecommended: { selection.wrappedValue = .recommended },
                      onOpenRoom: onOpenRoom)
             .frame(maxHeight: .infinity)
             .containerRelativeFrame(.horizontal)
+            // 两页同时存在，各自的头像要用不同的转场 ID。
+            .environment(\.scrollingPageHeader, pinsTitleBar ? nil : ScrollingPageHeader(
+                title: "直播", transitionID: "mine-avatar-live-\(model.source.rawValue)"))
     }
 }
 
 private struct LiveFeedPage: View {
     /// 当前显示的那一页才响应标签栏的重复点击。
     let isActive: Bool
+    /// 标题栏随内容滚动时，切换器放在本页列表里标题下方，滚到顶部后吸附。
+    let sourcePicker: LiveSourcePicker?
     let onSelectRecommended: () -> Void
     let onOpenRoom: (LiveRoom, String) -> Void
 
@@ -104,10 +111,11 @@ private struct LiveFeedPage: View {
     @State private var isAwayFromTop = false
     @State private var shortcutTask: Task<Void, Never>?
 
-    init(model: LiveFeedModel, isActive: Bool, onSelectRecommended: @escaping () -> Void,
-         onOpenRoom: @escaping (LiveRoom, String) -> Void) {
+    init(model: LiveFeedModel, isActive: Bool, sourcePicker: LiveSourcePicker?,
+         onSelectRecommended: @escaping () -> Void, onOpenRoom: @escaping (LiveRoom, String) -> Void) {
         _model = State(initialValue: model)
         self.isActive = isActive
+        self.sourcePicker = sourcePicker
         self.onSelectRecommended = onSelectRecommended
         self.onOpenRoom = onOpenRoom
     }
@@ -181,38 +189,46 @@ private struct LiveFeedPage: View {
 
     private var feed: some View {
         ScrollView {
-            LazyVStack(spacing: 16) {
-                if model.rooms.isEmpty {
-                    initialState
-                        .frame(maxWidth: .infinity, minHeight: 330)
-                } else {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8),
-                                        GridItem(.flexible(), spacing: 8)], spacing: 10) {
-                        ForEach(model.rooms) { room in
-                            Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
-                                .buttonStyle(.plain)
-                                .videoTransitionSource("live-\(model.source.rawValue)-card-\(room.roomID)", in: videoTransition)
-                                .videoEntranceIdentity("live:\(room.roomID)")
-                                .accessibilityIdentifier("live.room.\(room.roomID)")
-                                .task { await model.loadMoreIfNeeded(current: room) }
+            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                ScrollingPageHeaderRow()
+                Section {
+                    LazyVStack(spacing: 16) {
+                        if model.rooms.isEmpty {
+                            initialState
+                                .frame(maxWidth: .infinity, minHeight: 330)
+                        } else {
+                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8),
+                                                GridItem(.flexible(), spacing: 8)], spacing: 10) {
+                                ForEach(model.rooms) { room in
+                                    Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
+                                        .buttonStyle(.plain)
+                                        .videoTransitionSource("live-\(model.source.rawValue)-card-\(room.roomID)", in: videoTransition)
+                                        .videoEntranceIdentity("live:\(room.roomID)")
+                                        .accessibilityIdentifier("live.room.\(room.roomID)")
+                                        .task { await model.loadMoreIfNeeded(current: room) }
+                                }
+                            }
+                            .opacity(animatesExit ? listOpacity : 1)
+                            .allowsHitTesting(listOpacity == 1)
+                            pagination
                         }
                     }
-                    .opacity(animatesExit ? listOpacity : 1)
-                    .allowsHitTesting(listOpacity == 1)
-                    pagination
+                    // 切换标签只淡入卡片；列表本身保持不透明，顶部模糊立即出现。
+                    .opacity(tabContentOpacity)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 10)
+                    .background {
+                        ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing && !model.isLoading,
+                                         onProgress: { _, _ in },
+                                         onRefresh: startRefresh)
+                    }
+                } header: {
+                    sourcePicker?.staysInPlaceWhenPulled()
                 }
-            }
-            // 切换标签只淡入卡片；列表本身保持不透明，顶部模糊立即出现。
-            .opacity(tabContentOpacity)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 10)
-            .background {
-                ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing && !model.isLoading,
-                                 onProgress: { _, _ in },
-                                 onRefresh: startRefresh)
             }
         }
         .scrollPosition($scrollPosition)
+        .tracksPageHeaderPull()
         .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 1 } action: { _, away in
             isAwayFromTop = away
         }
@@ -322,5 +338,22 @@ private struct LiveFeedPage: View {
             listOpacity = 1
             isRefreshing = false
         }
+    }
+}
+
+/// 直播的推荐/关注切换器。
+struct LiveSourcePicker: View {
+    let selection: Binding<LiveFeedModel.Source>
+    let showsFollowing: Bool
+
+    var body: some View {
+        Picker("直播内容", selection: selection) {
+            Text("推荐").tag(LiveFeedModel.Source.recommended)
+            if showsFollowing { Text("关注").tag(LiveFeedModel.Source.following) }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("live.feedSource")
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }

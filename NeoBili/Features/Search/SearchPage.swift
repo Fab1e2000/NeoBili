@@ -7,6 +7,8 @@ struct SearchPage: View {
     @Environment(\.appThemeColor) private var themeColor
     let onSubmit: (String?) -> Void
     @State private var history = SearchHistory.shared
+    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    private static let avatarTransitionID = "mine-avatar-search"
 
     /// 只在搜索首页（历史/热搜）显示标题；输入、联想和结果页让搜索框顶到最上方。
     private var showsHeader: Bool {
@@ -37,6 +39,11 @@ struct SearchPage: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
+                        // 标题栏随内容滚动时，标题在搜索框下方、作为历史与热搜的第一行。
+                        if showsHeader && !pinsTitleBar {
+                            PageHeader(title: "搜索", transitionID: Self.avatarTransitionID)
+                                .staysInPlaceWhenPulled()
+                        }
                         historySection
                         hotSearchSection
                             .padding(.horizontal, 12)
@@ -48,6 +55,7 @@ struct SearchPage: View {
                     .padding(.bottom, 12)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .tracksPageHeaderPull()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -57,8 +65,8 @@ struct SearchPage: View {
         }
         .safeAreaBar(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
-                if showsHeader {
-                    PageHeader(title: "搜索", transitionID: "mine-avatar-search")
+                if showsHeader && pinsTitleBar {
+                    PageHeader(title: "搜索", transitionID: Self.avatarTransitionID)
                         .padding(.horizontal, 20)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }

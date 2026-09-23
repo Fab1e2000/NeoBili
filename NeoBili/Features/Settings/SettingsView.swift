@@ -8,7 +8,7 @@ struct SettingsView: View {
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
     @AppStorage(MainTabSettings.hiddenKey) private var hiddenTabs: String?
-    @AppStorage(HomeTitleBarSettings.storageKey) private var pinsHomeTitleBar = HomeTitleBarSettings.defaultValue
+    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
     @State private var durationFilter = VideoDurationFilterSettings.shared
 
@@ -23,7 +23,7 @@ struct SettingsView: View {
             Section("页面") {
                 row("标签栏", value: MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs).map(\.title).joined(separator: " · "),
                     id: "tabBar") { TabBarSettingsView() }
-                row("推荐页", value: HomeTitleBarSettings.summary(pinned: pinsHomeTitleBar), id: "home") { HomePageSettingsView() }
+                row("标题栏", value: TitleBarSettings.summary(pinned: pinsTitleBar), id: "titleBar") { TitleBarSettingsView() }
                 row("关注页", id: "following") { FollowingSettingsView() }
             }
 

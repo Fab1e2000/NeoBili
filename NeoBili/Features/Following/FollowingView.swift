@@ -15,6 +15,7 @@ struct FollowingView: View {
     @Namespace private var dynamicTransition
 
     // 设置
+    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
     @AppStorage(FollowingSidebarSide.storageKey) private var sidebarSide: FollowingSidebarSide = .left
     @AppStorage(FollowingSidebarDwellSettings.storageKey) private var sidebarDwellDuration = FollowingSidebarDwellSettings.defaultDuration
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
@@ -94,9 +95,12 @@ struct FollowingView: View {
                     FollowingExpandedTopBlur(motion: sidebarMotion, topInset: geometry.safeAreaInsets.top)
                 }
             }
-            // 页头固定在顶部，不随动态滚动、也不随侧栏缩放，层级在选择器和动态之上。
-            // 作为顶部栏挂在外层，上面的 geometry 安全区因此包含页头，模糊和底板随之让位。
-            .safeAreaBar(edge: .top, spacing: 0) { header }
+            // 固定标题栏：页头挂在外层顶部栏，不随动态滚动、也不随侧栏缩放，层级在选择器和动态之上；
+            // 上面的 geometry 安全区因此包含页头，模糊和底板随之让位。
+            // 随内容滚动：页头是动态列表的第一行（见 `list`）。未登录时没有列表，页头仍放在顶部栏。
+            .safeAreaBar(edge: .top, spacing: 0) {
+                if pinsTitleBar || !account.isLoggedIn { header }
+            }
             .navigationTitle("关注")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: FollowedUp.self) { up in
@@ -168,39 +172,43 @@ struct FollowingView: View {
 
     private var list: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
-                feedContent
-            }
-            // 切换标签只淡入动态；列表本身保持不透明，顶部模糊立即出现。
-            .opacity(feedOpacity * refreshOpacity * tabContentOpacity)
-            .background(Color(uiColor: .systemGroupedBackground))
-            // 手势观察器不参与纵向布局，避免独立零高占位产生默认间距。
-            .background(alignment: .top) {
-                ShortPullRefresh(
-                    threshold: refreshDistance,
-                    enabled: !isRefreshing && !isSidebarExpanded,
-                    onProgress: { _, _ in },
-                    onRefresh: startRefresh
-                )
-                .overlay {
-                    FollowingPageSwipeObserver(
-                        enabled: !isSidebarExpanded || sidebarMotion.isDragging,
-                        side: sidebarSide,
-                        onMove: { translation in
-                            sidebarMotion.drag(translation: translation)
-                            if !isSidebarExpanded { isSidebarExpanded = true }
-                        },
-                        onEnd: { velocity in
-                            isSidebarExpanded = sidebarMotion.endDrag(velocity: velocity, reduceMotion: reduceMotion)
-                        }
-                    )
+            VStack(spacing: 0) {
+                if !pinsTitleBar { header.staysInPlaceWhenPulled() }
+                LazyVStack(spacing: 0) {
+                    feedContent
                 }
-                .frame(width: 0, height: 0)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+                // 切换标签只淡入动态；列表本身保持不透明，顶部模糊立即出现。
+                .opacity(feedOpacity * refreshOpacity * tabContentOpacity)
+                .background(Color(uiColor: .systemGroupedBackground))
+                // 手势观察器不参与纵向布局，避免独立零高占位产生默认间距。
+                .background(alignment: .top) {
+                    ShortPullRefresh(
+                        threshold: refreshDistance,
+                        enabled: !isRefreshing && !isSidebarExpanded,
+                        onProgress: { _, _ in },
+                        onRefresh: startRefresh
+                    )
+                    .overlay {
+                        FollowingPageSwipeObserver(
+                            enabled: !isSidebarExpanded || sidebarMotion.isDragging,
+                            side: sidebarSide,
+                            onMove: { translation in
+                                sidebarMotion.drag(translation: translation)
+                                if !isSidebarExpanded { isSidebarExpanded = true }
+                            },
+                            onEnd: { velocity in
+                                isSidebarExpanded = sidebarMotion.endDrag(velocity: velocity, reduceMotion: reduceMotion)
+                            }
+                        )
+                    }
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
             }
         }
         .scrollPosition($listPosition)
+        .tracksPageHeaderPull()
         .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 1 } action: { _, away in
             isAwayFromTop = away
         }

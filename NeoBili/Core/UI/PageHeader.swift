@@ -76,3 +76,81 @@ private struct AvatarTransitionSource: ViewModifier {
         }
     }
 }
+
+// MARK: - 随内容滚动的页头
+
+/// 标题栏随内容滚动时，外层页面不再固定显示页头，而是通过环境把页头交给列表，
+/// 由列表插在内容最上方。列表视图也会出现在别处（如「我的」卡片），那里不提供就不显示。
+struct ScrollingPageHeader: Equatable {
+    let title: String
+    let transitionID: String
+}
+
+extension EnvironmentValues {
+    @Entry var scrollingPageHeader: ScrollingPageHeader? = nil
+}
+
+extension View {
+    /// 加载中、空列表、出错这些状态没有可滚动的内容，随内容滚动的页头直接放在顶部。
+    func scrollingPageHeaderAbove() -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .top, spacing: 0) { ScrollingPageHeaderRow() }
+    }
+}
+
+/// 列表内容的第一行：环境里有随内容滚动的页头时显示它，否则什么都不占。
+struct ScrollingPageHeaderRow: View {
+    @Environment(\.scrollingPageHeader) private var header
+
+    var body: some View {
+        if let header {
+            PageHeader(title: header.title, transitionID: header.transitionID)
+                .padding(.horizontal, 20)
+                .staysInPlaceWhenPulled()
+        }
+    }
+}
+
+// MARK: - 下拉时页头停在原位
+
+/// 列表顶端被下拉（回弹区）的距离。单独一个可观察对象：逐帧变化只让页头重绘，不牵动整个列表。
+@MainActor @Observable
+final class PageHeaderPull {
+    var distance: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    @Entry var pageHeaderPull: PageHeaderPull? = nil
+}
+
+extension View {
+    /// 挂在滚动视图上：记录顶端下拉距离，交给列表里的页头。
+    func tracksPageHeaderPull() -> some View { modifier(PageHeaderPullTracking()) }
+
+    /// 挂在列表里的页头上：下拉时抵消位移，页头停在原位，只有下面的内容被拉下来（与推荐页一致）。
+    /// 正常上滑不补偿，页头照常随内容离开。
+    func staysInPlaceWhenPulled() -> some View { modifier(PageHeaderPullCompensation()) }
+}
+
+private struct PageHeaderPullTracking: ViewModifier {
+    @State private var pull = PageHeaderPull()
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                max(0, -(geometry.contentOffset.y + geometry.contentInsets.top))
+            } action: { _, distance in
+                pull.distance = distance
+            }
+            .environment(\.pageHeaderPull, pull)
+    }
+}
+
+private struct PageHeaderPullCompensation: ViewModifier {
+    @Environment(\.pageHeaderPull) private var pull
+
+    func body(content: Content) -> some View {
+        content.offset(y: -(pull?.distance ?? 0))
+    }
+}
+
