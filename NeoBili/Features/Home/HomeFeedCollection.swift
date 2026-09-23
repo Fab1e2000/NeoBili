@@ -87,9 +87,10 @@ struct HomeFeedCollection: UIViewRepresentable {
     /// 固定标题栏时交给系统默认效果（与其它主页面一致：不画分界线，内容滑入时柔和模糊）。
     private var topEdgeStyle: UIScrollEdgeEffect.Style { pinsTitleBar ? .automatic : .soft }
 
-    /// 列表内的页头自带上下留白，顶部只补 4pt；固定标题栏时卡片紧贴栏下，补回网格留白。
+    /// 列表内的页头自带上下留白，紧贴状态栏下方，与其它页面的页头位置一致；
+    /// 固定标题栏时卡片紧贴栏下，补回网格留白。
     private func applyInsets(to view: UICollectionView) {
-        let inset = UIEdgeInsets(top: safeInsets.top + (pinsTitleBar ? HomeCardLayout.verticalInset : 4), left: 0,
+        let inset = UIEdgeInsets(top: safeInsets.top + (pinsTitleBar ? HomeCardLayout.verticalInset : 0), left: 0,
                                  bottom: safeInsets.bottom + HomeCardLayout.verticalInset, right: 0)
         guard view.contentInset != inset else { return }
         // 安全区量出来之前列表可能已按旧边距停在顶部；边距变了要把它一并移到新的顶部，
