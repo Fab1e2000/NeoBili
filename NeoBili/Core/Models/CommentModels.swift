@@ -178,3 +178,19 @@ enum CommentTextEntities {
         return result
     }
 }
+
+struct CommentSubmission: Decodable {
+    let reply: Comment?
+    let successToast: String?
+    let needCaptcha: Bool?
+    enum CodingKeys: String, CodingKey {
+        case reply
+        case successToast = "success_toast"
+        case needCaptcha = "need_captcha"
+    }
+}
+
+enum CommentSubmissionError: LocalizedError {
+    case verificationRequired
+    var errorDescription: String? { "需要完成验证才能发送，请在官方客户端验证后重试。草稿已保留。" }
+}
