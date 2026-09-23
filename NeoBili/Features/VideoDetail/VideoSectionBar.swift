@@ -16,8 +16,8 @@ private enum VideoSectionBarLayout {
 /// 用系统的分段控件（`Picker` + `.pickerStyle(.segmented)`）：选中态、按下态、
 /// 深浅色、动态字体、无障碍全部跟着系统走，iOS 26 上还自带 Liquid Glass 的观感。
 ///
-/// 不画卡片、不画分隔线：控件直接坐在页面底色上，周围没有任何直角边框
-/// 去和它的圆角对比。
+/// 不画卡片、不画分隔线，也不画背景：它挂在简介和评论两页的顶部栏里，
+/// 内容从下面滑过时由系统的顶部模糊衬底。
 struct VideoSectionBar: View {
     @Binding var selection: VideoPageSection
     /// 评论总数，跟在「评论」后面显示。还没加载出来（为 0）时不显示，
@@ -35,7 +35,6 @@ struct VideoSectionBar: View {
         .padding(.horizontal, VideoSectionBarLayout.horizontalPadding)
         .padding(.top, VideoSectionBarLayout.topPadding)
         .padding(.bottom, VideoSectionBarLayout.bottomPadding)
-        .background(Color(uiColor: .systemBackground))
     }
 
     /// 分段控件改选中项时要带上动画，下面那对分页才是滑过去而不是瞬间跳过去。

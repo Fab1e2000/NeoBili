@@ -145,33 +145,17 @@ struct VideoPage: View {
                 }
 
                 if !isFullScreen {
-                    // 选择器固定在播放器下方，简介和评论在其下方切页。
-                    VStack(spacing: 0) {
-                        VideoSectionBar(
-                            selection: $store.section,
-                            commentCount: viewModel?.detail?.stat.reply ?? 0
-                        )
-
-                        sectionPages
-                            .environment(\.commentBottomInset, geometry.safeAreaInsets.bottom)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .overlay(alignment: .top) {
-                                // 在选择器下沿柔化滚动内容，不占布局高度或拦截手势。
-                                Rectangle()
-                                    .fill(.regularMaterial)
-                                    .overlay {
-                                        LinearGradient(colors: [Color(uiColor: .systemBackground), .clear],
-                                                       startPoint: .top, endPoint: .bottom)
-                                    }
-                                    .mask {
-                                        LinearGradient(colors: [.black, .clear],
-                                                       startPoint: .top, endPoint: .bottom)
-                                    }
-                                    .frame(height: 12)
-                                    .allowsHitTesting(false)
-                                    .accessibilityHidden(true)
-                            }
-                    }
+                    // 选择器固定在播放器下方，作为简介和评论两页的顶部栏：内容从它下面滑过，
+                    // 由系统给出与主页一致的原生顶部模糊。
+                    sectionPages
+                        .environment(\.commentBottomInset, geometry.safeAreaInsets.bottom)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .safeAreaBar(edge: .top, spacing: 0) {
+                            VideoSectionBar(
+                                selection: $store.section,
+                                commentCount: viewModel?.detail?.stat.reply ?? 0
+                            )
+                        }
                     .background(Color(uiColor: .systemBackground))
                     .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))
                     .background {
