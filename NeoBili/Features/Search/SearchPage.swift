@@ -8,7 +8,6 @@ struct SearchPage: View {
     let onSubmit: (String?) -> Void
     @State private var history = SearchHistory.shared
     @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
-    private static let avatarTransitionID = "mine-avatar-search"
 
     /// 只在搜索首页（历史/热搜）显示标题；输入、联想和结果页让搜索框顶到最上方。
     private var showsHeader: Bool {
@@ -41,7 +40,7 @@ struct SearchPage: View {
                     VStack(alignment: .leading, spacing: 12) {
                         // 标题栏随内容滚动时，标题在搜索框下方、作为历史与热搜的第一行。
                         if showsHeader && !pinsTitleBar {
-                            PageHeader(title: "搜索", transitionID: Self.avatarTransitionID)
+                            PageHeader(title: "搜索")
                                 .staysInPlaceWhenPulled()
                         }
                         historySection
@@ -66,7 +65,7 @@ struct SearchPage: View {
         .safeAreaBar(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
                 if showsHeader && pinsTitleBar {
-                    PageHeader(title: "搜索", transitionID: Self.avatarTransitionID)
+                    PageHeader(title: "搜索")
                         .padding(.horizontal, 20)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }

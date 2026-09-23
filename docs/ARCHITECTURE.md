@@ -54,7 +54,7 @@ NeoBili/
     Search/       搜索标签：SearchPage、HomeSearchBar、SearchResultsView。
     Library/      收藏、历史、稍后再看；LibraryTabPage 把它们作为标签页呈现，
                   「我的」卡片里复用同一套列表视图。
-    Mine/         「我的」页面、服务卡片（MineServiceSheet）、从头像弹出的呈现（MineSheetHost）。
+    Mine/         「我的」页面、服务卡片（MineServiceSheet）、点头像后以卡片弹出的呈现（MineSheetHost）。
     Settings/     系统设置：SettingsView 首页，每个设置页一个文件。
     VideoDetail/  视频页：VideoPage（页面骨架）、VideoDetailRoute、VideoDetailViewModel
                   （详情、互动）、CommentsView / CommentRow / CommentsViewModel、评论输入、

@@ -338,9 +338,8 @@ struct HomeFeedCollection: UIViewRepresentable {
         private func configure(_ cell: UICollectionViewCell, id: String) {
             if id == Self.headerID {
                 cell.contentConfiguration = UIHostingConfiguration {
-                    PageHeader(title: "推荐", transitionID: "mine-avatar-home", onOpenMine: { [weak self] in self?.onOpenMine() })
+                    PageHeader(title: "推荐", onOpenMine: { [weak self] in self?.onOpenMine() })
                         .environment(environment.account)
-                        .environment(\.videoTransitionNamespace, environment.namespace)
                         .appTextSize()
                 }.margins(.all, 0)
                 cell.backgroundConfiguration = .clear()

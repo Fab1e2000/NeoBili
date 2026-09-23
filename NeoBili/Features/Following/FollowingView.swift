@@ -153,7 +153,7 @@ struct FollowingView: View {
     }
 
     private var header: some View {
-        PageHeader(title: "关注", transitionID: "mine-avatar-following")
+        PageHeader(title: "关注")
             .padding(.horizontal, 20)
     }
 

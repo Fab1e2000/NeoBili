@@ -7,8 +7,6 @@ struct LibraryTabPage: View {
     let tab: MainTab
     @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
 
-    private var transitionID: String { "mine-avatar-\(tab.rawValue)" }
-
     var body: some View {
         NavigationStack {
             content
@@ -17,12 +15,11 @@ struct LibraryTabPage: View {
                 // 固定标题栏挂在顶部栏；随内容滚动时交给列表，由列表放在内容第一行。
                 .safeAreaBar(edge: .top, spacing: 0) {
                     if pinsTitleBar {
-                        PageHeader(title: tab.pageTitle, transitionID: transitionID)
+                        PageHeader(title: tab.pageTitle)
                             .padding(.horizontal, 20)
                     }
                 }
-                .environment(\.scrollingPageHeader, pinsTitleBar ? nil : ScrollingPageHeader(
-                    title: tab.pageTitle, transitionID: transitionID))
+                .environment(\.scrollingPageHeader, pinsTitleBar ? nil : ScrollingPageHeader(title: tab.pageTitle))
                 .onAppear { OrientationController.enterPortrait() }
         }
     }

@@ -41,7 +41,7 @@ struct LiveView: View {
             // 两页各用系统原生的顶部模糊，翻页时跟着各自的页面走。
             .safeAreaBar(edge: .top, spacing: 0) {
                 VStack(spacing: 0) {
-                    PageHeader(title: "直播", transitionID: "mine-avatar-live")
+                    PageHeader(title: "直播")
                         .padding(.horizontal, 20)
                     sourcePicker
                 }

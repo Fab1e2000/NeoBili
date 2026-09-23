@@ -1,20 +1,17 @@
 import SwiftUI
 
 extension EnvironmentValues {
-    /// 打开「我的」页面，参数是发起页头像的转场 ID。由根视图的 `mineSheetHost()` 提供。
-    @Entry var openMine: EnvironmentAction<String>? = nil
+    /// 打开「我的」页面。由根视图的 `mineSheetHost()` 提供。
+    @Entry var openMine: EnvironmentAction<Void>? = nil
 }
 
 /// 各主页面共用的页头：左侧大标题，右侧头像玻璃按钮。
-/// 头像是「我的」页面的唯一入口，页面从头像原位放大出现、关闭时缩回。
+/// 头像是「我的」页面的唯一入口，点按后以卡片从底部弹出。
 struct PageHeader: View {
     let title: String
-    /// 头像作为 zoom 转场起点的 ID。各页面同时存活，所以每页要用不同的 ID。
-    let transitionID: String
     /// 放进 UIKit 格子里时拿不到根视图的环境，由外层把打开动作传进来。
     var onOpenMine: (() -> Void)?
     @Environment(AccountStore.self) private var account
-    @Environment(\.videoTransitionNamespace) private var transition
     @Environment(\.openMine) private var openMine
 
     var body: some View {
@@ -25,7 +22,7 @@ struct PageHeader: View {
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 16)
-            Button { (onOpenMine ?? { openMine?(transitionID) })() } label: {
+            Button { (onOpenMine ?? { openMine?(()) })() } label: {
                 Group {
                     if let url = account.profile?.secureAvatarURL {
                         BiliImage(url: url)
@@ -53,27 +50,10 @@ struct PageHeader: View {
                 }
             }
             .buttonStyle(.plain)
-            .modifier(AvatarTransitionSource(id: transitionID, namespace: transition))
             .accessibilityLabel("我的")
             .accessibilityHint("打开个人页面")
         }
         .padding(.vertical, 8)
-    }
-}
-
-private struct AvatarTransitionSource: ViewModifier {
-    let id: String
-    let namespace: Namespace.ID?
-
-    func body(content: Content) -> some View {
-        if let namespace {
-            // matchedTransitionSource 只接受圆角矩形，半径取边长一半即为正圆。
-            content.matchedTransitionSource(id: id, in: namespace) {
-                $0.clipShape(RoundedRectangle(cornerRadius: 22))
-            }
-        } else {
-            content
-        }
     }
 }
 
@@ -83,7 +63,6 @@ private struct AvatarTransitionSource: ViewModifier {
 /// 由列表插在内容最上方。列表视图也会出现在别处（如「我的」卡片），那里不提供就不显示。
 struct ScrollingPageHeader: Equatable {
     let title: String
-    let transitionID: String
 }
 
 extension EnvironmentValues {
@@ -104,7 +83,7 @@ struct ScrollingPageHeaderRow: View {
 
     var body: some View {
         if let header {
-            PageHeader(title: header.title, transitionID: header.transitionID)
+            PageHeader(title: header.title)
                 .padding(.horizontal, 20)
                 .staysInPlaceWhenPulled()
         }

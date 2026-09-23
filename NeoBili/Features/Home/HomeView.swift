@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct HomeView: View {
-    private static let avatarTransitionID = "mine-avatar-home"
-
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(\.openMine) private var openMine
@@ -42,7 +40,7 @@ struct HomeView: View {
         feed
             .safeAreaBar(edge: .top, spacing: 0) {
                 if pinsTitleBar {
-                    PageHeader(title: "推荐", transitionID: Self.avatarTransitionID)
+                    PageHeader(title: "推荐")
                         .padding(.horizontal, 20)
                 }
             }
@@ -83,7 +81,7 @@ struct HomeView: View {
                 controller: feedController,
                 onRefresh: { startRefresh() },
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
-                onOpenMine: { openMine?(Self.avatarTransitionID) },
+                onOpenMine: { openMine?(()) },
                 pinsTitleBar: pinsTitleBar,
                 safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity
