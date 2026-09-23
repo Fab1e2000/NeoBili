@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct HomeView: View {
+    var onOpenMine: () -> Void = {}
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
@@ -33,13 +34,9 @@ struct HomeView: View {
         #if DEBUG
         let _ = SearchLatencyProbe.body("HomeView")
         #endif
-        // 与「我的」页一致：顶部显示系统大标题，滚动后收起为居中导航标题。
-        NavigationStack {
-            feed
-                .background(Color(uiColor: .systemGroupedBackground))
-                .navigationTitle("推荐")
-                .navigationBarTitleDisplayMode(.large)
-        }
+        // 页头属于列表内容，滚走后只留下状态栏的滚动边缘效果。
+        feed
+            .background(Color(uiColor: .systemGroupedBackground))
             .task { await viewModel.loadInitial() }
             // 登录/退出后同一套推荐接口在服务端会切到个性化/通用推流，
             // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。
@@ -78,10 +75,11 @@ struct HomeView: View {
                 refreshDistance: refreshDistance,
                 controller: feedController,
                 onRefresh: { startRefresh() },
-                onOpenLastSeen: { startRefresh(scrollToTop: true) }
+                onOpenLastSeen: { startRefresh(scrollToTop: true) },
+                onOpenMine: onOpenMine
             )
             .opacity(animatesExit ? listOpacity : 1)
-            // 内容从导航栏和标签栏下面滑过；列表通过 adjustedContentInset 留出安全区。
+            // 内容从状态栏和标签栏下面滑过；列表通过 adjustedContentInset 留出安全区。
             .ignoresSafeArea()
 
             // 加载、出错、全被过滤这些状态单独观察，isLoading 翻转时不重算整个列表。

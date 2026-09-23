@@ -38,6 +38,7 @@ struct HomeFeedCollection: UIViewRepresentable {
     let controller: HomeFeedScrollController
     let onRefresh: () -> Void
     let onOpenLastSeen: () -> Void
+    var onOpenMine: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -58,8 +59,8 @@ struct HomeFeedCollection: UIViewRepresentable {
         // 刷新淡出期间会暂停滚动，那一刻顶部边距少了状态栏的高度，列表会跳上去，
         // 恢复滚动后位置也回不来。这里始终计入安全区。
         view.contentInsetAdjustmentBehavior = .always
-        // 原来 ScrollView 里下拉观察视图和列表之间有 8pt 默认间距，再加列表自身 10pt 留白。
-        view.contentInset = UIEdgeInsets(top: HomeCardLayout.verticalInset + 8, left: 0,
+        // 页头自带上下留白，顶部只补 4pt，避免导航栏式的大段空白。
+        view.contentInset = UIEdgeInsets(top: 4, left: 0,
                                          bottom: HomeCardLayout.verticalInset, right: 0)
         // 卡片从顶部滑过时给一层渐隐（iOS 26 的 scroll edge effect），底部不加。
         view.topEdgeEffect.style = .soft
@@ -77,6 +78,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         coordinator.hidesPortraitVideos = hidesPortraitVideos
         coordinator.onRefresh = onRefresh
         coordinator.onOpenLastSeen = onOpenLastSeen
+        coordinator.onOpenMine = onOpenMine
         coordinator.state.setRefreshing(isRefreshing)
         coordinator.pull.threshold = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
         coordinator.pull.enabled = !isRefreshing
@@ -98,6 +100,7 @@ struct HomeFeedCollection: UIViewRepresentable {
     }
 
     enum Section: Hashable {
+        case header
         /// 本次刷新的内容；没有分隔条时就是全部内容。
         case latest
         /// 「上次看到这里」分隔条，单独一节，高度按内容自适应。
@@ -144,6 +147,8 @@ struct HomeFeedCollection: UIViewRepresentable {
         var hidesPortraitVideos = false
         var onRefresh: () -> Void = {}
         var onOpenLastSeen: () -> Void = {}
+        var onOpenMine: () -> Void = {}
+        private static let headerID = "home-page-header"
         let state = HomeFeedCellState()
         let pull = ShortPullRefresh.ObserverView()
         #if PERFORMANCE_DEMO
@@ -183,7 +188,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             let persistentHosts = true
             #endif
             dataSource = UICollectionViewDiffableDataSource(collectionView: view) { view, indexPath, id in
-                if persistentHosts && id != HomeFeedItem.lastSeen.id {
+                if persistentHosts && id != HomeFeedItem.lastSeen.id && id != Self.headerID {
                     return view.dequeueConfiguredReusableCell(using: persistentRegistration, for: indexPath, item: id)
                 }
                 return view.dequeueConfiguredReusableCell(using: registration, for: indexPath, item: id)
@@ -198,15 +203,17 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         func layoutSection(at index: Int, environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
-            let isMarker = dataSource?.sectionIdentifier(for: index) == .marker
+            let sectionID = dataSource?.sectionIdentifier(for: index)
+            let isHeader = sectionID == .header
+            let isMarker = sectionID == .marker
             let width = environment.container.effectiveContentSize.width
             // 卡片行高度固定（4:3 封面加文字区），不必逐个测量；分隔条随字号变化，按内容自适应。
-            let height: NSCollectionLayoutDimension = isMarker
-                ? .estimated(44)
+            let height: NSCollectionLayoutDimension = isHeader || isMarker
+                ? .estimated(isHeader ? 66 : 44)
                 : .absolute(HomeCardLayout.cardHeight(for: width))
             let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: height)
             let group: NSCollectionLayoutGroup
-            if isMarker {
+            if isHeader || isMarker {
                 group = .vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
             } else {
                 let item = NSCollectionLayoutItem(layoutSize: NSCollectionLayoutSize(
@@ -216,8 +223,8 @@ struct HomeFeedCollection: UIViewRepresentable {
             }
             let section = NSCollectionLayoutSection(group: group)
             section.interGroupSpacing = HomeCardLayout.rowSpacing
-            section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: HomeCardLayout.horizontalInset,
-                                                            bottom: 0, trailing: HomeCardLayout.horizontalInset)
+            section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: isHeader ? 20 : HomeCardLayout.horizontalInset,
+                                                            bottom: 0, trailing: isHeader ? 20 : HomeCardLayout.horizontalInset)
             return section
         }
 
@@ -262,7 +269,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 guard let old = itemsByID[id] else { return nil }
                 return Self.sameContent(old, row) ? nil : id
             }
-            let structureChanged = latest != latestIDs || earlier != earlierIDs || marker != hasMarker
+            let structureChanged = dataSource.snapshot().sectionIdentifiers.isEmpty || latest != latestIDs || earlier != earlierIDs || marker != hasMarker
             // 没有变化时直接返回：刷新淡出、滚动开关这些状态也会触发这里。
             guard structureChanged || !changed.isEmpty || needsReconfigureAll else { return }
 
@@ -279,7 +286,8 @@ struct HomeFeedCollection: UIViewRepresentable {
             hasMarker = marker
 
             var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
-            snapshot.appendSections([.latest])
+            snapshot.appendSections([.header, .latest])
+            snapshot.appendItems([Self.headerID], toSection: .header)
             snapshot.appendItems(latest, toSection: .latest)
             if marker {
                 snapshot.appendSections([.marker])
@@ -290,7 +298,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 }
             }
             if needsReconfigureAll {
-                snapshot.reconfigureItems(snapshot.itemIdentifiers.filter(existing.contains))
+                snapshot.reconfigureItems(snapshot.itemIdentifiers.filter { existing.contains($0) || ($0 == Self.headerID && dataSource.snapshot().indexOfItem(Self.headerID) != nil) })
             } else if !changed.isEmpty {
                 // 同一行里换了视频（例如「不感兴趣」换一条）只重配这一行。
                 snapshot.reconfigureItems(changed)
@@ -308,6 +316,18 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         private func configure(_ cell: UICollectionViewCell, id: String) {
+            if id == Self.headerID {
+                cell.contentConfiguration = UIHostingConfiguration {
+                    HomeFeedHeader(onOpenMine: { [weak self] in self?.onOpenMine() })
+                        .environment(environment.account)
+                        .appTextSize()
+                }.margins(.all, 0)
+                cell.backgroundConfiguration = .clear()
+                if let collectionView { positionHeader(cell, in: collectionView) }
+                return
+            }
+            // 页头与分隔条共用 hosting cell，复用时不能带走下拉补偿。
+            if id == HomeFeedItem.lastSeen.id { cell.transform = .identity }
             guard let row = itemsByID[id], let viewModel else { return }
             let environment = environment
             let starts = entranceStarts(for: row)
@@ -403,8 +423,38 @@ struct HomeFeedCollection: UIViewRepresentable {
 
         // MARK: UICollectionViewDelegate
 
+        /// 只抵消顶部回弹的位移；正常向上滚动不补偿，所以页头仍随内容离屏。
+        /// 直接更新原生 cell，不把逐帧偏移发布到 SwiftUI / 列表模型。
+        private func positionHeader(_ cell: UICollectionViewCell, in scrollView: UIScrollView) {
+            let offset = Self.headerBounceCompensation(
+                contentOffsetY: scrollView.contentOffset.y,
+                adjustedTopInset: scrollView.adjustedContentInset.top
+            )
+            let transform = CGAffineTransform(translationX: 0, y: offset)
+            if cell.transform != transform { cell.transform = transform }
+        }
+
+        static func headerBounceCompensation(contentOffsetY: CGFloat, adjustedTopInset: CGFloat) -> CGFloat {
+            min(0, contentOffsetY + adjustedTopInset)
+        }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard let collectionView,
+                  let indexPath = dataSource?.indexPath(for: Self.headerID),
+                  let cell = collectionView.cellForItem(at: indexPath) else { return }
+            positionHeader(cell, in: scrollView)
+        }
+
+        func scrollViewDidChangeAdjustedContentInset(_ scrollView: UIScrollView) {
+            scrollViewDidScroll(scrollView)
+        }
+
         func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
                             forItemAt indexPath: IndexPath) {
+            if dataSource?.itemIdentifier(for: indexPath) == Self.headerID {
+                positionHeader(cell, in: collectionView)
+                return
+            }
             // 提前准备好的格子可能错过了重新配置：显示前核对一次入场起点。
             if let id = dataSource?.itemIdentifier(for: indexPath), let row = itemsByID[id],
                configuredStarts[id] != entranceStarts(for: row) {

@@ -48,7 +48,7 @@ struct RootView: View {
                 .opacity(tabContentOpacity).tint(.primary)
             }
             Tab("推荐", systemImage: "house.fill", value: MainTab.home) {
-                HomeView().opacity(tabContentOpacity).tint(.primary)
+                HomeView(onOpenMine: { switchTab(to: .mine) }).opacity(tabContentOpacity).tint(.primary)
             }
             Tab("关注", systemImage: "person.2.fill", value: MainTab.following) {
                 FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") }).id(account.sessionID).opacity(tabContentOpacity).tint(.primary)
