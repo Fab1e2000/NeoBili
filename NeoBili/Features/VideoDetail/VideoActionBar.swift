@@ -132,9 +132,8 @@ private struct VideoHoldButton: UIViewRepresentable {
     func makeUIView(context: Context) -> HoldButton { HoldButton() }
 
     func updateUIView(_ button: HoldButton, context: Context) {
-        var config = UIButton.Configuration.filled()
-        // 点亮时底色留空，跟随主题色（tintColor）。
-        config.baseBackgroundColor = isActive ? nil : .tertiarySystemFill
+        // 系统按钮样式：平时是系统灰色按钮，点亮后换成跟随主题色（tintColor）的实心按钮。
+        var config: UIButton.Configuration = isActive ? .filled() : .gray()
         config.baseForegroundColor = isActive ? .white : .label
         config.image = UIImage(named: icon)
         config.cornerStyle = .capsule

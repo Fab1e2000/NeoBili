@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 简介顶部独立容器中的 UP 主行。
+/// 简介顶部的 UP 主行，平铺在页面上，不再套灰色圆角底。
 struct VideoOwnerRow: View {
     @Environment(\.appThemeColor) private var themeColor
     let owner: VideoOwner
@@ -44,7 +44,7 @@ struct VideoOwnerRow: View {
 
             followButton
         }
-        .mediaDetailContainer()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var subtitle: String? {
@@ -58,21 +58,23 @@ struct VideoOwnerRow: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// 系统原生胶囊按钮：未关注是主题色醒目样式（同 App Store「获取」），已关注退为灰色。
+    @ViewBuilder
     private var followButton: some View {
-        Button(action: onToggleFollow) {
+        let button = Button(action: onToggleFollow) {
             Text(isFollowing ? "已关注" : "关注")
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(isFollowing ? Color.primary : Color.white)
+                .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 36)
-                .background(isFollowing ? Color(uiColor: .tertiarySystemFill) : themeColor, in: Capsule())
-                .frame(minHeight: 48)
-                .contentShape(Rectangle())
+                .padding(.horizontal, 4)
         }
-        .buttonStyle(.plain)
+        .buttonBorderShape(.capsule)
         .accessibilityLabel(isFollowing ? "取消关注 \(owner.name)" : "关注 \(owner.name)")
         .accessibilityIdentifier("video.owner.follow")
+        if isFollowing {
+            button.buttonStyle(.bordered).tint(.secondary)
+        } else {
+            button.buttonStyle(.borderedProminent).tint(themeColor)
+        }
     }
 }

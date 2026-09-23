@@ -248,7 +248,9 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
             super.init(frame: frame)
             isUserInteractionEnabled = false
             for view in [cover, title, owner, metadata, separator] { addSubview(view) }
-            cover.layer.cornerRadius = 3
+            // 与首页卡片封面同一圆角规格。
+            cover.layer.cornerRadius = HomeCardLayout.coverCornerRadius
+            cover.layer.cornerCurve = .continuous
             title.numberOfLines = 2
             title.textColor = .label
             owner.textColor = .secondaryLabel
@@ -310,7 +312,7 @@ final class IntroductionCollectionCell: UICollectionViewCell {
     func configure(_ card: VideoIntroductionCard, typeSize: DynamicTypeSize, bottomSpacing: CGFloat) {
         self.bottomSpacing = bottomSpacing
         introductionView.configure(title: card.title,
-            metadata: ["\(card.stat.view.biliCountText)播放", "\(card.stat.danmaku.biliCountText)弹幕", card.pubdate.biliPubdateText].joined(separator: "  "),
+            metadata: NativeVideoIntroductionCard.metadataText(stat: card.stat, pubdate: card.pubdate),
             description: card.desc, expanded: card.isExpanded, typeSize: typeSize)
         introductionView.onToggle = { [weak self] in
             card.isExpanded.toggle()
@@ -370,7 +372,17 @@ struct VideoDescriptionContent: View {
         let all = viewModel?.related ?? []
         let videos = all.hidingKnownPortraitVideos(hidesPortraitVideos)
         let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos)
-        let rows = components + (videos.isEmpty ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty]) {
+        // 与原生详情页一样用分区标题组织内容，相关视频不直接接在操作栏下面。
+        let header = VideoDescriptionComponent("relatedHeader", revision: []) {
+            Text("相关视频")
+                .font(.title3.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 2)
+        }
+        let rows = components + [header] + (videos.isEmpty ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty]) {
             if loading { ProgressView().padding(24) }
             else {
                 Text(all.isEmpty ? "暂时没有相关视频" : "相关视频已被内容过滤设置隐藏")

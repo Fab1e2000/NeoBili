@@ -27,17 +27,28 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
 
     func makeUIView(context: Context) -> IntroductionView { IntroductionView() }
     func updateUIView(_ view: IntroductionView, context: Context) {
-        view.configure(title: title,
-                       metadata: ["\(stat.view.biliCountText)播放", "\(stat.danmaku.biliCountText)弹幕", pubdate.biliPubdateText].joined(separator: "  "),
+        view.configure(title: title, metadata: Self.metadataText(stat: stat, pubdate: pubdate),
                        description: desc, expanded: isExpanded, typeSize: typeSize)
         view.onToggle = onToggle
     }
+    /// 标题下方的信息行：播放 · 弹幕 · 发布时间。
+    static func metadataText(stat: VideoStat, pubdate: Int) -> String {
+        ["\(stat.view.biliCountText)播放", "\(stat.danmaku.biliCountText)弹幕", pubdate.biliPubdateText]
+            .joined(separator: " · ")
+    }
+
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: IntroductionView, context: Context) -> CGSize? {
         guard let width = proposal.width, width > 0 else { return nil }
         return CGSize(width: width, height: uiView.height(for: width))
     }
 
+    /// 平铺在页面上，不加底色：左右与页面正文对齐，上下只留很小的间距，层次靠字号区分。
     final class IntroductionView: UIView, UIGestureRecognizerDelegate {
+        private static let verticalInset: CGFloat = 2
+        /// 展开箭头占用的宽度，标题为它让出右侧空间。
+        private static let arrowWidth: CGFloat = 16
+        private static let arrowGap: CGFloat = 8
+
         let titleLabel = UILabel()
         private let metadataLabel = UILabel()
         private let descriptionView = UITextView()
@@ -50,9 +61,6 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
 
         init() {
             super.init(frame: .zero)
-            backgroundColor = .tertiarySystemFill
-            layer.cornerRadius = 24
-            layer.cornerCurve = .continuous
             clipsToBounds = true
             titleLabel.numberOfLines = 0
             titleLabel.textColor = .label
@@ -84,10 +92,10 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
             if self.typeSize != typeSize {
                 self.typeSize = typeSize
                 let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
-                let font = UIFont.preferredFont(forTextStyle: .callout, compatibleWith: traits)
-                titleLabel.font = .systemFont(ofSize: font.pointSize, weight: .semibold)
-                metadataLabel.font = .preferredFont(forTextStyle: .caption1, compatibleWith: traits)
-                descriptionView.font = font
+                let titleFont = UIFont.preferredFont(forTextStyle: .title3, compatibleWith: traits)
+                titleLabel.font = .systemFont(ofSize: titleFont.pointSize, weight: .semibold)
+                metadataLabel.font = .preferredFont(forTextStyle: .footnote, compatibleWith: traits)
+                descriptionView.font = .preferredFont(forTextStyle: .callout, compatibleWith: traits)
             }
             // Expansion never assigns or retypesets the title.
             if titleLabel.text != title { titleLabel.text = title }
@@ -110,10 +118,12 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
         private func measured(_ label: UILabel, width: CGFloat) -> CGFloat {
             ceil(label.sizeThatFits(CGSize(width: max(1, width), height: .greatestFiniteMagnitude)).height)
         }
+        private var titleTrailingInset: CGFloat { hasDescription ? Self.arrowWidth + Self.arrowGap : 0 }
+
         func height(for width: CGFloat) -> CGFloat {
-            let contentWidth = max(1, width - 32)
-            var height = 32 + measured(titleLabel, width: contentWidth - (hasDescription ? 24 : 0))
-                + 8 + measured(metadataLabel, width: contentWidth)
+            let contentWidth = max(1, width)
+            var height = 2 * Self.verticalInset + measured(titleLabel, width: contentWidth - titleTrailingInset)
+                + 6 + measured(metadataLabel, width: contentWidth)
             if expanded && hasDescription {
                 height += 17 + ceil(descriptionView.sizeThatFits(CGSize(width: contentWidth, height: .greatestFiniteMagnitude)).height)
             }
@@ -125,16 +135,17 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
         override func layoutSubviews() {
             super.layoutSubviews()
             UIView.performWithoutAnimation {
-                let width = max(1, bounds.width - 32)
-                let titleWidth = max(1, width - (hasDescription ? 24 : 0))
+                let width = max(1, bounds.width)
+                let titleWidth = max(1, width - titleTrailingInset)
                 let titleHeight = measured(titleLabel, width: titleWidth)
-                titleLabel.frame = CGRect(x: 16, y: 16, width: titleWidth, height: titleHeight)
-                arrow.frame = CGRect(x: bounds.width - 32, y: 16, width: 16, height: titleLabel.font.lineHeight)
+                titleLabel.frame = CGRect(x: 0, y: Self.verticalInset, width: titleWidth, height: titleHeight)
+                arrow.frame = CGRect(x: bounds.width - Self.arrowWidth, y: Self.verticalInset,
+                                     width: Self.arrowWidth, height: titleLabel.font.lineHeight)
                 let metadataHeight = measured(metadataLabel, width: width)
-                metadataLabel.frame = CGRect(x: 16, y: titleLabel.frame.maxY + 8, width: width, height: metadataHeight)
-                divider.frame = CGRect(x: 16, y: metadataLabel.frame.maxY + 8, width: width, height: 1)
+                metadataLabel.frame = CGRect(x: 0, y: titleLabel.frame.maxY + 6, width: width, height: metadataHeight)
+                divider.frame = CGRect(x: 0, y: metadataLabel.frame.maxY + 8, width: width, height: 1 / max(1, traitCollection.displayScale))
                 let bodyHeight = ceil(descriptionView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
-                descriptionView.frame = CGRect(x: 16, y: divider.frame.maxY + 8, width: width, height: bodyHeight)
+                descriptionView.frame = CGRect(x: 0, y: divider.frame.maxY + 8, width: width, height: bodyHeight)
             }
         }
         @objc private func toggle() { if hasDescription { onToggle?() } }
