@@ -4,11 +4,14 @@ import SwiftUI
 /// 而这个命名空间属于最外层，所以走环境传下去。
 extension EnvironmentValues {
     @Entry var videoTransitionNamespace: Namespace.ID?
+    /// 切换标签时页面内容的淡入进度。各页只把它用在内容上，标题栏和顶部模糊不参与：
+    /// 系统模糊在祖先半透明时不渲染，整页淡入会让模糊等淡入结束才出现。
+    @Entry var tabContentOpacity: Double = 1
 }
 
 /// 主页面保持独立导航与数据状态。
 enum MainTab: Hashable {
-    case home, following, live, mine, search
+    case home, following, live, search
 }
 
 struct RootView: View {
@@ -16,6 +19,7 @@ struct RootView: View {
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
+    @AppStorage(HomeTitleBarSettings.storageKey) private var pinsHomeTitleBar = HomeTitleBarSettings.defaultValue
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     @State private var search = SearchViewModel()
@@ -28,7 +32,7 @@ struct RootView: View {
     /// 内容过滤同样在根视图转成环境值，所有列表即时响应设置变化。
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
 
-    /// 主页面切换特效：新页面淡入，快慢用设置页那条「进入」滑杆。
+    /// 主页面切换特效：新页面内容淡入，快慢用设置页那条「进入」滑杆。
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
@@ -45,16 +49,17 @@ struct RootView: View {
         return TabView(selection: tabSelection) {
             Tab("直播", systemImage: "dot.radiowaves.left.and.right", value: MainTab.live) {
                 LiveView(onOpenRoom: openLiveRoom)
-                .opacity(tabContentOpacity).tint(.primary)
+                .tint(.primary)
             }
             Tab("推荐", systemImage: "house.fill", value: MainTab.home) {
-                HomeView(onOpenMine: { switchTab(to: .mine) }).opacity(tabContentOpacity).tint(.primary)
+                // 标题栏的两套实现由设置切换，各自持有列表和数据。
+                Group {
+                    if pinsHomeTitleBar { HomePinnedHomeView() } else { HomeView() }
+                }
+                .tint(.primary)
             }
             Tab("关注", systemImage: "person.2.fill", value: MainTab.following) {
-                FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") }).id(account.sessionID).opacity(tabContentOpacity).tint(.primary)
-            }
-            Tab("我的", systemImage: "person.crop.circle", value: MainTab.mine) {
-                MineView().opacity(tabContentOpacity).tint(.primary)
+                FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") }).id(account.sessionID).tint(.primary)
             }
             Tab("搜索", systemImage: "magnifyingglass", value: MainTab.search, role: .search) {
                 NavigationStack {
@@ -71,6 +76,8 @@ struct RootView: View {
                 guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented else { return }
                 if displayedTab == .search { isSearchFocused = true }
                 if displayedTab == .home { NotificationCenter.default.post(name: .homeTabReselected, object: nil) }
+                if displayedTab == .live { NotificationCenter.default.post(name: .liveTabReselected, object: nil) }
+                if displayedTab == .following { NotificationCenter.default.post(name: .followingTabReselected, object: nil) }
             }.frame(width: 0, height: 0)
         }
         .tint(AppTheme.selected(themeID).color)
@@ -127,6 +134,7 @@ struct RootView: View {
         .environment(feedback)
         .environment(themeIcon)
         .environment(\.videoTransitionNamespace, videoTransition)
+        .environment(\.tabContentOpacity, tabContentOpacity)
         .environment(\.hidesPortraitVideos, hidesPortraitVideos)
         // 全 App 的文字大小由设置页那根滑杆决定，不跟随系统的动态字体——
         // 两套缩放同时生效的话，同一个界面在不同设备上会被叠加缩放两次。
@@ -181,9 +189,9 @@ struct RootView: View {
 
         tabSwitchTask?.cancel()
 
-        // 关注页由动态卡片负责入场，避免整页先淡入、数据就绪后卡片再入场。
+        // 新页面的内容淡入；搜索页保持输入框立即可用，不参与。
         isSearchFocused = false
-        guard animatesPageEntrance, tab != .following, tab != .search else {
+        guard animatesPageEntrance, tab != .search else {
             finishTabEntrance()
             displayedTab = tab
             return

@@ -3,11 +3,12 @@ import SwiftUI
 struct CardAnimationSettingsView: View {
     @AppStorage(CardAnimationSettings.masterKey) private var enabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExit = CardAnimationSettings.defaultValue
+    @AppStorage(CardAnimationSettings.dynamicRefreshEnterKey) private var dynamicEnter = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEnter = CardAnimationSettings.defaultValue
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
 
-    private var enabledEffects: [Bool] { [enabled, dynamicExit, pageEnter] }
+    private var enabledEffects: [Bool] { [enabled, dynamicEnter, dynamicExit, pageEnter] }
 
     var body: some View {
         Form {
@@ -33,6 +34,8 @@ struct CardAnimationSettingsView: View {
             .disabled(!enabled)
 
             Section("动态卡片") {
+                Toggle("进入动画", isOn: $dynamicEnter)
+                    .accessibilityIdentifier("settings.cardAnimations.dynamicEnter")
                 Toggle("退出动画", isOn: $dynamicExit)
                     .accessibilityIdentifier("settings.cardAnimations.dynamicExit")
             }

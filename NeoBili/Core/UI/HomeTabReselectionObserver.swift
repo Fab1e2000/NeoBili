@@ -107,4 +107,6 @@ struct TabReselectionObserver: UIViewControllerRepresentable {
 
 extension Notification.Name {
     static let homeTabReselected = Notification.Name("NeoBili.homeTabReselected")
+    static let liveTabReselected = Notification.Name("NeoBili.liveTabReselected")
+    static let followingTabReselected = Notification.Name("NeoBili.followingTabReselected")
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 「关注」Tab：动态流与可收起的侧边关注选择器。
 struct FollowingView: View {
+    @Environment(\.tabContentOpacity) private var tabContentOpacity
     var onOpenLiveRoom: (LiveRoom) -> Void = { _ in }
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
@@ -22,12 +23,15 @@ struct FollowingView: View {
     @State private var isSidebarExpanded = false
     @State private var sidebarMotion = FollowingSidebarMotion()
     @State private var listPosition = ScrollPosition(edge: .top)
+    @State private var isAwayFromTop = false
+    @State private var shortcutTask: Task<Void, Never>?
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = true
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = true
+    @AppStorage(CardAnimationSettings.dynamicRefreshEnterKey) private var dynamicEnterEnabled = CardAnimationSettings.defaultValue
+    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
     @State private var isRefreshing = false
-    @State private var pullState = 0
     @State private var refreshOpacity = 1.0
     @State private var feedGeneration = 0
     @State private var refreshTask: Task<Void, Never>?
@@ -36,6 +40,7 @@ struct FollowingView: View {
     @State private var pendingSelectionID: FollowingSelection.ID?
     @State private var isFollowingVisible = false
     @State private var isAvatarMenuPresented = false
+    @State private var showsMine = false
     @State private var liveRefreshGeneration = 0
 
     private struct LiveRefreshContext: Hashable {
@@ -74,7 +79,14 @@ struct FollowingView: View {
                     .accessibilityHidden(true)
                 }
                 .background(Color(uiColor: .systemGroupedBackground))
+                // 列表缩小后自带的顶部渐变只覆盖列表宽度，展开选择器时补一层全宽的顶部模糊。
+                .overlay(alignment: .top) {
+                    FollowingExpandedTopBlur(motion: sidebarMotion, topInset: geometry.safeAreaInsets.top)
+                }
             }
+            // 页头固定在顶部，不随动态滚动、也不随侧栏缩放，层级在选择器和动态之上。
+            // 作为顶部栏挂在外层，上面的 geometry 安全区因此包含页头，模糊和底板随之让位。
+            .safeAreaBar(edge: .top, spacing: 0) { header }
             .navigationTitle("关注")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: FollowedUp.self) { up in
@@ -98,6 +110,7 @@ struct FollowingView: View {
                 OrientationController.enterPortrait()
             }
         }
+        .mineSheet(isPresented: $showsMine, transitionID: "mine-avatar-following")
         .onChange(of: account.sessionID) {
             cancelRefreshAnimation()
             selectionTransitionTask?.cancel()
@@ -122,8 +135,13 @@ struct FollowingView: View {
         ContentUnavailableView {
             Label("尚未登录", systemImage: "person.crop.circle.badge.exclamationmark")
         } description: {
-            Text("登录后这里会显示你关注的 UP 主的最新动态。\n登录入口在「我的」页。")
+            Text("登录后这里会显示你关注的 UP 主的最新动态。\n点右上角头像即可登录。")
         }
+    }
+
+    private var header: some View {
+        PageHeader(title: "关注", transitionID: "mine-avatar-following", onOpenMine: { showsMine = true })
+            .padding(.horizontal, 20)
     }
 
     // MARK: - 已登录
@@ -144,14 +162,15 @@ struct FollowingView: View {
             LazyVStack(spacing: 0) {
                 feedContent
             }
-            .opacity(feedOpacity * refreshOpacity)
+            // 切换标签只淡入动态；列表本身保持不透明，顶部模糊立即出现。
+            .opacity(feedOpacity * refreshOpacity * tabContentOpacity)
             .background(Color(uiColor: .secondarySystemGroupedBackground))
             // 手势观察器不参与纵向布局，避免独立零高占位产生默认间距。
             .background(alignment: .top) {
                 ShortPullRefresh(
                     threshold: refreshDistance,
                     enabled: !isRefreshing && !isSidebarExpanded,
-                    onProgress: { distance, armed in pullState = distance > 0 ? (armed ? 2 : 1) : 0 },
+                    onProgress: { _, _ in },
                     onRefresh: startRefresh
                 )
                 .overlay {
@@ -173,17 +192,19 @@ struct FollowingView: View {
             }
         }
         .scrollPosition($listPosition)
+        .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 1 } action: { _, away in
+            isAwayFromTop = away
+        }
         // 即使内容不足一屏也允许下拉刷新。
         .scrollBounceBehavior(.always, axes: .vertical)
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        // 与直播页一致：页头下缘是清晰的切边，而不是渐隐。
+        .scrollEdgeEffectStyle(.hard, for: .top)
             .scrollEdgeEffectHidden(true, for: .bottom)
         .scrollDisabled((isRefreshing && refreshOpacity < 1) || pendingSelectionID != nil)
+        // 下拉刷新与推荐页一致，不显示提示框；只在切换 UP 主等待数据时给个小菊花。
         .overlay(alignment: .top) {
             if pendingSelectionID != nil {
                 LoadingTaskAnchor().controlSize(.small).padding(.top, 12)
-            } else {
-                FeedRefreshFeedback(isRefreshing: isRefreshing, pullState: pullState,
-                                    error: viewModel.activeFeed.errorMessage, retry: startRefresh)
             }
         }
         .accessibilityAction(named: "刷新关注动态") { startRefresh() }
@@ -263,6 +284,21 @@ struct FollowingView: View {
             sidebarMotion.settle(expanded: expanded, reduceMotion: reduceMotion)
             if !expanded, isFollowingVisible {
                 settleSelection(focusedTargetID)
+            }
+        }
+        // 与推荐页一致：重复点「关注」标签，不在顶部时回到顶部，已在顶部时刷新。
+        .onReceive(NotificationCenter.default.publisher(for: .followingTabReselected)) { _ in
+            guard account.isLoggedIn, shortcutTask == nil, !isRefreshing, !isSidebarExpanded,
+                  path.isEmpty, detailEntry == nil else { return }
+            if isAwayFromTop {
+                withAnimation(reduceMotion ? nil : .smooth) { listPosition.scrollTo(edge: .top) }
+                // 回顶动画结束前忽略重复点击，避免误触发刷新。
+                shortcutTask = Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    shortcutTask = nil
+                }
+            } else {
+                startRefresh()
             }
         }
         .onChange(of: sidebarSide) { _, _ in
@@ -353,31 +389,50 @@ struct FollowingView: View {
         pendingSelectionID = nil
         feedOpacity = 1
         isRefreshing = true
-        pullState = 0
-        refreshOpacity = 1
         let model = viewModel
         let feed = model.activeFeed
         let duration = animatesCardExit ? FeedRefreshTuning.fadeExit(speed: exitSpeed) : 0
         let stagingID = UUID()
+        // 与推荐页一致：松手即开始淡出，请求并行进行，两者都结束后再换上新内容。
+        let exitStart = ProcessInfo.processInfo.systemUptime
+        refreshOpacity = 1
+        if duration > 0 { withAnimation(.easeOut(duration: duration)) { refreshOpacity = 0 } }
 
         refreshTask = Task { @MainActor in
             await model.refresh(staged: true, stagingID: stagingID)
             guard !Task.isCancelled else { feed.commitStagedRefresh(id: stagingID); return }
             guard feed.errorMessage == nil else {
+                // 刷新失败保留旧内容，直接恢复显示，不弹提示。
+                withAnimation(nil) { refreshOpacity = 1 }
                 isRefreshing = false
                 refreshTask = nil
                 return
             }
-            if animatesCardExit {
-                withAnimation(.easeOut(duration: duration)) { refreshOpacity = 0 }
-                try? await CardAnimationSettings.waitWhileEnabled(for: duration, category: .dynamic, phase: .exit)
+            if duration > 0 {
+                let remaining = max(0, duration - (ProcessInfo.processInfo.systemUptime - exitStart))
+                try? await CardAnimationSettings.waitWhileEnabled(for: remaining, category: .dynamic, phase: .exit)
             }
             // 离页或切换 UP 后只完成原数据源的提交，不改新页面的动画状态。
             guard !Task.isCancelled else { feed.commitStagedRefresh(id: stagingID); return }
-            feed.commitStagedRefresh(id: stagingID)
-            refreshOpacity = 1
-            feedGeneration += 1
-            isRefreshing = false
+            // 与推荐页一致：新内容换上后淡入。刷新回来的动态常与原来相同，
+            // 卡片自带的入场不会重播，所以由整列来淡入。
+            let animatesEnter = cardAnimationsEnabled && dynamicEnterEnabled && !reduceMotion
+            withAnimation(nil) {
+                feed.commitStagedRefresh(id: stagingID)
+                refreshOpacity = animatesEnter ? 0 : 1
+                feedGeneration += 1
+                isRefreshing = false
+            }
+            if animatesEnter {
+                // 隔一帧再启动：同一帧内先置 0 再改回 1 会被合并成没有动画。
+                try? await Task.sleep(for: .milliseconds(16))
+                // 期间又开始了新的刷新时由新刷新接管浓度。
+                if !Task.isCancelled {
+                    withAnimation(.easeIn(duration: FeedRefreshTuning.fadeInDuration / AnimationSpeedSettings.clamped(enterSpeed))) {
+                        refreshOpacity = 1
+                    }
+                }
+            }
             refreshTask = nil
         }
     }
@@ -387,7 +442,6 @@ struct FollowingView: View {
         refreshTask = nil
         pendingSelectionID = nil
         isRefreshing = false
-        pullState = 0
         refreshOpacity = 1
     }
 
@@ -562,4 +616,21 @@ private struct FollowingPageEdgeShape: Shape {
         .environment(NowPlayingStore())
         .environment(AccountStore())
         .environment(ActionFeedback())
+}
+
+/// 选择器展开时的全宽顶部模糊，浓度跟随展开进度；下缘与页头对齐成切边。
+/// 单独一个视图读取逐帧的进度，拖动时不会让整个关注页重算。
+private struct FollowingExpandedTopBlur: View {
+    let motion: FollowingSidebarMotion
+    let topInset: CGFloat
+
+    var body: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .frame(height: topInset)
+            .offset(y: -topInset)
+            .opacity(motion.progress)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
 }

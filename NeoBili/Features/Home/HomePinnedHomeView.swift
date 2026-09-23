@@ -1,9 +1,18 @@
 import SwiftUI
 import UIKit
 
-/// 推荐页列表的滚动控制，给标签栏「回顶 / 刷新」和刷新后回顶使用。
+/// 推荐页标题栏的两套实现，设置里切换：
+/// - 随内容滚动 · 模糊（默认）：HomeView + HomeFeedCollection，标题是列表第一行；
+/// - 固定 · 切边：本文件的 HomePinnedHomeView + HomePinnedFeedCollection，
+///   标题固定为顶部栏，卡片从它下面滑过，下缘是清晰切边（与直播、关注页一致）。
+enum HomeTitleBarSettings {
+    static let storageKey = "neobili.homePinnedTitleBar"
+    static let defaultValue = false
+}
+
+/// 固定标题栏版列表的滚动控制，给标签栏「回顶 / 刷新」和刷新后回顶使用。
 @MainActor
-final class HomeFeedScrollController {
+final class HomePinnedScrollController {
     fileprivate weak var collectionView: UICollectionView?
 
     var isAwayFromTop: Bool {
@@ -20,6 +29,206 @@ final class HomeFeedScrollController {
     }
 }
 
+struct HomePinnedHomeView: View {
+    @Environment(NowPlayingStore.self) private var nowPlaying
+    @State private var showsMine = false
+    @Environment(\.tabContentOpacity) private var tabContentOpacity
+    /// 列表要避让的上下距离（状态栏 + 标题栏、标签栏）。
+    /// 挂上固定标题栏后 UIKit 列表拿不到系统安全区，只能由这里量好交给它。
+    @State private var safeInsets = EdgeInsets()
+    @Environment(AccountStore.self) private var account
+    @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
+    @State private var viewModel = HomeViewModel()
+    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
+    /// 刷新动画的快慢，设置页可调。
+    @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
+    private var animations = VideoCardAnimationPreferences(source: .recommendation)
+    @State private var refreshTask: Task<Void, Never>?
+    @State private var feedController = HomePinnedScrollController()
+    @State private var reselectCount = 0
+    @State private var shortcutTask: Task<Void, Never>?
+    @State private var isRefreshing = false
+
+    /// 刷新的三段式可视化：旧卡片原地淡出，新卡片按行落位。
+    /// 参数集中在 FeedRefreshTuning 里。
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 松手启动淡出；网络请求并行进行，新内容等淡出结束后再落位。
+    /// 全程只有这一个量在变，卡片本身不位移，所以不会出现错位。
+    @State private var listOpacity: Double = 1
+    @State private var exitTiming: FeedRefreshExitTiming?
+    /// 每次刷新加一，驱动每一行重新播落位动画。
+    @State private var landingGeneration = 0
+
+    private var animatesExit: Bool {
+        !reduceMotion && animations.isEnabled(phase: .exit)
+    }
+
+    var body: some View {
+        #if DEBUG
+        let _ = SearchLatencyProbe.body("HomePinnedHomeView")
+        #endif
+        // 标题栏固定在顶部，卡片从它下面滑过，下缘是清晰切边。
+        feed
+            .safeAreaBar(edge: .top, spacing: 0) {
+                PageHeader(title: "推荐", transitionID: "mine-avatar-home", onOpenMine: { showsMine = true })
+                    .padding(.horizontal, 20)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .task { await viewModel.loadInitial() }
+            // 登录/退出后同一套推荐接口在服务端会切到个性化/通用推流，
+            // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。
+            .onChange(of: account.profile?.mid) {
+                Task { await viewModel.refresh() }
+            }
+            .onAppear {
+                // Returning to this tab always restores the app's portrait lock.
+                OrientationController.enterPortrait()
+            }
+        .onReceive(NotificationCenter.default.publisher(for: .homeTabReselected)) { _ in
+            guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented else { return }
+            reselectCount += 1
+        }
+        .resolvePortraitVideos(viewModel.videos, batchID: landingGeneration) {
+            await viewModel.loadReplacementPage()
+            return viewModel.videos
+        }
+        .videoCardAnimationSource(.recommendation)
+        .onChange(of: animatesExit) { _, enabled in
+            guard !enabled else { return }
+            // A settings change must also restore an already fading feed while
+            // its request remains in flight.
+            withAnimation(nil) { listOpacity = 1; exitTiming = nil }
+        }
+        .mineSheet(isPresented: $showsMine, transitionID: "mine-avatar-home")
+    }
+
+    private var feed: some View {
+        ZStack {
+            HomePinnedFeedCollection(
+                rows: viewModel.feedRows(hidingKnownPortraitVideos: hidesPortraitVideos),
+                viewModel: viewModel,
+                hidesPortraitVideos: hidesPortraitVideos,
+                isRefreshing: isRefreshing,
+                isInteractionEnabled: !(isRefreshing && listOpacity < 1),
+                refreshDistance: refreshDistance,
+                controller: feedController,
+                onRefresh: { startRefresh() },
+                onOpenLastSeen: { startRefresh(scrollToTop: true) },
+                safeInsets: safeInsets,
+                contentOpacity: tabContentOpacity
+            )
+            .opacity(animatesExit ? listOpacity : 1)
+            // 内容从状态栏、标题栏和标签栏下面滑过；被忽略的这段安全区量出来补进列表边距。
+            .ignoresSafeArea()
+            .onGeometryChange(for: EdgeInsets.self, of: \.safeAreaInsets) { safeInsets = $0 }
+
+            // 加载、出错、全被过滤这些状态单独观察，isLoading 翻转时不重算整个列表。
+            HomeFeedStatusOverlay(viewModel: viewModel, hidesPortraitVideos: hidesPortraitVideos) {
+                startRefresh()
+            }
+        }
+        .onChange(of: reselectCount) {
+            guard shortcutTask == nil, !isRefreshing else { return }
+            if feedController.isAwayFromTop {
+                feedController.scrollToTop(animated: true)
+                // 回顶动画结束前忽略重复点击，避免误触发刷新。
+                shortcutTask = Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    shortcutTask = nil
+                }
+            } else {
+                startRefresh()
+            }
+        }
+        // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
+        .leftEdgeTapDeadZone()
+    }
+
+    private func startRefresh(scrollToTop: Bool = false) {
+        guard !isRefreshing else { return }
+        beginRefresh()
+        refreshTask = Task { @MainActor in
+            defer {
+                withAnimation(nil) { listOpacity = 1; exitTiming = nil; isRefreshing = false }
+                refreshTask = nil
+            }
+            // Keep existing content until the request is ready, including when
+            // animation settings change in the middle of the request.
+            await viewModel.refresh(staged: true)
+            guard !Task.isCancelled else { return }
+            await finishRefresh(scrollToTop: scrollToTop)
+            refreshTask = nil
+        }
+    }
+
+    private func beginRefresh() {
+        isRefreshing = true
+        guard animatesExit else { listOpacity = 1; exitTiming = nil; return }
+        let duration = FeedRefreshTuning.fadeExit(speed: exitSpeed)
+        exitTiming = FeedRefreshExitTiming(start: ProcessInfo.processInfo.systemUptime, duration: duration)
+        withAnimation(.easeOut(duration: duration)) { listOpacity = 0 }
+    }
+
+    private func finishRefresh(scrollToTop: Bool) async {
+        guard viewModel.errorMessage == nil else {
+            isRefreshing = false
+            listOpacity = 1
+            return
+        }
+        if animatesExit, let exitTiming {
+            do {
+                try await CardAnimationSettings.waitWhileEnabled(
+                    for: exitTiming.remaining(at: ProcessInfo.processInfo.systemUptime), category: .video, phase: .exit, source: .recommendation
+                )
+            } catch {
+                return
+            }
+        }
+        guard !Task.isCancelled else { return }
+        // Commit data and restore opacity in one transaction. The individual
+        // rows own their entry clocks; refreshing never waits for those clocks.
+        withAnimation(nil) {
+            if scrollToTop { feedController.scrollToTop(animated: false) }
+            viewModel.commitStagedRefresh()
+            listOpacity = 1
+            landingGeneration += 1
+            isRefreshing = false
+        }
+    }
+}
+
+/// 首次加载、加载失败、全部被过滤时盖在列表上的状态。
+private struct HomeFeedStatusOverlay: View {
+    let viewModel: HomeViewModel
+    let hidesPortraitVideos: Bool
+    let onRefresh: () -> Void
+
+    var body: some View {
+        if viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos),
+           !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
+            LoadingTaskAnchor()
+        } else if viewModel.isLoading, viewModel.videos.isEmpty {
+            LoadingTaskAnchor()
+        } else if let message = viewModel.errorMessage, viewModel.videos.isEmpty {
+            ContentUnavailableView(
+                "加载失败",
+                systemImage: "wifi.slash",
+                description: Text(message)
+            )
+        } else if !viewModel.videos.isEmpty,
+                  !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
+            ContentUnavailableView {
+                Label("没有可显示的视频", systemImage: "rectangle.slash")
+            } description: {
+                Text("当前推荐中的视频都被内容过滤设置隐藏了。")
+            } actions: {
+                Button("刷新推荐", action: onRefresh)
+            }
+        }
+    }
+}
+
+
 /// 推荐页的双列列表，由 UICollectionView 承载，卡片内容仍是 SwiftUI。
 ///
 /// SwiftUI 的 LazyVStack 每进来一页新数据都要把整个列表重新整理一遍，
@@ -27,7 +236,7 @@ final class HomeFeedScrollController {
 /// 都出在翻页那一刻。这里改成 UIKit：翻页只插入新增的行，已在屏幕上的行
 /// 不重算；格子会提前准备，滑出屏幕后复用。每张卡独占原生格子和宿主，
 /// 避免系统 zoom 对来源宿主施加的变换牵连同排卡片。分隔条仍横跨两列。
-struct HomeFeedCollection: UIViewRepresentable {
+struct HomePinnedFeedCollection: UIViewRepresentable {
     let rows: [HomeFeedRow]
     let viewModel: HomeViewModel
     let hidesPortraitVideos: Bool
@@ -35,10 +244,11 @@ struct HomeFeedCollection: UIViewRepresentable {
     /// 刷新淡出期间列表不接收触摸。
     let isInteractionEnabled: Bool
     let refreshDistance: Double
-    let controller: HomeFeedScrollController
+    let controller: HomePinnedScrollController
     let onRefresh: () -> Void
     let onOpenLastSeen: () -> Void
-    var onOpenMine: () -> Void = {}
+    /// 列表铺满全屏，状态栏 + 标题栏、标签栏这两段要自己补进上下边距。
+    let safeInsets: EdgeInsets
     /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身不透明，顶部模糊不受影响。
     var contentOpacity: Double = 1
 
@@ -52,20 +262,18 @@ struct HomeFeedCollection: UIViewRepresentable {
             coordinator?.layoutSection(at: index, environment: environment)
         }, configuration: configuration)
 
-        let view = HomeFeedCollectionView(frame: .zero, collectionViewLayout: layout)
+        let view = HomePinnedFeedCollectionView(frame: .zero, collectionViewLayout: layout)
         view.backgroundColor = .clear
         // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
         view.alwaysBounceVertical = true
         view.showsHorizontalScrollIndicator = false
-        // 不在导航控制器里时，默认的 .automatic 只在「能滚动」时才把安全区算进边距。
-        // 刷新淡出期间会暂停滚动，那一刻顶部边距少了状态栏的高度，列表会跳上去，
-        // 恢复滚动后位置也回不来。这里始终计入安全区。
-        view.contentInsetAdjustmentBehavior = .always
-        // 页头自带上下留白，顶部只补 4pt，避免导航栏式的大段空白。
-        view.contentInset = UIEdgeInsets(top: 4, left: 0,
-                                         bottom: HomeCardLayout.verticalInset, right: 0)
-        // 卡片从顶部滑过时给一层渐隐（iOS 26 的 scroll edge effect），底部不加。
-        view.topEdgeEffect.style = .soft
+        // 挂上固定标题栏后列表拿不到系统安全区（始终为 0），边距全部由 safeInsets 给出，
+        // 不再让 UIKit 自动叠加，也避免刷新暂停滚动时边距跳变。
+        view.contentInsetAdjustmentBehavior = .never
+        view.contentInset = contentInset
+        view.verticalScrollIndicatorInsets = scrollIndicatorInsets
+        // 卡片从标题栏下面滑过时给一层清晰切边（iOS 26 的 scroll edge effect），底部不加。
+        view.topEdgeEffect.style = .hard
         view.bottomEdgeEffect.isHidden = true
         view.delegate = coordinator
         view.prefetchDataSource = coordinator
@@ -85,7 +293,16 @@ struct HomeFeedCollection: UIViewRepresentable {
             coordinator.contentOpacity = opacity
             context.animate { coordinator.applyContentOpacityToVisibleCells() }
         }
-        coordinator.onOpenMine = onOpenMine
+        if view.contentInset != contentInset {
+            // 安全区量出来之前列表可能已按旧边距停在顶部；边距变了要把它一并移到新的顶部，
+            // 否则第一排卡片会被标题栏挡住。
+            let wasAtTop = view.contentOffset.y <= -view.adjustedContentInset.top + 1
+            view.contentInset = contentInset
+            view.verticalScrollIndicatorInsets = scrollIndicatorInsets
+            if wasAtTop {
+                view.setContentOffset(CGPoint(x: view.contentOffset.x, y: -view.adjustedContentInset.top), animated: false)
+            }
+        }
         coordinator.state.setRefreshing(isRefreshing)
         coordinator.pull.threshold = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
         coordinator.pull.enabled = !isRefreshing
@@ -99,6 +316,15 @@ struct HomeFeedCollection: UIViewRepresentable {
         coordinator.apply(rows)
     }
 
+    private var contentInset: UIEdgeInsets {
+        UIEdgeInsets(top: safeInsets.top + HomeCardLayout.verticalInset, left: 0,
+                     bottom: safeInsets.bottom + HomeCardLayout.verticalInset, right: 0)
+    }
+
+    private var scrollIndicatorInsets: UIEdgeInsets {
+        UIEdgeInsets(top: safeInsets.top, left: 0, bottom: safeInsets.bottom, right: 0)
+    }
+
     static func dismantleUIView(_ view: UICollectionView, coordinator: Coordinator) {
         coordinator.pull.detach()
         #if PERFORMANCE_DEMO
@@ -107,7 +333,6 @@ struct HomeFeedCollection: UIViewRepresentable {
     }
 
     enum Section: Hashable {
-        case header
         /// 本次刷新的内容；没有分隔条时就是全部内容。
         case latest
         /// 「上次看到这里」分隔条，单独一节，高度按内容自适应。
@@ -154,8 +379,6 @@ struct HomeFeedCollection: UIViewRepresentable {
         var hidesPortraitVideos = false
         var onRefresh: () -> Void = {}
         var onOpenLastSeen: () -> Void = {}
-        var onOpenMine: () -> Void = {}
-        private static let headerID = "home-page-header"
         var contentOpacity: CGFloat = 1
         let state = HomeFeedCellState()
         let pull = ShortPullRefresh.ObserverView()
@@ -196,7 +419,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             let persistentHosts = true
             #endif
             dataSource = UICollectionViewDiffableDataSource(collectionView: view) { view, indexPath, id in
-                if persistentHosts && id != HomeFeedItem.lastSeen.id && id != Self.headerID {
+                if persistentHosts && id != HomeFeedItem.lastSeen.id {
                     return view.dequeueConfiguredReusableCell(using: persistentRegistration, for: indexPath, item: id)
                 }
                 return view.dequeueConfiguredReusableCell(using: registration, for: indexPath, item: id)
@@ -211,17 +434,15 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         func layoutSection(at index: Int, environment: NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
-            let sectionID = dataSource?.sectionIdentifier(for: index)
-            let isHeader = sectionID == .header
-            let isMarker = sectionID == .marker
+            let isMarker = dataSource?.sectionIdentifier(for: index) == .marker
             let width = environment.container.effectiveContentSize.width
             // 卡片行高度固定（4:3 封面加文字区），不必逐个测量；分隔条随字号变化，按内容自适应。
-            let height: NSCollectionLayoutDimension = isHeader || isMarker
-                ? .estimated(isHeader ? 66 : 44)
+            let height: NSCollectionLayoutDimension = isMarker
+                ? .estimated(44)
                 : .absolute(HomeCardLayout.cardHeight(for: width))
             let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: height)
             let group: NSCollectionLayoutGroup
-            if isHeader || isMarker {
+            if isMarker {
                 group = .vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
             } else {
                 let item = NSCollectionLayoutItem(layoutSize: NSCollectionLayoutSize(
@@ -231,8 +452,8 @@ struct HomeFeedCollection: UIViewRepresentable {
             }
             let section = NSCollectionLayoutSection(group: group)
             section.interGroupSpacing = HomeCardLayout.rowSpacing
-            section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: isHeader ? 20 : HomeCardLayout.horizontalInset,
-                                                            bottom: 0, trailing: isHeader ? 20 : HomeCardLayout.horizontalInset)
+            section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: HomeCardLayout.horizontalInset,
+                                                            bottom: 0, trailing: HomeCardLayout.horizontalInset)
             return section
         }
 
@@ -294,8 +515,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             hasMarker = marker
 
             var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
-            snapshot.appendSections([.header, .latest])
-            snapshot.appendItems([Self.headerID], toSection: .header)
+            snapshot.appendSections([.latest])
             snapshot.appendItems(latest, toSection: .latest)
             if marker {
                 snapshot.appendSections([.marker])
@@ -306,7 +526,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 }
             }
             if needsReconfigureAll {
-                snapshot.reconfigureItems(snapshot.itemIdentifiers.filter { existing.contains($0) || ($0 == Self.headerID && dataSource.snapshot().indexOfItem(Self.headerID) != nil) })
+                snapshot.reconfigureItems(snapshot.itemIdentifiers.filter(existing.contains))
             } else if !changed.isEmpty {
                 // 同一行里换了视频（例如「不感兴趣」换一条）只重配这一行。
                 snapshot.reconfigureItems(changed)
@@ -324,19 +544,6 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         private func configure(_ cell: UICollectionViewCell, id: String) {
-            if id == Self.headerID {
-                cell.contentConfiguration = UIHostingConfiguration {
-                    PageHeader(title: "推荐", transitionID: "mine-avatar-home", onOpenMine: { [weak self] in self?.onOpenMine() })
-                        .environment(environment.account)
-                        .environment(\.videoTransitionNamespace, environment.namespace)
-                        .appTextSize()
-                }.margins(.all, 0)
-                cell.backgroundConfiguration = .clear()
-                if let collectionView { positionHeader(cell, in: collectionView) }
-                return
-            }
-            // 页头与分隔条共用 hosting cell，复用时不能带走下拉补偿。
-            if id == HomeFeedItem.lastSeen.id { cell.transform = .identity }
             guard let row = itemsByID[id], let viewModel else { return }
             let environment = environment
             let starts = entranceStarts(for: row)
@@ -441,45 +648,15 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         private func applyContentOpacity(to cell: UICollectionViewCell, id: String?) {
-            let alpha = id == Self.headerID ? 1 : contentOpacity
+            let alpha = contentOpacity
             if cell.contentView.alpha != alpha { cell.contentView.alpha = alpha }
         }
 
         // MARK: UICollectionViewDelegate
 
-        /// 只抵消顶部回弹的位移；正常向上滚动不补偿，所以页头仍随内容离屏。
-        /// 直接更新原生 cell，不把逐帧偏移发布到 SwiftUI / 列表模型。
-        private func positionHeader(_ cell: UICollectionViewCell, in scrollView: UIScrollView) {
-            let offset = Self.headerBounceCompensation(
-                contentOffsetY: scrollView.contentOffset.y,
-                adjustedTopInset: scrollView.adjustedContentInset.top
-            )
-            let transform = CGAffineTransform(translationX: 0, y: offset)
-            if cell.transform != transform { cell.transform = transform }
-        }
-
-        static func headerBounceCompensation(contentOffsetY: CGFloat, adjustedTopInset: CGFloat) -> CGFloat {
-            min(0, contentOffsetY + adjustedTopInset)
-        }
-
-        func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            guard let collectionView,
-                  let indexPath = dataSource?.indexPath(for: Self.headerID),
-                  let cell = collectionView.cellForItem(at: indexPath) else { return }
-            positionHeader(cell, in: scrollView)
-        }
-
-        func scrollViewDidChangeAdjustedContentInset(_ scrollView: UIScrollView) {
-            scrollViewDidScroll(scrollView)
-        }
-
         func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
                             forItemAt indexPath: IndexPath) {
             applyContentOpacity(to: cell, id: dataSource?.itemIdentifier(for: indexPath))
-            if dataSource?.itemIdentifier(for: indexPath) == Self.headerID {
-                positionHeader(cell, in: collectionView)
-                return
-            }
             // 提前准备好的格子可能错过了重新配置：显示前核对一次入场起点。
             if let id = dataSource?.itemIdentifier(for: indexPath), let row = itemsByID[id],
                configuredStarts[id] != entranceStarts(for: row) {
@@ -500,7 +677,7 @@ struct HomeFeedCollection: UIViewRepresentable {
 
 /// 标签栏「下滑收起」要知道页面的主滚动视图。推荐页外面没有导航栈替它登记，
 /// 放进窗口时由列表自己登记给所在的视图控制器。
-private final class HomeFeedCollectionView: UICollectionView {
+private final class HomePinnedFeedCollectionView: UICollectionView {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         guard window != nil else { return }
@@ -513,128 +690,6 @@ private final class HomeFeedCollectionView: UICollectionView {
                 return
             }
             responder = current.next
-        }
-    }
-}
-
-/// 格子共享的页面状态。只有分隔条读它，刷新开始、结束时只有分隔条重算。
-@MainActor @Observable
-final class HomeFeedCellState {
-    private(set) var isRefreshing = false
-
-    func setRefreshing(_ value: Bool) {
-        if isRefreshing != value { isRefreshing = value }
-    }
-}
-
-/// One SwiftUI root per native cell: one video or the full-width marker.
-struct HomeFeedCellView: View {
-    let item: HomeFeedItem
-    let viewModel: HomeViewModel
-    let state: HomeFeedCellState
-    let entranceStart: TimeInterval?
-    let onOpenLastSeen: () -> Void
-
-    @Environment(NowPlayingStore.self) private var nowPlaying
-    @Environment(AccountStore.self) private var account
-    @Environment(ActionFeedback.self) private var feedback
-    @Environment(\.videoTransitionNamespace) private var videoTransition
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
-
-    var body: some View {
-        switch item {
-        case .video(let video):
-            GeometryReader { geometry in
-                videoSlot(video, size: geometry.size)
-            }
-        case .lastSeen:
-            TimedFeedEntrance(start: entranceStart, speed: enterSpeed, reduceMotion: reduceMotion) {
-                Button(action: onOpenLastSeen) {
-                    LastSeenCard()
-                }
-                .buttonStyle(.plain)
-                .disabled(state.isRefreshing)
-            }
-        }
-    }
-
-    private func videoSlot(_ video: VideoSummary, size: CGSize) -> some View {
-        TimedFeedEntrance(start: entranceStart, speed: enterSpeed, reduceMotion: reduceMotion) {
-            videoCard(video, size: size)
-        }
-        .onAppear { viewModel.didShowReplacement(video.bvid) }
-        .onChange(of: video.bvid) { viewModel.didShowReplacement(video.bvid) }
-        .frame(width: size.width, height: size.height, alignment: .top)
-    }
-
-    @ViewBuilder
-    private func videoCard(_ video: VideoSummary, size: CGSize) -> some View {
-        let titleWidth = max(0, size.width - HomeCardLayout.detailsHorizontalPadding * 2)
-        if viewModel.uninterestedIDs.contains(video.bvid) {
-            Button {
-                Task {
-                    if let message = await viewModel.replaceUninterested(video) { feedback.show(message) }
-                }
-            } label: {
-                VStack(spacing: 10) {
-                    if viewModel.replacingIDs.contains(video.bvid) {
-                        LoadingTaskAnchor()
-                    } else {
-                        Image(systemName: "eye.slash").font(.title2)
-                    }
-                    Text("已提交不感兴趣").font(.subheadline)
-                    if !viewModel.replacingIDs.contains(video.bvid) {
-                        Text("点击重试换一条").font(.caption)
-                    }
-                }
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 7))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(viewModel.replacingIDs.contains(video.bvid))
-        } else {
-            Button {
-                nowPlaying.open(
-                    VideoDetailRoute(bvid: video.bvid, cid: video.cid, cover: video.pic,
-                                     title: video.title, artist: video.owner.name),
-                    from: video.bvid
-                )
-            } label: {
-                Group {
-                    #if PERFORMANCE_DEMO
-                    if !ProcessInfo.processInfo.arguments.contains("--swiftui-feed-cards") {
-                        NativeHomeVideoCard(video: video, titleWidth: titleWidth)
-                    } else {
-                        HomeVideoCard(video: video, titleWidth: titleWidth)
-                    }
-                    #else
-                    NativeHomeVideoCard(video: video, titleWidth: titleWidth)
-                    #endif
-                }
-                .frame(width: size.width, height: size.height)
-                // Both this source and its native hosting cell contain one card.
-                .videoTransitionSource(video.bvid, in: videoTransition)
-                .contentShape(.interaction, Rectangle())
-            }
-            .buttonStyle(.plain)
-            .contextMenu {
-                WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
-                Button("不感兴趣", systemImage: "eye.slash") {
-                    Task {
-                        guard account.isLoggedIn else { feedback.show("请先登录"); return }
-                        if let message = await viewModel.markUninterested(video) { feedback.show(message) }
-                    }
-                }
-                .disabled(viewModel.reportingIDs.contains(video.bvid))
-            }
-            .task(id: video.bvid) {
-                // 快速滑过的卡片不预取：停留一会儿才请求播放地址，
-                // 免得一次甩动排进几十个网络请求和解析。
-                await VideoPreparationCache.shared.prefetchWhenSettled(bvid: video.bvid, cid: video.cid)
-            }
         }
     }
 }

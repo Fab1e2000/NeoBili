@@ -7,6 +7,12 @@ struct SearchPage: View {
     @Environment(\.appThemeColor) private var themeColor
     let onSubmit: (String?) -> Void
     @State private var history = SearchHistory.shared
+    @State private var showsMine = false
+
+    /// 只在搜索首页（历史/热搜）显示标题；输入、联想和结果页让搜索框顶到最上方。
+    private var showsHeader: Bool {
+        !isFocused && !viewModel.isShowingSuggestions && !viewModel.hasSubmittedSearch
+    }
 
     var body: some View {
         // Keep the search bar and its lifecycle above a stable container.
@@ -51,14 +57,24 @@ struct SearchPage: View {
             Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
         }
         .safeAreaBar(edge: .top, spacing: 0) {
-            HomeSearchBar(text: Binding(get: { viewModel.query }, set: { viewModel.query = $0 }),
-                          isFocused: $isFocused,
-                          onSubmit: { onSubmit(nil) },
-                          onCancel: { isFocused = false })
-                .frame(height: 56)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 2)
+            VStack(spacing: 0) {
+                if showsHeader {
+                    PageHeader(title: "搜索", transitionID: "mine-avatar-search",
+                               onOpenMine: { showsMine = true })
+                        .padding(.horizontal, 20)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                HomeSearchBar(text: Binding(get: { viewModel.query }, set: { viewModel.query = $0 }),
+                              isFocused: $isFocused,
+                              onSubmit: { onSubmit(nil) },
+                              onCancel: { isFocused = false })
+                    .frame(height: 56)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 2)
+            }
+            .animation(.smooth(duration: 0.3), value: showsHeader)
         }
+        .mineSheet(isPresented: $showsMine, transitionID: "mine-avatar-search")
         .scrollEdgeEffectStyle(.soft, for: .top)
         .task { await viewModel.loadHotSearches() }
         .onDisappear { isFocused = false }

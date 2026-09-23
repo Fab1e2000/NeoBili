@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct HomeView: View {
-    var onOpenMine: () -> Void = {}
     @Environment(NowPlayingStore.self) private var nowPlaying
+    @State private var showsMine = false
+    @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(AccountStore.self) private var account
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @State private var viewModel = HomeViewModel()
@@ -62,6 +63,7 @@ struct HomeView: View {
             // its request remains in flight.
             withAnimation(nil) { listOpacity = 1; exitTiming = nil }
         }
+        .mineSheet(isPresented: $showsMine, transitionID: "mine-avatar-home")
     }
 
     private var feed: some View {
@@ -76,7 +78,8 @@ struct HomeView: View {
                 controller: feedController,
                 onRefresh: { startRefresh() },
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
-                onOpenMine: onOpenMine
+                onOpenMine: { showsMine = true },
+                contentOpacity: tabContentOpacity
             )
             .opacity(animatesExit ? listOpacity : 1)
             // 内容从状态栏和标签栏下面滑过；列表通过 adjustedContentInset 留出安全区。

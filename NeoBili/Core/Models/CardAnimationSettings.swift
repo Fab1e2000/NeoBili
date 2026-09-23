@@ -47,6 +47,8 @@ enum CardAnimationSettings {
     static let videoExitKey = "neobili.videoCardExitAnimation"
     static let dynamicEnterKey = "neobili.dynamicCardEnterAnimation"
     static let dynamicExitKey = "neobili.dynamicCardExitAnimation"
+    /// 关注页刷新完成后整列淡入。与已下线的单卡进入动画（dynamicEnterKey）分开存，旧值不影响它。
+    static let dynamicRefreshEnterKey = "neobili.dynamicRefreshEnterAnimation"
     static let pageEnterKey = "neobili.pageEnterAnimation"
     static let defaultValue = true
     static let didChangeNotification = Notification.Name("neobili.cardAnimationsDidChange")

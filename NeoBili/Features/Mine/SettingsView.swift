@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
+    @AppStorage(HomeTitleBarSettings.storageKey) private var pinsHomeTitleBar = HomeTitleBarSettings.defaultValue
 
     var body: some View {
         Form {
@@ -39,6 +40,12 @@ struct SettingsView: View {
                 .accessibilityIdentifier("settings.cardAnimations")
                 NavigationLink("滚动与防误触") { InteractionSettingsView() }
                     .accessibilityIdentifier("settings.scrolling")
+                // 两套独立实现：随内容滚动 · 模糊（HomeView）/ 固定 · 切边（HomePinnedHomeView）。
+                Picker("推荐页标题栏", selection: $pinsHomeTitleBar) {
+                    Text("随内容滚动 · 模糊").tag(false)
+                    Text("固定 · 切边").tag(true)
+                }
+                .accessibilityIdentifier("settings.homeTopEdge")
             }
 
             Section {

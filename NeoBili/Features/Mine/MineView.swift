@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// 「我的」Tab。未登录时给登录入口，登录后展示个人信息与收藏、历史、
-/// 稍后再看、系统设置等入口。
+/// 「我的」页面，由推荐页头像以卡片形式打开。未登录时给登录入口，
+/// 登录后展示个人信息与收藏、历史、稍后再看、系统设置等入口。
 struct MineView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AccountStore.self) private var account
     @Environment(NowPlayingStore.self) private var nowPlaying
 
@@ -41,7 +42,21 @@ struct MineView: View {
             // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触入口行。
             .leftEdgeTapDeadZone()
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("我的")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // 与 Apple Music 账户卡片一致：标题靠左，右上角是关闭按钮。
+                ToolbarItem(placement: .topBarLeading) {
+                    Text("我的")
+                        .font(.title3.weight(.semibold))
+                        .fixedSize()
+                        .accessibilityAddTraits(.isHeader)
+                }
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭", systemImage: "xmark") { dismiss() }
+                        .labelStyle(.iconOnly)
+                }
+            }
         }
         .sheet(item: $serviceSheet, onDismiss: {
             nowPlaying.isServiceSheetPresented = false
