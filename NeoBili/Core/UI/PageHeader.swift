@@ -2,7 +2,7 @@ import SwiftUI
 
 extension EnvironmentValues {
     /// 打开「我的」页面，参数是发起页头像的转场 ID。由根视图的 `mineSheetHost()` 提供。
-    @Entry var openMine: (String) -> Void = { _ in }
+    @Entry var openMine: EnvironmentAction<String>? = nil
 }
 
 /// 各主页面共用的页头：左侧大标题，右侧头像玻璃按钮。
@@ -25,7 +25,7 @@ struct PageHeader: View {
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 16)
-            Button { (onOpenMine ?? { openMine(transitionID) })() } label: {
+            Button { (onOpenMine ?? { openMine?(transitionID) })() } label: {
                 Group {
                     if let url = account.profile?.secureAvatarURL {
                         BiliImage(url: url)
@@ -71,48 +71,6 @@ private struct AvatarTransitionSource: ViewModifier {
             content.matchedTransitionSource(id: id, in: namespace) {
                 $0.clipShape(RoundedRectangle(cornerRadius: 22))
             }
-        } else {
-            content
-        }
-    }
-}
-
-extension View {
-    /// 在根视图上统一呈现「我的」页面，从发起页的头像原位放大。
-    /// 放在根部而不是各页：隐藏某个标签时那一页会被移除，挂在它上面的卡片也会被一并关掉。
-    func mineSheetHost() -> some View { modifier(MineSheetHost()) }
-}
-
-private struct MineSheetHost: ViewModifier {
-    private struct Presentation: Identifiable {
-        let transitionID: String
-        var id: String { transitionID }
-    }
-
-    @State private var presentation: Presentation?
-    @Environment(\.videoTransitionNamespace) private var transition
-
-    func body(content: Content) -> some View {
-        content
-            .environment(\.openMine) { presentation = Presentation(transitionID: $0) }
-            .sheet(item: $presentation) { presentation in
-                MineView()
-                    .appTextSize()
-                    .tint(.primary)
-                    .presentationDetents([.large])
-                    .presentationCornerRadius(32)
-                    .modifier(MineZoomTransition(transitionID: presentation.transitionID, namespace: transition))
-            }
-    }
-}
-
-private struct MineZoomTransition: ViewModifier {
-    let transitionID: String
-    let namespace: Namespace.ID?
-
-    func body(content: Content) -> some View {
-        if let namespace {
-            content.navigationTransition(.zoom(sourceID: transitionID, in: namespace))
         } else {
             content
         }

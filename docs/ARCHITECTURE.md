@@ -18,42 +18,60 @@
 ```
 NeoBili/
   App/            进程入口。NeoBiliApp（预热设备标识与 WBI 密钥、音频会话）、
-                  RootView（三 Tab + 全局 store 环境 + 视频页 fullScreenCover）、
+                  RootView（按设置排序/隐藏的主标签 + 全局 store 环境 + 视频页与
+                  「我的」卡片的呈现）、MainTabSettings（标签顺序、隐藏、启动页）、
                   AppDelegate（方向锁的 UIKit 出口）。
   Core/
+    Extensions/   标准库/框架类型的小扩展（Int+BiliFormatting、Color+Hex）。
     Networking/   传输与接口。APIClient 负责主要业务 API（公共头、Cookie、
-                  信封解码）；BiliAPI/BiliPassport 按 endpoint 分文件；WBISigner、
-                  AppSigner 负责两套签名；DeviceIdentity（actor）管 buvid 与登录凭据
-                  （Keychain）；KeychainStore 是最小 Keychain 封装。
-    Models/       值类型模型 + 跨页共享的业务规则：VideoDimension（画幅/旋转）、
-                  VideoDurationFilterSettings（最低时长设置）、PortraitVideoStore
-                  （画幅/时长补查缓存，全 App 共享）、VideoLikeStore（点赞差量）、
-                  FollowingReadStore（关注已读状态，按账号持久化）、ListRemovalState
-                  （删除动效 + 回滚保护）。列表接口一律宽松解码（LenientList +
+                  信封解码）；BiliAPI 按领域拆成 `BiliAPI+<领域>.swift` 扩展
+                  （Recommendation、Video、VideoActions、Playback、Comment、Search、
+                  Dynamic、Space、Account、Favorites、History、WatchLater）；
+                  BiliPassport 负责登录；WBISigner、AppSigner 负责两套签名；
+                  DeviceIdentity（actor）管 buvid 与登录凭据（Keychain）。
+    Models/       值类型模型（按领域分文件：Video、PlayURL、UgcSeason、Comment、
+                  Search、Follow、Dynamic、Space、Account、Live）+ 跨页共享的业务规则：
+                  VideoDimension（画幅/旋转）、VideoDurationFilterSettings、
+                  PortraitVideoStore（画幅/时长补查缓存）、VideoLikeStore（点赞差量）、
+                  FollowingReadStore、ListRemovalState（删除动效 + 回滚保护）。
+                  列表接口一律宽松解码（LenientDecoding：LenientList +
                   flexibleInt/String/Bool，一条坏数据不拖垮整页）。
     Platform/     方向控制（OrientationController / OrientationLock）。
-    UI/           共享视图与列表展示基础设施：BiliImage（带头像的取图 + 内存缓存）、
-                  VideoListCard、FeedRefreshAnimation（三段式刷新动画 + 入场时钟）、
+    UI/           共享视图与列表展示基础设施：PageHeader（各主页面的标题 + 头像）、
+                  BiliImage / BiliImageLoader（取图、解码与内存缓存）、VideoListCard、
+                  FeedRefreshAnimation（刷新动画 + 入场时钟）、AnimationSpeedSettings、
                   VideoVisibilityEnvironment（整批画幅判断 + 补位 + 统一动画起点）、
+                  TabReselectionObserver（重复点标签 → `.onTabReselected`）、
                   EnvironmentAction（环境值里的动作盒子）、ImageViewer（QuickLook）、
                   ShortPullRefresh、LeftEdgeTapDeadZone、ActionFeedback（全局浮层）。
   Features/
-    Home/         推荐/热门流 + 站内搜索（搜索框在首页顶部，结果直接替换推荐流）。
+    Home/         推荐流：HomeView（两种标题栏样式）、HomeFeedCollection（UIKit 双列列表）、
+                  HomeFeedCellView、HomeViewModel。
+    Live/         直播：推荐/关注两页、直播间、直播弹幕。
     Following/    关注动态：FollowingViewModel（头像行）+ DynamicFeedModel（关注流与
-                  UP 主动态共用的翻页/点赞）+ FollowingCarousel（侧边头像选择器，
-                  UICollectionView 实现）+ SpaceView/SpaceViewModel（UP 主空间页）。
-    VideoDetail/  视频页：VideoDetailView（页面骨架）、VideoDetailViewModel（详情、
-                  互动）、CommentsView/CommentsViewModel（评论 + 楼中楼）、评论输入、
-                  相关视频、合集与分 P、收藏夹弹窗。
+                  UP 主动态共用的翻页/点赞）+ FollowingCarousel / FollowingAvatarScroll
+                  （侧边头像选择器，UICollectionView 实现）+ SpaceView（UP 主空间页）。
+    Search/       搜索标签：SearchPage、HomeSearchBar、SearchResultsView。
+    Library/      收藏、历史、稍后再看；LibraryTabPage 把它们作为标签页呈现，
+                  「我的」卡片里复用同一套列表视图。
+    Mine/         「我的」页面、服务卡片（MineServiceSheet）、从头像弹出的呈现（MineSheetHost）。
+    Settings/     系统设置：SettingsView 首页，每个设置页一个文件。
+    VideoDetail/  视频页：VideoPage（页面骨架）、VideoDetailRoute、VideoDetailViewModel
+                  （详情、互动）、CommentsView / CommentRow / CommentsViewModel、评论输入、
+                  合集与分 P、收藏夹弹窗。
     Player/       播放器：PlayerViewModel（状态机 + 备用地址恢复）、MPVPlayerSession
-                  （mpv 内核封装 + PlaybackSourceBuilder 选流）、PlayerControlsOverlay、
-                  PlayerVerticalGestureLayer（分区手势）、SystemNowPlayingCenter（锁屏/
-                  控制中心桥接）、NowPlayingStore（视频页全局状态，见下）。
-    Mine/         我的、收藏、历史、稍后再看、设置。
+                  （会话）、MPVEngine（mpv 内核）、MPVMetalViewController / MPVMetalLayer
+                  （渲染）、PlaybackSource（选流）、PlayerControlsOverlay、
+                  PlayerVerticalGestureLayer（分区手势）、SystemNowPlayingCenter（锁屏）。
+    Danmaku/      弹幕引擎、弹幕设置与下载。
     Account/      账号：AccountStore（会话恢复/资料/登出）、扫码与密码登录。
-    NowPlaying/   NowPlayingStore：当前视频页的唯一所有者（见下）。
+    NowPlaying/   NowPlayingStore：当前视频页的唯一所有者（见下）；VideoPagePresenter
+                  （全屏呈现视频页）、MiniPlayerHost / MiniPlayerBar（标签栏上方的缩略播放条）。
   Resources/
 ```
+
+文件组织约定：一个文件一个主要类型，文件名与类型同名；同一类型按领域拆分时用
+`类型+领域.swift` 扩展；只服务于某个视图的小型私有子视图可以留在同一文件。
 
 ## 关键数据流
 
@@ -134,10 +152,10 @@ NeoBili/
 - **新列表页**：模型（宽松解码）→ `Core/Models`；适配过滤 →
   `VideoDimensionProviders`；页面用 `VideoListCard`/`FeedDropInRow` +
   `.resolvePortraitVideos`，翻页失败给「重试加载」，不要把网络失败当成到底。
-- **新接口**：endpoint 加进 `BiliAPI`；需要 WBI 就 `requiresWBI: true`；来源校验严的
+- **新接口**：endpoint 加进对应领域的 `BiliAPI+<领域>.swift`（没有合适的就新建一个）；需要 WBI 就 `requiresWBI: true`；来源校验严的
   接口带对应的 Origin/Referer（参考 `DynamicRequest.headers`、`SearchRequest`）。
-- **新设置项**：存储键与 clamp 放 `Core`（像 `HomeRefreshSettings`），设置页一行
-  `@AppStorage`，跨页生效的走根视图环境值。
+- **新设置项**：存储键与 clamp 放在使用它的模块（像 `HomeRefreshSettings`），设置页放
+  `Features/Settings/`，一页一个文件；跨页生效的走根视图环境值。
 - **新动效参数**：集中在 `FeedRefreshTuning` / `CardRemovalAnimation` / 各
   `*Layout` 枚举，不要散在调用点。
 - **新的环境动作回调**（列表行要触发弹层）：用 `EnvironmentAction` 盒子 +

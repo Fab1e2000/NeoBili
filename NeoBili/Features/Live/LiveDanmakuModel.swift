@@ -432,35 +432,3 @@ final class LiveDanmakuModel {
         (try? JSONSerialization.data(withJSONObject: value)) ?? Data()
     }
 }
-
-/// `getDanmuInfo` 的响应形状：认证 token 与候选弹幕服务器（wss 端口优先）。
-struct LiveDanmuInfoPayload: Decodable {
-    let token: String
-    let hosts: [Host]
-
-    struct Host: Decodable {
-        let host: String
-        let wssPort: Int
-        enum CodingKeys: String, CodingKey { case host; case wssPort = "wss_port" }
-    }
-
-    init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: LiveCodingKey.self)
-        token = values.liveString("token") ?? ""
-        hosts = (try? values.decode([Host].self, forKey: LiveCodingKey("host_list"))) ?? []
-    }
-}
-
-// MARK: - 十六进制颜色
-
-extension Color {
-    /// SC 服务端下发 `#RRGGBB` 色串；解析失败返回 nil 由调用方给默认值。
-    init?(hex: String?) {
-        guard var value = hex, value.hasPrefix("#") else { return nil }
-        value.removeFirst()
-        guard value.count == 6, let number = UInt32(value, radix: 16) else { return nil }
-        self.init(red: Double((number >> 16) & 0xFF) / 255,
-                  green: Double((number >> 8) & 0xFF) / 255,
-                  blue: Double(number & 0xFF) / 255)
-    }
-}

@@ -83,7 +83,7 @@ struct HomeView: View {
                 controller: feedController,
                 onRefresh: { startRefresh() },
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
-                onOpenMine: { openMine(Self.avatarTransitionID) },
+                onOpenMine: { openMine?(Self.avatarTransitionID) },
                 pinsTitleBar: pinsTitleBar,
                 safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity
