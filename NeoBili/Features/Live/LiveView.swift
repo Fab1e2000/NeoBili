@@ -6,7 +6,6 @@ struct LiveView: View {
     @State private var recommended: LiveFeedModel
     @State private var following: LiveFeedModel
     @State private var source: LiveFeedModel.Source = .recommended
-    @State private var showsMine = false
     let onOpenRoom: (LiveRoom, String) -> Void
 
     init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom, String) -> Void) {
@@ -40,7 +39,7 @@ struct LiveView: View {
             // 页头常驻为顶部栏；两页各用系统原生的顶部模糊，翻页时跟着各自的页面走。
             .safeAreaBar(edge: .top, spacing: 0) {
                 VStack(spacing: 0) {
-                    PageHeader(title: "直播", transitionID: "mine-avatar-live", onOpenMine: { showsMine = true })
+                    PageHeader(title: "直播", transitionID: "mine-avatar-live")
                         .padding(.horizontal, 20)
                     Picker("直播内容", selection: selection) {
                         Text("推荐").tag(LiveFeedModel.Source.recommended)
@@ -55,7 +54,6 @@ struct LiveView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .toolbar(.hidden, for: .navigationBar)
         }
-        .mineSheet(isPresented: $showsMine, transitionID: "mine-avatar-live")
         .onChange(of: account.sessionID) {
             source = .recommended
             following.select(.following)

@@ -72,20 +72,6 @@ final class InteractionControlsVisualTests: XCTestCase {
             .preferredColorScheme(dark ? .dark : .light))
             try await snapshot(window, host: host, name: dark ? "title-comment-dark" : "title-comment-light")
         }
-        host.rootView = AnyView(ZStack {
-            Color(uiColor: .systemBackground)
-            VStack {
-                Text("小窗移动范围 · 本地预览").font(.headline)
-                Text("上边界 20% · 下边界 80%").foregroundStyle(.secondary)
-                Spacer()
-            }.padding(.top, window.safeAreaInsets.top + 16)
-            MiniPlayerBoundsPreview(top: 0.2, bottom: 0.8)
-            MiniPlayerContainer(content: Text("本地小窗\n不播放视频").foregroundStyle(.white)
-                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.black).clipShape(.rect(cornerRadius: 18)),
-                                aspectRatio: 9.0 / 16, anchor: CGPoint(x: 1, y: 1), reduceMotion: true,
-                                topLimit: 0.2, bottomLimit: 0.8, onAnchorChange: { _ in })
-        }.preferredColorScheme(.light))
-        try await snapshot(window, host: host, name: "mini-movement-preview")
     }
 
     private func snapshot(_ window: UIWindow, host: UIHostingController<AnyView>, name: String) async throws {

@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
+    @AppStorage(MainTabSettings.hiddenKey) private var hiddenTabs: String?
     @AppStorage(HomeTitleBarSettings.storageKey) private var pinsHomeTitleBar = HomeTitleBarSettings.defaultValue
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
     @State private var durationFilter = VideoDurationFilterSettings.shared
@@ -20,7 +21,7 @@ struct SettingsView: View {
             }
 
             Section("页面") {
-                row("标签栏", value: MainTabSettings.order(from: tabOrder).map(\.title).joined(separator: " · "),
+                row("标签栏", value: MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs).map(\.title).joined(separator: " · "),
                     id: "tabBar") { TabBarSettingsView() }
                 row("推荐页", value: HomeTitleBarSettings.summary(pinned: pinsHomeTitleBar), id: "home") { HomePageSettingsView() }
                 row("关注页", id: "following") { FollowingSettingsView() }

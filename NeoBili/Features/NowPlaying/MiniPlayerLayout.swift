@@ -2,12 +2,6 @@ import Foundation
 import CoreGraphics
 
 enum MiniPlayerLayout {
-    static func movementBounds(in available: CGRect, top: Double, bottom: Double) -> CGRect {
-        let limits = MiniPlayerMovementSettings.normalized(top: top, bottom: bottom)
-        return CGRect(x: available.minX, y: available.minY + available.height * limits.top,
-                      width: max(0, available.width), height: max(0, available.height * (limits.bottom - limits.top)))
-    }
-
     static func fittedSize(_ size: CGSize, in bounds: CGRect) -> CGSize {
         guard size.width > 0, size.height > 0 else { return .zero }
         let scale = max(0, min(1, bounds.width / size.width, bounds.height / size.height))

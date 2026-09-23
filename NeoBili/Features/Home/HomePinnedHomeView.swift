@@ -31,7 +31,6 @@ final class HomePinnedScrollController {
 
 struct HomePinnedHomeView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
-    @State private var showsMine = false
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     /// 列表要避让的上下距离（状态栏 + 标题栏、标签栏）。
     /// 挂上固定标题栏后 UIKit 列表拿不到系统安全区，只能由这里量好交给它。
@@ -70,7 +69,7 @@ struct HomePinnedHomeView: View {
         // 标题栏固定在顶部，卡片从它下面滑过，下缘是清晰切边。
         feed
             .safeAreaBar(edge: .top, spacing: 0) {
-                PageHeader(title: "推荐", transitionID: "mine-avatar-home", onOpenMine: { showsMine = true })
+                PageHeader(title: "推荐", transitionID: "mine-avatar-home")
                     .padding(.horizontal, 20)
             }
             .background(Color(uiColor: .systemGroupedBackground))
@@ -99,7 +98,6 @@ struct HomePinnedHomeView: View {
             // its request remains in flight.
             withAnimation(nil) { listOpacity = 1; exitTiming = nil }
         }
-        .mineSheet(isPresented: $showsMine, transitionID: "mine-avatar-home")
     }
 
     private var feed: some View {

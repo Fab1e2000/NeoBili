@@ -16,6 +16,7 @@ struct RootView: View {
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
     @AppStorage(HomeTitleBarSettings.storageKey) private var pinsHomeTitleBar = HomeTitleBarSettings.defaultValue
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
+    @AppStorage(MainTabSettings.hiddenKey) private var hiddenTabs: String?
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     @State private var search = SearchViewModel()
@@ -34,9 +35,12 @@ struct RootView: View {
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEntranceEnabled = CardAnimationSettings.defaultValue
     /// 当前页面。点下去立刻就换，高亮跟着立刻走。
-    @State private var displayedTab = MainTabSettings.launchTab(
-        from: UserDefaults.standard.string(forKey: MainTabSettings.launchKey) ?? ""
-    )
+    @State private var displayedTab: MainTab = {
+        let defaults = UserDefaults.standard
+        let visible = MainTabSettings.visible(order: defaults.string(forKey: MainTabSettings.orderKey) ?? "",
+                                              hidden: defaults.string(forKey: MainTabSettings.hiddenKey))
+        return MainTabSettings.launchTab(from: defaults.string(forKey: MainTabSettings.launchKey) ?? "", visible: visible)
+    }()
     /// 新页面的浓度：切换那一刻置 0，随后淡入。
     @State private var tabContentOpacity: Double = 1
     @State private var tabSwitchTask: Task<Void, Never>?
@@ -45,8 +49,8 @@ struct RootView: View {
         @Bindable var nowPlaying = nowPlaying
 
         return TabView(selection: tabSelection) {
-            // 顺序来自设置；各页以自身为 id，调整顺序不会重建页面和丢失状态。
-            ForEach(MainTabSettings.order(from: tabOrder)) { tab in
+            // 顺序和显示与否来自设置；各页以自身为 id，调整顺序不会重建页面和丢失状态。
+            ForEach(visibleTabs) { tab in
                 Tab(tab.title, systemImage: tab.systemImage, value: tab) {
                     page(for: tab)
                 }
@@ -113,6 +117,8 @@ struct RootView: View {
                     onInteractionEnded: nowPlaying.videoPageInteractionEnded
                 ) }
         }
+        // 「我的」页面由根部统一呈现；各页头像通过环境里的 openMine 打开它。
+        .mineSheetHost()
         // 底部内容直接延伸，不加系统渐变模糊。
         #if PERFORMANCE_DEMO
         .overlay(alignment: .topTrailing) { PerformanceDemoControl(store: nowPlaying) }
@@ -147,6 +153,12 @@ struct RootView: View {
             if !enabled { finishTabEntrance() }
         }
         .onChange(of: account.sessionID) { nowPlaying.close() }
+        // 当前页被隐藏时切到第一个仍显示的标签。
+        .onChange(of: visibleTabs) { _, visible in
+            if displayedTab != .search, !visible.contains(displayedTab), let first = visible.first {
+                switchTab(to: first)
+            }
+        }
     }
 
     @ViewBuilder
@@ -165,9 +177,16 @@ struct RootView: View {
             FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") })
                 .id(account.sessionID)
                 .tint(.primary)
+        case .watchLater, .favorites, .history:
+            LibraryTabPage(tab: tab)
+                .tint(.primary)
         case .search:
             EmptyView()
         }
+    }
+
+    private var visibleTabs: [MainTab] {
+        MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs)
     }
 
     private func submitSearch(_ keyword: String?) {

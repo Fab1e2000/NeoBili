@@ -40,7 +40,6 @@ struct FollowingView: View {
     @State private var pendingSelectionID: FollowingSelection.ID?
     @State private var isFollowingVisible = false
     @State private var isAvatarMenuPresented = false
-    @State private var showsMine = false
     @State private var liveRefreshGeneration = 0
 
     private struct LiveRefreshContext: Hashable {
@@ -110,7 +109,6 @@ struct FollowingView: View {
                 OrientationController.enterPortrait()
             }
         }
-        .mineSheet(isPresented: $showsMine, transitionID: "mine-avatar-following")
         .onChange(of: account.sessionID) {
             cancelRefreshAnimation()
             selectionTransitionTask?.cancel()
@@ -140,7 +138,7 @@ struct FollowingView: View {
     }
 
     private var header: some View {
-        PageHeader(title: "关注", transitionID: "mine-avatar-following", onOpenMine: { showsMine = true })
+        PageHeader(title: "关注", transitionID: "mine-avatar-following")
             .padding(.horizontal, 20)
     }
 

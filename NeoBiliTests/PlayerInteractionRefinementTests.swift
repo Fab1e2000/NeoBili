@@ -36,32 +36,6 @@ final class PlayerInteractionRefinementTests: XCTestCase {
         content.detach()
         XCTAssertTrue(pan.delegate === original)
     }
-
-    func testMovementBoundsStayValidForStoredInvalidValues() {
-        for (top, bottom) in [(0.0, 1.0), (0.3, 0.9), (0.9, 0.1), (.nan, .infinity), (-1.0, 5.0)] {
-            let limits = MiniPlayerMovementSettings.normalized(top: top, bottom: bottom)
-            XCTAssertGreaterThanOrEqual(limits.top, 0)
-            XCTAssertLessThanOrEqual(limits.bottom, 1)
-            XCTAssertGreaterThanOrEqual(limits.bottom - limits.top + 0.000001, 0.45)
-        }
-    }
-
-    func testMiniPlayerRepositionsAndFitsWithinUpdatedLimitsForBothAspects() {
-        for ratio in [16.0 / 9, 9.0 / 16] {
-            let controller = MiniPlayerContainerController(content: Color.clear)
-            controller.configure(aspectRatio: ratio, anchor: CGPoint(x: 1, y: 1), reduceMotion: true, onAnchorChange: { _ in })
-            controller.loadViewIfNeeded()
-            controller.view.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
-            controller.viewDidLayoutSubviews()
-            controller.configure(aspectRatio: ratio, anchor: CGPoint(x: 1, y: 1), reduceMotion: true,
-                                 topLimit: 0.25, bottomLimit: 0.75, onAnchorChange: { _ in })
-            controller.viewDidLayoutSubviews()
-            let bounds = MiniPlayerLayout.movementBounds(in: controller.view.safeAreaLayoutGuide.layoutFrame.insetBy(dx: 12, dy: 12),
-                                                         top: 0.25, bottom: 0.75)
-            XCTAssertTrue(bounds.insetBy(dx: -0.01, dy: -0.01).contains(controller.host.view.frame))
-            XCTAssertEqual(controller.host.view.bounds.width / controller.host.view.bounds.height, ratio, accuracy: 0.001)
-        }
-    }
 }
 
 @MainActor

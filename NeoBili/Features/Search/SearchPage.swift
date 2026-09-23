@@ -7,7 +7,6 @@ struct SearchPage: View {
     @Environment(\.appThemeColor) private var themeColor
     let onSubmit: (String?) -> Void
     @State private var history = SearchHistory.shared
-    @State private var showsMine = false
 
     /// 只在搜索首页（历史/热搜）显示标题；输入、联想和结果页让搜索框顶到最上方。
     private var showsHeader: Bool {
@@ -59,8 +58,7 @@ struct SearchPage: View {
         .safeAreaBar(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
                 if showsHeader {
-                    PageHeader(title: "搜索", transitionID: "mine-avatar-search",
-                               onOpenMine: { showsMine = true })
+                    PageHeader(title: "搜索", transitionID: "mine-avatar-search")
                         .padding(.horizontal, 20)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
@@ -74,7 +72,6 @@ struct SearchPage: View {
             }
             .animation(.smooth(duration: 0.3), value: showsHeader)
         }
-        .mineSheet(isPresented: $showsMine, transitionID: "mine-avatar-search")
         .scrollEdgeEffectStyle(.soft, for: .top)
         .task { await viewModel.loadHotSearches() }
         .onDisappear { isFocused = false }

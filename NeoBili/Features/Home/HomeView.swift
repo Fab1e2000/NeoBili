@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
-    @State private var showsMine = false
+    @Environment(\.openMine) private var openMine
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(AccountStore.self) private var account
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
@@ -63,7 +63,6 @@ struct HomeView: View {
             // its request remains in flight.
             withAnimation(nil) { listOpacity = 1; exitTiming = nil }
         }
-        .mineSheet(isPresented: $showsMine, transitionID: "mine-avatar-home")
     }
 
     private var feed: some View {
@@ -78,7 +77,7 @@ struct HomeView: View {
                 controller: feedController,
                 onRefresh: { startRefresh() },
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
-                onOpenMine: { showsMine = true },
+                onOpenMine: { openMine("mine-avatar-home") },
                 contentOpacity: tabContentOpacity
             )
             .opacity(animatesExit ? listOpacity : 1)

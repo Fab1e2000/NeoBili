@@ -8,16 +8,3 @@ enum PlaybackWindowSettings {
         defaults.object(forKey: storageKey) as? Bool ?? defaultValue
     }
 }
-
-/// Boundaries are fractions of the host's safe movement area, not video centers.
-enum MiniPlayerMovementSettings {
-    static let topKey = "neobili.miniPlayerMovementTop"
-    static let bottomKey = "neobili.miniPlayerMovementBottom"
-    static let minimumSpan = 0.45
-
-    static func normalized(top: Double, bottom: Double) -> (top: Double, bottom: Double) {
-        let top = min(max(top.isFinite ? top : 0, 0), 1 - minimumSpan)
-        let bottom = min(max(bottom.isFinite ? bottom : 1, top + minimumSpan), 1)
-        return (top, bottom)
-    }
-}

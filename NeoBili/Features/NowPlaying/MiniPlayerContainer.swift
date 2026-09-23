@@ -7,14 +7,11 @@ struct MiniPlayerContainer<Content: View>: UIViewControllerRepresentable {
     let aspectRatio: Double?
     let anchor: CGPoint
     let reduceMotion: Bool
-    var topLimit: Double = 0
-    var bottomLimit: Double = 1
     let onAnchorChange: (CGPoint) -> Void
 
     func makeUIViewController(context: Context) -> MiniPlayerContainerController<Content> {
         let controller = MiniPlayerContainerController(content: content)
         controller.configure(aspectRatio: aspectRatio, anchor: anchor, reduceMotion: reduceMotion,
-                             topLimit: topLimit, bottomLimit: bottomLimit,
                              onAnchorChange: onAnchorChange)
         return controller
     }
@@ -22,7 +19,6 @@ struct MiniPlayerContainer<Content: View>: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: MiniPlayerContainerController<Content>, context: Context) {
         controller.host.rootView = content
         controller.configure(aspectRatio: aspectRatio, anchor: anchor, reduceMotion: reduceMotion,
-                             topLimit: topLimit, bottomLimit: bottomLimit,
                              onAnchorChange: onAnchorChange)
     }
 
@@ -39,8 +35,6 @@ final class MiniPlayerContainerController<Content: View>: UIViewController {
     private var aspectRatio: Double?
     private var anchor = CGPoint(x: 1, y: 1)
     private var reduceMotion = false
-    private var topLimit: Double = 0
-    private var bottomLimit: Double = 1
     private var movementBounds = CGRect.zero
     private var windowSize = CGSize.zero
     private var dragOrigin = CGPoint.zero
@@ -73,12 +67,8 @@ final class MiniPlayerContainerController<Content: View>: UIViewController {
     }
 
     func configure(aspectRatio: Double?, anchor: CGPoint, reduceMotion: Bool,
-                   topLimit: Double = 0, bottomLimit: Double = 1,
                    onAnchorChange: @escaping (CGPoint) -> Void) {
         let needsLayout = self.aspectRatio != aspectRatio || self.anchor != anchor
-            || self.topLimit != topLimit || self.bottomLimit != bottomLimit
-        self.topLimit = topLimit
-        self.bottomLimit = bottomLimit
         anchorNeedsLayout = anchorNeedsLayout || self.anchor != anchor
         self.aspectRatio = aspectRatio
         self.anchor = anchor
@@ -94,9 +84,8 @@ final class MiniPlayerContainerController<Content: View>: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let available = view.safeAreaLayoutGuide.layoutFrame.insetBy(dx: 12, dy: 12)
-        let bounds = MiniPlayerLayout.movementBounds(in: available, top: topLimit, bottom: bottomLimit)
-        let preferredSize = MiniPlayerLayout.size(in: available.size, aspectRatio: aspectRatio)
+        let bounds = view.safeAreaLayoutGuide.layoutFrame.insetBy(dx: 12, dy: 12)
+        let preferredSize = MiniPlayerLayout.size(in: bounds.size, aspectRatio: aspectRatio)
         let size = MiniPlayerLayout.fittedSize(preferredSize, in: bounds)
         guard bounds != movementBounds || size != windowSize || anchorNeedsLayout else { return }
         stopMotion()
