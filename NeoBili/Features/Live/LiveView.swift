@@ -7,6 +7,8 @@ struct LiveView: View {
     @State private var following: LiveFeedModel
     @State private var source: LiveFeedModel.Source = .recommended
     @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    /// 标题栏随内容滚动时两页共用的页头状态（见 `LiveCollapsingHeader`）。
+    @State private var header = LiveHeaderState()
     let onOpenRoom: (LiveRoom, String) -> Void
 
     init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom, String) -> Void) {
@@ -38,14 +40,19 @@ struct LiveView: View {
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
             // 标题栏固定：标题和下方的切换器一起常驻顶部栏；两页各用系统原生的顶部模糊，
-            // 翻页时跟着各自的页面走。随内容滚动：标题和切换器放进每一页的列表（见 `LiveFeedPage.feed`）。
+            // 翻页时跟着各自的页面走。
             .safeAreaBar(edge: .top, spacing: 0) {
                 if pinsTitleBar {
                     VStack(spacing: 0) {
-                        PageHeader(title: "直播", transitionID: "mine-avatar-live")
-                            .padding(.horizontal, 20)
+                        title
                         sourcePicker
                     }
+                }
+            }
+            // 随内容滚动：同一份页头浮在两页上方，位置跟随当前页的滚动，翻页时不跟着横移。
+            .overlay(alignment: .top) {
+                if !pinsTitleBar {
+                    LiveCollapsingHeader(state: header) { title } picker: { sourcePicker }
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
@@ -61,6 +68,11 @@ struct LiveView: View {
         }
     }
 
+    private var title: some View {
+        PageHeader(title: "直播", transitionID: "mine-avatar-live")
+            .padding(.horizontal, 20)
+    }
+
     private var sourcePicker: LiveSourcePicker {
         LiveSourcePicker(selection: selection, showsFollowing: account.isLoggedIn)
     }
@@ -73,22 +85,19 @@ struct LiveView: View {
 
     private func page(_ model: LiveFeedModel) -> some View {
         LiveFeedPage(model: model, isActive: model.source == source,
-                     sourcePicker: pinsTitleBar ? nil : sourcePicker,
+                     header: pinsTitleBar ? nil : header,
                      onSelectRecommended: { selection.wrappedValue = .recommended },
                      onOpenRoom: onOpenRoom)
             .frame(maxHeight: .infinity)
             .containerRelativeFrame(.horizontal)
-            // 两页同时存在，各自的头像要用不同的转场 ID。
-            .environment(\.scrollingPageHeader, pinsTitleBar ? nil : ScrollingPageHeader(
-                title: "直播", transitionID: "mine-avatar-live-\(model.source.rawValue)"))
     }
 }
 
 private struct LiveFeedPage: View {
     /// 当前显示的那一页才响应标签栏的重复点击。
     let isActive: Bool
-    /// 标题栏随内容滚动时，切换器放在本页列表里标题下方，滚到顶部后吸附。
-    let sourcePicker: LiveSourcePicker?
+    /// 标题栏随内容滚动时两页共用的页头状态；固定时为 nil。
+    let header: LiveHeaderState?
     let onSelectRecommended: () -> Void
     let onOpenRoom: (LiveRoom, String) -> Void
 
@@ -111,11 +120,11 @@ private struct LiveFeedPage: View {
     @State private var isAwayFromTop = false
     @State private var shortcutTask: Task<Void, Never>?
 
-    init(model: LiveFeedModel, isActive: Bool, sourcePicker: LiveSourcePicker?,
+    init(model: LiveFeedModel, isActive: Bool, header: LiveHeaderState?,
          onSelectRecommended: @escaping () -> Void, onOpenRoom: @escaping (LiveRoom, String) -> Void) {
         _model = State(initialValue: model)
         self.isActive = isActive
-        self.sourcePicker = sourcePicker
+        self.header = header
         self.onSelectRecommended = onSelectRecommended
         self.onOpenRoom = onOpenRoom
     }
@@ -189,46 +198,39 @@ private struct LiveFeedPage: View {
 
     private var feed: some View {
         ScrollView {
-            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                ScrollingPageHeaderRow()
-                Section {
-                    LazyVStack(spacing: 16) {
-                        if model.rooms.isEmpty {
-                            initialState
-                                .frame(maxWidth: .infinity, minHeight: 330)
-                        } else {
-                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8),
-                                                GridItem(.flexible(), spacing: 8)], spacing: 10) {
-                                ForEach(model.rooms) { room in
-                                    Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
-                                        .buttonStyle(.plain)
-                                        .videoTransitionSource("live-\(model.source.rawValue)-card-\(room.roomID)", in: videoTransition)
-                                        .videoEntranceIdentity("live:\(room.roomID)")
-                                        .accessibilityIdentifier("live.room.\(room.roomID)")
-                                        .task { await model.loadMoreIfNeeded(current: room) }
-                                }
-                            }
-                            .opacity(animatesExit ? listOpacity : 1)
-                            .allowsHitTesting(listOpacity == 1)
-                            pagination
+            LazyVStack(spacing: 16) {
+                if model.rooms.isEmpty {
+                    initialState
+                        .frame(maxWidth: .infinity, minHeight: 330)
+                } else {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8),
+                                        GridItem(.flexible(), spacing: 8)], spacing: 10) {
+                        ForEach(model.rooms) { room in
+                            Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
+                                .buttonStyle(.plain)
+                                .videoTransitionSource("live-\(model.source.rawValue)-card-\(room.roomID)", in: videoTransition)
+                                .videoEntranceIdentity("live:\(room.roomID)")
+                                .accessibilityIdentifier("live.room.\(room.roomID)")
+                                .task { await model.loadMoreIfNeeded(current: room) }
                         }
                     }
-                    // 切换标签只淡入卡片；列表本身保持不透明，顶部模糊立即出现。
-                    .opacity(tabContentOpacity)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 10)
-                    .background {
-                        ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing && !model.isLoading,
-                                         onProgress: { _, _ in },
-                                         onRefresh: startRefresh)
-                    }
-                } header: {
-                    sourcePicker?.staysInPlaceWhenPulled()
+                    .opacity(animatesExit ? listOpacity : 1)
+                    .allowsHitTesting(listOpacity == 1)
+                    pagination
                 }
+            }
+            // 切换标签只淡入卡片；列表本身保持不透明，顶部模糊立即出现。
+            .opacity(tabContentOpacity)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 10)
+            .background {
+                ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing && !model.isLoading,
+                                 onProgress: { _, _ in },
+                                 onRefresh: startRefresh)
             }
         }
         .scrollPosition($scrollPosition)
-        .tracksPageHeaderPull()
+        .liveCollapsingHeaderScroll(state: header, isActive: isActive, position: $scrollPosition)
         .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 1 } action: { _, away in
             isAwayFromTop = away
         }
