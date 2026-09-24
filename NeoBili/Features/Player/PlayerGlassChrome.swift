@@ -94,10 +94,11 @@ struct PlayerGlassChrome<MenuContent: View>: View {
 
     var body: some View {
         GeometryReader { geometry in
-            // 横屏刘海位于侧边中段，上下按钮行只避让圆角；使用整个屏幕，包括视频两侧黑边。
+            // 横屏全屏：控件铺到视频两侧黑边上，左右按系统安全区收进来——系统给的横屏安全区
+            // 正好避开屏幕圆角和灵动岛，上下两行按钮不会伸进四角的圆弧里。
             let usesScreenEdges = isFullScreen && geometry.size.width > geometry.size.height
-            let leading = usesScreenEdges ? 16 : safeAreaInsets.leading + 8
-            let trailing = usesScreenEdges ? 16 : safeAreaInsets.trailing + 8
+            let leading = usesScreenEdges ? max(16, safeAreaInsets.leading) : safeAreaInsets.leading + 8
+            let trailing = usesScreenEdges ? max(16, safeAreaInsets.trailing) : safeAreaInsets.trailing + 8
             let top = usesScreenEdges ? max(4, safeAreaInsets.top) : safeAreaInsets.top
             let bounds = CGRect(x: leading, y: top,
                                 width: max(0, geometry.size.width - leading - trailing),
