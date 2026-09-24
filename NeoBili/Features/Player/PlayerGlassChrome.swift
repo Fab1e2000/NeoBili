@@ -100,9 +100,12 @@ struct PlayerGlassChrome<MenuContent: View>: View {
             let leading = usesScreenEdges ? max(16, safeAreaInsets.leading) : safeAreaInsets.leading + 8
             let trailing = usesScreenEdges ? max(16, safeAreaInsets.trailing) : safeAreaInsets.trailing + 8
             let top = usesScreenEdges ? max(4, safeAreaInsets.top) : safeAreaInsets.top
+            // 上下两行离屏幕边缘的距离保持一致：底部不再让出主屏幕指示条的整段安全区，
+            // 右上角与右下角的按钮到边缘一样远。
+            let bottom = usesScreenEdges ? top : safeAreaInsets.bottom
             let bounds = CGRect(x: leading, y: top,
                                 width: max(0, geometry.size.width - leading - trailing),
-                                height: max(0, geometry.size.height - top - safeAreaInsets.bottom))
+                                height: max(0, geometry.size.height - top - bottom))
             let layout = PlayerChromeLayout(bounds: bounds, textScale: textScale, isFullScreen: isFullScreen,
                                             hasVideoQuality: videoQualityControl != nil,
                                             hasAudioQuality: audioQualityControl != nil,
