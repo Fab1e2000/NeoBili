@@ -163,7 +163,6 @@ xcodebuild -project NeoBili.xcodeproj -scheme NeoBili \
 - [第三方依赖说明](THIRD_PARTY_NOTICES.md)
 - `NeoBiliTests/`：应用单元测试
 - `offline-harness/`：可在 macOS 上运行的离线逻辑测试，执行 `zsh offline-harness/run.sh`
-- [PiliPlus 参考源码与版本说明](references/README.md)
-- [图片、续播存储与预加载性能回归](audits/2026-09-10-performance/README.md)
+- [PiliPlus 参考版本与行为笔记](references/README.md)
 
 NeoBili 是独立的第三方项目，与哔哩哔哩无官方关联。

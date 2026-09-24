@@ -1,16 +1,19 @@
 # PiliPlus source reference
 
-`PiliPlus/` contains a permanent, unmodified source snapshot for researching
-PiliPlus behavior while developing NeoBili. It is not included in the NeoBili
-application target.
+NeoBili's PiliPlus research is pinned to one upstream commit. The source itself
+is not kept in this repository; browse it upstream, or check it out locally into
+the git-ignored `references/PiliPlus/`:
+
+```bash
+git clone https://github.com/bggRGjQaUbCoE/PiliPlus references/PiliPlus && git -C references/PiliPlus checkout 32538c4d705c9f5c74747cd00bacdd061d4aed99
+```
 
 - Upstream: <https://github.com/bggRGjQaUbCoE/PiliPlus>
-- Commit: `32538c4d705c9f5c74747cd00bacdd061d4aed99`
+- Commit: [`32538c4d705c9f5c74747cd00bacdd061d4aed99`](https://github.com/bggRGjQaUbCoE/PiliPlus/tree/32538c4d705c9f5c74747cd00bacdd061d4aed99)
 - Commit date: 2026-09-09 18:05:37 +08:00
-- Retrieved: 2026-09-10
-- License: GNU GPL version 3; see the unchanged [LICENSE](PiliPlus/LICENSE).
-- Upstream README and all other source notices remain in the snapshot.
-- Git history and the nested `.git` directory are intentionally omitted.
+- License: GNU GPL version 3 ([LICENSE](https://github.com/bggRGjQaUbCoE/PiliPlus/blob/32538c4d705c9f5c74747cd00bacdd061d4aed99/LICENSE)).
+
+File paths below are relative to the upstream repository root.
 
 ## Playback behavior references
 

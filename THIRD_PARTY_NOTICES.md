@@ -1,14 +1,15 @@
 # Third-party notices
 
-## PiliPlus reference source
+## PiliPlus reference
 
-The complete upstream source snapshot is retained in `references/PiliPlus` for
-implementation reference. It is not compiled into or bundled with the iOS app.
+NeoBili's implementation was researched against a pinned PiliPlus commit. No
+PiliPlus source is compiled into, bundled with, or distributed in this
+repository; see the upstream project at the pinned commit.
 
 - Project: https://github.com/bggRGjQaUbCoE/PiliPlus
-- Commit: `32538c4d705c9f5c74747cd00bacdd061d4aed99`
-- License: GPL-3.0; the original license is retained in `references/PiliPlus/LICENSE`.
-- Provenance and reference entry points: `references/README.md`.
+- Commit: [`32538c4d705c9f5c74747cd00bacdd061d4aed99`](https://github.com/bggRGjQaUbCoE/PiliPlus/tree/32538c4d705c9f5c74747cd00bacdd061d4aed99)
+- License: GPL-3.0 ([LICENSE](https://github.com/bggRGjQaUbCoE/PiliPlus/blob/32538c4d705c9f5c74747cd00bacdd061d4aed99/LICENSE))
+- Reference entry points: `references/README.md`.
 
 ## MPVKit / libmpv
 
