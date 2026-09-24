@@ -7,7 +7,7 @@ struct MiniPlayerBar: View {
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
 
     private var isInline: Bool { placement == .inline }
-    private var title: String { store.livePlayer?.room.title ?? store.detailViewModel?.detail?.title ?? store.route?.title ?? "视频加载中" }
+    private var title: String { store.livePlayer?.room.title ?? store.detailViewModel?.detail?.title ?? store.route?.title ?? String(localized: "视频加载中") }
     private var error: String? { store.livePlayer?.errorMessage ?? store.player?.errorMessage ?? store.detailViewModel?.errorMessage }
     var body: some View {
         if store.hasMedia {

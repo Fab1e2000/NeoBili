@@ -35,7 +35,7 @@ struct TappableImageGrid: View {
                 openImageViewer(ImageViewerPayload(urls: images.map(\.url), startIndex: position))
             }
             .accessibilityAddTraits(.isButton)
-            .accessibilityLabel("第 \(position + 1) 张图片，共 \(images.count) 张")
+            .accessibilityLabel(String(localized: "第 \(position + 1) 张图片，共 \(images.count) 张"))
     }
 
     /// 和官方一致：2 张、4 张排两列，其余排三列。

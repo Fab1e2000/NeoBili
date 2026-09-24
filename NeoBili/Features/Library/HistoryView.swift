@@ -245,7 +245,7 @@ struct HistoryView: View {
         do {
             removals.hide(item.id)
             removedIndex = removals.remove(item.id, from: &items)
-            guard await feedback.confirmRemoval("已移除历史记录"),
+            guard await feedback.confirmRemoval(String(localized: "已移除历史记录")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.deleteHistory(kid: item.kidParam)
             // 同时完成的刷新也不能留下同 ID 的旧条目。

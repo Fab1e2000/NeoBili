@@ -16,10 +16,10 @@ struct LiveRoomOwnerRow: View {
         return room.username
     }
     private var followTitle: String {
-        if isOwnAccount { return "自己" }
-        if room.uid <= 0 { return "加载中" }
-        if isFollowing == nil { return isLoading ? "加载中" : "重试" }
-        return isFollowing == true ? "已关注" : "关注"
+        if isOwnAccount { return String(localized: "自己") }
+        if room.uid <= 0 { return String(localized: "加载中") }
+        if isFollowing == nil { return isLoading ? String(localized: "加载中") : String(localized: "重试") }
+        return isFollowing == true ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注")
     }
 
     var body: some View {
@@ -30,12 +30,12 @@ struct LiveRoomOwnerRow: View {
                     .frame(width: 44, height: 44)
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(name.isEmpty ? "主播" : name)
+                    Text(name.isEmpty ? String(localized: "主播") : name)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     if let card {
-                        Text("\(card.follower.biliCountText)粉丝 · \(card.archiveCount)视频")
+                        Text(String(localized: "\(card.follower.biliCountText)粉丝 · \(card.archiveCount)视频"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -118,10 +118,10 @@ struct LiveRoomIntroductionCard: View {
                 }
 
             Text([
-                isOffline ? "未开播" : "直播中",
-                room.online > 0 ? "\(room.online.biliCountText)人气" : nil,
+                isOffline ? String(localized: "未开播") : String(localized: "直播中"),
+                room.online > 0 ? String(localized: "\(room.online.biliCountText)人气") : nil,
                 room.areaName.isEmpty ? nil : room.areaName,
-                "房间 \(room.roomID)"
+                String(localized: "房间 \(room.roomID)")
             ].compactMap { $0 }.joined(separator: "  "))
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -132,10 +132,10 @@ struct LiveRoomIntroductionCard: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 12) {
                     if let announcement {
-                        detailsSection("直播公告", text: announcement)
+                        detailsSection(String(localized: "直播公告"), text: announcement)
                     }
                     if let description, description != announcement {
-                        detailsSection("直播间简介", text: description)
+                        detailsSection(String(localized: "直播间简介"), text: description)
                     }
                 }
                 .accessibilityIdentifier("live.introduction.description")

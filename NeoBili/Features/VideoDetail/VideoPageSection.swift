@@ -9,8 +9,8 @@ enum VideoPageSection: Hashable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .description: "简介"
-        case .comments: "评论"
+        case .description: String(localized: "简介")
+        case .comments: String(localized: "评论")
         }
     }
 

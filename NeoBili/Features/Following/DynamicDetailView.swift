@@ -36,7 +36,7 @@ struct DynamicDetailView: View {
 
                 Divider()
 
-                Text(entry.commentCount > 0 ? "评论 \(entry.commentCount)" : "评论")
+                Text(entry.commentCount > 0 ? String(localized: "评论 \(entry.commentCount)") : String(localized: "评论"))
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, CommentLayout.pageHorizontalInset)
                     .padding(.top, 14)
@@ -186,16 +186,16 @@ struct DynamicDetailView: View {
 
     private var actionRow: some View {
         HStack(spacing: 0) {
-            counter(icon: "arrow.2.squarepath", text: countText(entry.forwardCount, zero: "转发"))
+            counter(icon: "arrow.2.squarepath", text: countText(entry.forwardCount, zero: String(localized: "转发")))
                 .frame(maxWidth: .infinity)
 
-            counter(icon: "bubble.left", text: countText(entry.commentCount, zero: "评论"))
+            counter(icon: "bubble.left", text: countText(entry.commentCount, zero: String(localized: "评论")))
                 .frame(maxWidth: .infinity)
 
             Button(action: toggleLike) {
                 counter(
                     icon: feed.isLiked(entry) ? "hand.thumbsup.fill" : "hand.thumbsup",
-                    text: countText(feed.likeCount(entry), zero: "点赞"),
+                    text: countText(feed.likeCount(entry), zero: String(localized: "点赞")),
                     isHighlighted: feed.isLiked(entry)
                 )
                 .frame(maxWidth: .infinity)
@@ -222,7 +222,7 @@ struct DynamicDetailView: View {
 
     private func toggleLike() {
         guard account.isLoggedIn else {
-            feedback.show("请先登录")
+            feedback.show(String(localized: "请先登录"))
             return
         }
         guard !isLiking else { return }

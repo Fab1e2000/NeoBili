@@ -7,5 +7,5 @@ enum TitleBarSettings {
     static let storageKey = "neobili.homePinnedTitleBar"
     static let defaultValue = false
 
-    static func summary(pinned: Bool) -> String { pinned ? "固定在顶部" : "随内容滚动" }
+    static func summary(pinned: Bool) -> String { pinned ? String(localized: "固定在顶部") : String(localized: "随内容滚动") }
 }

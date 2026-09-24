@@ -82,7 +82,7 @@ final class CommentsViewModel {
 
     func toggleLike(_ comment: Comment, isLoggedIn: Bool) async {
         guard isLoggedIn else {
-            actionMessage = "请先登录"
+            actionMessage = String(localized: "请先登录")
             return
         }
         guard !likingRpids.contains(comment.rpid) else { return }

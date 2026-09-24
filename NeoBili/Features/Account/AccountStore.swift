@@ -113,7 +113,7 @@ final class AccountStore {
                 await logout()
             } else if payload.isLogin == true, let mid = payload.mid, let name = payload.uname {
                 guard accountID == nil || accountID == mid else {
-                    sessionError = "账号信息暂未同步，请重试"
+                    sessionError = String(localized: "账号信息暂未同步，请重试")
                     return
                 }
                 accountID = mid
@@ -124,14 +124,14 @@ final class AccountStore {
                 defaults.set(try? JSONEncoder().encode(loaded), forKey: Self.profileKey)
                 sessionError = nil
             } else {
-                sessionError = "账号信息暂时无法加载，请重试"
+                sessionError = String(localized: "账号信息暂时无法加载，请重试")
             }
         } catch {
             guard sessionID == session, refreshID == request, !error.isCancellation else { return }
             if case BiliAPIError.apiError(let code, _) = error, code == -101 {
                 await logout()
             } else {
-                sessionError = "暂时无法连接，登录信息已保留"
+                sessionError = String(localized: "暂时无法连接，登录信息已保留")
             }
         }
     }

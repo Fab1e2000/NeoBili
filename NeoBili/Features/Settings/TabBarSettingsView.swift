@@ -38,7 +38,7 @@ struct TabBarSettingsView: View {
             } header: {
                 Text("显示的标签")
             } footer: {
-                Text("拖动右侧的把手调整顺序，点红色按钮隐藏。标签栏最多 \(MainTabSettings.maxVisible + 1) 个（含固定在末尾的搜索），不会出现「更多」。")
+                Text(String(localized: "拖动右侧的把手调整顺序，点红色按钮隐藏。标签栏最多 \(MainTabSettings.maxVisible + 1) 个（含固定在末尾的搜索），不会出现「更多」。"))
             }
 
             if !hiddenInOrder.isEmpty {

@@ -56,7 +56,7 @@ final class MPVEngine: @unchecked Sendable {
     func start(renderingInto layer: MPVMetalLayer) {
         attachedLayer = layer
         guard let mpv = mpv_create() else {
-            dispatchToMain { [weak self] in self?.onEvent?(.error("mpv 初始化失败")) }
+            dispatchToMain { [weak self] in self?.onEvent?(.error(String(localized: "mpv 初始化失败"))) }
             return
         }
         self.mpv = mpv

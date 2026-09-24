@@ -77,10 +77,10 @@ private struct DanmakuSettingsPreview: UIViewRepresentable {
         func restart() {
             time = 0
             engine?.prepare(items: [
-                DanmakuItem(time: 0, text: "顶部弹幕 · 实时预览", mode: 5, color: 0xFFFFFF),
-                DanmakuItem(time: 0, text: "底部弹幕 · 实时预览", mode: 4, color: 0xFFFFFF),
-                DanmakuItem(time: 0.2, text: "滚动弹幕，看看这个字号", mode: 1, color: 0xFFFFFF),
-                DanmakuItem(time: 0.8, text: "彩色弹幕也会同步更新", mode: 1, color: 0x80D8FF)
+                DanmakuItem(time: 0, text: String(localized: "顶部弹幕 · 实时预览"), mode: 5, color: 0xFFFFFF),
+                DanmakuItem(time: 0, text: String(localized: "底部弹幕 · 实时预览"), mode: 4, color: 0xFFFFFF),
+                DanmakuItem(time: 0.2, text: String(localized: "滚动弹幕，看看这个字号"), mode: 1, color: 0xFFFFFF),
+                DanmakuItem(time: 0.8, text: String(localized: "彩色弹幕也会同步更新"), mode: 1, color: 0x80D8FF)
             ])
         }
         func tick() {

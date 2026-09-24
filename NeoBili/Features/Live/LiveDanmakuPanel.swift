@@ -93,7 +93,7 @@ struct LiveDanmakuPanel: View {
     }
 
     private static func popularityText(_ value: Int) -> String {
-        value >= 10_000 ? String(format: "%.1f万人气", Double(value) / 10_000) : "\(value) 人气"
+        String(localized: "\(value.biliCountText) 人气")
     }
 }
 
@@ -260,7 +260,7 @@ struct SuperChatCard: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.userName)的\(item.price)元醒目留言：\(item.message)")
+        .accessibilityLabel(String(localized: "\(item.userName)的\(item.price)元醒目留言：\(item.message)"))
     }
 
     private var avatarSize: CGFloat { isCompact ? 26 : 34 }

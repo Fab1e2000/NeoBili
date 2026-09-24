@@ -10,7 +10,7 @@ struct ThemeSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("当前主题 · \(AppTheme.selected(themeID).name)")
+                    Text(String(localized: "当前主题 · \(AppTheme.selected(themeID).name)"))
                         .font(.headline)
                     HStack {
                         Label("主题预览", systemImage: "heart.fill")

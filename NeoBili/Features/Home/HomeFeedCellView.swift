@@ -108,7 +108,7 @@ struct HomeFeedCellView: View {
                 WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
                 Button("不感兴趣", systemImage: "eye.slash") {
                     Task {
-                        guard account.isLoggedIn else { feedback.show("请先登录"); return }
+                        guard account.isLoggedIn else { feedback.show(String(localized: "请先登录")); return }
                         if let message = await viewModel.markUninterested(video) { feedback.show(message) }
                     }
                 }

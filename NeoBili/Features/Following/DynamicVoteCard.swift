@@ -50,7 +50,7 @@ private struct DynamicVoteSheet: View {
                     if let response {
                         let info = response.voteInfo
                         let locked = info.hasEnded || !response.myVotes.isEmpty || submitted
-                        Text("\(info.participantCount.biliCountText) 人参与 · \(info.hasEnded ? "已结束" : locked ? "已投票" : "最多选择 \(info.choiceCount) 项")")
+                        Text("\(info.participantCount.biliCountText) 人参与 · \(info.hasEnded ? String(localized: "已结束") : locked ? String(localized: "已投票") : String(localized: "最多选择 \(info.choiceCount) 项"))")
                             .font(.caption).foregroundStyle(.secondary)
                         ForEach(info.options) { option in
                             Button {
@@ -109,7 +109,7 @@ private struct DynamicVoteSheet: View {
     }
 
     private func submit() async {
-        guard account.isLoggedIn, let mid = account.profile?.mid else { message = "请先登录"; return }
+        guard account.isLoggedIn, let mid = account.profile?.mid else { message = String(localized: "请先登录"); return }
         guard !isSubmitting, !selection.isEmpty else { return }
         isSubmitting = true
         defer { isSubmitting = false }

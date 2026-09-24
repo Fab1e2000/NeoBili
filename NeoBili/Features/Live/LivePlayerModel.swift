@@ -193,7 +193,7 @@ final class LivePlayerModel {
             try? await Task.sleep(for: startupTimeout)
             guard !Task.isCancelled, let self, self.isCurrent(request), self.engineID == nextID,
                   !self.hasRenderedFirstFrame else { return }
-            self.recoverOrFail("直播连接超时，请重新连接")
+            self.recoverOrFail(String(localized: "直播连接超时，请重新连接"))
         }
         do {
             try await sourceOpener(next, source, 0)
@@ -225,7 +225,7 @@ final class LivePlayerModel {
         case .displayAspectRatio(let ratio):
             if ratio.isFinite, ratio > 0 { displayAspectRatio = ratio }
         case .error(let message): recoverOrFail(message)
-        case .ended: recoverOrFail("直播连接已结束，请重新连接")
+        case .ended: recoverOrFail(String(localized: "直播连接已结束，请重新连接"))
         default: break
         }
     }

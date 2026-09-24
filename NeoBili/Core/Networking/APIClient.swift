@@ -11,19 +11,19 @@ enum BiliAPIError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL: return "无效的请求地址"
-        case .missingWbiKeys: return "无法获取 WBI 签名密钥"
-        case .httpStatus(let code): return "网络请求失败 (HTTP \(code))"
+        case .invalidURL: return String(localized: "无效的请求地址")
+        case .missingWbiKeys: return String(localized: "无法获取 WBI 签名密钥")
+        case .httpStatus(let code): return String(localized: "网络请求失败 (HTTP \(code))")
         case .apiError(let code, let message): return "\(message) (code \(code))"
 #if DEBUG
         // 开发版把出错的字段路径带出来。只写「数据解析失败」时，
         // 排查只能靠猜是哪个接口的哪个字段变了。
-        case .decoding(let error): return "数据解析失败：\(Self.diagnostic(for: error))"
+        case .decoding(let error): return String(localized: "数据解析失败：\(Self.diagnostic(for: error))")
 #else
-        case .decoding: return "数据解析失败"
+        case .decoding: return String(localized: "数据解析失败")
 #endif
-        case .riskControlled: return "请求被 B 站风控拦截，请稍后重试"
-        case .missingAccessKey: return "该操作需要 App 端登录凭据，请退出后用扫码方式重新登录"
+        case .riskControlled: return String(localized: "请求被 B 站风控拦截，请稍后重试")
+        case .missingAccessKey: return String(localized: "该操作需要 App 端登录凭据，请退出后用扫码方式重新登录")
         }
     }
 
@@ -34,18 +34,18 @@ enum BiliAPIError: Error, LocalizedError {
 
         func path(_ context: DecodingError.Context) -> String {
             let keys = context.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue }
-            return keys.isEmpty ? "(根)" : keys.joined(separator: ".")
+            return keys.isEmpty ? String(localized: "(根)") : keys.joined(separator: ".")
         }
 
         switch error {
         case .keyNotFound(let key, let context):
-            return "缺字段 \(path(context)).\(key.stringValue)"
+            return String(localized: "缺字段 \(path(context)).\(key.stringValue)")
         case .typeMismatch(let type, let context):
-            return "\(path(context)) 不是 \(type)"
+            return String(localized: "\(path(context)) 不是 \(type)")
         case .valueNotFound(let type, let context):
-            return "\(path(context)) 是 null（需要 \(type)）"
+            return String(localized: "\(path(context)) 是 null（需要 \(type)）")
         case .dataCorrupted(let context):
-            return "\(path(context)) 内容异常"
+            return String(localized: "\(path(context)) 内容异常")
         @unknown default:
             return error.localizedDescription
         }
@@ -328,7 +328,7 @@ struct APIClient {
                 if let placeholder = try? JSONDecoder().decode(T.self, from: Data("{}".utf8)) {
                     return placeholder
                 }
-                throw BiliAPIError.apiError(code: decoded.code, message: "响应缺少 data 字段")
+                throw BiliAPIError.apiError(code: decoded.code, message: String(localized: "响应缺少 data 字段"))
             }
             return payload
         } catch let error as BiliAPIError {

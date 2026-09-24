@@ -120,8 +120,8 @@ struct PlayerControlsOverlay: View {
 
     private var videoQualityControl: PlayerQualityControl {
         PlayerQualityControl(
-            title: viewModel.selectedVideoQuality.map(PlaybackQuality.videoTitle) ?? "分辨率",
-            accessibilityLabel: "分辨率",
+            title: viewModel.selectedVideoQuality.map(PlaybackQuality.videoTitle) ?? String(localized: "分辨率"),
+            accessibilityLabel: String(localized: "分辨率"),
             options: viewModel.availableVideoQualities.map { .init(id: $0, title: viewModel.videoQualityTitle($0)) },
             selectedID: viewModel.selectedVideoQuality ?? 0,
             isEnabled: !viewModel.availableVideoQualities.isEmpty && canControlPlayback && !isScrubbing,
@@ -131,8 +131,8 @@ struct PlayerControlsOverlay: View {
 
     private var audioQualityControl: PlayerQualityControl {
         PlayerQualityControl(
-            title: viewModel.selectedAudioQuality.map(PlaybackQuality.audioTitle) ?? "音质",
-            accessibilityLabel: "音质",
+            title: viewModel.selectedAudioQuality.map(PlaybackQuality.audioTitle) ?? String(localized: "音质"),
+            accessibilityLabel: String(localized: "音质"),
             options: viewModel.availableAudioQualities.map { .init(id: $0, title: PlaybackQuality.audioTitle($0)) },
             selectedID: viewModel.selectedAudioQuality ?? 0,
             isEnabled: !viewModel.availableAudioQualities.isEmpty && canControlPlayback && !isScrubbing,
@@ -144,7 +144,7 @@ struct PlayerControlsOverlay: View {
         guard !isAddingWatchLater else { return }
         scheduleAutoHide()
         guard account.isLoggedIn else {
-            feedback.show("请先登录")
+            feedback.show(String(localized: "请先登录"))
             return
         }
         let bvid = viewModel.bvid.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -158,7 +158,7 @@ struct PlayerControlsOverlay: View {
             do {
                 try await BiliAPI.addWatchLater(aid: nil, bvid: bvid)
                 guard account.sessionID == session else { return }
-                feedback.show("已加入稍后再看")
+                feedback.show(String(localized: "已加入稍后再看"))
             } catch {
                 guard account.sessionID == session, !error.isCancellation else { return }
                 feedback.show(error.localizedDescription)
@@ -201,9 +201,9 @@ struct PlayerControlsOverlay: View {
 
     private func title(for option: PlayerViewModel.SleepOption) -> String {
         switch option {
-        case .afterVideoEnd: return "本视频播完"
+        case .afterVideoEnd: return String(localized: "本视频播完")
         case .minutes(let minutes):
-            return minutes >= 60 && minutes % 60 == 0 ? "\(minutes / 60) 小时" : "\(minutes) 分钟"
+            return minutes >= 60 && minutes % 60 == 0 ? String(localized: "\(minutes / 60) 小时") : String(localized: "\(minutes) 分钟")
         }
     }
 

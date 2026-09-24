@@ -30,7 +30,7 @@ final class ThemeIconController {
         requestedIconName = theme.id == AppTheme.defaultID ? nil : "NeoBiliIcon-\(theme.id)"
         guard !isUpdating else { return }
         guard endpoint.supportsAlternateIcons() else {
-            errorMessage = "当前系统不支持切换桌面图标。"
+            errorMessage = String(localized: "当前系统不支持切换桌面图标。")
             return
         }
         isUpdating = true
@@ -51,7 +51,7 @@ final class ThemeIconController {
             } catch {
                 // A newer selection should still get its own attempt.
                 if target != requestedIconName { continue }
-                errorMessage = "桌面图标未能更新，可点击下方重试。"
+                errorMessage = String(localized: "桌面图标未能更新，可点击下方重试。")
                 return
             }
         }

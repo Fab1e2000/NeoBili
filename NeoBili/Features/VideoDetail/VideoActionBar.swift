@@ -46,8 +46,8 @@ struct VideoActionBar: View {
                 icon: "VideoActionLike",
                 caption: likeCount.biliCountText,
                 isActive: isLiked,
-                label: isLiked ? "取消点赞" : "点赞",
-                hint: "持续按住一键三连",
+                label: isLiked ? String(localized: "取消点赞") : String(localized: "点赞"),
+                hint: String(localized: "持续按住一键三连"),
                 action: onLike,
                 longPressAction: onTriple
             )
@@ -55,9 +55,9 @@ struct VideoActionBar: View {
             // 点踩没有公开的计数，官方这里显示的也是文字而不是数字。
             item(
                 icon: "VideoActionDislike",
-                caption: "不喜欢",
+                caption: String(localized: "不喜欢"),
                 isActive: isDisliked,
-                label: isDisliked ? "取消不喜欢" : "不喜欢",
+                label: isDisliked ? String(localized: "取消不喜欢") : String(localized: "不喜欢"),
                 action: onDislike
             )
 
@@ -65,7 +65,7 @@ struct VideoActionBar: View {
                 icon: "VideoActionCoin",
                 caption: coinCount.biliCountText,
                 isActive: isCoined,
-                label: isCoined ? "已投币" : "投币",
+                label: isCoined ? String(localized: "已投币") : String(localized: "投币"),
                 action: onCoin
             )
 
@@ -73,8 +73,8 @@ struct VideoActionBar: View {
                 icon: "VideoActionFavorite",
                 caption: favoriteCount.biliCountText,
                 isActive: isFavorited,
-                label: isFavorited ? "取消收藏" : "收藏",
-                hint: "持续按住选择收藏夹",
+                label: isFavorited ? String(localized: "取消收藏") : String(localized: "favorite.action", defaultValue: "收藏"),
+                hint: String(localized: "持续按住选择收藏夹"),
                 action: onFavorite,
                 longPressAction: onPickFavoriteFolder
             )
@@ -105,7 +105,7 @@ struct VideoActionBar: View {
 
     private var shareItem: some View {
         item(icon: "VideoActionShare", caption: shareCount.biliCountText,
-             isActive: false, label: "分享", action: { showsShare = true })
+             isActive: false, label: String(localized: "分享"), action: { showsShare = true })
             .disabled(shareURL == nil)
     }
 
@@ -141,7 +141,7 @@ private struct VideoHoldButton: UIViewRepresentable {
         button.configuration = config
         button.isEnabled = isEnabled
         button.accessibilityLabel = label
-        button.accessibilityHint = secondaryAction == nil ? "长按后松手" : "长按后松手，或持续按住执行更多操作"
+        button.accessibilityHint = secondaryAction == nil ? String(localized: "长按后松手") : String(localized: "长按后松手，或持续按住执行更多操作")
         button.primary = action
         button.secondary = secondaryAction
         button.accessibilityCustomActions = secondaryLabel.map {

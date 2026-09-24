@@ -129,7 +129,7 @@ final class VideoDetailViewModel {
                 relation = loaded
             } catch {
                 if !error.isCancellation, likeStore.sessionID == sessionID {
-                    actionMessage = "互动状态加载失败，请重试"
+                    actionMessage = String(localized: "互动状态加载失败，请重试")
                 }
             }
         }
@@ -207,7 +207,7 @@ final class VideoDetailViewModel {
         defer { busyActions.remove(.coin) }
 
         guard !(relation?.isCoined ?? false) else {
-            actionMessage = "已经投过币了"
+            actionMessage = String(localized: "已经投过币了")
             return
         }
 
@@ -236,7 +236,7 @@ final class VideoDetailViewModel {
         defer { busyActions.remove(.triple) }
 
         guard !hasTripled else {
-            actionMessage = "已经三连过了"
+            actionMessage = String(localized: "已经三连过了")
             return
         }
 
@@ -270,11 +270,11 @@ final class VideoDetailViewModel {
 
     private func tripleSummary(_ result: TripleResult) -> String {
         let failed = [
-            result.didLike ? nil : "点赞",
-            result.didCoin ? nil : "投币",
-            result.didFavorite ? nil : "收藏"
+            result.didLike ? nil : String(localized: "点赞"),
+            result.didCoin ? nil : String(localized: "投币"),
+            result.didFavorite ? nil : String(localized: "favorite.action", defaultValue: "收藏")
         ].compactMap { $0 }
-        return failed.isEmpty ? "三连成功" : "\(failed.joined(separator: "、"))没成功"
+        return failed.isEmpty ? String(localized: "三连成功") : String(localized: "\(failed.formatted(.list(type: .and)))没成功")
     }
 
     /// 已收藏状态下再点收藏按钮：从所有收藏夹里移除。
@@ -289,7 +289,7 @@ final class VideoDetailViewModel {
 
         do {
             try await BiliAPI.unfavoriteEverywhere(aid: detail.aid)
-            actionMessage = "已取消收藏"
+            actionMessage = String(localized: "已取消收藏")
         } catch {
             guard likeStore.sessionID == sessionID else { return }
             apply(favorite: wasFavorited)
@@ -322,7 +322,7 @@ final class VideoDetailViewModel {
                 addFolderIDs: add,
                 removeFolderIDs: remove
             )
-            actionMessage = willBeFavorited ? "已收藏" : "已取消收藏"
+            actionMessage = willBeFavorited ? String(localized: "已收藏") : String(localized: "已取消收藏")
         } catch {
             guard likeStore.sessionID == sessionID else { return }
             apply(favorite: wasFavorited)
@@ -352,7 +352,7 @@ final class VideoDetailViewModel {
     /// 未登录、详情还没到、或者上一次请求还没回来时都不该继续。
     private func checkReady(_ action: Action, isLoggedIn: Bool) async -> Bool {
         guard isLoggedIn, likeStore.sessionID == sessionID else {
-            actionMessage = "请先登录"
+            actionMessage = String(localized: "请先登录")
             return false
         }
         guard busyActions.isEmpty else { return false }

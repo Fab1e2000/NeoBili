@@ -53,6 +53,6 @@ struct VideoScrubber: View {
         }
         .contentShape(Rectangle())
         .accessibilityLabel("播放进度")
-        .accessibilityValue("\(PlaybackTime.text(isEditing ? draft : position))，共 \(PlaybackTime.text(duration))")
+        .accessibilityValue(String(localized: "\(PlaybackTime.text(isEditing ? draft : position))，共 \(PlaybackTime.text(duration))"))
     }
 }

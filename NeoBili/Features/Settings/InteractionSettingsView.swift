@@ -15,7 +15,7 @@ struct InteractionSettingsView: View {
                         .monospacedDigit()
                     Slider(value: $refreshDistance, in: HomeRefreshSettings.range, step: 5)
                         .accessibilityLabel("下拉刷新距离")
-                        .accessibilityValue("\(Int(refreshDistance)) 点")
+                        .accessibilityValue(String(localized: "\(Int(refreshDistance)) 点"))
                 }
             } header: {
                 Text("滚动")
@@ -29,7 +29,7 @@ struct InteractionSettingsView: View {
                     Slider(value: Binding(get: { deadZoneWidth }, set: updateDeadZone),
                            in: 0...LeftEdgeTapDeadZone.maxWidth, step: 1)
                         .accessibilityLabel("左缘触控死区宽度")
-                        .accessibilityValue("\(Int(deadZoneWidth)) 点")
+                        .accessibilityValue(String(localized: "\(Int(deadZoneWidth)) 点"))
                 }
             } header: {
                 Text("防误触")

@@ -24,11 +24,11 @@ struct PlayerGestureSettingsSection: View {
             Toggle("全屏比例预览", isOn: $fullscreenPreview)
             GeometryReader { geometry in
                 HStack(spacing: 0) {
-                    zone("亮度", symbol: "sun.max", color: .orange)
+                    zone(String(localized: "亮度"), symbol: "sun.max", color: .orange)
                         .frame(width: geometry.size.width * boundaries.0)
-                    zone(fullscreenPreview ? "退出全屏" : "进入全屏", symbol: "arrow.up.and.down", color: .gray)
+                    zone(fullscreenPreview ? String(localized: "退出全屏") : String(localized: "进入全屏"), symbol: "arrow.up.and.down", color: .gray)
                         .frame(width: geometry.size.width * (boundaries.1 - boundaries.0))
-                    zone("音量", symbol: "speaker.wave.2", color: .blue)
+                    zone(String(localized: "音量"), symbol: "speaker.wave.2", color: .blue)
                 }
                 .overlay(alignment: .leading) {
                     Rectangle().fill(.white).frame(width: 2).offset(x: geometry.size.width * boundaries.0 - 1)
@@ -39,11 +39,11 @@ struct PlayerGestureSettingsSection: View {
             }
             .aspectRatio(fullscreenPreview ? 2.16 : 16.0 / 9, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            .accessibilityLabel("左侧亮度、中部全屏、右侧音量。分界为宽度的\(Int(boundaries.0 * 100))%与\(Int(boundaries.1 * 100))%")
+            .accessibilityLabel(String(localized: "左侧亮度、中部全屏、右侧音量。分界为宽度的\(Int(boundaries.0 * 100))%与\(Int(boundaries.1 * 100))%"))
 
-            boundarySlider("左侧分界", value: Binding(get: { boundaries.0 }, set: { left = $0 }),
+            boundarySlider(String(localized: "左侧分界"), value: Binding(get: { boundaries.0 }, set: { left = $0 }),
                            range: 0.1...(boundaries.1 - 0.15))
-            boundarySlider("右侧分界", value: Binding(get: { boundaries.1 }, set: { right = $0 }),
+            boundarySlider(String(localized: "右侧分界"), value: Binding(get: { boundaries.1 }, set: { right = $0 }),
                            range: (boundaries.0 + 0.15)...0.9)
             Toggle("反转上下滑", isOn: $reversed)
             Button("恢复默认分区") { left = 0.33; right = 0.67; reversed = false }

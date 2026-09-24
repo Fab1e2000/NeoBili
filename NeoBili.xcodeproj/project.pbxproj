@@ -145,11 +145,12 @@
 				};
 			};
 			buildConfigurationList = 28DFF45B101274D217DEA7A8 /* Build configuration list for PBXProject "NeoBili" */;
-			developmentRegion = en;
+			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
 				en,
+				"zh-Hans",
 			);
 			mainGroup = B26BFA13DC2C5853944C71C5;
 			minimizedProjectReferenceProxies = 1;
@@ -262,8 +263,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBili;
 				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -404,8 +407,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBili;
 				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};

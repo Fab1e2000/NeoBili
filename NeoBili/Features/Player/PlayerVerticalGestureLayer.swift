@@ -85,7 +85,7 @@ struct PlayerVerticalGestureLayer: View {
                       systemImage: seek.isCancelled ? "xmark" : (seek.delta >= 0 ? "forward.fill" : "backward.fill"))
                 Text("\(PlaybackTime.text(seek.target)) / \(PlaybackTime.text(seek.duration))")
                     .font(.headline.monospacedDigit())
-                Text(seek.isCancelled ? "移回画面继续调整" : "\(seek.delta >= 0 ? "+" : "−")\(Int(abs(seek.delta).rounded())) 秒 · 松开跳转")
+                Text(seek.isCancelled ? String(localized: "移回画面继续调整") : String(localized: "\(seek.delta >= 0 ? "+" : "−")\(Int(abs(seek.delta).rounded())) 秒 · 松开跳转"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

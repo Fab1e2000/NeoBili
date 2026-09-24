@@ -32,6 +32,7 @@ struct SpaceView: View {
         case dynamics = "动态"
 
         var id: String { rawValue }
+        var title: String { self == .videos ? String(localized: "投稿") : String(localized: "动态") }
     }
 
     /// 滚动位置的引用盒子，见 `pageOffsets` 的说明。
@@ -182,7 +183,7 @@ struct SpaceView: View {
     private var tabPicker: some View {
         Picker("内容", selection: $tab) {
             ForEach(Tab.allCases) { tab in
-                Text(tab.rawValue).tag(tab)
+                Text(tab.title).tag(tab)
             }
         }
         .pickerStyle(.segmented)
@@ -281,9 +282,9 @@ struct SpaceView: View {
 
     private var statsRow: some View {
         HStack(spacing: 22) {
-            stat(count: viewModel.card?.follower, label: "粉丝")
-            stat(count: viewModel.card?.followingCount, label: "关注")
-            stat(count: viewModel.card?.likeCount, label: "获赞")
+            stat(count: viewModel.card?.follower, label: String(localized: "粉丝"))
+            stat(count: viewModel.card?.followingCount, label: String(localized: "关注"))
+            stat(count: viewModel.card?.likeCount, label: String(localized: "获赞"))
             Spacer(minLength: 0)
         }
     }
@@ -308,7 +309,7 @@ struct SpaceView: View {
                     }
                 }
             } label: {
-                Text(viewModel.isFollowing ? "已关注" : "关注")
+                Text(viewModel.isFollowing ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
                     .font(.footnote.weight(.medium))
                     .frame(minWidth: 56)
             },

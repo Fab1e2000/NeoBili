@@ -19,7 +19,7 @@ enum FollowingSelection: Hashable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .all: "全部动态"
+        case .all: String(localized: "全部动态")
         case .up(let up): up.uname
         }
     }

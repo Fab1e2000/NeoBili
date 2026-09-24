@@ -13,9 +13,9 @@ enum DanmakuMode: Int, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .scroll: "滚动"
-        case .top: "顶部"
-        case .bottom: "底部"
+        case .scroll: String(localized: "滚动")
+        case .top: String(localized: "顶部")
+        case .bottom: String(localized: "底部")
         }
     }
 }

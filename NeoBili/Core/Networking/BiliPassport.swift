@@ -20,8 +20,8 @@ enum BiliPassport {
 
         var errorDescription: String? {
             switch self {
-            case .invalidResponse: return "登录服务响应异常"
-            case .missingCookies: return "登录成功但未收到凭据"
+            case .invalidResponse: return String(localized: "登录服务响应异常")
+            case .missingCookies: return String(localized: "登录成功但未收到凭据")
             case .rejected(let message): return message
             }
         }
@@ -102,7 +102,7 @@ enum BiliPassport {
             }
             return .confirmed(cookies, accessKey: nil)
         case let code:
-            throw PassportError.rejected("\(envelope.data?.message ?? envelope.message ?? "登录失败") (code \(code))")
+            throw PassportError.rejected("\(envelope.data?.message ?? envelope.message ?? String(localized: "登录失败")) (code \(code))")
         }
     }
 
@@ -210,7 +210,7 @@ enum BiliPassport {
             let cookies = LoginCookies(sessdata: sessdata, biliJct: biliJct, dedeUserID: dedeUserID)
             return .confirmed(cookies, accessKey: envelope.data?.accessToken)
         case let code:
-            throw PassportError.rejected("\(envelope.message ?? "登录失败") (code \(code))")
+            throw PassportError.rejected("\(envelope.message ?? String(localized: "登录失败")) (code \(code))")
         }
     }
 
@@ -236,7 +236,7 @@ enum BiliPassport {
         do {
             let envelope = try JSONDecoder().decode(TypedEnvelope<Response>.self, from: data)
             guard envelope.code == 0, let payload = envelope.data else {
-                throw PassportError.rejected("\(envelope.message ?? "登录服务异常") (code \(envelope.code))")
+                throw PassportError.rejected("\(envelope.message ?? String(localized: "登录服务异常")) (code \(envelope.code))")
             }
             return payload
         } catch let error as PassportError {
@@ -314,7 +314,7 @@ enum BiliPassport {
             throw PassportError.invalidResponse
         }
         guard envelope.code == 0 else {
-            throw PassportError.rejected("\(envelope.message ?? "登录失败") (code \(envelope.code))")
+            throw PassportError.rejected("\(envelope.message ?? String(localized: "登录失败")) (code \(envelope.code))")
         }
         guard let cookies = loginCookies(from: response) else {
             throw PassportError.missingCookies
@@ -380,9 +380,9 @@ enum BiliPassport {
     static func failureText(for error: Error) -> String {
         guard let urlError = error as? URLError else { return error.localizedDescription }
         if isTransient(urlError) {
-            return "网络连接不稳定，请稍后再试（\(urlError.code.rawValue)）"
+            return String(localized: "网络连接不稳定，请稍后再试（\(urlError.code.rawValue)）")
         }
-        return "网络请求失败（\(urlError.code.rawValue)）"
+        return String(localized: "网络请求失败（\(urlError.code.rawValue)）")
     }
 
     /// 只关心 envelope 的请求（扫码轮询、密码登录）走这里，响应头要单独保留。
@@ -424,7 +424,7 @@ enum BiliPassport {
         do {
             let envelope = try JSONDecoder().decode(TypedEnvelope<Response>.self, from: data)
             guard envelope.code == 0, let payload = envelope.data else {
-                throw PassportError.rejected("\(envelope.message ?? "登录服务异常") (code \(envelope.code))")
+                throw PassportError.rejected("\(envelope.message ?? String(localized: "登录服务异常")) (code \(envelope.code))")
             }
             return payload
         } catch let error as PassportError {

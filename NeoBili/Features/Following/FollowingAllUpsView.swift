@@ -93,7 +93,7 @@ struct FollowingAllUpsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(up.uname + (up.liveRoomID != nil ? "，正在直播" : ""))
+        .accessibilityLabel(up.uname + (up.liveRoomID != nil ? String(localized: "，正在直播") : ""))
         .accessibilityHint("打开 UP 主主页")
     }
 

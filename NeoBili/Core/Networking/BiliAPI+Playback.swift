@@ -33,7 +33,7 @@ extension BiliAPI {
             }
         }
 
-        throw BiliAPIError.apiError(code: -1, message: "该视频暂不支持播放")
+        throw BiliAPIError.apiError(code: -1, message: String(localized: "该视频暂不支持播放"))
     }
 
     private static func requestPlayURL(

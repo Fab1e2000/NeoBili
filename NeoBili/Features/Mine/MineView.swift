@@ -29,7 +29,7 @@ struct MineView: View {
                     ContentUnavailableView {
                         Label("账号信息暂未加载", systemImage: "wifi.exclamationmark")
                     } description: {
-                        Text(account.sessionError ?? "登录信息已保留，可以重试加载。")
+                        Text(account.sessionError ?? String(localized: "登录信息已保留，可以重试加载。"))
                     } actions: {
                         Button("重试") { Task { await account.refreshProfile() } }
                             .disabled(account.isRefreshingProfile)
@@ -79,7 +79,7 @@ struct MineView: View {
             Text("尚未登录")
                 .font(.title3.weight(.semibold))
 
-            Text("登录后可以使用收藏、历史、稍后再看，\n首页也会变成属于你的个性化推荐。")
+            Text(String(localized: "登录后可以使用收藏、历史、稍后再看，\n首页也会变成属于你的个性化推荐。"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -119,19 +119,19 @@ struct MineView: View {
                 serviceRow(
                     icon: "star.fill",
                     color: .orange,
-                    title: "收藏",
+                    title: String(localized: "收藏"),
                     service: .favorites
                 )
                 serviceRow(
                     icon: "clock.arrow.circlepath",
                     color: .blue,
-                    title: "历史记录",
+                    title: String(localized: "历史记录"),
                     service: .history
                 )
                 serviceRow(
                     icon: "flag.checkered",
                     color: .pink,
-                    title: "稍后再看",
+                    title: String(localized: "稍后再看"),
                     service: .watchLater
                 )
             } header: {
@@ -142,7 +142,7 @@ struct MineView: View {
                 serviceRow(
                     icon: "gearshape.fill",
                     color: .gray,
-                    title: "系统设置",
+                    title: String(localized: "系统设置"),
                     service: .settings
                 )
             }
@@ -173,11 +173,11 @@ struct MineView: View {
                 badge("LV\(profile.level)", background: Color(uiColor: .systemGray))
 
                 if profile.isVIP {
-                    badge("大会员", background: Color(red: 0.98, green: 0.45, blue: 0.09))
+                    badge(String(localized: "大会员"), background: Color(red: 0.98, green: 0.45, blue: 0.09))
                 }
 
                 badge(
-                    String(format: "%.1f 硬币", profile.coins),
+                    String(format: String(localized: "%.1f 硬币"), profile.coins),
                     background: Color(uiColor: .tertiarySystemFill),
                     foreground: .secondary
                 )

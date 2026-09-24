@@ -40,7 +40,7 @@ struct HomeView: View {
         feed
             .safeAreaBar(edge: .top, spacing: 0) {
                 if pinsTitleBar {
-                    PageHeader(title: "推荐")
+                    PageHeader(title: String(localized: "推荐"))
                         .padding(.horizontal, 20)
                 }
             }

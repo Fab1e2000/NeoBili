@@ -45,7 +45,7 @@ struct FavoritesView: View {
                                 Text(folder.title)
                                     .lineLimit(1)
                                 Spacer()
-                                Text("\(folder.mediaCount) 个内容")
+                                Text(String(localized: "\(folder.mediaCount) 个内容"))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -75,7 +75,7 @@ struct FavoritesView: View {
         .refreshable { await load() }
         .confirmationDialog(
             // 整个收藏夹的删除提交后不可恢复，先说明影响范围。
-            "删除「\(folderPendingDeletion?.title ?? "")」后，里面的 \(folderPendingDeletion?.mediaCount ?? 0) 个内容也会一并消失。可在提示中撤销，提交后无法恢复。",
+            String(localized: "删除「\(folderPendingDeletion?.title ?? "")」后，里面的 \(folderPendingDeletion?.mediaCount ?? 0) 个内容也会一并消失。可在提示中撤销，提交后无法恢复。"),
             isPresented: Binding(
                 get: { folderPendingDeletion != nil },
                 set: { if !$0 { folderPendingDeletion = nil } }
@@ -98,7 +98,7 @@ struct FavoritesView: View {
         let sessionID = account.sessionID
         let removedIndex = folderRemovals.remove(folder.id, from: &folders)
         do {
-            guard await feedback.confirmRemoval("已移除收藏夹"),
+            guard await feedback.confirmRemoval(String(localized: "已移除收藏夹")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.deleteFavoriteFolders(folderIDs: [folder.id])
         } catch {
@@ -113,7 +113,7 @@ struct FavoritesView: View {
         guard !folderRemovals.hasPending else { return }
         let revision = folderRemovals.revision
         guard let mid = account.accountID else {
-            errorMessage = "登录状态已失效，请重新登录"
+            errorMessage = String(localized: "登录状态已失效，请重新登录")
             return
         }
         isLoading = true
@@ -354,7 +354,7 @@ struct FavoriteFolderView: View {
         do {
             removals.hide(media.id)
             removedIndex = removals.remove(media.id, from: &videos)
-            guard await feedback.confirmRemoval("已移出收藏夹"),
+            guard await feedback.confirmRemoval(String(localized: "已移出收藏夹")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.removeFavorite(folderID: folder.id, aid: media.id)
             // 同时完成的刷新也不能留下同 ID 的旧条目。

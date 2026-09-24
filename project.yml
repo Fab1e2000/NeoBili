@@ -4,6 +4,8 @@ options:
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
+  # 界面文字以简体中文为源语言，英文翻译在 Localizable.xcstrings。
+  developmentLanguage: zh-Hans
 
 packages:
   MPVKit:
@@ -27,6 +29,9 @@ targets:
       path: NeoBili/Info.plist
       properties:
         CADisableMinimumFrameDurationOnPhone: true
+        # 系统语言既不是中文也不是英文时，回退到英文。
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [zh-Hans, en]
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -47,6 +52,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.elsterlee.NeoBili
         SWIFT_VERSION: "6.0"
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: NeoBiliIcon
         ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "NeoBiliIcon-rose NeoBiliIcon-ruby NeoBiliIcon-coral NeoBiliIcon-orange NeoBiliIcon-amber NeoBiliIcon-olive NeoBiliIcon-lime NeoBiliIcon-leaf NeoBiliIcon-forest NeoBiliIcon-jade NeoBiliIcon-teal NeoBiliIcon-cyan NeoBiliIcon-sky NeoBiliIcon-blue NeoBiliIcon-cobalt NeoBiliIcon-indigo NeoBiliIcon-violet NeoBiliIcon-lavender NeoBiliIcon-orchid NeoBiliIcon-berry NeoBiliIcon-cocoa NeoBiliIcon-slate NeoBiliIcon-graphite"
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

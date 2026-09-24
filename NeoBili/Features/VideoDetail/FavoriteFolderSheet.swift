@@ -80,7 +80,7 @@ struct FavoriteFolderSheet: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(folder.title)
                             .foregroundStyle(.primary)
-                        Text("\(folder.mediaCount) 个内容")
+                        Text(String(localized: "\(folder.mediaCount) 个内容"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

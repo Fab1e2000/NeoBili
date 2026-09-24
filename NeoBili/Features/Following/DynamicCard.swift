@@ -210,11 +210,11 @@ struct DynamicCard: View {
         HStack(spacing: 0) {
             // 转发只显示数字：B 站的转发要带一条自己的动态，属于发布行为，
             // 这个 App 不做发布。
-            counter(icon: "arrow.2.squarepath", text: countText(entry.forwardCount, zero: "转发"))
+            counter(icon: "arrow.2.squarepath", text: countText(entry.forwardCount, zero: String(localized: "转发")))
                 .frame(maxWidth: .infinity)
 
             Button(action: onOpenDetail) {
-                counter(icon: "bubble.left", text: countText(entry.commentCount, zero: "评论"))
+                counter(icon: "bubble.left", text: countText(entry.commentCount, zero: String(localized: "评论")))
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
             }
@@ -224,7 +224,7 @@ struct DynamicCard: View {
             Button(action: onLike) {
                 counter(
                     icon: isLiked ? "hand.thumbsup.fill" : "hand.thumbsup",
-                    text: countText(likeCount, zero: "点赞"),
+                    text: countText(likeCount, zero: String(localized: "点赞")),
                     isHighlighted: isLiked
                 )
                 .frame(maxWidth: .infinity)

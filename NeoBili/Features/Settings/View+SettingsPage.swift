@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension View {
-    func settingsPage(_ title: String) -> some View {
+    func settingsPage(_ title: LocalizedStringKey) -> some View {
         leftEdgeTapDeadZone()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)

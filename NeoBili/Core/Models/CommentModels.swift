@@ -133,13 +133,13 @@ struct Comment: Decodable, Identifiable, Hashable, Sendable {
         let day: TimeInterval = 24 * hour
         let elapsed = Date().timeIntervalSince1970 - TimeInterval(ctime)
 
-        if elapsed < minute { return "刚刚" }
-        if elapsed < hour { return "\(Int(elapsed / minute))分钟前" }
-        if elapsed < day { return "\(Int(elapsed / hour))小时前" }
-        if elapsed < day * 30 { return "\(Int(elapsed / day))天前" }
-        if elapsed < day * 365 { return "\(Int(elapsed / day / 30))个月前" }
+        if elapsed < minute { return String(localized: "刚刚") }
+        if elapsed < hour { return String(localized: "\(Int(elapsed / minute))分钟前") }
+        if elapsed < day { return String(localized: "\(Int(elapsed / hour))小时前") }
+        if elapsed < day * 30 { return String(localized: "\(Int(elapsed / day))天前") }
+        if elapsed < day * 365 { return String(localized: "\(Int(elapsed / day / 30))个月前") }
         return Date(timeIntervalSince1970: TimeInterval(ctime))
-            .formatted(.dateTime.year().month().day())
+            .formatted(.dateTime.year().month().day().locale(AppLanguage.locale))
     }
 }
 
@@ -192,5 +192,5 @@ struct CommentSubmission: Decodable {
 
 enum CommentSubmissionError: LocalizedError {
     case verificationRequired
-    var errorDescription: String? { "需要完成验证才能发送，请在官方客户端验证后重试。草稿已保留。" }
+    var errorDescription: String? { String(localized: "需要完成验证才能发送，请在官方客户端验证后重试。草稿已保留。") }
 }

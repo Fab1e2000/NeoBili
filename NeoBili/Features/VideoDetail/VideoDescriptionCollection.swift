@@ -284,7 +284,7 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
             }
             metadata.attributedText = text
             cover.load(video.secureCoverURL, size: CGSize(width: 160, height: 90), scale: scale)
-            accessibilityLabel = "\(video.title)，\(video.owner.name)，\(video.stat.view.biliCountText)次播放，\(video.formattedDuration)"
+            accessibilityLabel = String(localized: "\(video.title)，\(video.owner.name)，\(video.stat.view.biliCountText)次播放，\(video.formattedDuration)")
             setNeedsLayout()
         }
         override func layoutSubviews() {

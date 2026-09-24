@@ -1,0 +1,5553 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "": {},
+    "%.1f 倍速": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%.1f×"
+          }
+        }
+      }
+    },
+    "%.1f 硬币": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%.1f coins"
+          }
+        }
+      }
+    },
+    "%@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ %2$lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ %2$lld"
+          }
+        }
+      }
+    },
+    "%@ / %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ / %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ / %2$@"
+          }
+        }
+      }
+    },
+    "%@ 人参与 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ voted · %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 人参与 · %2$@"
+          }
+        }
+      }
+    },
+    "%@ 人参与 · 查看投票": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ voted · View poll"
+          }
+        }
+      }
+    },
+    "%@ 人气": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ popularity"
+          }
+        }
+      }
+    },
+    "%@ 票": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ votes"
+          }
+        }
+      }
+    },
+    "%@%lld 秒 · 松开跳转": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@%2$lld s · Release to seek"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@%2$lld 秒 · 松开跳转"
+          }
+        }
+      }
+    },
+    "%@人气": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ popularity"
+          }
+        }
+      }
+    },
+    "%@弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ danmaku"
+          }
+        }
+      }
+    },
+    "%@播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ views"
+          }
+        }
+      }
+    },
+    "%@没成功": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ failed"
+          }
+        }
+      }
+    },
+    "%@的%lld元醒目留言：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Super Chat from %1$@ (¥%2$lld): %3$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@的%2$lld元醒目留言：%3$@"
+          }
+        }
+      }
+    },
+    "%@的个人空间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@'s space"
+          }
+        }
+      }
+    },
+    "%@粉丝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ followers"
+          }
+        }
+      }
+    },
+    "%@粉丝 · %lld视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ followers · %2$lld videos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@粉丝 · %2$lld视频"
+          }
+        }
+      }
+    },
+    "%@，%@，%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@, %3$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@，%2$@，%3$@"
+          }
+        }
+      }
+    },
+    "%@，%@，%@次播放，%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@, %3$@ views, %4$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@，%2$@，%3$@次播放，%4$@"
+          }
+        }
+      }
+    },
+    "%@，共 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@，共 %2$@"
+          }
+        }
+      }
+    },
+    "%lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld"
+          }
+        }
+      }
+    },
+    "%lld / %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / %2$lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / %2$lld"
+          }
+        }
+      }
+    },
+    "%lld pt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pt"
+          }
+        }
+      }
+    },
+    "%lld pt · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld pt · %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld pt · %2$@"
+          }
+        }
+      }
+    },
+    "%lld 个内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld items"
+          }
+        }
+      }
+    },
+    "%lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld min"
+          }
+        }
+      }
+    },
+    "%lld 小时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld hr"
+          }
+        }
+      }
+    },
+    "%lld 点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pt"
+          }
+        }
+      }
+    },
+    "%lld 项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld on"
+          }
+        }
+      }
+    },
+    "%lld%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%%"
+          }
+        }
+      }
+    },
+    "%llds": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%llds"
+          }
+        }
+      }
+    },
+    "%lld个月前": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldmo ago"
+          }
+        }
+      }
+    },
+    "%lld分钟前": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldm ago"
+          }
+        }
+      }
+    },
+    "%lld天前": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldd ago"
+          }
+        }
+      }
+    },
+    "%lld小时前": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldh ago"
+          }
+        }
+      }
+    },
+    "%lld视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld videos"
+          }
+        }
+      }
+    },
+    "1080P 60帧": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1080P 60fps"
+          }
+        }
+      }
+    },
+    "1080P 高码率": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1080P High Bitrate"
+          }
+        }
+      }
+    },
+    "720P 60帧": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "720P 60fps"
+          }
+        }
+      }
+    },
+    "App 内统一使用这里的文字大小，不跟随系统设置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "NeoBili uses this text size throughout and ignores the system setting."
+          }
+        }
+      }
+    },
+    "Bilibili 视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilibili Video"
+          }
+        }
+      }
+    },
+    "Hi-Res 无损": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hi-Res Lossless"
+          }
+        }
+      }
+    },
+    "LIVE": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LIVE"
+          }
+        }
+      }
+    },
+    "LV%lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LV%lld"
+          }
+        }
+      }
+    },
+    "P%lld · 正在播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "P%lld · Now Playing"
+          }
+        }
+      }
+    },
+    "UID": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UID"
+          }
+        }
+      }
+    },
+    "UP 主空间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UP Space"
+          }
+        }
+      }
+    },
+    "favorite.action": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorite"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收藏"
+          }
+        }
+      }
+    },
+    "follow.action": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关注"
+          }
+        }
+      }
+    },
+    "mpv 初始化失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to initialize mpv"
+          }
+        }
+      }
+    },
+    "setting.off": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
+          }
+        }
+      }
+    },
+    "toast.followed": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Followed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关注"
+          }
+        }
+      }
+    },
+    "¥%lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¥%lld"
+          }
+        }
+      }
+    },
+    "三连成功": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Like, coin and favorite done"
+          }
+        }
+      }
+    },
+    "上次看到这里 · 点击刷新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You left off here · Tap to refresh"
+          }
+        }
+      }
+    },
+    "上次看到这里，点击刷新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You left off here. Tap to refresh"
+          }
+        }
+      }
+    },
+    "上边距": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top Margin"
+          }
+        }
+      }
+    },
+    "下拉刷新距离": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pull-to-Refresh Distance"
+          }
+        }
+      }
+    },
+    "下次打开 App 时生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takes effect the next time you open the app."
+          }
+        }
+      }
+    },
+    "下边距": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bottom Margin"
+          }
+        }
+      }
+    },
+    "不喜欢": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dislike"
+          }
+        }
+      }
+    },
+    "不感兴趣": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Interested"
+          }
+        }
+      }
+    },
+    "不能关注自己": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can't follow yourself"
+          }
+        }
+      }
+    },
+    "不透明度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opacity"
+          }
+        }
+      }
+    },
+    "不限制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Limit"
+          }
+        }
+      }
+    },
+    "主播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Streamer"
+          }
+        }
+      }
+    },
+    "主播暂未开播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The streamer is offline"
+          }
+        }
+      }
+    },
+    "主播资料尚未加载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The streamer's profile hasn't loaded yet"
+          }
+        }
+      }
+    },
+    "主题色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme Color"
+          }
+        }
+      }
+    },
+    "主题预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme Preview"
+          }
+        }
+      }
+    },
+    "二维码已过期": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QR code expired"
+          }
+        }
+      }
+    },
+    "二维码有效期约 3 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The QR code is valid for about 3 minutes"
+          }
+        }
+      }
+    },
+    "互动状态加载失败，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load interaction status. Please try again"
+          }
+        }
+      }
+    },
+    "亮度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brightness"
+          }
+        }
+      }
+    },
+    "仅进入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter Only"
+          }
+        }
+      }
+    },
+    "仅退出": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit Only"
+          }
+        }
+      }
+    },
+    "你关注的 UP 主最近没有更新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The UPs you follow haven't posted recently."
+          }
+        }
+      }
+    },
+    "保存二维码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save QR Code"
+          }
+        }
+      }
+    },
+    "全屏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full Screen"
+          }
+        }
+      }
+    },
+    "全屏比例预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full-Screen Preview"
+          }
+        }
+      }
+    },
+    "全部关注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Following"
+          }
+        }
+      }
+    },
+    "全部动态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Posts"
+          }
+        }
+      }
+    },
+    "全部回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Replies"
+          }
+        }
+      }
+    },
+    "全部回复 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Replies %lld"
+          }
+        }
+      }
+    },
+    "兰花紫": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orchid"
+          }
+        }
+      }
+    },
+    "关于": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        }
+      }
+    },
+    "关注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Following"
+          }
+        }
+      }
+    },
+    "关注 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow %@"
+          }
+        }
+      }
+    },
+    "关注状态尚未加载，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow status hasn't loaded. Please try again"
+          }
+        }
+      }
+    },
+    "关注的主播暂未开播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No one you follow is live"
+          }
+        }
+      }
+    },
+    "关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        }
+      }
+    },
+    "关闭动态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Post"
+          }
+        }
+      }
+    },
+    "关闭发弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Danmaku Input"
+          }
+        }
+      }
+    },
+    "关闭弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn Off Danmaku"
+          }
+        }
+      }
+    },
+    "关闭播放器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Player"
+          }
+        }
+      }
+    },
+    "关闭这条醒目留言": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss This Super Chat"
+          }
+        }
+      }
+    },
+    "关闭飘幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn Off Danmaku"
+          }
+        }
+      }
+    },
+    "其他图片仍可左右滑动查看。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can still swipe to view the other images."
+          }
+        }
+      }
+    },
+    "内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content"
+          }
+        }
+      }
+    },
+    "内容与交互": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content & Interaction"
+          }
+        }
+      }
+    },
+    "内容加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load content"
+          }
+        }
+      }
+    },
+    "内容过滤": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content Filter"
+          }
+        }
+      }
+    },
+    "写下你的评论…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write a comment…"
+          }
+        }
+      }
+    },
+    "分P": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parts"
+          }
+        }
+      }
+    },
+    "分P · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parts · %@"
+          }
+        }
+      }
+    },
+    "分P，%@，展开分P列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parts, %@, expand the parts list"
+          }
+        }
+      }
+    },
+    "分享": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share"
+          }
+        }
+      }
+    },
+    "分享图片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share Image"
+          }
+        }
+      }
+    },
+    "分享直播间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share Live Room"
+          }
+        }
+      }
+    },
+    "分辨率": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resolution"
+          }
+        }
+      }
+    },
+    "刚刚": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Just now"
+          }
+        }
+      }
+    },
+    "删除「%@」后，里面的 %lld 个内容也会一并消失。可在提示中撤销，提交后无法恢复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleting \"%1$@\" also removes its %2$lld items. You can undo from the notice; once confirmed, it can't be recovered."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除「%1$@」后，里面的 %2$lld 个内容也会一并消失。可在提示中撤销，提交后无法恢复。"
+          }
+        }
+      }
+    },
+    "删除收藏夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Folder"
+          }
+        }
+      }
+    },
+    "删除这条历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete from History"
+          }
+        }
+      }
+    },
+    "刷新二维码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh QR Code"
+          }
+        }
+      }
+    },
+    "刷新关注动态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Following Posts"
+          }
+        }
+      }
+    },
+    "刷新推荐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Recommendations"
+          }
+        }
+      }
+    },
+    "刷新直播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Live"
+          }
+        }
+      }
+    },
+    "加载中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading"
+          }
+        }
+      }
+    },
+    "加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't Load"
+          }
+        }
+      }
+    },
+    "加载更多": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load More"
+          }
+        }
+      }
+    },
+    "动态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Posts"
+          }
+        }
+      }
+    },
+    "动态卡片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Post Cards"
+          }
+        }
+      }
+    },
+    "动画": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Animations"
+          }
+        }
+      }
+    },
+    "动画速度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Animation Speed"
+          }
+        }
+      }
+    },
+    "历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History"
+          }
+        }
+      }
+    },
+    "历史加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load history"
+          }
+        }
+      }
+    },
+    "历史记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History"
+          }
+        }
+      }
+    },
+    "原位淡入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fade In Place"
+          }
+        }
+      }
+    },
+    "原画": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source"
+          }
+        }
+      }
+    },
+    "反转上下滑": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reverse Vertical Swipe"
+          }
+        }
+      }
+    },
+    "发个友善的弹幕见证当下": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send a friendly danmaku"
+          }
+        }
+      }
+    },
+    "发弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send Danmaku"
+          }
+        }
+      }
+    },
+    "发送弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send Danmaku"
+          }
+        }
+      }
+    },
+    "发送成功": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent"
+          }
+        }
+      }
+    },
+    "发送评论": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Post Comment"
+          }
+        }
+      }
+    },
+    "取消": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "取消不喜欢": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undo Dislike"
+          }
+        }
+      }
+    },
+    "取消关注 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unfollow %@"
+          }
+        }
+      }
+    },
+    "取消定时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel Timer"
+          }
+        }
+      }
+    },
+    "取消收藏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unfavorite"
+          }
+        }
+      }
+    },
+    "取消点赞": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlike"
+          }
+        }
+      }
+    },
+    "可可棕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cocoa"
+          }
+        }
+      }
+    },
+    "右侧分界": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right Boundary"
+          }
+        }
+      }
+    },
+    "各页面的标题和头像固定在顶部，内容从下方滑过。关注页的头像条、直播页的推荐/关注切换器与标题一起固定。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Page titles and your avatar stay pinned at the top while content scrolls underneath. The Following avatar strip and the Live Recommended/Following switcher stay pinned with the title."
+          }
+        }
+      }
+    },
+    "各页面的标题和头像随内容一起滚走。关注页的头像条、直播页的推荐/关注切换器也随标题一起滚走；搜索页上滑时只收起标题，搜索框留在顶部。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Page titles and your avatar scroll away with the content, along with the Following avatar strip and the Live Recommended/Following switcher. On Search, only the title collapses; the search bar stays at the top."
+          }
+        }
+      }
+    },
+    "合集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collection"
+          }
+        }
+      }
+    },
+    "合集 %@，%@，展开分集列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collection %1$@, %2$@, expand the episode list"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "合集 %1$@，%2$@，展开分集列表"
+          }
+        }
+      }
+    },
+    "合集 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collection · %@"
+          }
+        }
+      }
+    },
+    "后退": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rewind"
+          }
+        }
+      }
+    },
+    "启动时打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open at Launch"
+          }
+        }
+      }
+    },
+    "响应缺少 data 字段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Response is missing the data field"
+          }
+        }
+      }
+    },
+    "回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reply"
+          }
+        }
+      }
+    },
+    "回复 @%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reply to @%@"
+          }
+        }
+      }
+    },
+    "回复内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reply"
+          }
+        }
+      }
+    },
+    "回复评论": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reply to Comment"
+          }
+        }
+      }
+    },
+    "固定在顶部": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pinned to Top"
+          }
+        }
+      }
+    },
+    "图片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image"
+          }
+        }
+      }
+    },
+    "图片加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load image"
+          }
+        }
+      }
+    },
+    "外观": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appearance"
+          }
+        }
+      }
+    },
+    "大": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Large"
+          }
+        }
+      }
+    },
+    "大会员": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VIP"
+          }
+        }
+      }
+    },
+    "字体尺寸": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Font Size"
+          }
+        }
+      }
+    },
+    "安全验证": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Security Verification"
+          }
+        }
+      }
+    },
+    "完全退出并重新打开 NeoBili 后生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takes effect after you fully quit and reopen NeoBili."
+          }
+        }
+      }
+    },
+    "完成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
+    "定时休眠": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sleep Timer"
+          }
+        }
+      }
+    },
+    "宝石红": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ruby"
+          }
+        }
+      }
+    },
+    "实时预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Preview"
+          }
+        }
+      }
+    },
+    "密码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password"
+          }
+        }
+      }
+    },
+    "密码加密失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't encrypt the password"
+          }
+        }
+      }
+    },
+    "小": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Small"
+          }
+        }
+      }
+    },
+    "尚未登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Signed In"
+          }
+        }
+      }
+    },
+    "屏幕左缘这一窄条内的点按不生效，避免侧滑返回时误点到卡片。拖动滑杆时会高亮显示范围。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taps in this narrow strip along the left edge are ignored, so swiping back doesn't open a card by accident. The area is highlighted while you drag the slider."
+          }
+        }
+      }
+    },
+    "屏蔽底部弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Bottom Danmaku"
+          }
+        }
+      }
+    },
+    "屏蔽顶部弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Top Danmaku"
+          }
+        }
+      }
+    },
+    "屏蔽顶部或底部的固定弹幕，不影响滚动弹幕。显示设置应用于视频和直播画面上的弹幕。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hides fixed danmaku at the top or bottom; scrolling danmaku isn't affected. Display settings apply to danmaku on videos and live streams."
+          }
+        }
+      }
+    },
+    "展开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand"
+          }
+        }
+      }
+    },
+    "展开直播简介": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand Stream Info"
+          }
+        }
+      }
+    },
+    "展开简介": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand Description"
+          }
+        }
+      }
+    },
+    "展开视频并%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand Video and %@"
+          }
+        }
+      }
+    },
+    "展开视频画面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand Video"
+          }
+        }
+      }
+    },
+    "展开视频：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand Video: %@"
+          }
+        }
+      }
+    },
+    "展开评论正文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand Comment"
+          }
+        }
+      }
+    },
+    "岩石蓝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slate"
+          }
+        }
+      }
+    },
+    "左侧亮度、中部全屏、右侧音量。分界为宽度的%lld%%与%lld%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left: brightness, middle: full screen, right: volume. Boundaries at %1$lld%% and %2$lld%% of the width"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "左侧亮度、中部全屏、右侧音量。分界为宽度的%1$lld%%与%2$lld%%"
+          }
+        }
+      }
+    },
+    "左侧分界": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left Boundary"
+          }
+        }
+      }
+    },
+    "左右边距": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Side Margins"
+          }
+        }
+      }
+    },
+    "左右边距默认跟随系统横屏安全区，正好避开屏幕圆角和灵动岛；调得太小时控件会伸进四角的圆弧里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Side margins follow the system's landscape safe area by default, clearing the rounded corners and Dynamic Island. If set too small, controls extend into the corners."
+          }
+        }
+      }
+    },
+    "左缘触控死区": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left-Edge Dead Zone"
+          }
+        }
+      }
+    },
+    "左缘触控死区宽度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left-Edge Dead Zone Width"
+          }
+        }
+      }
+    },
+    "已关注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Following"
+          }
+        }
+      }
+    },
+    "已加入稍后再看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Added to Watch Later"
+          }
+        }
+      }
+    },
+    "已取消关注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unfollowed"
+          }
+        }
+      }
+    },
+    "已取消收藏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Removed from Favorites"
+          }
+        }
+      }
+    },
+    "已展开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expanded"
+          }
+        }
+      }
+    },
+    "已应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applied"
+          }
+        }
+      }
+    },
+    "已扫码，请在手机上确认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanned. Confirm on your phone"
+          }
+        }
+      }
+    },
+    "已扫码，请在手机上确认登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanned. Confirm the sign-in on your phone"
+          }
+        }
+      }
+    },
+    "已投币": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coined"
+          }
+        }
+      }
+    },
+    "已投票": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voted"
+          }
+        }
+      }
+    },
+    "已提交不感兴趣": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marked as not interested"
+          }
+        }
+      }
+    },
+    "已收藏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorited"
+          }
+        }
+      }
+    },
+    "已收起": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapsed"
+          }
+        }
+      }
+    },
+    "已移出收藏夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Removed from folder"
+          }
+        }
+      }
+    },
+    "已移出稍后再看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Removed from Watch Later"
+          }
+        }
+      }
+    },
+    "已移除历史记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Removed from History"
+          }
+        }
+      }
+    },
+    "已移除收藏夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folder deleted"
+          }
+        }
+      }
+    },
+    "已经三连过了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Already liked, coined and favorited"
+          }
+        }
+      }
+    },
+    "已经到底了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've reached the end"
+          }
+        }
+      }
+    },
+    "已经投过币了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Already coined"
+          }
+        }
+      }
+    },
+    "已结束": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ended"
+          }
+        }
+      }
+    },
+    "应用于推荐、关注、搜索、收藏、历史等视频列表。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applies to video lists such as Recommended, Following, Search, Favorites and History."
+          }
+        }
+      }
+    },
+    "底部": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bottom"
+          }
+        }
+      }
+    },
+    "底部弹幕 · 实时预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bottom danmaku · Live preview"
+          }
+        }
+      }
+    },
+    "开启": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On"
+          }
+        }
+      }
+    },
+    "开启弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn On Danmaku"
+          }
+        }
+      }
+    },
+    "开启飘幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn On Danmaku"
+          }
+        }
+      }
+    },
+    "开播后会显示在这里，也可以看看推荐直播。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Streams will appear here once they go live. You can also browse recommended streams."
+          }
+        }
+      }
+    },
+    "弹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "D"
+          }
+        }
+      }
+    },
+    "弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danmaku"
+          }
+        }
+      }
+    },
+    "弹幕不透明度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danmaku Opacity"
+          }
+        }
+      }
+    },
+    "弹幕位置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danmaku Position"
+          }
+        }
+      }
+    },
+    "弹幕位置：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danmaku position: %@"
+          }
+        }
+      }
+    },
+    "弹幕字体尺寸": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danmaku Font Size"
+          }
+        }
+      }
+    },
+    "弹幕实时预览，包含滚动、顶部和底部弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live danmaku preview with scrolling, top and bottom danmaku"
+          }
+        }
+      }
+    },
+    "弹幕已发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danmaku sent"
+          }
+        }
+      }
+    },
+    "当前主题 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Theme · %@"
+          }
+        }
+      }
+    },
+    "当前加载的投稿都被内容过滤设置隐藏了。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All loaded videos are hidden by your content filter."
+          }
+        }
+      }
+    },
+    "当前推荐中的视频都被内容过滤设置隐藏了。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All recommended videos are hidden by your content filter."
+          }
+        }
+      }
+    },
+    "当前档位": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Size"
+          }
+        }
+      }
+    },
+    "当前用户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current User"
+          }
+        }
+      }
+    },
+    "当前系统不支持切换桌面图标。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This system doesn't support changing the app icon."
+          }
+        }
+      }
+    },
+    "当前视频不支持该分辨率": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video doesn't support that resolution"
+          }
+        }
+      }
+    },
+    "当前视频不支持该音质": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video doesn't support that audio quality"
+          }
+        }
+      }
+    },
+    "彩色弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Colored Danmaku"
+          }
+        }
+      }
+    },
+    "彩色弹幕也会同步更新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Colored danmaku update too"
+          }
+        }
+      }
+    },
+    "快进": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fast Forward"
+          }
+        }
+      }
+    },
+    "恢复标准": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset to Default"
+          }
+        }
+      }
+    },
+    "恢复默认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset to Default"
+          }
+        }
+      }
+    },
+    "恢复默认分区": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset Zones"
+          }
+        }
+      }
+    },
+    "恢复默认樱花粉": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset to Sakura Pink"
+          }
+        }
+      }
+    },
+    "恢复默认设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset to Defaults"
+          }
+        }
+      }
+    },
+    "我的": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Me"
+          }
+        }
+      }
+    },
+    "我的收藏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My Favorites"
+          }
+        }
+      }
+    },
+    "我的服务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My Services"
+          }
+        }
+      }
+    },
+    "房间 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room %lld"
+          }
+        }
+      }
+    },
+    "打开 UP 主主页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open UP's Space"
+          }
+        }
+      }
+    },
+    "打开「哔哩哔哩」App 扫一扫": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan with the Bilibili app"
+          }
+        }
+      }
+    },
+    "打开个人页面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open profile"
+          }
+        }
+      }
+    },
+    "打开直播间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Live Room"
+          }
+        }
+      }
+    },
+    "扫码登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan to Sign In"
+          }
+        }
+      }
+    },
+    "投币": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coin"
+          }
+        }
+      }
+    },
+    "投票": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vote"
+          }
+        }
+      }
+    },
+    "投稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Videos"
+          }
+        }
+      }
+    },
+    "拖动右侧的把手调整顺序，点红色按钮隐藏。标签栏最多 %lld 个（含固定在末尾的搜索），不会出现「更多」。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag the handles to reorder and tap the red button to hide a tab. The tab bar shows at most %lld tabs (including Search, which stays last), so \"More\" never appears."
+          }
+        }
+      }
+    },
+    "持续按住一键三连": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep holding to like, coin and favorite"
+          }
+        }
+      }
+    },
+    "持续按住选择收藏夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep holding to choose a folder"
+          }
+        }
+      }
+    },
+    "按本机屏幕的横屏尺寸等比缩小，圆角和灵动岛为近似示意。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scaled from this screen in landscape; corners and the Dynamic Island are approximate."
+          }
+        }
+      }
+    },
+    "接口与交互参考": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API and Interaction References"
+          }
+        }
+      }
+    },
+    "控件间距": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Control Spacing"
+          }
+        }
+      }
+    },
+    "推荐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recommended"
+          }
+        }
+      }
+    },
+    "推荐、直播和关注页共用。距离越短，越容易触发刷新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shared by Recommended, Live and Following. A shorter distance triggers a refresh more easily."
+          }
+        }
+      }
+    },
+    "推荐、直播和搜索页面的卡片以原位淡入方式出现。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cards on Recommended, Live and Search fade in place."
+          }
+        }
+      }
+    },
+    "推荐页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recommended"
+          }
+        }
+      }
+    },
+    "搜索": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search"
+          }
+        }
+      }
+    },
+    "搜索历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search History"
+          }
+        }
+      }
+    },
+    "搜索失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Failed"
+          }
+        }
+      }
+    },
+    "搜索标签：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search tag: %@"
+          }
+        }
+      }
+    },
+    "搜索视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Videos"
+          }
+        }
+      }
+    },
+    "搜索页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search"
+          }
+        }
+      }
+    },
+    "搜索：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search: %@"
+          }
+        }
+      }
+    },
+    "撤销": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undo"
+          }
+        }
+      }
+    },
+    "播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play"
+          }
+        }
+      }
+    },
+    "播放与画质": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback & Quality"
+          }
+        }
+      }
+    },
+    "播放内核": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Player Engine"
+          }
+        }
+      }
+    },
+    "播放器手势": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Player Gestures"
+          }
+        }
+      }
+    },
+    "播放器控件位置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Player Control Layout"
+          }
+        }
+      }
+    },
+    "播放器控件位置预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Player Control Layout Preview"
+          }
+        }
+      }
+    },
+    "播放器滑动手势": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Player Swipe Gestures"
+          }
+        }
+      }
+    },
+    "播放方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback Mode"
+          }
+        }
+      }
+    },
+    "播放进度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback Progress"
+          }
+        }
+      }
+    },
+    "收藏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorites"
+          }
+        }
+      }
+    },
+    "收藏到": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to Folder"
+          }
+        }
+      }
+    },
+    "收藏加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load favorites"
+          }
+        }
+      }
+    },
+    "收藏夹是空的": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This folder is empty"
+          }
+        }
+      }
+    },
+    "收起": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse"
+          }
+        }
+      }
+    },
+    "收起直播简介": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse Stream Info"
+          }
+        }
+      }
+    },
+    "收起简介": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse Description"
+          }
+        }
+      }
+    },
+    "收起视频画面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse Video"
+          }
+        }
+      }
+    },
+    "收起评论正文": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse Comment"
+          }
+        }
+      }
+    },
+    "收起评论输入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss Comment Input"
+          }
+        }
+      }
+    },
+    "收起键盘": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss Keyboard"
+          }
+        }
+      }
+    },
+    "数据解析失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't parse the response"
+          }
+        }
+      }
+    },
+    "文字大小": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text Size"
+          }
+        }
+      }
+    },
+    "无效的请求地址": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid request URL"
+          }
+        }
+      }
+    },
+    "无法播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't Play"
+          }
+        }
+      }
+    },
+    "无法获取 WBI 签名密钥": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't get the WBI signing key"
+          }
+        }
+      }
+    },
+    "时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duration"
+          }
+        }
+      }
+    },
+    "昨天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yesterday"
+          }
+        }
+      }
+    },
+    "显示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Display"
+          }
+        }
+      }
+    },
+    "显示%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show %@"
+          }
+        }
+      }
+    },
+    "显示的标签": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visible Tabs"
+          }
+        }
+      }
+    },
+    "显示的标签已满，先隐藏一个才能添加。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visible tabs are full. Hide one before adding another."
+          }
+        }
+      }
+    },
+    "晴空蓝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sky Blue"
+          }
+        }
+      }
+    },
+    "暂停": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause"
+          }
+        }
+      }
+    },
+    "暂无搜索历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No search history"
+          }
+        }
+      }
+    },
+    "暂无热搜": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No trending searches"
+          }
+        }
+      }
+    },
+    "暂无预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No preview"
+          }
+        }
+      }
+    },
+    "暂时无法连接，登录信息已保留": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't connect right now. You're still signed in"
+          }
+        }
+      }
+    },
+    "暂时没有新的推荐，请稍后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No new recommendations right now. Please try again later"
+          }
+        }
+      }
+    },
+    "暂时没有直播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No live streams right now"
+          }
+        }
+      }
+    },
+    "暂时没有相关视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No related videos yet"
+          }
+        }
+      }
+    },
+    "更多播放选项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More Playback Options"
+          }
+        }
+      }
+    },
+    "最多选择 %lld 项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose up to %lld"
+          }
+        }
+      }
+    },
+    "最大": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Largest"
+          }
+        }
+      }
+    },
+    "最小": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smallest"
+          }
+        }
+      }
+    },
+    "最短视频时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minimum Video Length"
+          }
+        }
+      }
+    },
+    "服务器未提供%@播放地址，已保留当前画质": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server didn't provide a %@ stream. Keeping the current quality"
+          }
+        }
+      }
+    },
+    "未取得%@播放地址，该档位需要大会员权限；已保留当前画质": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't get a %@ stream; it requires VIP. Keeping the current quality"
+          }
+        }
+      }
+    },
+    "未取得%@播放地址，请确认登录状态；已保留当前画质": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't get a %@ stream. Check that you're signed in. Keeping the current quality"
+          }
+        }
+      }
+    },
+    "未开启": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        }
+      }
+    },
+    "未开播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline"
+          }
+        }
+      }
+    },
+    "本视频播完": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End of Video"
+          }
+        }
+      }
+    },
+    "杜比": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dolby"
+          }
+        }
+      }
+    },
+    "杜比全景声": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dolby Atmos"
+          }
+        }
+      }
+    },
+    "杜比视界": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dolby Vision"
+          }
+        }
+      }
+    },
+    "松开取消跳转": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Release to cancel seeking"
+          }
+        }
+      }
+    },
+    "查看 UP 主主页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View UP's Space"
+          }
+        }
+      }
+    },
+    "查看全部 %lld 条回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View all %lld replies"
+          }
+        }
+      }
+    },
+    "查看全部回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View All Replies"
+          }
+        }
+      }
+    },
+    "查看所有关注的 UP 主": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See every UP you follow"
+          }
+        }
+      }
+    },
+    "标准": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default"
+          }
+        }
+      }
+    },
+    "标签栏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tab Bar"
+          }
+        }
+      }
+    },
+    "标题栏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title Bar"
+          }
+        }
+      }
+    },
+    "桌面图标未能更新，可点击下方重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The app icon couldn't be updated. Tap below to try again."
+          }
+        }
+      }
+    },
+    "森林绿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forest"
+          }
+        }
+      }
+    },
+    "樱花粉": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sakura Pink"
+          }
+        }
+      }
+    },
+    "橄榄绿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Olive"
+          }
+        }
+      }
+    },
+    "正在加入稍后再看…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adding to Watch Later…"
+          }
+        }
+      }
+    },
+    "正在加载图片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading image"
+          }
+        }
+      }
+    },
+    "正在加载直播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading live streams"
+          }
+        }
+      }
+    },
+    "正在投票…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voting…"
+          }
+        }
+      }
+    },
+    "正在播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now Playing"
+          }
+        }
+      }
+    },
+    "正在连接直播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to the stream"
+          }
+        }
+      }
+    },
+    "正文预览：这段文字会随档位一起变化": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview: this text changes with the size"
+          }
+        }
+      }
+    },
+    "没有可显示的分集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No episodes to show"
+          }
+        }
+      }
+    },
+    "没有可显示的图片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No images to show"
+          }
+        }
+      }
+    },
+    "没有可显示的视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No videos to show"
+          }
+        }
+      }
+    },
+    "没有投稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Videos"
+          }
+        }
+      }
+    },
+    "没有收藏夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Folders"
+          }
+        }
+      }
+    },
+    "活力橙": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orange"
+          }
+        }
+      }
+    },
+    "流畅": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smooth"
+          }
+        }
+      }
+    },
+    "清晰度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quality"
+          }
+        }
+      }
+    },
+    "清晰度 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quality %lld"
+          }
+        }
+      }
+    },
+    "清空": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear"
+          }
+        }
+      }
+    },
+    "清空搜索历史": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Search History"
+          }
+        }
+      }
+    },
+    "湖水蓝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lake Blue"
+          }
+        }
+      }
+    },
+    "滚动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrolling"
+          }
+        }
+      }
+    },
+    "滚动与防误触": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrolling & Mis-tap Guard"
+          }
+        }
+      }
+    },
+    "滚动弹幕，看看这个字号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrolling danmaku at this size"
+          }
+        }
+      }
+    },
+    "点击重试换一条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to try another"
+          }
+        }
+      }
+    },
+    "点赞": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Like"
+          }
+        }
+      }
+    },
+    "热搜": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trending"
+          }
+        }
+      }
+    },
+    "热搜暂时不可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trending searches are unavailable right now"
+          }
+        }
+      }
+    },
+    "版本": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version"
+          }
+        }
+      }
+    },
+    "状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Status"
+          }
+        }
+      }
+    },
+    "玫瑰红": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rose"
+          }
+        }
+      }
+    },
+    "珊瑚橙": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coral"
+          }
+        }
+      }
+    },
+    "琥珀金": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Amber"
+          }
+        }
+      }
+    },
+    "用「哔哩哔哩」App 扫一扫登录。同一台手机：先保存二维码，再在 B 站 App 扫一扫里从相册选择。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan with the Bilibili app to sign in. On the same phone, save the QR code first, then choose it from your photos in the Bilibili app scanner."
+          }
+        }
+      }
+    },
+    "用于底部标签栏、自定义图标及自定义装饰。系统控件的文字和图标跟随浅色／深色外观。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used for the tab bar, custom icons and accents. System controls follow the light or dark appearance."
+          }
+        }
+      }
+    },
+    "用户名 / 手机号 / 邮箱": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Username / Phone / Email"
+          }
+        }
+      }
+    },
+    "画幅": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aspect"
+          }
+        }
+      }
+    },
+    "画质 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quality %lld"
+          }
+        }
+      }
+    },
+    "画质切换已取消，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quality change was canceled. Please try again"
+          }
+        }
+      }
+    },
+    "登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign In"
+          }
+        }
+      }
+    },
+    "登录信息已保留，可以重试加载。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're still signed in. You can try loading again."
+          }
+        }
+      }
+    },
+    "登录公钥格式异常": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid sign-in public key"
+          }
+        }
+      }
+    },
+    "登录后发表评论": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to comment"
+          }
+        }
+      }
+    },
+    "登录后可以使用收藏、历史、稍后再看，\n首页也会变成属于你的个性化推荐。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to use Favorites, History and Watch Later,\nand get personalized recommendations."
+          }
+        }
+      }
+    },
+    "登录后这里会显示你关注的 UP 主的最新动态。\n点右上角头像即可登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to see the latest posts from UPs you follow.\nTap the avatar in the top-right corner to sign in."
+          }
+        }
+      }
+    },
+    "登录失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in failed"
+          }
+        }
+      }
+    },
+    "登录成功": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in"
+          }
+        }
+      }
+    },
+    "登录成功但未收到凭据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in, but no credentials were received"
+          }
+        }
+      }
+    },
+    "登录服务响应异常": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unexpected response from the sign-in service"
+          }
+        }
+      }
+    },
+    "登录服务异常": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in service error"
+          }
+        }
+      }
+    },
+    "登录状态已失效，请重新登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your session has expired. Please sign in again"
+          }
+        }
+      }
+    },
+    "直播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live"
+          }
+        }
+      }
+    },
+    "直播中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live"
+          }
+        }
+      }
+    },
+    "直播公告": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Announcement"
+          }
+        }
+      }
+    },
+    "直播内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Content"
+          }
+        }
+      }
+    },
+    "直播加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load live streams"
+          }
+        }
+      }
+    },
+    "直播卡片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Cards"
+          }
+        }
+      }
+    },
+    "直播响应缺少数据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The live response has no data"
+          }
+        }
+      }
+    },
+    "直播地址暂不可用，请稍后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The stream is unavailable right now. Please try again later"
+          }
+        }
+      }
+    },
+    "直播服务返回错误": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The live service returned an error"
+          }
+        }
+      }
+    },
+    "直播正在加载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stream is loading"
+          }
+        }
+      }
+    },
+    "直播简介": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stream Info"
+          }
+        }
+      }
+    },
+    "直播连接中断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stream disconnected"
+          }
+        }
+      }
+    },
+    "直播连接已结束，请重新连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The stream connection ended. Please reconnect"
+          }
+        }
+      }
+    },
+    "直播连接超时，请重新连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The stream connection timed out. Please reconnect"
+          }
+        }
+      }
+    },
+    "直播间 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Room %lld"
+          }
+        }
+      }
+    },
+    "直播间弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Danmaku"
+          }
+        }
+      }
+    },
+    "直播间简介": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room Description"
+          }
+        }
+      }
+    },
+    "相关视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Related Videos"
+          }
+        }
+      }
+    },
+    "相关视频已被内容过滤设置隐藏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Related videos are hidden by your content filter"
+          }
+        }
+      }
+    },
+    "看看推荐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browse Recommended"
+          }
+        }
+      }
+    },
+    "短于这个时长的视频会从这些列表中隐藏。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Videos shorter than this are hidden from these lists."
+          }
+        }
+      }
+    },
+    "石墨灰": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Graphite"
+          }
+        }
+      }
+    },
+    "确定退出登录？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign out?"
+          }
+        }
+      }
+    },
+    "示例视频标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sample Video Title"
+          }
+        }
+      }
+    },
+    "移出稍后再看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove from Watch Later"
+          }
+        }
+      }
+    },
+    "移回画面继续调整": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move back onto the video to keep adjusting"
+          }
+        }
+      }
+    },
+    "稍后下拉刷新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pull to refresh later."
+          }
+        }
+      }
+    },
+    "稍后再看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch Later"
+          }
+        }
+      }
+    },
+    "稍后再看加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load Watch Later"
+          }
+        }
+      }
+    },
+    "稍后再看是空的": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch Later is empty"
+          }
+        }
+      }
+    },
+    "稍后拖动重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag again later"
+          }
+        }
+      }
+    },
+    "立即播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play Now"
+          }
+        }
+      }
+    },
+    "第 %lld 张图片，共 %lld 张": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image %1$lld of %2$lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %1$lld 张图片，共 %2$lld 张"
+          }
+        }
+      }
+    },
+    "第 %lld 档，共 %lld 档": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Size %1$lld of %2$lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %1$lld 档，共 %2$lld 档"
+          }
+        }
+      }
+    },
+    "第%lld名，%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No. %1$lld, %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第%1$lld名，%2$@"
+          }
+        }
+      }
+    },
+    "第三方客户端无法绕过 B 站的风控，登录时需要完成一次滑块验证；多次失败可能触发账号保护，请稍后再试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Third-party clients can't bypass Bilibili's risk control, so signing in requires a slider check. Repeated failures may trigger account protection; please try again later."
+          }
+        }
+      }
+    },
+    "简介": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Description"
+          }
+        }
+      }
+    },
+    "粉丝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Followers"
+          }
+        }
+      }
+    },
+    "系统设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        }
+      }
+    },
+    "紫罗兰": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Violet"
+          }
+        }
+      }
+    },
+    "经典蓝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Classic Blue"
+          }
+        }
+      }
+    },
+    "继续加载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load More"
+          }
+        }
+      }
+    },
+    "继续加载动态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load More Posts"
+          }
+        }
+      }
+    },
+    "继续播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume"
+          }
+        }
+      }
+    },
+    "缓冲中，%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buffering, %@"
+          }
+        }
+      }
+    },
+    "缩略播放器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mini Player"
+          }
+        }
+      }
+    },
+    "网络请求失败 (HTTP %lld)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network request failed (HTTP %lld)"
+          }
+        }
+      }
+    },
+    "网络请求失败（%lld）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network request failed (%lld)"
+          }
+        }
+      }
+    },
+    "网络连接不稳定，请稍后再试（%lld）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The network connection is unstable. Please try again later (%lld)"
+          }
+        }
+      }
+    },
+    "翡翠绿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jade"
+          }
+        }
+      }
+    },
+    "自动（最佳可用）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto (Best Available)"
+          }
+        }
+      }
+    },
+    "自定义动画": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom Animations"
+          }
+        }
+      }
+    },
+    "自己": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You"
+          }
+        }
+      }
+    },
+    "莓果色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berry"
+          }
+        }
+      }
+    },
+    "获赞": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Likes"
+          }
+        }
+      }
+    },
+    "蓝光": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blu-ray"
+          }
+        }
+      }
+    },
+    "薰衣草": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lavender"
+          }
+        }
+      }
+    },
+    "视频内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Content"
+          }
+        }
+      }
+    },
+    "视频分集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episodes"
+          }
+        }
+      }
+    },
+    "视频加载中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading video"
+          }
+        }
+      }
+    },
+    "视频加载失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load video: %@"
+          }
+        }
+      }
+    },
+    "视频卡片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Cards"
+          }
+        }
+      }
+    },
+    "视频地址无效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid video URL"
+          }
+        }
+      }
+    },
+    "视频尚未准备好，请稍后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The video isn't ready yet. Please try again later"
+          }
+        }
+      }
+    },
+    "视频正在加载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video is loading"
+          }
+        }
+      }
+    },
+    "视频详情页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Page"
+          }
+        }
+      }
+    },
+    "视频页顶部的播放区域，按本机屏幕宽度等比缩小。竖屏视频全屏播放时也使用这组设置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The player area at the top of the video page, scaled to this screen width. Portrait videos in full screen use these settings too."
+          }
+        }
+      }
+    },
+    "评论": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comments"
+          }
+        }
+      }
+    },
+    "评论 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comments %lld"
+          }
+        }
+      }
+    },
+    "评论不能超过1000字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comments are limited to 1,000 characters"
+          }
+        }
+      }
+    },
+    "评论内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comment"
+          }
+        }
+      }
+    },
+    "评论加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load comments"
+          }
+        }
+      }
+    },
+    "该操作需要 App 端登录凭据，请退出后用扫码方式重新登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This requires app sign-in credentials. Sign out and sign in again by scanning the QR code"
+          }
+        }
+      }
+    },
+    "该时间点超出当前视频时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That time is beyond the end of this video"
+          }
+        }
+      }
+    },
+    "该视频暂不支持播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video can't be played right now"
+          }
+        }
+      }
+    },
+    "语言": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Language"
+          }
+        }
+      }
+    },
+    "请先在哔哩哔哩 App 里创建一个收藏夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create a folder in the Bilibili app first"
+          }
+        }
+      }
+    },
+    "请先登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please sign in first"
+          }
+        }
+      }
+    },
+    "请求被 B 站风控拦截，请稍后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The request was blocked by Bilibili's risk control. Please try again later"
+          }
+        }
+      }
+    },
+    "账号信息暂时无法加载，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load account info. Please try again"
+          }
+        }
+      }
+    },
+    "账号信息暂未加载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account info hasn't loaded"
+          }
+        }
+      }
+    },
+    "账号信息暂未同步，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account info hasn't synced. Please try again"
+          }
+        }
+      }
+    },
+    "账号密码登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign In with Password"
+          }
+        }
+      }
+    },
+    "账号管理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account"
+          }
+        }
+      }
+    },
+    "赞": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Like"
+          }
+        }
+      }
+    },
+    "超清": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Super HD"
+          }
+        }
+      }
+    },
+    "跟随系统": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        }
+      }
+    },
+    "跟随系统时，系统语言为中文则显示中文，其它语言显示英文。B 站返回的内容（标题、评论、热搜等）保持原文。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With System, NeoBili uses Chinese when your system language is Chinese and English otherwise. Content from Bilibili (titles, comments, trending searches and so on) stays in its original language."
+          }
+        }
+      }
+    },
+    "转发": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Repost"
+          }
+        }
+      }
+    },
+    "较大": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Larger"
+          }
+        }
+      }
+    },
+    "较小": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smaller"
+          }
+        }
+      }
+    },
+    "输入关键词开始搜索": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a keyword to search"
+          }
+        }
+      }
+    },
+    "返回": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back"
+          }
+        }
+      }
+    },
+    "还没有关注任何 UP 主": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're not following any UPs yet"
+          }
+        }
+      }
+    },
+    "还没有动态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Posts Yet"
+          }
+        }
+      }
+    },
+    "还没有回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Replies Yet"
+          }
+        }
+      }
+    },
+    "还没有收藏夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Folders Yet"
+          }
+        }
+      }
+    },
+    "还没有新动态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No New Posts"
+          }
+        }
+      }
+    },
+    "还没有观看记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Watch History Yet"
+          }
+        }
+      }
+    },
+    "还没有评论": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Comments Yet"
+          }
+        }
+      }
+    },
+    "这位 UP 主已结束直播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This UP has ended the stream"
+          }
+        }
+      }
+    },
+    "这位 UP 主最近没有更新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This UP hasn't posted recently."
+          }
+        }
+      }
+    },
+    "这位 UP 主还没有公开的视频稿件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This UP hasn't published any videos."
+          }
+        }
+      }
+    },
+    "这位 UP 主还没有发过动态。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This UP hasn't posted anything yet."
+          }
+        }
+      }
+    },
+    "这条动态没有评论区": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comments are off for this post"
+          }
+        }
+      }
+    },
+    "进入全屏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter Full Screen"
+          }
+        }
+      }
+    },
+    "进入动画": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter Animation"
+          }
+        }
+      }
+    },
+    "进入直播间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter Live Room"
+          }
+        }
+      }
+    },
+    "进入速度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter Speed"
+          }
+        }
+      }
+    },
+    "连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect"
+          }
+        }
+      }
+    },
+    "连接中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting"
+          }
+        }
+      }
+    },
+    "退出全屏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit Full Screen"
+          }
+        }
+      }
+    },
+    "退出动画": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit Animation"
+          }
+        }
+      }
+    },
+    "退出登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign Out"
+          }
+        }
+      }
+    },
+    "退出视频页面后停止播放，底部标签栏始终保持展开。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback stops when you leave the video page, and the tab bar stays expanded."
+          }
+        }
+      }
+    },
+    "退出视频页面后在底部继续播放，底部标签栏可随滚动收缩。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback continues at the bottom when you leave the video page, and the tab bar can shrink as you scroll."
+          }
+        }
+      }
+    },
+    "退出速度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit Speed"
+          }
+        }
+      }
+    },
+    "重新加载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reload"
+          }
+        }
+      }
+    },
+    "重新播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replay"
+          }
+        }
+      }
+    },
+    "重新连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect"
+          }
+        }
+      }
+    },
+    "重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        }
+      }
+    },
+    "重试加载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        }
+      }
+    },
+    "重试加载评论": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Loading Comments"
+          }
+        }
+      }
+    },
+    "重试播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Playback"
+          }
+        }
+      }
+    },
+    "重试更新桌面图标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Updating App Icon"
+          }
+        }
+      }
+    },
+    "钴蓝色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cobalt"
+          }
+        }
+      }
+    },
+    "长按后松手": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Long-press and release"
+          }
+        }
+      }
+    },
+    "长按后松手，或持续按住执行更多操作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Long-press and release, or keep holding for more actions"
+          }
+        }
+      }
+    },
+    "防误触": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mis-tap Guard"
+          }
+        }
+      }
+    },
+    "随内容滚动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scroll with Content"
+          }
+        }
+      }
+    },
+    "隐藏%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide %@"
+          }
+        }
+      }
+    },
+    "隐藏的标签": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hidden Tabs"
+          }
+        }
+      }
+    },
+    "隐藏竖屏视频": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Portrait Videos"
+          }
+        }
+      }
+    },
+    "需要完成验证才能发送，请在官方客户端验证后重试。草稿已保留。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verification is required to send. Verify in the official app, then try again. Your draft is saved."
+          }
+        }
+      }
+    },
+    "青柠绿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lime"
+          }
+        }
+      }
+    },
+    "青瓷色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Celadon"
+          }
+        }
+      }
+    },
+    "青草绿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leaf Green"
+          }
+        }
+      }
+    },
+    "靛青色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indigo"
+          }
+        }
+      }
+    },
+    "非全屏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Full Screen"
+          }
+        }
+      }
+    },
+    "音质": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio Quality"
+          }
+        }
+      }
+    },
+    "音轨 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio %lld"
+          }
+        }
+      }
+    },
+    "音量": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volume"
+          }
+        }
+      }
+    },
+    "页面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pages"
+          }
+        }
+      }
+    },
+    "页面切换": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Page Transitions"
+          }
+        }
+      }
+    },
+    "页面淡入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Page Fade-In"
+          }
+        }
+      }
+    },
+    "顶部": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top"
+          }
+        }
+      }
+    },
+    "顶部弹幕 · 实时预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top danmaku · Live preview"
+          }
+        }
+      }
+    },
+    "高清": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HD"
+          }
+        }
+      }
+    },
+    "默认画质": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default Quality"
+          }
+        }
+      }
+    },
+    "（需大会员）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " (VIP)"
+          }
+        }
+      }
+    },
+    "（需登录）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " (Sign-in Required)"
+          }
+        }
+      }
+    },
+    "，正在直播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", live now"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

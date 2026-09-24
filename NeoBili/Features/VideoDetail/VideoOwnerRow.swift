@@ -50,10 +50,10 @@ struct VideoOwnerRow: View {
     private var subtitle: String? {
         var parts: [String] = []
         if let follower = card?.follower {
-            parts.append("\(follower.biliCountText)粉丝")
+            parts.append(String(localized: "\(follower.biliCountText)粉丝"))
         }
         if let archiveCount = card?.archiveCount {
-            parts.append("\(archiveCount)视频")
+            parts.append(String(localized: "\(archiveCount)视频"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -62,7 +62,7 @@ struct VideoOwnerRow: View {
     @ViewBuilder
     private var followButton: some View {
         let button = Button(action: onToggleFollow) {
-            Text(isFollowing ? "已关注" : "关注")
+            Text(isFollowing ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)

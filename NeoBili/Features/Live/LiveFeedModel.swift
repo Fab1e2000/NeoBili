@@ -10,8 +10,8 @@ final class LiveFeedModel {
 
         var title: String {
             switch self {
-            case .recommended: "推荐"
-            case .following: "关注"
+            case .recommended: String(localized: "推荐")
+            case .following: String(localized: "关注")
             }
         }
     }

@@ -100,7 +100,7 @@ final class HomeViewModel {
             let batch = try await fetchNextBatch()
             let existing = Set(videos.map(\.bvid)).union(uninterestedIDs)
             guard let replacement = batch.first(where: { !existing.contains($0.bvid) }) else {
-                return "暂时没有新的推荐，请稍后重试"
+                return String(localized: "暂时没有新的推荐，请稍后重试")
             }
             // 等待网络期间刷新可能已改变列表，以原视频标识重新定位。
             guard let index = videos.firstIndex(where: { $0.bvid == video.bvid }) else { return nil }

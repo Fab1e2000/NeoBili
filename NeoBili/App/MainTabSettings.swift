@@ -8,21 +8,21 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .live: "直播"
-        case .home: "推荐"
-        case .following: "关注"
-        case .watchLater: "稍后再看"
-        case .favorites: "收藏"
-        case .history: "历史"
-        case .search: "搜索"
+        case .live: String(localized: "直播")
+        case .home: String(localized: "推荐")
+        case .following: String(localized: "关注")
+        case .watchLater: String(localized: "稍后再看")
+        case .favorites: String(localized: "收藏")
+        case .history: String(localized: "历史")
+        case .search: String(localized: "搜索")
         }
     }
 
     /// 页头上的完整标题；标签栏空间有限，用上面的短标题。
     var pageTitle: String {
         switch self {
-        case .favorites: "我的收藏"
-        case .history: "历史记录"
+        case .favorites: String(localized: "我的收藏")
+        case .history: String(localized: "历史记录")
         default: title
         }
     }

@@ -60,10 +60,10 @@ final class LiveRoomFollowModel {
     }
 
     func toggleFollow(_ current: Context) async -> String? {
-        guard current.isLoggedIn else { return "请先登录" }
-        guard current.mid > 0 else { return "主播资料尚未加载" }
-        guard !current.isOwnAccount else { return "不能关注自己" }
-        guard context == current, let previous = isFollowing else { return "关注状态尚未加载，请重试" }
+        guard current.isLoggedIn else { return String(localized: "请先登录") }
+        guard current.mid > 0 else { return String(localized: "主播资料尚未加载") }
+        guard !current.isOwnAccount else { return String(localized: "不能关注自己") }
+        guard context == current, let previous = isFollowing else { return String(localized: "关注状态尚未加载，请重试") }
         guard !isToggling else { return nil }
         // 写入开始后旧名片响应不能把已关注状态覆盖回去。
         readID = UUID()
@@ -76,7 +76,7 @@ final class LiveRoomFollowModel {
         do {
             try await relationWriter(current.mid, !previous)
             guard context == current, writeID == request, !Task.isCancelled else { return nil }
-            return previous ? "已取消关注" : "已关注"
+            return previous ? String(localized: "已取消关注") : String(localized: "toast.followed", defaultValue: "已关注")
         } catch {
             guard context == current, writeID == request else { return nil }
             isFollowing = previous

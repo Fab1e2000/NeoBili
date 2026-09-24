@@ -12,8 +12,8 @@ struct InlineVideoCollapseOverlay: View {
     let onExpand: () -> Void
 
     private var playTitle: String {
-        guard let player, player.hasRenderedFirstFrame else { return "立即播放" }
-        return player.isPlaybackCompleted ? "重新播放" : "继续播放"
+        guard let player, player.hasRenderedFirstFrame else { return String(localized: "立即播放") }
+        return player.isPlaybackCompleted ? String(localized: "重新播放") : String(localized: "继续播放")
     }
 
     var body: some View {

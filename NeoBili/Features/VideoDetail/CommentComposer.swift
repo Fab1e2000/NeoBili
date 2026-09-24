@@ -133,10 +133,10 @@ private struct CommentComposerHost: ViewModifier {
     }
 
     private func send() {
-        guard account.isLoggedIn else { sendError = "请先登录"; return }
+        guard account.isLoggedIn else { sendError = String(localized: "请先登录"); return }
         let message = savedDraft.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sending, !message.isEmpty else { return }
-        guard message.count <= 1000 else { sendError = "评论不能超过1000字"; return }
+        guard message.count <= 1000 else { sendError = String(localized: "评论不能超过1000字"); return }
         let reply = destination
         let session = account.sessionID
         sending = true
@@ -151,7 +151,7 @@ private struct CommentComposerHost: ViewModifier {
                 savedDraft.text = ""
                 savedDraft.target = nil
                 focused = false
-                feedback.show(result.successToast ?? "发送成功")
+                feedback.show(result.successToast ?? String(localized: "发送成功"))
             } catch {
                 guard session == account.sessionID else { return }
                 sendError = error.localizedDescription
@@ -181,7 +181,7 @@ private struct CommentOutsideTapObserver: UIViewRepresentable {
             control.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             control.addTarget(self, action: #selector(dismissInput), for: .touchUpInside)
             control.isAccessibilityElement = true
-            control.accessibilityLabel = "收起评论输入"
+            control.accessibilityLabel = String(localized: "收起评论输入")
             control.accessibilityTraits = .button
             return control
         }()

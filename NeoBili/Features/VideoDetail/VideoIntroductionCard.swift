@@ -33,7 +33,7 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
     }
     /// 标题下方的信息行：播放 · 弹幕 · 发布时间。
     static func metadataText(stat: VideoStat, pubdate: Int) -> String {
-        ["\(stat.view.biliCountText)播放", "\(stat.danmaku.biliCountText)弹幕", pubdate.biliPubdateText]
+        [String(localized: "\(stat.view.biliCountText)播放"), String(localized: "\(stat.danmaku.biliCountText)弹幕"), pubdate.biliPubdateText]
             .joined(separator: " · ")
     }
 
@@ -109,8 +109,8 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
             arrow.image = UIImage(systemName: expanded ? "chevron.up" : "chevron.down",
                                   withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold))
             titleLabel.accessibilityCustomActions = hasDescription ? [UIAccessibilityCustomAction(
-                name: expanded ? "收起简介" : "展开简介", target: self, selector: #selector(accessibilityToggle))] : []
-            titleLabel.accessibilityValue = hasDescription ? (expanded ? "已展开" : "已收起") : nil
+                name: expanded ? String(localized: "收起简介") : String(localized: "展开简介"), target: self, selector: #selector(accessibilityToggle))] : []
+            titleLabel.accessibilityValue = hasDescription ? (expanded ? String(localized: "已展开") : String(localized: "已收起")) : nil
             invalidateIntrinsicContentSize()
             setNeedsLayout()
         }

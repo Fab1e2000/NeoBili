@@ -70,7 +70,7 @@ enum LiveAPI {
         ], roomID: roomID, signed: true)
         let playback = payload.playback(fallbackRoomID: roomID)
         if playback.isLive, playback.candidates.isEmpty {
-            throw BiliAPIError.apiError(code: -1, message: "直播地址暂不可用，请稍后重试")
+            throw BiliAPIError.apiError(code: -1, message: String(localized: "直播地址暂不可用，请稍后重试"))
         }
         return playback
     }
@@ -187,7 +187,7 @@ struct LiveResponse<Payload: Decodable>: Decodable {
             throw DecodingError.keyNotFound(LiveCodingKey("code"), .init(codingPath: decoder.codingPath, debugDescription: "直播响应缺少code"))
         }
         self.code = code
-        message = values.liveString("message", "msg") ?? "直播服务返回错误"
+        message = values.liveString("message", "msg") ?? String(localized: "直播服务返回错误")
         // 先保留错误码，不让失败响应的数据形状遮住未登录／风控提示。
         data = code == 0 ? try values.decodeIfPresent(Payload.self, forKey: LiveCodingKey("data")) : nil
     }
@@ -195,7 +195,7 @@ struct LiveResponse<Payload: Decodable>: Decodable {
     func value() throws -> Payload {
         if [-352, -412].contains(code) { throw BiliAPIError.riskControlled }
         guard code == 0 else { throw BiliAPIError.apiError(code: code, message: message) }
-        guard let data else { throw BiliAPIError.apiError(code: code, message: "直播响应缺少数据") }
+        guard let data else { throw BiliAPIError.apiError(code: code, message: String(localized: "直播响应缺少数据")) }
         return data
     }
 }

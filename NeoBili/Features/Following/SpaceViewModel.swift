@@ -50,7 +50,7 @@ final class SpaceViewModel {
 
     /// 关注 / 取消关注。界面先变，失败再改回去并把接口原话交给调用方提示。
     func toggleFollow(isLoggedIn: Bool) async -> String? {
-        guard isLoggedIn else { return "请先登录" }
+        guard isLoggedIn else { return String(localized: "请先登录") }
         guard !isTogglingFollow else { return nil }
         isTogglingFollow = true
         defer { isTogglingFollow = false }
@@ -59,7 +59,7 @@ final class SpaceViewModel {
         isFollowing = !wasFollowing
         do {
             try await BiliAPI.modifyRelation(mid: mid, follow: !wasFollowing)
-            return wasFollowing ? "已取消关注" : "已关注"
+            return wasFollowing ? String(localized: "已取消关注") : String(localized: "toast.followed", defaultValue: "已关注")
         } catch {
             isFollowing = wasFollowing
             return error.isCancellation ? nil : error.localizedDescription

@@ -374,7 +374,7 @@ final class NowPlayingStore {
     private func refreshSystemMediaMetadata() {
         guard let route, let player else { return }
         let detail = detailViewModel?.detail
-        var title = detail?.title ?? route.title ?? "Bilibili 视频"
+        var title = detail?.title ?? route.title ?? String(localized: "Bilibili 视频")
         if let detail,
            detail.pages.count > 1,
            let part = detail.pages.first(where: { $0.cid == player.cid })?.part,

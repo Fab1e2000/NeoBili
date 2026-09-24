@@ -33,7 +33,7 @@ struct SearchPage: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if viewModel.suggestions.isEmpty {
-                            searchRow("搜索：\(viewModel.trimmedQuery)", keyword: viewModel.trimmedQuery)
+                            searchRow(String(localized: "搜索：\(viewModel.trimmedQuery)"), keyword: viewModel.trimmedQuery)
                         } else {
                             ForEach(viewModel.suggestions) { suggestion in
                                 searchRow(suggestion.value, keyword: suggestion.value)
@@ -86,7 +86,7 @@ struct SearchPage: View {
         .safeAreaBar(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
                 if displaysHeader {
-                    PageHeader(title: "搜索")
+                    PageHeader(title: String(localized: "搜索"))
                         .padding(.horizontal, 20)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -110,7 +110,7 @@ struct SearchPage: View {
     private var historySection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                sectionTitle("搜索历史")
+                sectionTitle(String(localized: "搜索历史"))
                 Spacer()
                 Button("清空", systemImage: "trash") { history.clear() }
                     .font(.caption)
@@ -150,7 +150,7 @@ struct SearchPage: View {
 
     private var hotSearchSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionTitle("热搜")
+            sectionTitle(String(localized: "热搜"))
             if viewModel.isLoadingHotSearches {
                 ProgressView().frame(maxWidth: .infinity).padding(8)
             } else if let error = viewModel.hotSearchError {
@@ -177,7 +177,7 @@ struct SearchPage: View {
                         .padding(.vertical, 12)
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityLabel("第\(index + 1)名，\(item.title)")
+                    }.buttonStyle(.plain).accessibilityLabel(String(localized: "第\(index + 1)名，\(item.title)"))
                     if index < viewModel.hotSearches.count - 1 {
                         Divider().padding(.leading, 32)
                     }

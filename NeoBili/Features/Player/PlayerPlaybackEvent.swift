@@ -20,8 +20,8 @@ enum PlayerSessionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidSource: return "视频地址无效"
-        case .playbackFailed(let detail): return "视频加载失败：\(detail)"
+        case .invalidSource: return String(localized: "视频地址无效")
+        case .playbackFailed(let detail): return String(localized: "视频加载失败：\(detail)")
         }
     }
 }

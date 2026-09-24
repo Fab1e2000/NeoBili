@@ -199,7 +199,7 @@ final class DynamicFeedModel {
     /// 视频动态点的是稿件本身（`archive/like`），和视频详情页同一个对象；
     /// 文字/图文动态点的是动态（`dyn/thumb`）。
     func toggleLike(_ entry: DynamicEntry, isLoggedIn: Bool) async -> String? {
-        guard isLoggedIn, likeStore.sessionID == accountSessionID else { return "请先登录" }
+        guard isLoggedIn, likeStore.sessionID == accountSessionID else { return String(localized: "请先登录") }
         guard !likingIDs.contains(entry.id) else { return nil }
         likingIDs.insert(entry.id)
         defer { likingIDs.remove(entry.id) }

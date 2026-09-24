@@ -68,7 +68,7 @@ private struct CommentMetaRow: View {
                 CommentLikeButton(comment: comment, viewModel: viewModel)
                 if let replyToComment {
                     Button { replyToComment(comment) } label: {
-                        CommentActionLabel(title: "回复", symbol: "arrowshape.turn.up.left")
+                        CommentActionLabel(title: String(localized: "回复"), symbol: "arrowshape.turn.up.left")
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("回复评论")
@@ -91,7 +91,7 @@ private struct CommentLikeButton: View {
         return Button {
             Task { await viewModel.toggleLike(comment, isLoggedIn: account.isLoggedIn) }
         } label: {
-            CommentActionLabel(title: count > 0 ? count.biliCountText : "赞",
+            CommentActionLabel(title: count > 0 ? count.biliCountText : String(localized: "赞"),
                                     symbol: isLiked ? "hand.thumbsup.fill" : "hand.thumbsup",
                                     isSelected: isLiked)
         }
@@ -260,7 +260,7 @@ private struct CommentReplyPreview: View {
         .onTapGesture { openCommentThread(comment) }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityLabel("查看全部 \(comment.rcount) 条回复")
+        .accessibilityLabel(String(localized: "查看全部 \(comment.rcount) 条回复"))
     }
 }
 

@@ -67,11 +67,11 @@ struct VideoPage: View {
         commentTimeJump.setHandler { [store, feedback] seconds in
             guard let player = store.player, player.hasRenderedFirstFrame,
                   !player.isLoading, player.duration.isFinite, player.duration > 0 else {
-                feedback.show("视频尚未准备好，请稍后重试")
+                feedback.show(String(localized: "视频尚未准备好，请稍后重试"))
                 return
             }
             guard seconds.isFinite, seconds >= 0, seconds <= player.duration else {
-                feedback.show("该时间点超出当前视频时长")
+                feedback.show(String(localized: "该时间点超出当前视频时长"))
                 return
             }
             Task {
@@ -358,9 +358,9 @@ struct VideoPage: View {
                     PlayerGlassChrome(
                         title: viewModel?.detail?.title ?? store.route?.title ?? "",
                         subtitle: viewModel?.detail?.owner.name ?? store.route?.artist ?? "",
-                        videoQualityControl: PlayerQualityControl(title: "分辨率", accessibilityLabel: "分辨率", options: [],
+                        videoQualityControl: PlayerQualityControl(title: String(localized: "分辨率"), accessibilityLabel: String(localized: "分辨率"), options: [],
                                                                  selectedID: 0, isEnabled: false, onSelect: { _ in }),
-                        audioQualityControl: PlayerQualityControl(title: "音质", accessibilityLabel: "音质", options: [],
+                        audioQualityControl: PlayerQualityControl(title: String(localized: "音质"), accessibilityLabel: String(localized: "音质"), options: [],
                                                                  selectedID: 0, isEnabled: false, onSelect: { _ in }),
                         canControlPlayback: false,
                         isWaiting: viewModel?.errorMessage == nil,
@@ -584,7 +584,7 @@ struct VideoPage: View {
     /// 与 PiliPlus 一致：打开发弹幕面板时暂停，弹幕出现在暂停的那一刻，关掉面板后继续播放。
     private func openDanmakuComposer() {
         guard account.isLoggedIn else {
-            viewModel?.actionMessage = "请先登录"
+            viewModel?.actionMessage = String(localized: "请先登录")
             return
         }
         resumesAfterDanmaku = store.player?.isPlaying == true
@@ -603,13 +603,13 @@ struct VideoPage: View {
         try await BiliAPI.shootDanmaku(cid: store.activeCid ?? detail.cid, bvid: detail.bvid, message: text,
                                        progress: player?.currentTime ?? 0, mode: mode.rawValue)
         player?.danmaku?.appendSent(text: text, mode: mode)
-        feedback.show("弹幕已发送")
+        feedback.show(String(localized: "弹幕已发送"))
     }
 
     /// 收藏夹选择弹窗要用当前账号的 mid 去查收藏夹，未登录时没有可查的东西。
     private func presentFavoriteFolders() {
         guard account.isLoggedIn else {
-            viewModel?.actionMessage = "请先登录"
+            viewModel?.actionMessage = String(localized: "请先登录")
             return
         }
         isShowingFavoriteFolders = true

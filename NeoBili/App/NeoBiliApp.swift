@@ -10,6 +10,8 @@ struct NeoBiliApp: App {
         // stdout is fully buffered off a terminal, so `print()` debug logs
         // just sit unflushed instead of reaching `devicectl --console`.
         setvbuf(stdout, nil, _IONBF, 0)
+        // 记下本次启动的语言，设置页据此提示「重新打开后生效」。
+        _ = AppLanguage.launched
 
         // 封面/头像的压缩数据完全依赖 URLSession 的 HTTP 缓存（解码位图另有
         // 内存缓存）。系统默认 URLCache 只有几百 KB 内存 / 10MB 磁盘，feed 场景

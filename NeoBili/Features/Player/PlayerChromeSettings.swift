@@ -7,7 +7,7 @@ enum PlayerChromeSettings {
         case fullScreen, inline
 
         var id: String { rawValue }
-        var title: String { self == .fullScreen ? "全屏" : "非全屏" }
+        var title: String { self == .fullScreen ? String(localized: "全屏") : String(localized: "非全屏") }
     }
 
     struct Keys {

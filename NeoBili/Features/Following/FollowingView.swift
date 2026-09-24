@@ -134,14 +134,14 @@ struct FollowingView: View {
         ContentUnavailableView {
             Label("尚未登录", systemImage: "person.crop.circle.badge.exclamationmark")
         } description: {
-            Text("登录后这里会显示你关注的 UP 主的最新动态。\n点右上角头像即可登录。")
+            Text(String(localized: "登录后这里会显示你关注的 UP 主的最新动态。\n点右上角头像即可登录。"))
         }
     }
 
     /// 标题与头像条是一个整体：固定时一起常驻顶部，随内容滚动时一起滚走。
     private var headerBlock: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "关注")
+            PageHeader(title: String(localized: "关注"))
                 .padding(.horizontal, 20)
             if account.isLoggedIn {
                 FollowingUpStrip(
@@ -151,7 +151,7 @@ struct FollowingView: View {
                     onOpenUp: { path.append(.space($0)) },
                     onOpenLive: { up in
                         guard let room = viewModel.liveRoom(for: up) else {
-                            feedback.show("这位 UP 主已结束直播")
+                            feedback.show(String(localized: "这位 UP 主已结束直播"))
                             return
                         }
                         onOpenLiveRoom(room)

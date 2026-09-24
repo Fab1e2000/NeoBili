@@ -31,7 +31,7 @@ struct FollowingUpStrip: View {
     private func cell(_ item: FollowingSelection) -> some View {
         let selected = item.id == selectedID
         return Button { onSelect(item) } label: {
-            label(title: item.id == .all ? "全部动态" : item.title, selected: selected) {
+            label(title: item.id == .all ? String(localized: "全部动态") : item.title, selected: selected) {
                 FollowingUpAvatar(item: item, selected: selected, size: 52)
             }
         }
@@ -44,14 +44,14 @@ struct FollowingUpStrip: View {
                 Button("查看 UP 主主页", systemImage: "person.crop.circle") { onOpenUp(up) }
             }
         }
-        .accessibilityLabel(item.title + (item.up?.liveRoomID != nil ? "，正在直播" : ""))
+        .accessibilityLabel(item.title + (item.up?.liveRoomID != nil ? String(localized: "，正在直播") : ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("following.avatar.\(item.id)")
     }
 
     private var allFollowingsCell: some View {
         Button(action: onOpenAll) {
-            label(title: "全部关注", selected: false) {
+            label(title: String(localized: "全部关注"), selected: false) {
                 Image(systemName: "person.2.fill")
                     .font(.system(size: 20))
                     .foregroundStyle(.secondary)

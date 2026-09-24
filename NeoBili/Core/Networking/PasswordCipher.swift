@@ -12,8 +12,8 @@ enum PasswordCipher {
 
         var errorDescription: String? {
             switch self {
-            case .malformedPublicKey: return "登录公钥格式异常"
-            case .encryptionFailed: return "密码加密失败"
+            case .malformedPublicKey: return String(localized: "登录公钥格式异常")
+            case .encryptionFailed: return String(localized: "密码加密失败")
             }
         }
     }

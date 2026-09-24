@@ -3,7 +3,7 @@ import SwiftUI
 struct DisplaySettingsView: View {
     @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
 
-    private static let labels = ["最小", "较小", "小", "标准", "大", "较大", "最大"]
+    private static let labels = [String(localized: "最小"), String(localized: "较小"), String(localized: "小"), String(localized: "标准"), String(localized: "大"), String(localized: "较大"), String(localized: "最大")]
 
     static func label(for index: Int) -> String {
         labels[min(max(index, 0), labels.count - 1)]
@@ -24,7 +24,7 @@ struct DisplaySettingsView: View {
                         in: 0...Double(AppTextSize.steps.count - 1), step: 1
                     )
                     .accessibilityLabel("文字大小")
-                    .accessibilityValue("第 \(textSizeIndex + 1) 档，共 \(AppTextSize.steps.count) 档")
+                    .accessibilityValue(String(localized: "第 \(textSizeIndex + 1) 档，共 \(AppTextSize.steps.count) 档"))
                     Text("大").font(.title3)
                 }
                 .dynamicTypeSize(.large)

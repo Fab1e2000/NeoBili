@@ -157,7 +157,7 @@ struct WatchLaterView: View {
         do {
             removals.hide(item.id)
             removedIndex = removals.remove(item.id, from: &items)
-            guard await feedback.confirmRemoval("已移出稍后再看"),
+            guard await feedback.confirmRemoval(String(localized: "已移出稍后再看")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await BiliAPI.removeWatchLater(aid: aid)
             // 同时完成的刷新也不能留下同 ID 的旧条目。

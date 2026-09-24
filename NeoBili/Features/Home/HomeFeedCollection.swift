@@ -210,7 +210,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             }
             view.addSubview(pull)
             view.accessibilityCustomActions = [
-                UIAccessibilityCustomAction(name: "刷新推荐") { [weak self] _ in
+                UIAccessibilityCustomAction(name: String(localized: "刷新推荐")) { [weak self] _ in
                     self?.onRefresh()
                     return true
                 }
@@ -338,7 +338,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         private func configure(_ cell: UICollectionViewCell, id: String) {
             if id == Self.headerID {
                 cell.contentConfiguration = UIHostingConfiguration {
-                    PageHeader(title: "推荐", onOpenMine: { [weak self] in self?.onOpenMine() })
+                    PageHeader(title: String(localized: "推荐"), onOpenMine: { [weak self] in self?.onOpenMine() })
                         .environment(environment.account)
                         .appTextSize()
                 }.margins(.all, 0)

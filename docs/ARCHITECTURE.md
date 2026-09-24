@@ -158,6 +158,13 @@ NeoBili/
   `Features/Settings/`，一页一个文件；跨页生效的走根视图环境值。
 - **新动效参数**：集中在 `FeedRefreshTuning` / `CardRemovalAnimation` / 各
   `*Layout` 枚举，不要散在调用点。
+- **界面文字**：源语言是简体中文，英文翻译在 `Resources/Localizable.xcstrings`。
+  `Text`/`Button`/`Label` 等直接写字面量即可被提取；以 `String` 传递、最后才显示的文字
+  （错误信息、提示浮层、枚举标题、辅助函数参数）要写成 `String(localized:)`。
+  同一个中文词在不同位置意思不同时（如「关注」作标签页与作按钮），用
+  `String(localized: "follow.action", defaultValue: "关注")` 这样的独立键区分。
+  新增文字后用 `xcodebuild -exportLocalizations` 导出、补英文、`-importLocalizations` 导回；
+  中文条目的状态需为 translated，否则不会生成 `zh-Hans.lproj`，中文系统会回退到英文。
 - **新的环境动作回调**（列表行要触发弹层）：用 `EnvironmentAction` 盒子 +
   `@State` 持有，宿主在 body 里 `setHandler`——不要往 `@Entry` 里塞裸闭包。
 

@@ -48,8 +48,8 @@ struct CardAnimationSettingsView: View {
             .disabled(!enabled)
 
             Section("动画速度") {
-                AnimationSpeedSlider(title: "进入速度", value: $enterSpeed)
-                AnimationSpeedSlider(title: "退出速度", value: $exitSpeed)
+                AnimationSpeedSlider(title: String(localized: "进入速度"), value: $enterSpeed)
+                AnimationSpeedSlider(title: String(localized: "退出速度"), value: $exitSpeed)
             }
             .disabled(!enabled)
         }
@@ -75,9 +75,9 @@ private struct VideoCardAnimationSettingsLink: View {
 
     private var summary: String {
         let phases = source.supportedPhases.filter { preferences.isEnabled(phase: $0) }
-        if phases.isEmpty { return "关闭" }
-        if phases.count == source.supportedPhases.count { return "开启" }
-        return phases.contains(.enter) ? "仅进入" : "仅退出"
+        if phases.isEmpty { return String(localized: "setting.off", defaultValue: "关闭") }
+        if phases.count == source.supportedPhases.count { return String(localized: "开启") }
+        return phases.contains(.enter) ? String(localized: "仅进入") : String(localized: "仅退出")
     }
 
     var body: some View {
@@ -142,7 +142,7 @@ private struct AnimationSpeedSlider: View {
             }
             Slider(value: $value, in: AnimationSpeedSettings.range, step: 0.1)
                 .accessibilityLabel(title)
-                .accessibilityValue(String(format: "%.1f 倍速", value))
+                .accessibilityValue(String(format: String(localized: "%.1f 倍速"), value))
         }
     }
 }

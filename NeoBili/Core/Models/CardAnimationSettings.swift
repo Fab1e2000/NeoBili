@@ -26,15 +26,15 @@ enum VideoCardAnimationSource: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .recommendation: "推荐页"
-        case .relatedVideos: "视频详情页"
-        case .search: "搜索页"
-        case .space: "UP 主空间"
-        case .favorites: "收藏"
-        case .history: "历史记录"
-        case .watchLater: "稍后再看"
-        case .collection: "合集"
-        case .live: "直播卡片"
+        case .recommendation: String(localized: "推荐页")
+        case .relatedVideos: String(localized: "视频详情页")
+        case .search: String(localized: "搜索页")
+        case .space: String(localized: "UP 主空间")
+        case .favorites: String(localized: "收藏")
+        case .history: String(localized: "历史记录")
+        case .watchLater: String(localized: "稍后再看")
+        case .collection: String(localized: "合集")
+        case .live: String(localized: "直播卡片")
         }
     }
 }

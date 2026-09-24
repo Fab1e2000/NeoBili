@@ -135,13 +135,13 @@ struct WatchLaterMenuButton: View {
     var body: some View {
         Button {
             guard account.isLoggedIn else {
-                feedback.show("请先登录")
+                feedback.show(String(localized: "请先登录"))
                 return
             }
             Task {
                 do {
                     try await BiliAPI.addWatchLater(aid: aid, bvid: bvid)
-                    feedback.show("已加入稍后再看")
+                    feedback.show(String(localized: "已加入稍后再看"))
                 } catch {
                     feedback.show(error.localizedDescription)
                 }

@@ -11,13 +11,15 @@ struct SettingsView: View {
     @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
     @State private var durationFilter = VideoDurationFilterSettings.shared
+    @AppStorage(AppLanguage.storageKey) private var language = AppLanguage.system
 
     var body: some View {
         Form {
             Section("外观") {
                 row("主题色", value: AppTheme.selected(themeID).name, id: "theme") { ThemeSettingsView() }
                 row("文字大小", value: DisplaySettingsView.label(for: textSizeIndex), id: "display") { DisplaySettingsView() }
-                row("动画", value: cardAnimationsEnabled ? "开启" : "关闭", id: "cardAnimations") { CardAnimationSettingsView() }
+                row("语言", value: language.title, id: "language") { LanguageSettingsView() }
+                row("动画", value: cardAnimationsEnabled ? String(localized: "开启") : String(localized: "setting.off", defaultValue: "关闭"), id: "cardAnimations") { CardAnimationSettingsView() }
             }
 
             Section("页面") {
@@ -50,10 +52,10 @@ struct SettingsView: View {
 
     private var contentFilterSummary: String {
         let active = (hidesPortraitVideos ? 1 : 0) + (durationFilter.minimumMinutes > 0 ? 1 : 0)
-        return active == 0 ? "未开启" : "\(active) 项"
+        return active == 0 ? String(localized: "未开启") : String(localized: "\(active) 项")
     }
 
-    private func row<Destination: View>(_ title: String, value: String? = nil, id: String,
+    private func row<Destination: View>(_ title: LocalizedStringKey, value: String? = nil, id: String,
                                         @ViewBuilder destination: @escaping () -> Destination) -> some View {
         NavigationLink(destination: destination) {
             if let value {

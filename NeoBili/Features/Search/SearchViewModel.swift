@@ -18,7 +18,7 @@ final class SearchViewModel {
                 url: URL(string: "https://s.search.bilibili.com/main/hotword")!,
                 additionalHeaders: SearchRequest.headers(keyword: ""))
             guard !Task.isCancelled else { return }
-            if payload.code != 0 { throw BiliAPIError.apiError(code: payload.code, message: "热搜暂时不可用") }
+            if payload.code != 0 { throw BiliAPIError.apiError(code: payload.code, message: String(localized: "热搜暂时不可用")) }
             var seen = Set<String>()
             hotSearches = payload.list.filter { !$0.keyword.isEmpty && seen.insert($0.keyword).inserted }
         } catch {

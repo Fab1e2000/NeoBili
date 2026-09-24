@@ -242,7 +242,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     private var transportTitle: String {
         let action = isPlaying ? "暂停" : "播放"
         guard isWaiting else { return action }
-        return canControlPlayback ? "缓冲中，\(action)" : (isLive ? "直播正在加载" : "视频正在加载")
+        return canControlPlayback ? String(localized: "缓冲中，\(action)") : (isLive ? String(localized: "直播正在加载") : String(localized: "视频正在加载"))
     }
 
     private var backButton: some View {
@@ -298,7 +298,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
         .buttonStyle(.plain)
     }
 
-    private var compactTitle: String { isCompact ? "展开视频画面" : "收起视频画面" }
+    private var compactTitle: String { isCompact ? String(localized: "展开视频画面") : String(localized: "收起视频画面") }
     private var compactSymbol: String { isCompact ? "chevron.compact.up" : "chevron.compact.down" }
 
     private func settingsMenu(inlineQualities: Bool, needsPlaybackAction: Bool) -> some View {

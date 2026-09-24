@@ -64,7 +64,7 @@ struct LiveView: View {
 
     private var header: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "直播")
+            PageHeader(title: String(localized: "直播"))
                 .padding(.horizontal, 20)
             sourcePicker
         }

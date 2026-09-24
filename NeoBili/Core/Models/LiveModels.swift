@@ -41,8 +41,8 @@ struct LiveRoom: Identifiable, Hashable, Sendable, Decodable {
         guard roomID > 0 else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "直播间缺少有效 room_id"))
         }
-        title = values.liveString("title") ?? "直播间 \(roomID)"
-        username = values.liveString("uname", "username", "name") ?? "主播"
+        title = values.liveString("title") ?? String(localized: "直播间 \(roomID)")
+        username = values.liveString("uname", "username", "name") ?? String(localized: "主播")
         uid = values.liveInt("uid", "mid") ?? 0
         coverURL = liveImageURL(values.liveString("system_cover", "cover", "room_cover", "user_cover", "keyframe"))
         faceURL = liveImageURL(values.liveString("face", "uface", "avatar"))
@@ -77,14 +77,14 @@ struct LiveQuality: Identifiable, Hashable, Sendable {
 
     static func defaultName(for quality: Int) -> String {
         switch quality {
-        case 80: "流畅"
-        case 150: "高清"
-        case 250: "超清"
-        case 400: "蓝光"
-        case 10000: "原画"
+        case 80: String(localized: "流畅")
+        case 150: String(localized: "高清")
+        case 250: String(localized: "超清")
+        case 400: String(localized: "蓝光")
+        case 10000: String(localized: "原画")
         case 20000: "4K"
-        case 30000: "杜比"
-        default: "清晰度 \(quality)"
+        case 30000: String(localized: "杜比")
+        default: String(localized: "清晰度 \(quality)")
         }
     }
 }

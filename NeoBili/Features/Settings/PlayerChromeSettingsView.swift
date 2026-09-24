@@ -70,14 +70,14 @@ private struct PlayerChromeSliders: View {
 
     var body: some View {
         Section {
-            slider("左右边距",
+            slider(String(localized: "左右边距"),
                    value: Binding(get: { isAutomaticSide ? Double(automaticSideInset) : horizontalInset },
                                   set: { horizontalInset = $0 }),
                    range: PlayerChromeSettings.horizontalInsetRange(for: mode),
-                   note: isAutomaticSide ? "跟随系统" : nil)
-            slider("上边距", value: $topInset, range: PlayerChromeSettings.verticalInsetRange)
-            slider("下边距", value: $bottomInset, range: PlayerChromeSettings.verticalInsetRange)
-            slider("控件间距", value: $spacing, range: PlayerChromeSettings.spacingRange)
+                   note: isAutomaticSide ? String(localized: "跟随系统") : nil)
+            slider(String(localized: "上边距"), value: $topInset, range: PlayerChromeSettings.verticalInsetRange)
+            slider(String(localized: "下边距"), value: $bottomInset, range: PlayerChromeSettings.verticalInsetRange)
+            slider(String(localized: "控件间距"), value: $spacing, range: PlayerChromeSettings.spacingRange)
         } footer: {
             if mode == .fullScreen {
                 Text("左右边距默认跟随系统横屏安全区，正好避开屏幕圆角和灵动岛；调得太小时控件会伸进四角的圆弧里。")
@@ -104,7 +104,7 @@ private struct PlayerChromeSliders: View {
             }
             Slider(value: value, in: range, step: 1)
                 .accessibilityLabel(title)
-                .accessibilityValue("\(Int(value.wrappedValue.rounded())) 点")
+                .accessibilityValue(String(localized: "\(Int(value.wrappedValue.rounded())) 点"))
         }
     }
 }
@@ -146,10 +146,10 @@ private struct SampleChrome: View {
 
     var body: some View {
         PlayerGlassChrome(
-            title: "示例视频标题",
-            videoQualityControl: PlayerQualityControl(title: "1080P", accessibilityLabel: "分辨率", options: [],
+            title: String(localized: "示例视频标题"),
+            videoQualityControl: PlayerQualityControl(title: "1080P", accessibilityLabel: String(localized: "分辨率"), options: [],
                                                      selectedID: 0, isEnabled: true, onSelect: { _ in }),
-            audioQualityControl: PlayerQualityControl(title: "192K", accessibilityLabel: "音质", options: [],
+            audioQualityControl: PlayerQualityControl(title: "192K", accessibilityLabel: String(localized: "音质"), options: [],
                                                      selectedID: 0, isEnabled: true, onSelect: { _ in }),
             position: 83, duration: 300, buffered: 120,
             isPlaying: true, canControlPlayback: true, isFullScreen: isFullScreen,

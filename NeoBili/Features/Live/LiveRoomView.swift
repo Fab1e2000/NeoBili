@@ -178,8 +178,8 @@ struct LiveRoomView: View {
 
     private var qualityControl: PlayerQualityControl {
         PlayerQualityControl(
-            title: player.qualities.first { $0.id == player.selectedQuality }?.name ?? "清晰度",
-            accessibilityLabel: "清晰度",
+            title: player.qualities.first { $0.id == player.selectedQuality }?.name ?? String(localized: "清晰度"),
+            accessibilityLabel: String(localized: "清晰度"),
             options: player.qualities.map { .init(id: $0.id, title: $0.name) },
             selectedID: player.selectedQuality,
             isEnabled: !player.qualities.isEmpty && !player.isLoading && !player.isOffline,
@@ -234,7 +234,7 @@ struct LiveRoomView: View {
     private func toggleFollow() {
         let context = followContext
         Task {
-            guard context.isLoggedIn else { feedback.show("请先登录"); return }
+            guard context.isLoggedIn else { feedback.show(String(localized: "请先登录")); return }
             if following.isFollowing == nil {
                 await following.load(context, force: true)
                 if let message = following.errorMessage { feedback.show(message) }

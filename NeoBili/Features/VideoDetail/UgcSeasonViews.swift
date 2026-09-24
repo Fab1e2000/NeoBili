@@ -13,7 +13,7 @@ struct UgcSeasonRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack {
-                Label("合集 · \(season.title ?? "")", systemImage: "rectangle.stack")
+                Label(String(localized: "合集 · \(season.title ?? "")"), systemImage: "rectangle.stack")
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -27,7 +27,7 @@ struct UgcSeasonRow: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("合集 \(season.title ?? "")，\(progressText)，展开分集列表")
+        .accessibilityLabel(String(localized: "合集 \(season.title ?? "")，\(progressText)，展开分集列表"))
     }
 
     private var progressText: String {
@@ -68,7 +68,7 @@ struct UgcSeasonSheet: View {
                                 VideoListCard(
                                     coverURL: episode.secureCoverURL,
                                     title: episode.title ?? "",
-                                    author: episode.bvid == currentBvid ? "正在播放" : (season.title ?? "合集"),
+                                    author: episode.bvid == currentBvid ? String(localized: "正在播放") : (season.title ?? String(localized: "合集")),
                                     playCount: -1,
                                     durationText: episode.formattedDuration
                                 )
@@ -84,7 +84,7 @@ struct UgcSeasonSheet: View {
             .background(Color(uiColor: .systemGroupedBackground))
             // 左缘触控死区：防止边缘误触直接切了分集。
             .leftEdgeTapDeadZone()
-            .navigationTitle(season.title ?? "合集")
+            .navigationTitle(season.title ?? String(localized: "合集"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

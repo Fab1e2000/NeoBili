@@ -53,8 +53,8 @@ final class PlayerViewModel {
         let title = PlaybackQuality.videoTitle(quality)
         guard playbackPayload?.hasVideoStream(quality: quality) != true,
               let format = playbackPayload?.supportFormats?.first(where: { $0.quality == quality }) else { return title }
-        if format.needsVIP == true { return title + "（需大会员）" }
-        if format.needsLogin == true { return title + "（需登录）" }
+        if format.needsVIP == true { return title + String(localized: "（需大会员）") }
+        if format.needsLogin == true { return title + String(localized: "（需登录）") }
         return title
     }
 
@@ -62,8 +62,8 @@ final class PlayerViewModel {
     func selectQuality(video: Int? = nil, audio: Int? = nil) async -> String? {
         guard !isStopped, !isLoading, !isFetchingSource, !isSwitchingQuality,
               let originalPayload = playbackPayload else { return nil }
-        if let video, !availableVideoQualities.contains(video) { return "当前视频不支持该分辨率" }
-        if let audio, !availableAudioQualities.contains(audio) { return "当前视频不支持该音质" }
+        if let video, !availableVideoQualities.contains(video) { return String(localized: "当前视频不支持该分辨率") }
+        if let audio, !availableAudioQualities.contains(audio) { return String(localized: "当前视频不支持该音质") }
         guard video.map({ $0 != selectedVideoQuality }) == true || audio.map({ $0 != selectedAudioQuality }) == true else { return nil }
         let requestID = UUID()
         let initialEngineID = engineID
@@ -134,7 +134,7 @@ final class PlayerViewModel {
             } catch {
                 guard !isStopped, qualityRequestID == requestID, engineID == openedEngineID else { return nil }
                 if !error.isCancellation { recoverFromSourceFailure(error.localizedDescription) }
-                else { showPlaybackError("画质切换已取消，请重试") }
+                else { showPlaybackError(String(localized: "画质切换已取消，请重试")) }
             }
             return nil
         } catch {
@@ -163,9 +163,9 @@ final class PlayerViewModel {
         let format = response.supportFormats?.first { $0.quality == quality }
             ?? previous.supportFormats?.first { $0.quality == quality }
         let title = PlaybackQuality.videoTitle(quality)
-        if format?.needsVIP == true { return "未取得\(title)播放地址，该档位需要大会员权限；已保留当前画质" }
-        if format?.needsLogin == true { return "未取得\(title)播放地址，请确认登录状态；已保留当前画质" }
-        return "服务器未提供\(title)播放地址，已保留当前画质"
+        if format?.needsVIP == true { return String(localized: "未取得\(title)播放地址，该档位需要大会员权限；已保留当前画质") }
+        if format?.needsLogin == true { return String(localized: "未取得\(title)播放地址，请确认登录状态；已保留当前画质") }
+        return String(localized: "服务器未提供\(title)播放地址，已保留当前画质")
     }
 
     private var isStopped = false

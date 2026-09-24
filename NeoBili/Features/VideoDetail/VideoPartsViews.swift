@@ -30,7 +30,7 @@ struct VideoPartsRow: View {
 
     private var currentPartName: String {
         guard let currentIndex, parts.indices.contains(currentIndex - 1) else {
-            return "视频分集"
+            return String(localized: "视频分集")
         }
         return parts[currentIndex - 1].part
     }
@@ -63,7 +63,7 @@ struct VideoPartsSheet: View {
                             VideoListCard(
                                 coverURL: coverURL,
                                 title: part.part,
-                                author: part.cid == currentCid ? "P\(part.page) · 正在播放" : "P\(part.page)",
+                                author: part.cid == currentCid ? String(localized: "P\(part.page) · 正在播放") : "P\(part.page)",
                                 playCount: -1,
                                 durationText: part.formattedDuration
                             )
