@@ -1,21 +1,23 @@
 <div align="center">
 
-<img src="design/app-icon-2026/A-white-inset-production.png" width="128" height="128" alt="NeoBili 图标">
+<img src="design/app-icon-2026/A-white-inset-production.png" width="128" height="128" alt="NeoBili app icon">
 
 # NeoBili
 
-**为 iPhone 打造的第三方哔哩哔哩客户端**
+**A native, third-party Bilibili client for iPhone**
 
-SwiftUI 原生构建 · iOS 26 液态玻璃 · MPVKit 播放内核
+Built with SwiftUI · Liquid Glass on iOS 26 · Powered by MPVKit
 
 [![Release](https://img.shields.io/github/v/release/Fab1e2000/NeoBili?style=flat-square&color=FB7AB3&label=release)](https://github.com/Fab1e2000/NeoBili/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Fab1e2000/NeoBili/total?style=flat-square&color=FB7AB3)](https://github.com/Fab1e2000/NeoBili/releases)
-[![iOS 26+](https://img.shields.io/badge/iOS-26%2B-111111?style=flat-square&logo=apple&logoColor=white)](#安装)
+[![iOS 26+](https://img.shields.io/badge/iOS-26%2B-111111?style=flat-square&logo=apple&logoColor=white)](#installation)
 [![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white)](https://www.swift.org)
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat-square)](https://developer.apple.com/xcode/swiftui/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8A8F98?style=flat-square)](LICENSE)
 
-[下载](#安装) · [功能](#功能亮点) · [从源码构建](#从源码构建) · [使用手册](docs/USAGE.md) · [更新日志](docs/releases)
+**English** · [简体中文](README.zh-CN.md)
+
+[Download](#installation) · [Features](#features) · [Build from source](#building-from-source) · [Changelog](docs/releases)
 
 </div>
 
@@ -23,65 +25,71 @@ SwiftUI 原生构建 · iOS 26 液态玻璃 · MPVKit 播放内核
 
 <table>
   <tr>
-    <td align="center"><img src="docs/images/home.webp" width="200" alt="推荐页"><br><sub><b>推荐</b></sub></td>
-    <td align="center"><img src="docs/images/following.webp" width="200" alt="关注页"><br><sub><b>关注</b></sub></td>
-    <td align="center"><img src="docs/images/live.webp" width="200" alt="直播页"><br><sub><b>直播</b></sub></td>
-    <td align="center"><img src="docs/images/video.webp" width="200" alt="视频页"><br><sub><b>视频与弹幕</b></sub></td>
+    <td align="center"><img src="docs/images/home.webp" width="200" alt="Recommended feed"><br><sub><b>Recommended</b></sub></td>
+    <td align="center"><img src="docs/images/following.webp" width="200" alt="Following page"><br><sub><b>Following</b></sub></td>
+    <td align="center"><img src="docs/images/live.webp" width="200" alt="Live page"><br><sub><b>Live</b></sub></td>
+    <td align="center"><img src="docs/images/video.webp" width="200" alt="Video page with danmaku"><br><sub><b>Video &amp; danmaku</b></sub></td>
   </tr>
 </table>
 
+<p align="center"><sub>Screenshots show the Chinese UI. The app also ships a full English interface.</sub></p>
+
 > [!IMPORTANT]
-> NeoBili 是个人开发的非官方第三方客户端，与哔哩哔哩（bilibili）无任何关联，仅供学习与交流，免费且不得用于商业用途。使用前请阅读 [免责声明](DISCLAIMER.md)。
+> NeoBili is an unofficial client developed independently by an individual. It is not affiliated with, authorized, or endorsed by Bilibili. It is free, for personal and educational use only, and may not be used commercially. Please read the [Disclaimer](DISCLAIMER.md) before use.
 
-## 功能亮点
+## Why NeoBili
 
-### 发现
+[Bilibili](https://www.bilibili.com) is one of the largest video and live-streaming communities in China. NeoBili is an iPhone client for it written entirely in SwiftUI and Swift 6. It follows iOS conventions and Liquid Glass instead of mirroring a cross-platform design, and it collects no data.
 
-- **双列推荐流**：封面、时长、播放量一目了然；再点一次「推荐」回到顶部，已在顶部则刷新
-- **搜索**：集成在底部标签栏，热搜一行一条
-- **内容过滤**：可隐藏竖屏视频、过滤短于指定时长的视频，列表先过滤再显示，不会先出现再消失
+## Features
 
-### 关注与直播
+### Discover
 
-- **横向头像条**：正在直播和刚有动态的 UP 主排在前面，轻点头像立即切换动态；「全部关注」一页看完所有关注
-- **红点与 B 站同步**：点开有更新的 UP 主即清除红点，并按网页动态页的方式通知 B 站
-- **LIVE 标记**：正在直播的 UP 主一眼可见，长按头像直接进直播间
-- **独立直播页**：推荐与关注两个列表，支持清晰度切换、重新连接和分享；优先直连 FLV，保留 HLS 备用线路
+- **Two-column feed** that shows cover, length and views at a glance. Tap *Recommended* again to jump to the top, or to refresh when you're already there.
+- **Search** built into the tab bar, with trending searches listed one per line.
+- **Content filters** that can hide vertical videos or ones shorter than a set length. Lists are filtered before they appear, so nothing pops in and then disappears.
 
-### 观看
+### Following & Live
 
-- **持续播放**：退出视频或直播后缩为底部缩略播放器，随标签栏一起收起，点一下标题就展开回来
-- **发弹幕**：视频页和全屏播放器都能发，自己发的带绿色边框；支持彩色弹幕开关
-- **原生玻璃控件**：全屏控件避开屏幕圆角与灵动岛，位置可调；分辨率、音质各有独立菜单
-- **按画幅适配**：播放区跟随视频实际比例，竖屏视频上滑即可收起；按视频和分 P 记忆播放进度
-- **手势**：亮度、全屏、音量三个竖向区域，分界可自定义，横向滑动调整进度
+- **Avatar strip** under the title that puts creators who are live or just posted first. Tap one to switch the feed instantly; *All Following* shows everyone you follow on one page.
+- **Unread dots synced with Bilibili.** Opening a creator clears the dot and notifies Bilibili the same way the web client does.
+- **LIVE badges** for creators who are streaming. Long-press an avatar to jump into the room.
+- **Dedicated Live tab** with Recommended and Following lists, quality switching, reconnect and sharing. It connects over FLV first and falls back to HLS.
 
-### 个性化
+### Watch
 
-- **24 种主题色**：桌面图标同步切换
-- **标题栏**：固定在顶部或随内容滚走，各主页面统一生效
-- **标签栏**：调整顺序、隐藏标签、选择启动页，稍后再看、收藏、历史也能放进来
-- **中文 / English 界面**：默认跟随系统语言，英文界面沿用 B 站说法（UP、Danmaku、Coin）
-- **细节可调**：7 档文字大小、逐页开关卡片动画、下拉刷新距离、左缘防误触区域
+- **Keep watching.** Leave a video or stream and it shrinks into a mini player that collapses with the tab bar. Tap the title to bring it back.
+- **Send danmaku** (Bilibili's scrolling comments) from the video page or in full screen. Your own messages get a green outline. Colored danmaku can be turned off.
+- **Native glass controls.** Full-screen controls stay clear of rounded corners and the Dynamic Island, and you can reposition them. Resolution and audio quality each have their own menu.
+- **Fits every aspect ratio.** The player follows each video's real shape, vertical videos shrink as you swipe up, and playback position is remembered per video and per part.
+- **Gestures** for brightness, full screen and volume, with adjustable zone boundaries. Swipe horizontally to seek.
 
-更完整的行为说明见 [使用手册](docs/USAGE.md)。
+### Make it yours
 
-## 安装
+- **24 theme colors**, each with a matching home-screen icon.
+- **Title bar** that stays pinned or scrolls away, the same on every main page.
+- **Tab bar** you can reorder, hide tabs in, or pick a launch tab for. Watch Later, Favorites and History can be tabs too.
+- **English and Chinese UI**, following the system language by default. English uses Bilibili's own terms (UP, Danmaku, Coin).
+- **Fine-tuning**: 7 text sizes, per-page card animations, pull-to-refresh distance, and a left-edge guard against accidental taps.
 
-NeoBili 目前以**未签名 IPA** 的形式发布，需要用你自己的方式签名后安装。
+The [user guide](docs/USAGE.md) describes every setting in detail (currently in Chinese).
 
-1. 在 [Releases](https://github.com/Fab1e2000/NeoBili/releases/latest) 下载 `NeoBili-vX.Y.Z-unsigned.ipa`
-2. 用同一页的 `SHA256SUMS.txt` 校验文件
+## Installation
+
+NeoBili is distributed as an **unsigned IPA**, which you sign yourself before installing.
+
+1. Download `NeoBili-vX.Y.Z-unsigned.ipa` from the [latest release](https://github.com/Fab1e2000/NeoBili/releases/latest).
+2. Verify it with the `SHA256SUMS.txt` file from the same release:
    ```sh
    shasum -a 256 -c SHA256SUMS.txt
    ```
-3. 使用你自己的开发者证书或常用的签名工具签名，然后安装到设备
+3. Sign it with your own developer certificate or your preferred signing tool, then install it on your device.
 
-**系统要求**：iOS 26.0 或更高版本。
+**Requirements:** iOS 26.0 or later.
 
-## 从源码构建
+## Building from source
 
-**环境**：支持 iOS 26 SDK 的 Xcode。依赖通过 Swift Package Manager 自动解析，目前只有 [MPVKit](https://github.com/mpvkit/MPVKit)。
+**Prerequisites:** Xcode with the iOS 26 SDK. Swift Package Manager resolves the only dependency, [MPVKit](https://github.com/mpvkit/MPVKit).
 
 ```sh
 git clone https://github.com/Fab1e2000/NeoBili.git
@@ -89,60 +97,63 @@ cd NeoBili
 open NeoBili.xcodeproj
 ```
 
-1. 等待 Swift Package Manager 解析完 MPVKit
-2. 在 **Signing & Capabilities** 中选择自己的开发团队，按需修改 Bundle Identifier
-3. 选择 `NeoBili` scheme 和目标设备，构建运行
+1. Wait for Swift Package Manager to resolve MPVKit.
+2. Under **Signing & Capabilities**, choose your development team and change the bundle identifier if needed.
+3. Select the `NeoBili` scheme and your device, then build and run.
 
-只编译真机目标、不签名：
+To compile for devices without signing:
 
 ```sh
 xcodebuild -project NeoBili.xcodeproj -scheme NeoBili \
   -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
-工程由 [XcodeGen](https://github.com/yonaskolb/XcodeGen) 从 `project.yml` 生成，需要重新生成时运行 `xcodegen`。
+The Xcode project is generated from `project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen). Run `xcodegen` to regenerate it.
 
-## 项目结构
+## Project layout
 
 ```
-NeoBili/            App 源码（SwiftUI + Swift 6 严格并发）
-NeoBiliTests/       单元测试
-offline-harness/    可在 macOS 上直接运行的离线逻辑测试
-design/             App 图标设计源文件
-scripts/            图标生成等脚本
-docs/               架构说明、使用手册与版本说明
+NeoBili/            App source (SwiftUI, Swift 6 strict concurrency)
+NeoBiliTests/       Unit tests
+offline-harness/    Offline logic tests that run directly on macOS
+design/             App icon sources
+scripts/            Icon generation and other scripts
+docs/               Architecture, user guide and release notes
 ```
 
-- **架构**：目录职责、数据流与状态所有权见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **测试**：离线回归套件运行 `zsh offline-harness/run.sh`，无需设备或模拟器
-- **图标**：白底叠层播放图标，可编辑源文件在 [`design/app-icon-2026/`](design/app-icon-2026/)，由 `scripts/generate-app-icons.py` 生成全部 24 个主题色版本
+- **Architecture:** module map, data flow and state ownership in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Tests:** run the offline regression suite with `zsh offline-harness/run.sh`. It needs no device or simulator.
+- **Icon:** the layered play icon's editable source is in [`design/app-icon-2026/`](design/app-icon-2026/). `scripts/generate-app-icons.py` generates all 24 theme variants.
 
-## 文档
+## Documentation
 
-| 文档 | 内容 |
+| Document | Contents |
 | --- | --- |
-| [使用手册](docs/USAGE.md) | 播放、直播、关注、动画、手势等设置的详细行为 |
-| [架构说明](docs/ARCHITECTURE.md) | 模块地图与新功能的落点 |
-| [设置开发说明](docs/SETTINGS.md) | 设置键的兼容与接线 |
-| [版本说明](docs/releases) | 每个版本的更新内容 |
-| [第三方声明](THIRD_PARTY_NOTICES.md) | 依赖与参考项目的许可信息 |
-| [免责声明](DISCLAIMER.md) | 与哔哩哔哩的关系、内容与数据、使用者责任 |
+| [User guide](docs/USAGE.md) | Detailed behavior of playback, live, following, animation and gesture settings (Chinese) |
+| [Architecture](docs/ARCHITECTURE.md) | Module map and where new features belong (Chinese) |
+| [Release notes](docs/releases) | What changed in each version (Chinese) |
+| [Third-party notices](THIRD_PARTY_NOTICES.md) | Licenses of dependencies and reference projects |
+| [Disclaimer](DISCLAIMER.md) | Relationship with Bilibili, content and data, user responsibility |
 
-## 致谢
+## Contributing
 
-- [MPVKit](https://github.com/mpvkit/MPVKit)：基于 libmpv 的播放内核（使用 LGPL 构建）
-- [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus)：接口与播放行为的实现参考，锁定的参考版本见 [references/README.md](references/README.md)
+Bug reports and feature requests are welcome in [Issues](https://github.com/Fab1e2000/NeoBili/issues). Before opening a pull request, please make sure the project builds and `zsh offline-harness/run.sh` passes.
 
-## 免责声明
+## Acknowledgements
 
-- NeoBili 是个人独立开发的**非官方**第三方客户端，与哔哩哔哩没有任何隶属、合作或授权关系。「哔哩哔哩」「bilibili」及相关标识归其权利人所有。
-- 本项目**不托管、不转载、不分发**任何内容；应用内的视频、直播、评论等均由设备直接向哔哩哔哩公开服务请求，版权归原作者所有。
-- **不提供**视频下载、绕过付费或会员限制等功能；**不设服务器**，不收集用户数据，登录凭据只保存在本机钥匙串。
-- 仅供个人学习与交流，免费提供，**不得用于商业用途**。使用者需自行遵守法律法规与《哔哩哔哩用户协议》，并自行承担使用风险。
-- 权利人如认为本项目侵犯其权益，请通过 [Issues](https://github.com/Fab1e2000/NeoBili/issues) 联系，核实后会及时处理。
+- [MPVKit](https://github.com/mpvkit/MPVKit): the libmpv-based playback engine (LGPL build).
+- [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus): reference for API usage and playback behavior. The pinned revision is recorded in [references/README.md](references/README.md).
 
-完整条款见 [DISCLAIMER.md](DISCLAIMER.md)。
+## Disclaimer
 
-## 许可证
+- NeoBili is an **unofficial** third-party client developed independently by an individual. It has no affiliation, partnership or authorization with Bilibili. "Bilibili", "哔哩哔哩" and related marks belong to their respective owners.
+- NeoBili **does not host, re-upload or redistribute** any content. Videos, streams, comments and other content are requested directly from Bilibili's public services by your device, and their copyrights belong to the original creators.
+- It offers **no** video downloading and **no** way around paid or membership restrictions. It runs **no servers** and collects no user data. Login credentials stay in your device's Keychain.
+- It is free, for personal and educational use only, and **may not be used commercially**. You are responsible for complying with applicable laws and Bilibili's Terms of Service, and you use it at your own risk.
+- Rights holders who believe this project infringes their rights can reach us through [Issues](https://github.com/Fab1e2000/NeoBili/issues). We will review each report promptly.
 
-本项目源代码以 [MIT 许可证](LICENSE) 发布。许可证只覆盖本项目自身的代码，不涉及哔哩哔哩的任何内容、商标或服务；第三方依赖以各自的许可证为准，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+The full terms are in [DISCLAIMER.md](DISCLAIMER.md).
+
+## License
+
+NeoBili's source code is released under the [MIT License](LICENSE). The license covers this project's own code only and grants no rights to any Bilibili content, trademark or service. Third-party dependencies are covered by their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -1,30 +1,32 @@
-# 免责声明
+# Disclaimer
 
-使用、下载、编译或分发 NeoBili（以下简称「本项目」）即表示你已阅读并同意以下条款。
+**English** · [简体中文](DISCLAIMER.zh-CN.md)
 
-## 与哔哩哔哩的关系
+By using, downloading, building or distributing NeoBili ("the Project"), you acknowledge that you have read and agree to the following terms.
 
-1. 本项目是个人独立开发的第三方开源客户端，与哔哩哔哩（bilibili）的运营方及其关联公司（以下统称「哔哩哔哩」）**没有任何隶属、合作或授权关系**，也未获得哔哩哔哩的认可或背书。
-2. 「哔哩哔哩」「bilibili」「B 站」及相关名称、标识、图形均为其权利人的商标或财产。本项目仅为说明用途而提及这些名称，不主张任何权利，也不暗示任何官方关系。本项目的名称、图标与界面均为独立设计。
+## Relationship with Bilibili
 
-## 内容与数据
+1. The Project is a third-party open-source client developed independently by an individual. It has **no affiliation, partnership or authorization** with the operator of Bilibili or its affiliates (together, "Bilibili"), and it is not endorsed by Bilibili.
+2. "Bilibili", "bilibili", "哔哩哔哩", "B 站" and related names, logos and graphics are trademarks or property of their respective owners. The Project mentions these names for descriptive purposes only. It claims no rights in them and implies no official relationship. The Project's name, icon and interface are designed independently.
 
-3. 本项目**不托管、不转载、不分发**任何视频、直播、图片、评论或其他内容。应用内展示的所有内容均由用户设备直接向哔哩哔哩的公开服务请求并实时呈现，其著作权及其他权利归原作者或哔哩哔哩所有。
-4. 本项目**不提供**视频下载、去除水印、绕过付费或会员限制、破解 DRM 等功能。需要登录或大会员权限的内容，仍以用户账号在哔哩哔哩的实际权限为准。
-5. 本项目**不设任何服务器**，不收集、上传或出售用户的个人信息与使用数据。登录凭据仅保存在用户设备的系统钥匙串（Keychain）中，只用于向哔哩哔哩发起请求。
+## Content and data
 
-## 使用者责任
+3. The Project **does not host, re-upload or redistribute** any videos, live streams, images, comments or other content. All content shown in the app is requested directly from Bilibili's public services by the user's device and displayed in real time. Copyright and other rights in that content belong to the original creators or to Bilibili.
+4. The Project **does not offer** video downloading, watermark removal, circumvention of paid or membership restrictions, or DRM circumvention. Content that requires login or a premium membership remains subject to the actual permissions of the user's Bilibili account.
+5. The Project **runs no servers** and does not collect, upload or sell users' personal information or usage data. Login credentials are stored only in the system Keychain on the user's device and are used only to send requests to Bilibili.
 
-6. 本项目仅供个人学习、研究与技术交流使用，**免费提供，不得用于任何商业用途**。
-7. 使用者应自行遵守所在地法律法规以及《哔哩哔哩用户协议》等平台规则，并对自己的账号与使用行为负责。因使用本项目导致的账号限制、封禁、数据丢失或其他任何直接、间接损失，由使用者自行承担。
-8. 本项目按「现状」提供，不对其可用性、稳定性、准确性或适用性作任何明示或暗示的保证。哔哩哔哩的接口可能随时变化，本项目可能因此部分或全部失效。
+## User responsibility
 
-## 权利人通知
+6. The Project is provided **free of charge for personal study, research and technical exchange only, and may not be used for any commercial purpose**.
+7. Users are responsible for complying with the laws of their jurisdiction and with Bilibili's Terms of Service and other platform rules, and for their own accounts and conduct. Users bear any direct or indirect loss arising from their use of the Project, including account restrictions, suspension or data loss.
+8. The Project is provided "as is", without warranty of any kind, express or implied, as to its availability, stability, accuracy or fitness for a particular purpose. Bilibili's services may change at any time, which may cause the Project to stop working in part or in whole.
 
-9. 如果你是哔哩哔哩或其他相关权利人，认为本项目的任何部分侵犯了你的合法权益，请通过 [GitHub Issues](https://github.com/Fab1e2000/NeoBili/issues) 联系，并附上权属证明与具体说明。核实后，我们会及时修改或删除相关部分，必要时停止分发本项目。
+## Notice to rights holders
 
-## 许可证
+9. If you are Bilibili or another rights holder and believe any part of the Project infringes your lawful rights, please contact us through [GitHub Issues](https://github.com/Fab1e2000/NeoBili/issues) with proof of ownership and a description of the issue. After verification, we will promptly modify or remove the relevant part and, if necessary, stop distributing the Project.
 
-10. 本项目源代码以 [MIT 许可证](LICENSE) 发布。MIT 许可证只适用于本项目自身的代码，不授予任何对哔哩哔哩内容、商标或服务的权利。第三方依赖以各自的许可证为准，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+## License
 
-本声明可能随项目更新而修改，以仓库中的最新版本为准。
+10. The Project's source code is released under the [MIT License](LICENSE). The MIT License applies only to the Project's own code and grants no rights to any Bilibili content, trademark or service. Third-party dependencies are governed by their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+This disclaimer may be revised as the Project evolves. The latest version in the repository applies. If the English and Chinese versions differ, the Chinese version prevails.
