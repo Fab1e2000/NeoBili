@@ -26,12 +26,15 @@ struct DanmakuItem: Sendable {
     let isScroll: Bool
     let isTop: Bool
     let color: UInt32
+    /// 自己发送的弹幕，上屏时带一个方框（与官方客户端、PiliPlus 一致）。
+    let isSelf: Bool
 
-    init(time: TimeInterval, text: String, mode: Int, color: UInt32) {
+    init(time: TimeInterval, text: String, mode: Int, color: UInt32, isSelf: Bool = false) {
         self.time = time
         self.text = text
         self.isScroll = mode == 1 || mode == 2 || mode == 3
         self.isTop = mode == 5
         self.color = color
+        self.isSelf = isSelf
     }
 }

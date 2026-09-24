@@ -73,7 +73,7 @@ final class DanmakuController {
 
     /// 自己刚发出的弹幕：立即上屏，并记进时间轴，重新挂载引擎后仍在原位置出现。
     func appendSent(text: String, mode: DanmakuMode) {
-        let item = DanmakuItem(time: lastTime, text: text, mode: mode.rawValue, color: 0xFFFFFF)
+        let item = DanmakuItem(time: lastTime, text: text, mode: mode.rawValue, color: 0xFFFFFF, isSelf: true)
         let index = items.firstIndex { $0.time > item.time } ?? items.endIndex
         items.insert(item, at: index)
         engine?.presentImmediately(item)

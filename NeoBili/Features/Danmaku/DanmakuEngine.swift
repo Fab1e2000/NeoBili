@@ -210,7 +210,8 @@ final class DanmakuEngine: UIView {
         if !item.isScroll && (item.isTop ? blockTop : blockBottom) { return }
         guard bounds.width > 10, activeCount < Self.maximumActiveLayers else { return }
         rebuildTracks()
-        guard let layer = Self.bitmap(for: item.text, color: coloredEnabled ? item.color : 0xFFFFFF, fontSize: fontSize, cache: bitmapCache,
+        guard let layer = Self.bitmap(for: item.text, color: coloredEnabled ? item.color : 0xFFFFFF, fontSize: fontSize,
+                                      framed: item.isSelf, cache: bitmapCache,
                                       scale: min(window?.screen.scale ?? traitCollection.displayScale,
                                                  Self.bitmapScaleLimit)) else { return }
         let width = layer.bounds.width
@@ -330,9 +331,14 @@ final class DanmakuEngine: UIView {
 
     // MARK: - 位图渲染
 
-    private static func bitmap(for text: String, color: UInt32, fontSize: CGFloat,
+    /// 自己发送的弹幕外框：颜色、线宽与 PiliPlus（canvas_danmaku）一致，左右比文字多留一点空隙。
+    private static let selfFrameColor = UIColor.systemGreen
+    private static let selfFrameWidth: CGFloat = 1.5
+    private static let selfFramePadding: CGFloat = 2
+
+    private static func bitmap(for text: String, color: UInt32, fontSize: CGFloat, framed: Bool,
                                cache: NSCache<NSString, UIImage>, scale: CGFloat) -> CALayer? {
-        let key = "\(scale)|\(fontSize)|\(color)|\(text)" as NSString
+        let key = "\(scale)|\(fontSize)|\(color)|\(framed)|\(text)" as NSString
         if let image = cache.object(forKey: key) {
             let layer = CALayer()
             layer.bounds = CGRect(origin: .zero, size: image.size)
@@ -351,19 +357,27 @@ final class DanmakuEngine: UIView {
         ]
         let rawSize = (text as NSString).size(withAttributes: attributes)
         let inset: CGFloat = 2
-        let size = CGSize(width: ceil(rawSize.width) + inset * 2, height: ceil(rawSize.height) + inset * 2)
+        let horizontalInset = inset + (framed ? selfFramePadding : 0)
+        let size = CGSize(width: ceil(rawSize.width) + horizontalInset * 2, height: ceil(rawSize.height) + inset * 2)
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = false
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
         let image = renderer.image { context in
-            let origin = CGPoint(x: inset, y: inset)
+            let origin = CGPoint(x: horizontalInset, y: inset)
             // Stroke and fill in separate passes: an attributed-string stroke
             // is centered on the glyph edge and otherwise eats into the stems.
             (text as NSString).draw(at: origin, withAttributes: attributes)
             (text as NSString).draw(at: origin, withAttributes: [
                 .font: font, .foregroundColor: Self.color(from: color)
             ])
+            if framed {
+                let frame = CGRect(origin: .zero, size: size).insetBy(dx: selfFrameWidth / 2, dy: selfFrameWidth / 2)
+                selfFrameColor.setStroke()
+                let path = UIBezierPath(rect: frame)
+                path.lineWidth = selfFrameWidth
+                path.stroke()
+            }
         }
         let cost = Int(size.width * size.height * scale * scale * 4)
         cache.setObject(image, forKey: key, cost: cost)
