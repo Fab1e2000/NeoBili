@@ -4,11 +4,11 @@ import SwiftUI
 /// 如果只想微调界面，修改下面的数字即可，不需要改程序逻辑。
 private enum VideoSectionBarLayout {
     /// 分段控件与屏幕左右边缘的距离。
-    static let horizontalPadding: CGFloat = 16
+    static let horizontalPadding: CGFloat = 8
     /// 分段控件靠左、限宽，右侧留给「发弹幕」。
-    static let pickerMaxWidth: CGFloat = 220
+    static let pickerMaxWidth: CGFloat = 300
     /// 分段控件上方的留白。
-    static let topPadding: CGFloat = 8
+    static let topPadding: CGFloat = 6
     /// 分段控件与下方内容的间距。
     static let bottomPadding: CGFloat = 6
 }

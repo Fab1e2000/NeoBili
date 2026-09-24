@@ -49,6 +49,8 @@ struct VideoPage: View {
     @State private var collapseLayout = InlineVideoCollapseLayout(expandedHeight: 0, standardHeight: 0, allowsCompact: false)
     /// 同一段滚动距离先缩小竖屏画面，暂停后才继续将画面收进 56pt 标题栏。
     @State private var videoCollapseDistance: CGFloat = 0
+    /// 内容区顶部的圆角半径（连续曲率），在预览页里调定。
+    private let contentCornerRadius: CGFloat = 21
     @State private var isShowingSeason = false
     @State private var isShowingParts = false
     @State private var isShowingFavoriteFolders = false
@@ -199,7 +201,7 @@ struct VideoPage: View {
                 }
 
                 if !isFullScreen {
-                    Color.clear.frame(height: 10)
+                    Color.clear.frame(height: 8)
                 }
 
                 if !isFullScreen {
@@ -216,15 +218,17 @@ struct VideoPage: View {
                             )
                         }
                     .background(Color(uiColor: .systemBackground))
-                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: contentCornerRadius,
+                                                      topTrailingRadius: contentCornerRadius, style: .continuous))
                     .background {
                         // 延续内容底色，圆角外侧由下方的同步染色背景填充。
-                        UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12)
+                        UnevenRoundedRectangle(topLeadingRadius: contentCornerRadius,
+                                               topTrailingRadius: contentCornerRadius, style: .continuous)
                             .fill(Color(uiColor: .systemBackground))
                     }
                     .background(alignment: .top) {
                         themeColor.opacity(collapseProgress)
-                            .frame(height: 12)
+                            .frame(height: contentCornerRadius)
                             .allowsHitTesting(false)
                     }
                     .background {
