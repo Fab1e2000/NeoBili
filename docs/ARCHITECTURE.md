@@ -49,8 +49,8 @@ NeoBili/
                   HomeFeedCellView、HomeViewModel。
     Live/         直播：推荐/关注两页、直播间、直播弹幕。
     Following/    关注动态：FollowingViewModel（头像行）+ DynamicFeedModel（关注流与
-                  UP 主动态共用的翻页/点赞）+ FollowingCarousel / FollowingAvatarScroll
-                  （侧边头像选择器，UICollectionView 实现）+ SpaceView（UP 主空间页）。
+                  UP 主动态共用的翻页/点赞）+ FollowingUpStrip
+                  （标题下方的横向头像条）+ FollowingAllUpsView（全部关注）+ SpaceView（UP 主空间页）。
     Search/       搜索标签：SearchPage、HomeSearchBar、SearchResultsView。
     Library/      收藏、历史、稍后再看；LibraryTabPage 把它们作为标签页呈现，
                   「我的」卡片里复用同一套列表视图。

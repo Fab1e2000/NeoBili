@@ -213,8 +213,8 @@ final class FollowFeedTests: XCTestCase {
         viewModel.replaceUps([first, second])
 
         XCTAssertEqual(viewModel.selectedTarget.id, .all)
-        XCTAssertEqual(viewModel.carouselItems.map(\.id), [.all, .up(11), .up(22)])
-        XCTAssertEqual(viewModel.carouselItems.map(\.title), ["全部动态", "第一位", "第二位"])
+        XCTAssertEqual(viewModel.selectionItems.map(\.id), [.all, .up(11), .up(22)])
+        XCTAssertEqual(viewModel.selectionItems.map(\.title), ["全部动态", "第一位", "第二位"])
     }
 
     @MainActor
@@ -257,7 +257,7 @@ final class FollowFeedTests: XCTestCase {
         viewModel.resetForAccountChange()
 
         XCTAssertEqual(viewModel.selectedTarget.id, .all)
-        XCTAssertEqual(viewModel.carouselItems.map(\.id), [.all])
+        XCTAssertEqual(viewModel.selectionItems.map(\.id), [.all])
         viewModel.select(.up(up))
         XCTAssertFalse(oldFeed === viewModel.activeFeed, "换账号后不能复用旧账号的 UP 动态")
     }

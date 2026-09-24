@@ -86,12 +86,6 @@ swiftc -swift-version 6 -parse-as-library \
     -o "$BUILD_DIR/card-animation"
 "$BUILD_DIR/card-animation"
 
-swiftc -swift-version 6 -parse-as-library \
-    "$APP/Features/Following/FollowingSidebarPhysics.swift" \
-    "$HARNESS/src/FollowingSidebarPhysicsRegression.swift" \
-    -o "$BUILD_DIR/following-sidebar-physics"
-"$BUILD_DIR/following-sidebar-physics"
-
 # Already-mounted mini windows must receive new-session handoffs without layout.
 swiftc -swift-version 6 -parse-as-library \
     "$APP/Features/Player/PlayerSurfaceOwnership.swift" \

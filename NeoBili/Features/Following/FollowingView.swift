@@ -1,6 +1,12 @@
 import SwiftUI
 
-/// 「关注」Tab：动态流与可收起的侧边关注选择器。
+/// 关注页的推入目标：UP 主空间，或「全部关注」列表。
+enum FollowingRoute: Hashable {
+    case space(FollowedUp)
+    case allFollowings
+}
+
+/// 「关注」Tab：标题下方是横向头像条，下面是动态流。
 struct FollowingView: View {
     var onOpenLiveRoom: (LiveRoom) -> Void = { _ in }
 
@@ -16,8 +22,6 @@ struct FollowingView: View {
 
     // 设置
     @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
-    @AppStorage(FollowingSidebarSide.storageKey) private var sidebarSide: FollowingSidebarSide = .left
-    @AppStorage(FollowingSidebarDwellSettings.storageKey) private var sidebarDwellDuration = FollowingSidebarDwellSettings.defaultDuration
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultSpeed
     @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
@@ -27,20 +31,18 @@ struct FollowingView: View {
 
     // 数据与导航
     @State private var viewModel = FollowingViewModel()
-    @State private var path: [FollowedUp] = []
+    @State private var path: [FollowingRoute] = []
     /// 正在看哪条动态的详情。有值时推入详情页。
     @State private var detailEntry: DynamicEntry?
     @State private var isFollowingVisible = false
     @State private var liveRefreshGeneration = 0
 
-    // 侧边选择器
-    /// 轮盘拖动时的视觉焦点；只有停稳后才提交给 ViewModel。
-    @State private var focusedTargetID: FollowingSelection.ID = .all
-    @State private var isSidebarExpanded = false
-    @State private var sidebarMotion = FollowingSidebarMotion()
-    @State private var isAvatarMenuPresented = false
+    // 头像条切换
     @State private var selectionTransitionTask: Task<Void, Never>?
+    /// 已点选、正在淡出旧动态或等待数据的目标；头像条立即高亮它。
     @State private var pendingSelectionID: FollowingSelection.ID?
+    /// 目标动态需要联网加载时才显示小菊花，缓存命中的切换不闪提示。
+    @State private var isSelectionLoading = false
 
     // 列表滚动与刷新
     @State private var listPosition = ScrollPosition(edge: .top)
@@ -61,50 +63,37 @@ struct FollowingView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            GeometryReader { geometry in
-                Group {
-                    if account.isLoggedIn {
-                        feed
-                    } else if account.isRestoringSession {
-                        LoadingTaskAnchor()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        loggedOutView
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // 用同一张页面底板覆盖上下安全区，侧边凹口在内容中线对齐头像。
-                .background(alignment: .top) {
-                    FollowingPageBackground(
-                        motion: sidebarMotion,
-                        side: sidebarSide,
-                        topInset: geometry.safeAreaInsets.top,
-                        bottomInset: geometry.safeAreaInsets.bottom
-                    )
-                    .frame(width: geometry.size.width,
-                           height: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
-                    .offset(y: -geometry.safeAreaInsets.top)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-                }
-                // 底板与推荐页一样用分组灰底，白色卡片才分得出层次；凹口后面这层反过来用白色，
-                // 侧栏展开时凹口仍清楚可见。
-                .background(Color(uiColor: .secondarySystemGroupedBackground))
-                // 列表缩小后自带的顶部渐变只覆盖列表宽度，展开选择器时补一层全宽的顶部模糊。
-                .overlay(alignment: .top) {
-                    FollowingExpandedTopBlur(motion: sidebarMotion, topInset: geometry.safeAreaInsets.top)
+            Group {
+                if account.isLoggedIn {
+                    feed
+                } else if account.isRestoringSession {
+                    LoadingTaskAnchor()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    loggedOutView
                 }
             }
-            // 固定标题栏：页头挂在外层顶部栏，不随动态滚动、也不随侧栏缩放，层级在选择器和动态之上；
-            // 上面的 geometry 安全区因此包含页头，模糊和底板随之让位。
-            // 随内容滚动：页头是动态列表的第一行（见 `list`）。未登录时没有列表，页头仍放在顶部栏。
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(uiColor: .systemGroupedBackground))
+            // 固定标题栏：与直播页一样，标题和头像条一起常驻顶部栏，动态从下面滑过。
+            // 随内容滚动：两者是动态列表的第一行（见 `list`）。未登录时没有列表，页头仍放在顶部栏。
             .safeAreaBar(edge: .top, spacing: 0) {
-                if pinsTitleBar || !account.isLoggedIn { header }
+                if pinsTitleBar || !account.isLoggedIn { headerBlock }
             }
             .navigationTitle("关注")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: FollowedUp.self) { up in
-                SpaceView(up: up)
+            .navigationDestination(for: FollowingRoute.self) { route in
+                switch route {
+                case .space(let up):
+                    SpaceView(up: up)
+                case .allFollowings:
+                    FollowingAllUpsView(
+                        mid: account.accountID ?? 0,
+                        decorated: Dictionary(viewModel.selectionItems.compactMap(\.up).map { ($0.mid, $0) },
+                                              uniquingKeysWith: { first, _ in first }),
+                        onOpenUp: { path.append(.space($0)) }
+                    )
+                }
             }
             .fullScreenCover(item: $detailEntry) { entry in
                 NavigationStack {
@@ -114,7 +103,6 @@ struct FollowingView: View {
                 .actionFeedbackOverlay()
                 .navigationTransition(.zoom(sourceID: "following-dynamic-\(entry.id)", in: dynamicTransition))
             }
-            // 动态直接从安全区开始，侧边选择器不占据顶部空间。
             // 标题本身留着，推入 UP 主页时返回按钮才有「关注」这两个字。
             .toolbarVisibility(.hidden, for: .navigationBar)
             .imageViewerHost()
@@ -129,10 +117,8 @@ struct FollowingView: View {
             selectionTransitionTask?.cancel()
             path = []
             detailEntry = nil
-            isSidebarExpanded = false
-            isAvatarMenuPresented = false
-            sidebarMotion.reset()
-            focusedTargetID = .all
+            pendingSelectionID = nil
+            isSelectionLoading = false
             feedOpacity = 1
             listPosition.scrollTo(edge: .top)
             viewModel = FollowingViewModel()
@@ -152,9 +138,28 @@ struct FollowingView: View {
         }
     }
 
-    private var header: some View {
-        PageHeader(title: "关注")
-            .padding(.horizontal, 20)
+    /// 标题与头像条是一个整体：固定时一起常驻顶部，随内容滚动时一起滚走。
+    private var headerBlock: some View {
+        VStack(spacing: 0) {
+            PageHeader(title: "关注")
+                .padding(.horizontal, 20)
+            if account.isLoggedIn {
+                FollowingUpStrip(
+                    items: viewModel.selectionItems,
+                    selectedID: pendingSelectionID ?? viewModel.selectedTarget.id,
+                    onSelect: select,
+                    onOpenUp: { path.append(.space($0)) },
+                    onOpenLive: { up in
+                        guard let room = viewModel.liveRoom(for: up) else {
+                            feedback.show("这位 UP 主已结束直播")
+                            return
+                        }
+                        onOpenLiveRoom(room)
+                    },
+                    onOpenAll: { path.append(.allFollowings) }
+                )
+            }
+        }
     }
 
     // MARK: - 已登录
@@ -173,34 +178,25 @@ struct FollowingView: View {
     private var list: some View {
         ScrollView {
             VStack(spacing: 0) {
-                if !pinsTitleBar { header.staysInPlaceWhenPulled() }
+                if !pinsTitleBar { headerBlock.staysInPlaceWhenPulled() }
                 LazyVStack(spacing: 0) {
                     feedContent
                 }
-                // 切换标签只淡入动态；列表本身保持不透明，顶部模糊立即出现。
+                // 切换 UP 主与刷新都只淡动态；列表本身保持不透明，顶部模糊立即出现。
                 .opacity(feedOpacity * refreshOpacity * tabContentOpacity)
-                .background(Color(uiColor: .systemGroupedBackground))
+                .overlay(alignment: .top) {
+                    if isSelectionLoading {
+                        LoadingTaskAnchor().controlSize(.small).padding(.top, 24)
+                    }
+                }
                 // 手势观察器不参与纵向布局，避免独立零高占位产生默认间距。
                 .background(alignment: .top) {
                     ShortPullRefresh(
                         threshold: refreshDistance,
-                        enabled: !isRefreshing && !isSidebarExpanded,
+                        enabled: !isRefreshing,
                         onProgress: { _, _ in },
                         onRefresh: startRefresh
                     )
-                    .overlay {
-                        FollowingPageSwipeObserver(
-                            enabled: !isSidebarExpanded || sidebarMotion.isDragging,
-                            side: sidebarSide,
-                            onMove: { translation in
-                                sidebarMotion.drag(translation: translation)
-                                if !isSidebarExpanded { isSidebarExpanded = true }
-                            },
-                            onEnd: { velocity in
-                                isSidebarExpanded = sidebarMotion.endDrag(velocity: velocity, reduceMotion: reduceMotion)
-                            }
-                        )
-                    }
                     .frame(width: 0, height: 0)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
@@ -215,58 +211,13 @@ struct FollowingView: View {
         // 即使内容不足一屏也允许下拉刷新。
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollEdgeEffectHidden(true, for: .bottom)
-        .scrollDisabled((isRefreshing && refreshOpacity < 1) || pendingSelectionID != nil)
-        // 下拉刷新与推荐页一致，不显示提示框；只在切换 UP 主等待数据时给个小菊花。
-        .overlay(alignment: .top) {
-            if pendingSelectionID != nil {
-                LoadingTaskAnchor().controlSize(.small).padding(.top, 12)
-            }
-        }
+        .scrollDisabled(isRefreshing && refreshOpacity < 1)
         .accessibilityAction(named: "刷新关注动态") { startRefresh() }
-        // 卡片保持原始排版，再按剩余屏宽等比缩小；视口补偿使上下边缘仍与安全区衔接。
-        .modifier(FollowingFeedPresentation(motion: sidebarMotion, side: sidebarSide))
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
-        // 入口在死区外层，仍能从屏幕边缘直接点击和滑动。
-        .overlay {
-            FollowingCarousel(
-                items: viewModel.carouselItems,
-                focusedID: $focusedTargetID,
-                side: sidebarSide,
-                isExpanded: $isSidebarExpanded,
-                onSettled: { id in
-                    // 展开时由焦点停留计时触发，不让松手吸附提前提交。
-                    if !isSidebarExpanded { settleSelection(id) }
-                },
-                onOpenUp: { path.append($0) },
-                onOpenLive: { up in
-                    guard let room = viewModel.liveRoom(for: up) else {
-                        feedback.show("这位 UP 主已结束直播")
-                        return
-                    }
-                    onOpenLiveRoom(room)
-                },
-                onContextMenuChange: { presented in
-                    isAvatarMenuPresented = presented
-                    if presented {
-                        selectionTransitionTask?.cancel()
-                        selectionTransitionTask = nil
-                        pendingSelectionID = nil
-                        feedOpacity = 1
-                    }
-                },
-                motion: sidebarMotion,
-                onCloseSwipe: { translation in
-                    sidebarMotion.drag(translation: translation)
-                },
-                onCloseSwipeEnd: { velocity in
-                    isSidebarExpanded = sidebarMotion.endDrag(velocity: velocity, reduceMotion: reduceMotion)
-                }
-            )
-        }
         .onAppear { isFollowingVisible = true }
-        .onChange(of: viewModel.carouselItems) { _, _ in
-            viewModel.reconcileCarouselSelection()
+        .onChange(of: viewModel.selectionItems) { _, _ in
+            viewModel.reconcileSelection()
         }
         .task(id: LiveRefreshContext(isActive: isFollowingVisible && scenePhase == .active,
                                      accountID: account.accountID, isLoggedIn: account.isLoggedIn, generation: liveRefreshGeneration)) {
@@ -279,31 +230,9 @@ struct FollowingView: View {
                 await directory.refresh()
             }
         }
-        .task(id: isSidebarExpanded && !isAvatarMenuPresented ? focusedTargetID : nil) {
-            guard isSidebarExpanded, !isAvatarMenuPresented else { return }
-            let targetID = focusedTargetID
-            if targetID == viewModel.selectedTarget.id {
-                // 原头像不计时刷新；滑回原头像时取消尚未完成的切换。
-                settleSelection(targetID)
-                return
-            }
-            do {
-                try await Task.sleep(for: .seconds(FollowingSidebarDwellSettings.clamped(sidebarDwellDuration)))
-            } catch {
-                return
-            }
-            guard !Task.isCancelled, isSidebarExpanded, !isAvatarMenuPresented, focusedTargetID == targetID else { return }
-            settleSelection(targetID, refresh: true)
-        }
-        .onChange(of: isSidebarExpanded) { _, expanded in
-            sidebarMotion.settle(expanded: expanded, reduceMotion: reduceMotion)
-            if !expanded, isFollowingVisible {
-                settleSelection(focusedTargetID)
-            }
-        }
         // 与推荐页一致：重复点「关注」标签，不在顶部时回到顶部，已在顶部时刷新。
         .onTabReselected(.following) {
-            guard account.isLoggedIn, shortcutTask == nil, !isRefreshing, !isSidebarExpanded,
+            guard account.isLoggedIn, shortcutTask == nil, !isRefreshing,
                   path.isEmpty, detailEntry == nil else { return }
             if isAwayFromTop {
                 withAnimation(reduceMotion ? nil : .smooth) { listPosition.scrollTo(edge: .top) }
@@ -316,13 +245,6 @@ struct FollowingView: View {
                 startRefresh()
             }
         }
-        .onChange(of: sidebarSide) { _, _ in
-            isSidebarExpanded = false
-            sidebarMotion.reset()
-        }
-        .onChange(of: reduceMotion) { _, enabled in
-            if enabled { sidebarMotion.settle(expanded: isSidebarExpanded, reduceMotion: true) }
-        }
         .onChange(of: animatesCardExit) { _, enabled in
             if !enabled {
                 refreshOpacity = 1
@@ -331,13 +253,8 @@ struct FollowingView: View {
         }
         .onDisappear {
             isFollowingVisible = false
-            isAvatarMenuPresented = false
-            sidebarMotion.reset()
             cancelRefreshAnimation()
-            isSidebarExpanded = false
-            focusedTargetID = viewModel.selectedTarget.id
-            selectionTransitionTask?.cancel()
-            feedOpacity = 1
+            cancelSelectionTransition()
         }
     }
 
@@ -397,12 +314,10 @@ struct FollowingView: View {
     }
 
     private func startRefresh() {
-        guard !isRefreshing, !isSidebarExpanded else { return }
+        guard !isRefreshing else { return }
         liveRefreshGeneration += 1
         refreshTask?.cancel()
-        selectionTransitionTask?.cancel()
-        pendingSelectionID = nil
-        feedOpacity = 1
+        cancelSelectionTransition()
         isRefreshing = true
         let model = viewModel
         let feed = model.activeFeed
@@ -455,7 +370,6 @@ struct FollowingView: View {
     private func cancelRefreshAnimation() {
         refreshTask?.cancel()
         refreshTask = nil
-        pendingSelectionID = nil
         isRefreshing = false
         refreshOpacity = 1
     }
@@ -470,16 +384,16 @@ struct FollowingView: View {
             feed: viewModel.activeFeed,
             lastVisibleID: lastVisibleID,
             onOpenVideo: { open(entry) },
-            // 卡片头像和轮盘中央头像都可以进入 UP 主页。
+            // 卡片头像和头像条的长按菜单都可以进入 UP 主页。
             onOpenAuthor: {
-                path.append(
+                path.append(.space(
                     FollowedUp(
                         mid: entry.authorMid,
                         uname: entry.authorName,
                         face: entry.authorFace,
                         hasUpdate: false
                     )
-                )
+                ))
             },
             onLike: { like(entry) },
             onOpenDetail: { detailEntry = entry },
@@ -494,59 +408,84 @@ struct FollowingView: View {
         }
     }
 
-    private func settleSelection(_ id: FollowingSelection.ID, refresh: Bool = false) {
-        guard let target = viewModel.carouselItems.first(where: { $0.id == id }) else { return }
-        guard pendingSelectionID != id else { return }
-        // 重新选回当前页面时也要取消上一目标的等待。
+    private var animatesCardEnter: Bool { cardAnimationsEnabled && dynamicEnterEnabled && !reduceMotion }
+
+    /// 轻点头像立即切换：旧动态淡出的同时取数据，两者都结束后换上新动态再淡入。
+    private func select(_ target: FollowingSelection) {
+        // 点回当前页面：取消尚未完成的切换，把淡出的动态恢复出来。
         if target.id == viewModel.selectedTarget.id {
-            if pendingSelectionID != nil {
-                selectionTransitionTask?.cancel()
-                pendingSelectionID = nil
-                feedOpacity = 1
-            }
+            guard pendingSelectionID != nil else { return }
+            selectionTransitionTask?.cancel()
+            selectionTransitionTask = nil
+            pendingSelectionID = nil
+            isSelectionLoading = false
+            withAnimation(animatesCardEnter ? .easeIn(duration: fadeInDuration) : nil) { feedOpacity = 1 }
             return
         }
+        guard pendingSelectionID != target.id else { return }
         cancelRefreshAnimation()
         selectionTransitionTask?.cancel()
-        pendingSelectionID = id
-        feedOpacity = 1
+        pendingSelectionID = target.id
         let model = viewModel
         let targetFeed = model.feed(for: target)
+        // 有更新的 UP 主总是重新拉取：既拿到新动态，也让服务端清除他的红点。
+        let hadUpdate = model.beginSelection(target)
+        let needsLoad = targetFeed.entries.isEmpty || hadUpdate
         let stagingID = UUID()
+        let exitDuration = animatesCardExit ? FollowingSwitchFade.exit / AnimationSpeedSettings.clamped(exitSpeed) : 0
+        let exitStart = ProcessInfo.processInfo.systemUptime
+        if exitDuration > 0 { withAnimation(.easeOut(duration: exitDuration)) { feedOpacity = 0 } }
+
         selectionTransitionTask = Task { @MainActor in
             // 加载期间保留旧页面及其高度，新数据只暂存，不提前替换卡片。
-            if refresh || targetFeed.entries.isEmpty {
+            if needsLoad {
+                isSelectionLoading = true
                 await targetFeed.refresh(staged: true, stagingID: stagingID)
+                // 被下一次点选取消时，菊花归新的切换管。
+                if !Task.isCancelled { isSelectionLoading = false }
             }
-            guard !Task.isCancelled else {
-                targetFeed.commitStagedRefresh(id: stagingID)
-                return
-            }
-            if animatesCardExit {
-                withAnimation(.easeOut(duration: 0.07)) { feedOpacity = 0 }
+            guard !Task.isCancelled else { targetFeed.commitStagedRefresh(id: stagingID); return }
+            if exitDuration > 0 {
+                let remaining = max(0, exitDuration - (ProcessInfo.processInfo.systemUptime - exitStart))
                 do {
-                    try await CardAnimationSettings.waitWhileEnabled(for: 0.07, category: .dynamic, phase: .exit)
+                    try await CardAnimationSettings.waitWhileEnabled(for: remaining, category: .dynamic, phase: .exit)
                 } catch {
                     targetFeed.commitStagedRefresh(id: stagingID)
                     return
                 }
             }
-            guard !Task.isCancelled else {
-                targetFeed.commitStagedRefresh(id: stagingID)
-                return
-            }
+            guard !Task.isCancelled else { targetFeed.commitStagedRefresh(id: stagingID); return }
             // 同一帧提交目标和数据，避免闪过空状态或半成品列表。
-            targetFeed.commitStagedRefresh(id: stagingID)
-            model.select(target)
-            pendingSelectionID = nil
-            listPosition.scrollTo(edge: .top)
-
-            // 更新过滤批次；新卡片直接显示，不再等待进入动画。
-            feedGeneration += 1
-            feedOpacity = 1
-
+            let animatesEnter = animatesCardEnter
+            withAnimation(nil) {
+                targetFeed.commitStagedRefresh(id: stagingID)
+                model.select(target)
+                pendingSelectionID = nil
+                listPosition.scrollTo(edge: .top)
+                feedGeneration += 1
+                feedOpacity = animatesEnter ? 0 : 1
+            }
+            if animatesEnter {
+                // 隔一帧再启动：同一帧内先置 0 再改回 1 会被合并成没有动画。
+                try? await Task.sleep(for: .milliseconds(16))
+                if !Task.isCancelled {
+                    withAnimation(.easeIn(duration: fadeInDuration)) { feedOpacity = 1 }
+                }
+            }
             selectionTransitionTask = nil
         }
+    }
+
+    private var fadeInDuration: Double {
+        FeedRefreshTuning.fadeInDuration / AnimationSpeedSettings.clamped(enterSpeed)
+    }
+
+    private func cancelSelectionTransition() {
+        selectionTransitionTask?.cancel()
+        selectionTransitionTask = nil
+        pendingSelectionID = nil
+        isSelectionLoading = false
+        feedOpacity = 1
     }
 
     private func open(_ entry: DynamicEntry) {
@@ -570,6 +509,11 @@ struct FollowingView: View {
             }
         }
     }
+}
+
+/// 切换 UP 主时旧动态的淡出时长。比下拉刷新的淡出短得多：轻点是明确的操作，应当立刻有回应。
+private enum FollowingSwitchFade {
+    static let exit: Double = 0.15
 }
 
 #Preview {

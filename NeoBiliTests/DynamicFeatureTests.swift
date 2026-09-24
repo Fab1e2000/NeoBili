@@ -3,18 +3,6 @@ import XCTest
 
 @MainActor
 final class DynamicFeatureTests: XCTestCase {
-    private func entry(mid: Int, timestamp: Int, vote: String = "null") throws -> DynamicEntry {
-        let json = """
-        {"id_str":"1000", "type":"DYNAMIC_TYPE_WORD", "modules":{
-          "module_author":{"mid":\(mid),"pub_ts":\(timestamp)},
-          "module_dynamic":{"additional":{"type":"ADDITIONAL_TYPE_VOTE","vote":\(vote)}}
-        }}
-        """
-        // 添加正文，使非投票的浏览状态样本也能正常进入列表。
-        let withText = json.replacingOccurrences(of: "\"module_dynamic\":{", with: "\"module_dynamic\":{\"desc\":{\"text\":\"动态\"},")
-        return try XCTUnwrap(JSONDecoder().decode(DynamicItem.self, from: Data(withText.utf8)).asEntry)
-    }
-
     func testVoteCardSurvivesDecodingWithoutTextOrImages() throws {
         let json = """
         {"id_str":"123", "type":"DYNAMIC_TYPE_WORD", "modules":{"module_dynamic":{
@@ -38,7 +26,7 @@ final class DynamicFeatureTests: XCTestCase {
         XCTAssertEqual(result.voteInfo.options.first?.count, 12)
     }
 
-    func testReadingRestoresDefaultOrderAndNewUpdateMovesLeftAgain() throws {
+    func testSelectingClearsServerDotAndHoldsPositionUntilPortalConfirms() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
         var date = Date(timeIntervalSince1970: 1000)
         let store = FollowingReadStore(defaults: defaults, now: { date })
@@ -47,33 +35,33 @@ final class DynamicFeatureTests: XCTestCase {
         let first = FollowedUp(mid: 1, uname: "一", face: "", hasUpdate: false)
         let second = FollowedUp(mid: 2, uname: "二", face: "", hasUpdate: true)
         model.replaceUps([first, second])
-        model.select(.up(second))
-        XCTAssertEqual(model.carouselItems.map(\.id), [.all, .up(2), .up(1)])
-        let old = try entry(mid: 2, timestamp: 100)
-        store.observe([old])
-        store.markViewed(old)
+        XCTAssertEqual(model.selectionItems.map(\.id), [.all, .up(2), .up(1)])
+
+        let target = try XCTUnwrap(model.selectionItems.first { $0.id == .up(2) })
+        XCTAssertTrue(model.beginSelection(target), "有更新的 UP 主需要重新拉取")
+        XCTAssertFalse(store.hasUpdate(second), "红点在点选时立即清除")
+        XCTAssertFalse(model.beginSelection(target), "已清除的不再重复拉取")
+        XCTAssertEqual(model.selectionItems.map(\.id), [.all, .up(2), .up(1)], "保位期内不跳走")
+
+        // 清除请求尚未生效时，服务端仍报更新，不应让红点复活。
+        date = date.addingTimeInterval(10)
         model.replaceUps([second, first])
-        XCTAssertFalse(store.hasUpdate(second), "红点即时清除")
-        XCTAssertEqual(model.carouselItems.map(\.id), [.all, .up(2), .up(1)])
-        date = date.addingTimeInterval(299)
-        store.expirePriority()
-        XCTAssertEqual(model.carouselItems.map(\.id), [.all, .up(2), .up(1)])
+        XCTAssertFalse(store.hasUpdate(second))
+
+        // 服务端确认清除后撤掉本地覆盖；保位期结束回到默认顺序。
+        model.replaceUps([FollowedUp(mid: 2, uname: "二", face: "", hasUpdate: false), first])
+        XCTAssertTrue(store.cleared.isEmpty)
         let pendingRestore = FollowingReadStore(defaults: defaults, now: { date })
         pendingRestore.configure(accountID: 1)
-        XCTAssertTrue(pendingRestore.keepsPriority(second), "重启后保留剩余延时")
-        date = date.addingTimeInterval(1)
+        XCTAssertTrue(pendingRestore.keepsPriority(second), "重启后保留剩余保位时间")
+        date = date.addingTimeInterval(300)
         store.expirePriority()
-        XCTAssertEqual(model.carouselItems.map(\.id), [.all, .up(1), .up(2)])
-        XCTAssertEqual(model.selectedTarget.id, .up(2))
-        store.observe([try entry(mid: 2, timestamp: 200)])
-        XCTAssertEqual(model.carouselItems.map(\.id), [.all, .up(2), .up(1)])
-        store.markViewed(old)
-        XCTAssertTrue(store.hasUpdate(second), "浏览旧动态不能清除较新的更新")
-        let restored = FollowingReadStore(defaults: defaults)
-        restored.configure(accountID: 1)
-        XCTAssertEqual(restored.readThrough["2"], 100)
-        restored.configure(accountID: 2)
-        XCTAssertTrue(restored.readThrough.isEmpty)
+        XCTAssertEqual(model.selectionItems.map(\.id), [.all, .up(1), .up(2)])
+
+        // 之后服务端再报更新，是真正的新动态，红点重新出现并排到前面。
+        model.replaceUps([second, first])
+        XCTAssertTrue(store.hasUpdate(second))
+        XCTAssertEqual(model.selectionItems.map(\.id), [.all, .up(2), .up(1)])
     }
 
 }

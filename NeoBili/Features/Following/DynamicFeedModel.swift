@@ -11,7 +11,9 @@ final class DynamicFeedModel {
     enum Source: Equatable {
         /// 关注的所有 UP 主。
         case following
-        /// 某一个 UP 主自己的动态。
+        /// 关注页头像条选中的一位 UP 主：走关注流接口，服务端会随之清除他的更新红点。
+        case followedUp(hostMid: Int)
+        /// 某一个 UP 主自己的动态（空间页）。
         case space(hostMid: Int)
     }
 
@@ -47,6 +49,7 @@ final class DynamicFeedModel {
          fetchFeed: @escaping @MainActor (Source, Int, String?) async throws -> DynamicFeedPage = { source, page, offset in
              switch source {
              case .following: try await BiliAPI.followedDynamics(page: page, offset: offset)
+             case .followedUp(let mid): try await BiliAPI.followedDynamics(page: page, offset: offset, hostMid: mid)
              case .space(let mid): try await BiliAPI.spaceDynamics(hostMid: mid, offset: offset)
              }
          }) {
@@ -118,7 +121,6 @@ final class DynamicFeedModel {
         entriesGeneration += 1
         entries = Self.removingDuplicates(feed.entries)
         entryIDs = Set(entries.map(\.id))
-        FollowingReadStore.shared.observe(entries)
         offset = feed.offset
         hasMore = feed.hasMore && !feed.offset.isEmpty
         page = 1
@@ -157,7 +159,6 @@ final class DynamicFeedModel {
             hasMore = feed.hasMore && !feed.offset.isEmpty && !feed.items.isEmpty
             // 每页只转换一次；去重集合随分页增量维护，长列表不再反复扫描历史内容。
             let incoming = feed.entries.filter { entryIDs.insert($0.id).inserted }
-            FollowingReadStore.shared.observe(incoming)
             entries.append(contentsOf: incoming)
         } catch {
             // 翻页失败不打扰用户：列表里已有的内容仍然能看。

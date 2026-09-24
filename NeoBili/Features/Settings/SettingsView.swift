@@ -24,7 +24,6 @@ struct SettingsView: View {
                 row("标签栏", value: MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs).map(\.title).joined(separator: " · "),
                     id: "tabBar") { TabBarSettingsView() }
                 row("标题栏", value: TitleBarSettings.summary(pinned: pinsTitleBar), id: "titleBar") { TitleBarSettingsView() }
-                row("关注页", id: "following") { FollowingSettingsView() }
             }
 
             Section("播放") {

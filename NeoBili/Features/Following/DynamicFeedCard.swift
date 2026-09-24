@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 把点赞观察和可见性任务限制在行内，避免牵动整个动态列表及侧边轮盘。
+/// 把点赞观察和可见性任务限制在行内，避免牵动整个动态列表及头像条。
 /// 每行仍以动态 ID 为身份，展开正文、投票和转场状态不会串到其他动态。
 struct DynamicFeedCard: View {
     let entry: DynamicEntry
@@ -40,7 +40,6 @@ struct DynamicFeedCard: View {
         )
         .onScrollVisibilityChange(threshold: 0.1) { visible in
             isVisible = visible
-            if visible { FollowingReadStore.shared.markViewed(entry) }
         }
         // LazyVStack 会提前创建屏外行，生命周期 task 并不代表用户正在看它。
         // 离开视口即取消停留等待；滑过的卡片不抢播放地址预取名额。

@@ -1,7 +1,6 @@
 import Foundation
 
-/// 关注页轮盘中的一个选择目标。视觉焦点和真正用来筛选动态的
-/// 目标分开保存，快速滑过头像时才不会逐个发起请求。
+/// 关注页头像条中的一个筛选目标：全部动态，或某一位 UP 主。
 enum FollowingSelection: Hashable, Identifiable, Sendable {
     enum ID: Hashable, Sendable {
         case all
@@ -49,7 +48,7 @@ final class FollowingViewModel {
         self.liveDirectory = liveDirectory
     }
 
-    /// 轮盘停稳后真正提交给下方列表的选择。
+    /// 当前提交给下方列表的选择。
     private(set) var selectedTarget: FollowingSelection = .all
 
     /// 本次进入关注页后看过的 UP 动态。切回时复用已有数据，
@@ -59,17 +58,18 @@ final class FollowingViewModel {
     private struct CarouselInputs: Equatable {
         let ups: [FollowedUp]
         let rooms: [LiveRoom]
-        let readThrough: [String: Int]
-        let latest: [Int: Int]
+        let cleared: [Int: Double]
         let priorityUntil: [String: Double]
     }
     @ObservationIgnored private var carouselCache: (inputs: CarouselInputs, items: [FollowingSelection])?
 
-    var carouselItems: [FollowingSelection] {
+    /// 头像条的全部目标：「全部动态」+ 最近有动态的 UP 主（portal 列表）与开播的关注主播，
+    /// 按直播中、有未读、其余分组，每组保持 portal 原顺序。没有近期动态的关注只在「全部关注」里。
+    var selectionItems: [FollowingSelection] {
         // Read every dependency even on a cache hit, so Observation still tracks
         // account refreshes, live status, unread changes and priority expiration.
         let inputs = CarouselInputs(ups: ups, rooms: liveDirectory.rooms,
-                                    readThrough: readStore.readThrough, latest: readStore.latest,
+                                    cleared: readStore.cleared,
                                     priorityUntil: readStore.priorityUntil)
         if let carouselCache, carouselCache.inputs == inputs { return carouselCache.items }
         let rooms = Dictionary(liveDirectory.rooms.map { ($0.uid, $0) }, uniquingKeysWith: { first, _ in first })
@@ -83,7 +83,7 @@ final class FollowingViewModel {
             FollowedUp(mid: $0.uid, uname: $0.username, face: $0.faceURL?.absoluteString ?? "",
                        hasUpdate: false, liveRoomID: $0.roomID)
         }
-        let items: [FollowingSelection] = [.all] + FollowedUp.orderedForSidebar(displayed, keepsPriority: readStore.keepsPriority)
+        let items: [FollowingSelection] = [.all] + FollowedUp.orderedForSelection(displayed, keepsPriority: readStore.keepsPriority)
             .map(FollowingSelection.up)
         carouselCache = (inputs, items)
         return items
@@ -105,18 +105,25 @@ final class FollowingViewModel {
         }
     }
 
-    /// 轮盘停稳时只提交选择；数据加载由视图生命周期任务调用，
-    /// 便于在页面消失或下一次选择时正常取消等待。
+    /// 只提交选择；数据加载由视图任务调用，便于在页面消失或下一次选择时正常取消等待。
     func select(_ target: FollowingSelection) {
         selectedTarget = target
         _ = feed(for: target)
+    }
+
+    /// 轻点头像时立即调用：清除他的红点，并返回他原本是否有更新（有则应重新拉取，
+    /// 拉取本身会让服务端清除 portal 红点）。
+    func beginSelection(_ target: FollowingSelection) -> Bool {
+        guard let up = target.up, readStore.hasUpdate(up) else { return false }
+        readStore.markSelected(up)
+        return true
     }
 
     /// 可预先加载目标，而不改变当前展示的数据源。
     func feed(for target: FollowingSelection) -> DynamicFeedModel {
         guard case .up(let up) = target else { return feed }
         if let cached = upFeeds[up.mid] { return cached }
-        let model = DynamicFeedModel(source: .space(hostMid: up.mid))
+        let model = DynamicFeedModel(source: .followedUp(hostMid: up.mid))
         upFeeds[up.mid] = model
         return model
     }
@@ -160,28 +167,9 @@ final class FollowingViewModel {
         guard let list = try? await BiliAPI.followedUps(),
               VideoLikeStore.shared.sessionID == accountSessionID, !Task.isCancelled else { return }
         replaceUps(list)
-        // portal 只有布尔标记，没有更新版本。对本地已读但服务端仍标红的
-        // UP 查询最新动态时间，区分旧标记与真正的新更新；每批最多三个请求。
-        let candidates = list.filter { $0.hasUpdate && readStore.readThrough[String($0.mid)] != nil }
-        for start in stride(from: 0, to: candidates.count, by: 3) {
-            guard VideoLikeStore.shared.sessionID == accountSessionID, !Task.isCancelled else { return }
-            let batch = Array(candidates[start..<min(start + 3, candidates.count)])
-            let entries = await withTaskGroup(of: [DynamicEntry].self, returning: [DynamicEntry].self) { group in
-                for up in batch {
-                    group.addTask {
-                        (try? await BiliAPI.spaceDynamics(hostMid: up.mid, offset: nil).entries) ?? []
-                    }
-                }
-                var entries: [DynamicEntry] = []
-                for await result in group { entries.append(contentsOf: result) }
-                return entries
-            }
-            guard VideoLikeStore.shared.sessionID == accountSessionID, !Task.isCancelled else { return }
-            readStore.observe(entries)
-        }
     }
 
-    /// 服务端列表刷新时保留同一个 mid 的选择；如果它已不在轮盘里，
+    /// 服务端列表刷新时保留同一个 mid 的选择；如果它已不在可选目标里，
     /// 回退到「全部动态」。这个入口也让纯状态行为可以不经网络地测试。
     func replaceUps(_ list: [FollowedUp]) {
         var seen = Set<Int>()
@@ -191,13 +179,13 @@ final class FollowingViewModel {
         let byID = Dictionary(uniqueKeysWithValues: incoming.map { ($0.mid, $0) })
         let existing = Set(ups.map(\.mid))
         ups = ups.compactMap { byID[$0.mid] } + incoming.filter { !existing.contains($0.mid) }
-        reconcileCarouselSelection()
+        reconcileSelection()
     }
 
     /// 直播轮询更新元数据时保留同一 UP；仅直播目录中的 UP 下播后回到全部。
-    func reconcileCarouselSelection() {
+    func reconcileSelection() {
         guard case .up(let selected) = selectedTarget else { return }
-        if let refreshed = carouselItems.first(where: { $0.id == .up(selected.mid) }) {
+        if let refreshed = selectionItems.first(where: { $0.id == .up(selected.mid) }) {
             selectedTarget = refreshed
         } else {
             selectedTarget = .all

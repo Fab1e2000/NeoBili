@@ -29,20 +29,35 @@ extension BiliAPI {
         return payload.upList ?? []
     }
 
+    /// 自己关注的全部 UP 主，按关注时间倒序分页，每页 50 个。
+    static func followings(mid: Int, page: Int) async throws -> FollowingsPage {
+        try await APIClient.shared.get(
+            path: "x/relation/followings",
+            params: ["vmid": String(mid), "pn": String(page), "ps": String(FollowingsPage.pageSize), "order": "desc"]
+        )
+    }
+
     /// 关注的 UP 主的动态。
     ///
     /// `type=all` 把视频投稿、纯文字、图文都取回来（转发、直播预约这些由
     /// `DynamicEntry` 那一层过滤掉）。翻页用的是上一页返回的 `offset` 游标
     /// 而不是页码，`page` 只是给服务端做统计；第一页不传 offset。
-    static func followedDynamics(page: Int, offset: String?) async throws -> DynamicFeedPage {
+    ///
+    /// 传 `hostMid` 时只取这一位关注 UP 主的动态，等同网页动态页点头像：
+    /// 服务端据此清除他在 portal 头像列表里的 `has_update` 红点（与 PiliPlus 一致）。
+    static func followedDynamics(page: Int, offset: String?, hostMid: Int? = nil) async throws -> DynamicFeedPage {
         var params = [
             "timezone_offset": "-480",
-            "type": "all",
             "platform": "web",
             "features": "itemOpusStyle",
             "page": String(page),
             "web_location": "333.1365"
         ]
+        if let hostMid {
+            params["host_mid"] = String(hostMid)
+        } else {
+            params["type"] = "all"
+        }
         if let offset, !offset.isEmpty {
             params["offset"] = offset
         }

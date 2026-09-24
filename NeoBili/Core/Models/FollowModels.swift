@@ -73,7 +73,7 @@ struct FollowedUp: Decodable, Identifiable, Hashable, Sendable {
         self.liveRoomID = liveRoomID.flatMap { $0 > 0 ? $0 : nil }
     }
 
-    static func orderedForSidebar(_ ups: [FollowedUp], keepsPriority: (FollowedUp) -> Bool) -> [FollowedUp] {
+    static func orderedForSelection(_ ups: [FollowedUp], keepsPriority: (FollowedUp) -> Bool) -> [FollowedUp] {
         var live: [FollowedUp] = [], updated: [FollowedUp] = [], remaining: [FollowedUp] = []
         for up in ups {
             if up.liveRoomID != nil { live.append(up) }
@@ -81,6 +81,25 @@ struct FollowedUp: Decodable, Identifiable, Hashable, Sendable {
             else { remaining.append(up) }
         }
         return live + updated + remaining
+    }
+}
+
+// MARK: - 关注列表（x/relation/followings）
+
+/// 「全部关注」的一页。条目沿用 `FollowedUp`，没有 `has_update` 时按无更新处理。
+struct FollowingsPage: Decodable, Sendable {
+    static let pageSize = 50
+    let ups: [FollowedUp]
+    let total: Int
+
+    enum CodingKeys: String, CodingKey {
+        case list, total
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ups = (try? container.decodeIfPresent(LenientList<FollowedUp>.self, forKey: .list))??.elements ?? []
+        total = container.flexibleInt(forKey: .total) ?? 0
     }
 }
 

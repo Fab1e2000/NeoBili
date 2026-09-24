@@ -81,7 +81,6 @@ struct DynamicDetailView: View {
         }
         .onAppear {
             OrientationController.enterPortrait()
-            FollowingReadStore.shared.markViewed(entry)
         }
     }
 

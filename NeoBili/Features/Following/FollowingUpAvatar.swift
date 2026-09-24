@@ -1,43 +1,47 @@
 import SwiftUI
-import UIKit
 
-struct FollowingSidebarAvatar: View {
+/// 头像条与「全部关注」共用的圆形头像：选中描主题色环，未读标红点，开播标 LIVE。
+struct FollowingUpAvatar: View {
     @Environment(\.appThemeColor) private var themeColor
     let item: FollowingSelection
-    let selected: Bool
-    let size: CGFloat
+    var selected = false
+    var size: CGFloat = 52
 
     var body: some View {
         ZStack {
             if let up = item.up {
                 BiliImage(url: up.secureAvatarURL).aspectRatio(contentMode: .fill).id(up.mid)
             } else {
-                AllDynamicsAvatar()
+                // 品牌头像按 60pt 绘制，再等比缩放到当前尺寸。
+                AllDynamicsAvatar().frame(width: 60, height: 60).scaleEffect(size / 60)
             }
         }
-        .frame(width: 60, height: 60)
+        .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay { Circle().stroke(selected ? themeColor : .white.opacity(0.4), lineWidth: selected ? 2.5 : 1) }
+        .overlay { Circle().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5) }
+        // 选中环画在头像外侧并留一圈间隙，不压住头像本身。
+        .padding(3)
+        .overlay {
+            if selected { Circle().strokeBorder(themeColor, lineWidth: 2) }
+        }
         .overlay(alignment: .topTrailing) {
-            if item.up?.hasUpdate == true {
+            if item.up?.hasUpdate == true, item.up?.liveRoomID == nil {
                 Circle().fill(.red).frame(width: 10, height: 10)
-                    .overlay { Circle().stroke(.background, lineWidth: 2) }
+                    .overlay { Circle().stroke(Color(uiColor: .systemGroupedBackground), lineWidth: 2) }
+                    .offset(x: -3, y: 3)
             }
         }
         .overlay(alignment: .bottom) {
             if item.up?.liveRoomID != nil {
                 Text("LIVE")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(themeColor, in: Capsule())
-                    .offset(y: 6)
+                    .overlay { Capsule().stroke(Color(uiColor: .systemGroupedBackground), lineWidth: 1.5) }
+                    .offset(y: 3)
             }
         }
-        .scaleEffect(size / 60)
-        .frame(width: size, height: size)
-        .padding(.bottom, item.up?.liveRoomID != nil ? size / 10 : 0)
-        .appTheme()
     }
 }
 

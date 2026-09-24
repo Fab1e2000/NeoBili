@@ -10,10 +10,10 @@ final class FollowingLiveTests: XCTestCase {
         fixture.model.replaceUps([up(1), up(2, updated: true), up(3), up(4, updated: true)])
         await fixture.directory.refresh()
 
-        XCTAssertEqual(fixture.model.carouselItems.map(\.id), [.all, .up(3), .up(4), .up(2), .up(1)])
-        XCTAssertEqual(fixture.model.carouselItems.first { $0.id == .up(3) }?.up?.liveRoomID, 1003)
-        XCTAssertEqual(fixture.model.carouselItems.first { $0.id == .up(3) }?.up?.hasUpdate, false)
-        XCTAssertEqual(fixture.model.carouselItems.first { $0.id == .up(2) }?.up?.hasUpdate, true)
+        XCTAssertEqual(fixture.model.selectionItems.map(\.id), [.all, .up(3), .up(4), .up(2), .up(1)])
+        XCTAssertEqual(fixture.model.selectionItems.first { $0.id == .up(3) }?.up?.liveRoomID, 1003)
+        XCTAssertEqual(fixture.model.selectionItems.first { $0.id == .up(3) }?.up?.hasUpdate, false)
+        XCTAssertEqual(fixture.model.selectionItems.first { $0.id == .up(2) }?.up?.hasUpdate, true)
     }
 
     func testLiveUpMissingFromPortalAppearsAndCanSelectItsCachedDynamicFeed() async throws {
@@ -22,14 +22,14 @@ final class FollowingLiveTests: XCTestCase {
         defer { fixture.cleanUp() }
         fixture.model.replaceUps([up(8, updated: true)])
         await fixture.directory.refresh()
-        let liveTarget = try XCTUnwrap(fixture.model.carouselItems.first { $0.id == .up(9) })
+        let liveTarget = try XCTUnwrap(fixture.model.selectionItems.first { $0.id == .up(9) })
 
-        XCTAssertEqual(fixture.model.carouselItems.map(\.id), [.all, .up(9), .up(8)])
+        XCTAssertEqual(fixture.model.selectionItems.map(\.id), [.all, .up(9), .up(8)])
         XCTAssertEqual(liveTarget.title, liveRoom.username)
         XCTAssertEqual(liveTarget.up?.liveRoomID, liveRoom.roomID)
         fixture.model.select(liveTarget)
         XCTAssertEqual(fixture.model.selectedTarget.id, .up(9))
-        XCTAssertEqual(fixture.model.activeFeed.source, .space(hostMid: 9))
+        XCTAssertEqual(fixture.model.activeFeed.source, .followedUp(hostMid: 9))
         XCTAssertEqual(fixture.model.liveRoom(for: try XCTUnwrap(fixture.model.selectedUp)), liveRoom)
         let feed = fixture.model.activeFeed
         fixture.model.select(.all)
@@ -45,14 +45,14 @@ final class FollowingLiveTests: XCTestCase {
         defer { fixture.cleanUp() }
         fixture.model.replaceUps(portal)
         await fixture.directory.refresh()
-        fixture.model.select(try XCTUnwrap(fixture.model.carouselItems.first { $0.id == .up(3) }))
+        fixture.model.select(try XCTUnwrap(fixture.model.selectionItems.first { $0.id == .up(3) }))
         let selectedFeed = fixture.model.activeFeed
 
         await fixture.loader.replace([1: page([], number: 1)])
         await fixture.directory.refresh(force: true)
-        fixture.model.reconcileCarouselSelection()
+        fixture.model.reconcileSelection()
 
-        XCTAssertEqual(fixture.model.carouselItems.map(\.id), [.all, .up(2), .up(1), .up(3)])
+        XCTAssertEqual(fixture.model.selectionItems.map(\.id), [.all, .up(2), .up(1), .up(3)])
         XCTAssertEqual(fixture.model.selectedTarget.id, .up(3))
         XCTAssertNil(fixture.model.selectedUp?.liveRoomID, "A completed offline scan must clear the selected UP's old live flag")
         XCTAssertNil(fixture.model.liveRoom(for: try XCTUnwrap(fixture.model.selectedUp)))
@@ -64,13 +64,13 @@ final class FollowingLiveTests: XCTestCase {
         defer { fixture.cleanUp() }
         fixture.model.replaceUps([up(8)])
         await fixture.directory.refresh()
-        fixture.model.select(try XCTUnwrap(fixture.model.carouselItems.first { $0.id == .up(9) }))
+        fixture.model.select(try XCTUnwrap(fixture.model.selectionItems.first { $0.id == .up(9) }))
 
         await fixture.loader.replace([1: page([], number: 1)])
         await fixture.directory.refresh(force: true)
-        fixture.model.reconcileCarouselSelection()
+        fixture.model.reconcileSelection()
 
-        XCTAssertEqual(fixture.model.carouselItems.map(\.id), [.all, .up(8)])
+        XCTAssertEqual(fixture.model.selectionItems.map(\.id), [.all, .up(8)])
         XCTAssertEqual(fixture.model.selectedTarget.id, .all)
         XCTAssertEqual(fixture.model.activeFeed.source, .following)
         XCTAssertTrue(fixture.model.activeFeed === fixture.model.feed)
@@ -81,7 +81,7 @@ final class FollowingLiveTests: XCTestCase {
         defer { fixture.cleanUp() }
         fixture.model.replaceUps([up(8)])
         await fixture.directory.refresh()
-        let oldTarget = try XCTUnwrap(fixture.model.carouselItems.first { $0.id == .up(9) })
+        let oldTarget = try XCTUnwrap(fixture.model.selectionItems.first { $0.id == .up(9) })
         fixture.model.select(oldTarget)
         let oldFeed = fixture.model.activeFeed
         let oldAllFeed = fixture.model.feed
@@ -90,14 +90,14 @@ final class FollowingLiveTests: XCTestCase {
 
         XCTAssertTrue(fixture.directory.rooms.isEmpty)
         XCTAssertTrue(fixture.model.ups.isEmpty)
-        XCTAssertEqual(fixture.model.carouselItems.map(\.id), [.all])
+        XCTAssertEqual(fixture.model.selectionItems.map(\.id), [.all])
         XCTAssertEqual(fixture.model.selectedTarget.id, .all)
         XCTAssertFalse(fixture.model.feed === oldAllFeed)
         XCTAssertFalse(fixture.model.feed(for: oldTarget) === oldFeed)
         await fixture.loader.replace([1: page([room(20)], number: 1)])
         fixture.model.replaceUps([up(20)])
         await fixture.directory.refresh()
-        XCTAssertEqual(fixture.model.carouselItems.map(\.id), [.all, .up(20)], "New account must not inherit previous live entries or refresh throttling")
+        XCTAssertEqual(fixture.model.selectionItems.map(\.id), [.all, .up(20)], "New account must not inherit previous live entries or refresh throttling")
     }
 
     func testAccountResetRejectsAnAlreadyPendingLiveScan() async throws {
@@ -118,7 +118,7 @@ final class FollowingLiveTests: XCTestCase {
         await pending.resolve(page([room(9)], number: 1))
         await old.value
         XCTAssertTrue(directory.rooms.isEmpty)
-        XCTAssertEqual(fixture.model.carouselItems.map(\.id), [.all])
+        XCTAssertEqual(fixture.model.selectionItems.map(\.id), [.all])
         XCTAssertEqual(fixture.model.selectedTarget.id, .all)
     }
 
