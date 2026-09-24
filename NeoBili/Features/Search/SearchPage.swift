@@ -8,10 +8,20 @@ struct SearchPage: View {
     let onSubmit: (String?) -> Void
     @State private var history = SearchHistory.shared
     @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 标题栏随内容滚动时，热搜页上滑后收起标题，只留搜索框。
+    @State private var isHeaderCollapsed = false
+    @State private var headerHeight: CGFloat = 0
+    @State private var homePosition = ScrollPosition(edge: .top)
 
     /// 只在搜索首页（历史/热搜）显示标题；输入、联想和结果页让搜索框顶到最上方。
     private var showsHeader: Bool {
         !isFocused && !viewModel.isShowingSuggestions && !viewModel.hasSubmittedSearch
+    }
+
+    /// 标题固定时常驻；随内容滚动时，上滑后收起。
+    private var displaysHeader: Bool {
+        showsHeader && (pinsTitleBar || !isHeaderCollapsed)
     }
 
     var body: some View {
@@ -38,11 +48,6 @@ struct SearchPage: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        // 标题栏随内容滚动时，标题在搜索框下方、作为历史与热搜的第一行。
-                        if showsHeader && !pinsTitleBar {
-                            PageHeader(title: "搜索")
-                                .staysInPlaceWhenPulled()
-                        }
                         historySection
                         hotSearchSection
                             .padding(.horizontal, 12)
@@ -51,10 +56,26 @@ struct SearchPage: View {
                                         in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                     .padding(.horizontal, 20)
+                    .padding(.top, 4)
                     .padding(.bottom, 12)
                 }
+                .scrollPosition($homePosition)
                 .scrollDismissesKeyboard(.interactively)
-                .tracksPageHeaderPull()
+                // 标题和搜索框都在顶部栏里：标题收起只改变顶部栏高度，内容的滚动位置不动。
+                // 用「离当前顶端的距离」加回差判断，收起/展开后都不会立刻反向触发。
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, distance in
+                    guard !pinsTitleBar, showsHeader else { return }
+                    if !isHeaderCollapsed, distance > headerHeight + 16 {
+                        isHeaderCollapsed = true
+                    } else if isHeaderCollapsed, distance < 1 {
+                        isHeaderCollapsed = false
+                        // 标题回来时列表跟着下移，不让标题盖住最上面的搜索历史。
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
+                            homePosition.scrollTo(edge: .top)
+                        }
+                    }
+                }
+                .onAppear { isHeaderCollapsed = false }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,9 +85,10 @@ struct SearchPage: View {
         }
         .safeAreaBar(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
-                if showsHeader && pinsTitleBar {
+                if displaysHeader {
                     PageHeader(title: "搜索")
                         .padding(.horizontal, 20)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
                 HomeSearchBar(text: Binding(get: { viewModel.query }, set: { viewModel.query = $0 }),
@@ -77,9 +99,8 @@ struct SearchPage: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 2)
             }
-            .animation(.smooth(duration: 0.3), value: showsHeader)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: displaysHeader)
         }
-        .scrollEdgeEffectStyle(.soft, for: .top)
         .task { await viewModel.loadHotSearches() }
         .onDisappear { isFocused = false }
         .toolbar(.hidden, for: .navigationBar)
@@ -141,19 +162,25 @@ struct SearchPage: View {
             } else if viewModel.hotSearches.isEmpty {
                 Text("暂无热搜").font(.caption).foregroundStyle(.secondary).padding(.vertical, 8)
             }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 2), spacing: 0) {
+            // 一行一条，字号与推荐页卡片标题一致。
+            LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(viewModel.hotSearches.enumerated()), id: \.element.id) { index, item in
                     Button { onSubmit(item.keyword) } label: {
-                        HStack(spacing: 6) {
-                            Text(String(index + 1)).font(.caption.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(index < 3 ? themeColor : Color.secondary).frame(width: 20)
-                            Text(item.title).font(.caption).foregroundStyle(.primary)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(String(index + 1)).font(.subheadline.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(index < 3 ? themeColor : Color.secondary)
+                                .frame(minWidth: 22, alignment: .leading)
+                            Text(item.title).font(.subheadline).foregroundStyle(.primary)
                                 .lineLimit(2)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .frame(minHeight: 40)
+                        .padding(.vertical, 12)
+                        .frame(minHeight: 44)
                         .contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel("第\(index + 1)名，\(item.title)")
+                    if index < viewModel.hotSearches.count - 1 {
+                        Divider().padding(.leading, 32)
+                    }
                 }
             }
         }
