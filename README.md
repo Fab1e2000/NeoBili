@@ -13,6 +13,7 @@ SwiftUI 原生构建 · iOS 26 液态玻璃 · MPVKit 播放内核
 [![iOS 26+](https://img.shields.io/badge/iOS-26%2B-111111?style=flat-square&logo=apple&logoColor=white)](#安装)
 [![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white)](https://www.swift.org)
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat-square)](https://developer.apple.com/xcode/swiftui/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8A8F98?style=flat-square)](LICENSE)
 
 [下载](#安装) · [功能](#功能亮点) · [从源码构建](#从源码构建) · [使用手册](docs/USAGE.md) · [更新日志](docs/releases)
 
@@ -29,8 +30,8 @@ SwiftUI 原生构建 · iOS 26 液态玻璃 · MPVKit 播放内核
   </tr>
 </table>
 
-> [!NOTE]
-> NeoBili 是独立的第三方项目，与哔哩哔哩（bilibili）无任何官方关联。
+> [!IMPORTANT]
+> NeoBili 是个人开发的非官方第三方客户端，与哔哩哔哩（bilibili）无任何关联，仅供学习与交流，免费且不得用于商业用途。使用前请阅读 [免责声明](DISCLAIMER.md)。
 
 ## 功能亮点
 
@@ -125,6 +126,7 @@ docs/               架构说明、使用手册与版本说明
 | [设置开发说明](docs/SETTINGS.md) | 设置键的兼容与接线 |
 | [版本说明](docs/releases) | 每个版本的更新内容 |
 | [第三方声明](THIRD_PARTY_NOTICES.md) | 依赖与参考项目的许可信息 |
+| [免责声明](DISCLAIMER.md) | 与哔哩哔哩的关系、内容与数据、使用者责任 |
 
 ## 致谢
 
@@ -133,4 +135,14 @@ docs/               架构说明、使用手册与版本说明
 
 ## 免责声明
 
-NeoBili 是独立开发的第三方客户端，与哔哩哔哩没有任何官方关联，也未获得其授权或认可。「哔哩哔哩」「bilibili」及相关标识归其权利人所有；应用中展示的视频、直播、评论等内容来自哔哩哔哩，版权归原作者所有。
+- NeoBili 是个人独立开发的**非官方**第三方客户端，与哔哩哔哩没有任何隶属、合作或授权关系。「哔哩哔哩」「bilibili」及相关标识归其权利人所有。
+- 本项目**不托管、不转载、不分发**任何内容；应用内的视频、直播、评论等均由设备直接向哔哩哔哩公开服务请求，版权归原作者所有。
+- **不提供**视频下载、绕过付费或会员限制等功能；**不设服务器**，不收集用户数据，登录凭据只保存在本机钥匙串。
+- 仅供个人学习与交流，免费提供，**不得用于商业用途**。使用者需自行遵守法律法规与《哔哩哔哩用户协议》，并自行承担使用风险。
+- 权利人如认为本项目侵犯其权益，请通过 [Issues](https://github.com/Fab1e2000/NeoBili/issues) 联系，核实后会及时处理。
+
+完整条款见 [DISCLAIMER.md](DISCLAIMER.md)。
+
+## 许可证
+
+本项目源代码以 [MIT 许可证](LICENSE) 发布。许可证只覆盖本项目自身的代码，不涉及哔哩哔哩的任何内容、商标或服务；第三方依赖以各自的许可证为准，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
