@@ -10,12 +10,12 @@ THEMES = re.findall(
     (ROOT / 'NeoBili/Core/UI/AppTheme.swift').read_text(),
 )
 # Block "N" monogram after PiliPala's extruded "P": a white face with a thin
-# theme-colored rim, extruded 125 units toward the lower left. EXTRUSION is the
+# theme-colored rim, extruded 150 units toward the lower left. EXTRUSION is the
 # exact sweep of the rimmed face; FACE is cut out of it to show the background.
-EXTRUSION = ('M 250 778 L 378 778 L 432 725 L 453 778 L 648 778 L 774 654 '
-             'L 774 246 L 646 246 L 592 299 L 571 246 L 376 246 L 250 370 Z')
-FACE = ('M 390 260 L 562 260 L 660 512 L 660 260 L 760 260 L 760 640 '
-        'L 588 640 L 490 388 L 490 640 L 390 640 Z')
+EXTRUSION = ('M 198 831 L 351 831 L 416 768 L 441 831 L 675 831 L 826 682 '
+             'L 826 193 L 673 193 L 608 256 L 583 193 L 349 193 L 198 342 Z')
+FACE = ('M 366 210 L 572 210 L 690 512 L 690 210 L 810 210 L 810 666 '
+        'L 603 666 L 486 363 L 486 666 L 366 666 Z')
 MARK = f'<path d="{EXTRUSION} {FACE}" fill-rule="evenodd"'
 
 for theme_id, name, theme_hex in THEMES:
