@@ -240,6 +240,8 @@ struct PlayerGlassChrome<MenuContent: View>: View {
         .padding(.horizontal, 16)
         .frame(height: 32)
         .playerGlassSurface(in: Capsule())
+        // 胶囊按文字宽度画，在标题区里靠左，紧跟返回按钮，间距与其它控件一致。
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: 48)
         .allowsHitTesting(false)
         .accessibilityIdentifier("player.metadata")
