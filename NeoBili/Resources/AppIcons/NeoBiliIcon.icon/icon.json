@@ -10,13 +10,8 @@
           "fill": "automatic",
           "glass": true,
           "hidden": false,
-          "image-name": "Play.svg",
-          "name": "Theme play"
-        },
-        {
-          "hidden": false,
-          "image-name": "Backing.svg",
-          "name": "Offset play"
+          "image-name": "Mark.svg",
+          "name": "N mark"
         }
       ],
       "shadow": {

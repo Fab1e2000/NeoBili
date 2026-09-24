@@ -6,38 +6,34 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 THEMES = re.findall(
-    r'\.init\(id: "([^"]+)", name: "([^"]+)", hex: 0x([0-9A-F]+)\)',
+    r'\.init\(id: "([^"]+)", name: (?:String\(localized: )?"([^"]+)"\)?, hex: 0x([0-9A-F]+)\)',
     (ROOT / 'NeoBili/Core/UI/AppTheme.swift').read_text(),
 )
-# Rounded, optically centered play symbol. No baked material or lighting effects.
-SHAPE = ('M 373 187 C 327 161 278 185 278 243 L 278 781 '
-         'C 278 839 327 863 373 837 L 828 576 '
-         'C 886 543 886 481 828 448 Z')
-
-# Keep the full 1024 canvas; only scale foreground artwork, never the icon mask.
-FOREGROUND = 'translate(484 499) scale(0.80) translate(-512 -512)'
+# Block "N" monogram after PiliPala's extruded "P": a white face with a thin
+# theme-colored rim, extruded 125 units toward the lower left. EXTRUSION is the
+# exact sweep of the rimmed face; FACE is cut out of it to show the background.
+EXTRUSION = ('M 250 778 L 378 778 L 432 725 L 453 778 L 648 778 L 774 654 '
+             'L 774 246 L 646 246 L 592 299 L 571 246 L 376 246 L 250 370 Z')
+FACE = ('M 390 260 L 562 260 L 660 512 L 660 260 L 760 260 L 760 640 '
+        'L 588 640 L 490 388 L 490 640 L 390 640 Z')
+MARK = f'<path d="{EXTRUSION} {FACE}" fill-rule="evenodd"'
 
 for theme_id, name, theme_hex in THEMES:
     icon_name = 'NeoBiliIcon' if theme_id == 'pink' else f'NeoBiliIcon-{theme_id}'
     destination = ROOT / 'NeoBili/Resources/AppIcons' / f'{icon_name}.icon'
     assets = destination / 'Assets'
     assets.mkdir(parents=True, exist_ok=True)
-    channels = [int(theme_hex[i:i + 2], 16) for i in (0, 2, 4)]
-    backing_hex = ''.join(f'{round(c * 0.40 + 255 * 0.60):02X}' for c in channels)
-    layers = [('Play.svg', f'#{theme_hex}', FOREGROUND),
-              ('Backing.svg', f'#{backing_hex}', FOREGROUND + ' translate(-48 38)')]
-    for filename, fill, transform in layers:
-        (assets / filename).write_text(
-            '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" '
-            f'viewBox="0 0 1024 1024"><path d="{SHAPE}" fill="{fill}" '
-            f'transform="{transform}"/></svg>\n'
-        )
+    for stale in ('Play.svg', 'Backing.svg'):
+        (assets / stale).unlink(missing_ok=True)
+    (assets / 'Mark.svg').write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" '
+        f'viewBox="0 0 1024 1024">{MARK} fill="#{theme_hex}"/></svg>\n'
+    )
     document = {
         'fill': {'solid': 'srgb:1.00000,1.00000,1.00000,1.00000'},
         'groups': [{
             'layers': [
-                {'image-name': 'Play.svg', 'name': 'Theme play'},
-                {'image-name': 'Backing.svg', 'name': 'Offset play'},
+                {'image-name': 'Mark.svg', 'name': 'N mark'},
             ],
         }],
         'supported-platforms': {'squares': 'shared'},
@@ -47,16 +43,19 @@ for theme_id, name, theme_hex in THEMES:
     if document_path.exists():
         document = json.loads(document_path.read_text())
         document['fill'] = {'solid': 'srgb:1.00000,1.00000,1.00000,1.00000'}
+        layer = next((l for l in document['groups'][0]['layers']
+                      if l.get('image-name') in ('Play.svg', 'Mark.svg')), {})
+        layer.update({'image-name': 'Mark.svg', 'name': 'N mark'})
+        document['groups'][0]['layers'] = [layer]
     document_path.write_text(json.dumps(document, indent=2) + '\n')
     if theme_id == 'pink':
         # Editable flat master, viewable in professional vector drawing tools.
-        master = ROOT / 'design/app-icon-2026/LayeredPlay-white-master.svg'
+        master = ROOT / 'design/app-icon-2026/NMark-white-master.svg'
         master.write_text(
             '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" '
             'viewBox="0 0 1024 1024">\n'
             '<rect width="1024" height="1024" fill="#FFFFFF"/>\n'
-            f'<path id="backing" d="{SHAPE}" fill="#{backing_hex}" transform="{FOREGROUND} translate(-48 38)"/>\n'
-            f'<path id="play" d="{SHAPE}" fill="#{theme_hex}" transform="{FOREGROUND}"/>\n'
+            f'{MARK} id="mark" fill="#{theme_hex}"/>\n'
             '</svg>\n'
         )
 print(f'Created {len(THEMES)} white-background vector icons')
