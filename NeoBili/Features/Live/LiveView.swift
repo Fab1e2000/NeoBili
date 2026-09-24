@@ -6,6 +6,8 @@ struct LiveView: View {
     @State private var recommended: LiveFeedModel
     @State private var following: LiveFeedModel
     @State private var source: LiveFeedModel.Source = .recommended
+    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    @State private var headerScroll = LiveHeaderScroll()
     let onOpenRoom: (LiveRoom, String) -> Void
 
     init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom, String) -> Void) {
@@ -36,14 +38,15 @@ struct LiveView: View {
             ))
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
-            // 标题和下方的切换器常驻顶部栏，不受「标题栏」设置影响：两页左右翻页，
-            // 标题放进列表会随页面横移或被切换器隔开，固定在顶部最稳定。
-            // 两页各用系统原生的顶部模糊，翻页时跟着各自的页面走。
+            // 固定标题栏：标题和切换器常驻顶部栏，两页各用系统原生的顶部模糊。
             .safeAreaBar(edge: .top, spacing: 0) {
-                VStack(spacing: 0) {
-                    PageHeader(title: "直播")
-                        .padding(.horizontal, 20)
-                    sourcePicker
+                if pinsTitleBar { header }
+            }
+            // 随内容滚动：两页左右翻页，标题不能放进某一页的列表里，否则会随页面横移。
+            // 改为浮在两页上方，跟着当前页的纵向滚动一起上移离开；两页的内容各自在顶部让出同样的高度。
+            .overlay(alignment: .top) {
+                if !pinsTitleBar {
+                    LiveScrollingHeader(scroll: headerScroll, source: source) { header }
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
@@ -59,6 +62,14 @@ struct LiveView: View {
         }
     }
 
+    private var header: some View {
+        VStack(spacing: 0) {
+            PageHeader(title: "直播")
+                .padding(.horizontal, 20)
+            sourcePicker
+        }
+    }
+
     private var sourcePicker: LiveSourcePicker {
         LiveSourcePicker(selection: selection, showsFollowing: account.isLoggedIn)
     }
@@ -71,6 +82,7 @@ struct LiveView: View {
 
     private func page(_ model: LiveFeedModel) -> some View {
         LiveFeedPage(model: model, isActive: model.source == source,
+                     headerScroll: pinsTitleBar ? nil : headerScroll,
                      onSelectRecommended: { selection.wrappedValue = .recommended },
                      onOpenRoom: onOpenRoom)
             .frame(maxHeight: .infinity)
@@ -81,6 +93,8 @@ struct LiveView: View {
 private struct LiveFeedPage: View {
     /// 当前显示的那一页才响应标签栏的重复点击。
     let isActive: Bool
+    /// 标题栏随内容滚动时由外层提供：本页在顶部让出标题高度，并把滚动距离交给浮动标题。
+    let headerScroll: LiveHeaderScroll?
     let onSelectRecommended: () -> Void
     let onOpenRoom: (LiveRoom, String) -> Void
 
@@ -103,10 +117,11 @@ private struct LiveFeedPage: View {
     @State private var isAwayFromTop = false
     @State private var shortcutTask: Task<Void, Never>?
 
-    init(model: LiveFeedModel, isActive: Bool,
+    init(model: LiveFeedModel, isActive: Bool, headerScroll: LiveHeaderScroll?,
          onSelectRecommended: @escaping () -> Void, onOpenRoom: @escaping (LiveRoom, String) -> Void) {
         _model = State(initialValue: model)
         self.isActive = isActive
+        self.headerScroll = headerScroll
         self.onSelectRecommended = onSelectRecommended
         self.onOpenRoom = onOpenRoom
     }
@@ -212,8 +227,12 @@ private struct LiveFeedPage: View {
             }
         }
         .scrollPosition($scrollPosition)
+        .contentMargins(.top, headerScroll?.height ?? 0, for: .scrollContent)
         .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 1 } action: { _, away in
             isAwayFromTop = away
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+            headerScroll?.offsets[model.source] = offset
         }
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollEdgeEffectHidden(true, for: .bottom)
@@ -338,5 +357,36 @@ struct LiveSourcePicker: View {
         .accessibilityIdentifier("live.feedSource")
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+}
+
+/// 随内容滚动时浮动标题的共享状态。单独一个可观察对象：逐帧的滚动距离只让标题重绘，
+/// 不牵动两页列表。
+@MainActor @Observable
+final class LiveHeaderScroll {
+    /// 标题（含切换器）的高度，两页在内容顶部让出同样的距离。
+    var height: CGFloat = 0
+    /// 每页的纵向滚动距离，翻页后标题按新一页的位置归位。
+    var offsets: [LiveFeedModel.Source: CGFloat] = [:]
+}
+
+/// 浮在两页上方的标题：随当前页上滑同步离开，下拉时停在原位（与其它页面一致）。
+private struct LiveScrollingHeader<Content: View>: View {
+    let scroll: LiveHeaderScroll
+    let source: LiveFeedModel.Source
+    @ViewBuilder let content: Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let collapse = min(max(scroll.offsets[source] ?? 0, 0), scroll.height)
+        content
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scroll.height = $0 }
+            .offset(y: -collapse)
+            // 翻到另一页时按那一页的滚动位置平滑归位；滚动本身逐帧跟手，不加动画。
+            .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: source)
+            // 上移部分在安全区顶端裁掉，不压到状态栏上；越往上越淡，边缘不显得生硬。
+            .opacity(scroll.height > 0 ? 1 - Double(collapse / scroll.height) * 0.6 : 1)
+            .frame(height: scroll.height > 0 ? scroll.height : nil, alignment: .top)
+            .clipped()
     }
 }
