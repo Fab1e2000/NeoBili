@@ -73,7 +73,7 @@ struct RootView: View {
             }.frame(width: 0, height: 0)
         }
         .tint(AppTheme.selected(themeID).color)
-        .tabBarMinimizeBehavior(miniPlayerEnabled ? .onScrollDown : .never)
+        .tabBarMinimizeBehavior(miniPlayerEnabled && !nowPlaying.holdsTabBarMinimize ? .onScrollDown : .never)
         .onChange(of: miniPlayerEnabled) { nowPlaying.applyMiniPlayerSetting() }
         .tabMiniPlayerHost(isActive: { !nowPlaying.isServiceSheetPresented }, transitionNamespace: videoTransition)
         .task(id: search.trimmedQuery) { await search.loadSuggestions() }

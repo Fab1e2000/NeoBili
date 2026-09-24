@@ -56,6 +56,10 @@ final class NowPlayingStore {
     }
     private(set) var pendingPresentationID: UUID?
     private(set) var isMiniPlayerPresented = false
+    /// 视频页缩放退出到底部附件后的短时间内，标签栏收缩时 UIKit 重建玻璃变形的位置会算错，
+    /// 缩略播放器整体偏向右下方压住搜索按钮。退出开始时暂停收缩，转场结束 0.5 秒后再恢复。
+    private(set) var holdsTabBarMinimize = false
+    @ObservationIgnored private var minimizeReleaseTask: Task<Void, Never>?
     private(set) var isVideoPageDismissalInProgress = false
     private(set) var isVideoPageInteractionInProgress = false
     private(set) var dismissalPlaybackPhase: InlineVideoPlaybackPhase?
@@ -236,6 +240,8 @@ final class NowPlayingStore {
             isLoading: isLoading
         )
         isVideoPageDismissalInProgress = true
+        minimizeReleaseTask?.cancel()
+        holdsTabBarMinimize = true
         // 缩放退出完成前，视频像素仍留在原页面，底部缩略图提供转场目标。
         isMiniPlayerPresented = PlaybackWindowSettings.isEnabled(in: defaults)
         isExpanded = false
@@ -259,6 +265,8 @@ final class NowPlayingStore {
 
     /// 关闭视频页并彻底停止播放。
     func close() {
+        minimizeReleaseTask?.cancel()
+        holdsTabBarMinimize = false
         pendingPresentationID = nil
         liveLoadTask?.cancel()
         liveLoadTask = nil
@@ -278,12 +286,22 @@ final class NowPlayingStore {
         dismissalPlaybackPhase = nil
     }
 
+    private func releaseTabBarMinimize(after delay: Duration) {
+        minimizeReleaseTask?.cancel()
+        minimizeReleaseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            self?.holdsTabBarMinimize = false
+        }
+    }
+
     /// Called by fullScreenCover's onDismiss after the system animation ends.
     /// The old dismissal callback may arrive after the user has tapped another
     /// card. In that case `open` has made the new page expanded again, so the
     /// stale callback must not tear down the new route and player.
     func finishDismissal() {
         guard !isExpanded, pendingPresentationID == nil else { return }
+        releaseTabBarMinimize(after: .milliseconds(500))
         guard PlaybackWindowSettings.isEnabled(in: defaults) else { close(); return }
         isVideoPageDismissalInProgress = false
         isVideoPageInteractionInProgress = false
