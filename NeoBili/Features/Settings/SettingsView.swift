@@ -31,6 +31,7 @@ struct SettingsView: View {
                 row("播放与画质", id: "playback") { PlaybackSettingsView() }
                 row("弹幕", id: "danmaku") { DanmakuSettingsView() }
                 row("播放器手势", id: "playerGestures") { PlayerGestureSettingsView() }
+                row("全屏控件位置", id: "fullScreenChrome") { FullScreenChromeSettingsView() }
             }
 
             Section("内容与交互") {

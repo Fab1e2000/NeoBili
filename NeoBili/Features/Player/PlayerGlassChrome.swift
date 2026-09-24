@@ -91,18 +91,29 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     var onMenuInteraction: () -> Void = {}
     @ViewBuilder var menuContent: () -> MenuContent
     @ScaledMetric(relativeTo: .body) private var textScale: CGFloat = 1
+    @AppStorage(FullScreenChromeSettings.horizontalInsetKey) private var fullScreenHorizontalInset = FullScreenChromeSettings.automaticHorizontalInset
+    @AppStorage(FullScreenChromeSettings.topInsetKey) private var fullScreenTopInset = FullScreenChromeSettings.defaultTopInset
+    @AppStorage(FullScreenChromeSettings.bottomInsetKey) private var fullScreenBottomInset = FullScreenChromeSettings.defaultBottomInset
+    @AppStorage(FullScreenChromeSettings.spacingKey) private var fullScreenSpacing = FullScreenChromeSettings.defaultSpacing
 
     var body: some View {
         GeometryReader { geometry in
-            // 横屏全屏：控件铺到视频两侧黑边上，左右按系统安全区收进来——系统给的横屏安全区
-            // 正好避开屏幕圆角和灵动岛，上下两行按钮不会伸进四角的圆弧里。
-            let usesScreenEdges = isFullScreen && geometry.size.width > geometry.size.height
-            let leading = usesScreenEdges ? max(16, safeAreaInsets.leading) : safeAreaInsets.leading + 8
-            let trailing = usesScreenEdges ? max(16, safeAreaInsets.trailing) : safeAreaInsets.trailing + 8
-            let top = usesScreenEdges ? max(4, safeAreaInsets.top) : safeAreaInsets.top
-            // 上下两行离屏幕边缘的距离保持一致：底部不再让出主屏幕指示条的整段安全区，
+            // 横屏全屏：控件铺到视频两侧黑边上，边距和间距来自设置页（FullScreenChromeSettings）。
+            // 左右默认跟随系统横屏安全区，正好避开屏幕圆角和灵动岛；上下默认各 4pt，
             // 右上角与右下角的按钮到边缘一样远。
-            let bottom = usesScreenEdges ? top : safeAreaInsets.bottom
+            let usesScreenEdges = isFullScreen && geometry.size.width > geometry.size.height
+            let leading = usesScreenEdges
+                ? FullScreenChromeSettings.horizontalInset(stored: fullScreenHorizontalInset, safeArea: safeAreaInsets.leading)
+                : safeAreaInsets.leading + 8
+            let trailing = usesScreenEdges
+                ? FullScreenChromeSettings.horizontalInset(stored: fullScreenHorizontalInset, safeArea: safeAreaInsets.trailing)
+                : safeAreaInsets.trailing + 8
+            let top = usesScreenEdges
+                ? max(CGFloat(FullScreenChromeSettings.clamp(fullScreenTopInset, to: FullScreenChromeSettings.verticalInsetRange)), safeAreaInsets.top)
+                : safeAreaInsets.top
+            let bottom = usesScreenEdges
+                ? CGFloat(FullScreenChromeSettings.clamp(fullScreenBottomInset, to: FullScreenChromeSettings.verticalInsetRange))
+                : safeAreaInsets.bottom
             let bounds = CGRect(x: leading, y: top,
                                 width: max(0, geometry.size.width - leading - trailing),
                                 height: max(0, geometry.size.height - top - bottom))
@@ -112,7 +123,10 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                                             hasDanmaku: showsDanmakuToggle && onToggleDanmaku != nil,
                                             hasSendDanmaku: onSendDanmaku != nil && !hasError,
                                             videoQualityWidth: preferredWidth(videoQualityControl),
-                                            audioQualityWidth: preferredWidth(audioQualityControl))
+                                            audioQualityWidth: preferredWidth(audioQualityControl),
+                                            spacing: usesScreenEdges
+                                                ? CGFloat(FullScreenChromeSettings.clamp(fullScreenSpacing, to: FullScreenChromeSettings.spacingRange))
+                                                : 16)
             GlassEffectContainer(spacing: 6) {
                 ZStack {
                     if !layout.back.isEmpty { backButton.chromeFrame(layout.back) }

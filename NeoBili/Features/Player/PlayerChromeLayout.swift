@@ -21,12 +21,13 @@ struct PlayerChromeLayout {
     init(bounds: CGRect, textScale: CGFloat = 1, isFullScreen: Bool = false,
          hasVideoQuality: Bool = false, hasAudioQuality: Bool = false,
          hasDanmaku: Bool = false, hasSendDanmaku: Bool = false,
-         videoQualityWidth: CGFloat? = nil, audioQualityWidth: CGFloat? = nil) {
+         videoQualityWidth: CGFloat? = nil, audioQualityWidth: CGFloat? = nil,
+         spacing: CGFloat = 16) {
         let target: CGFloat = 48
         // 圆形按钮在 48pt 点击区里只画 32pt，左右各空 8pt；画质胶囊、标题和进度条撑满自己的区域。
-        // 间距按「看得见的部分」算，任意两个相邻控件之间都是 `spacing`。
+        // 间距按「看得见的部分」算，任意两个相邻控件之间都是 `spacing`（全屏时可在设置里调）。
         let circleInset: CGFloat = 8
-        let spacing: CGFloat = 16
+        let spacing = max(0, spacing)
         let circleToCircle = spacing - circleInset * 2
         let circleToPill = spacing - circleInset
         let pillToPill = spacing
