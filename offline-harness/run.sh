@@ -18,12 +18,20 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Models/PortraitVideoStore.swift" \
    "$APP/Core/Models/VideoDimensionProviders.swift" \
    "$APP/Core/Models/VideoModels.swift" \
+   "$APP/Core/Models/UgcSeasonModels.swift" \
    "$APP/Core/Models/FollowModels.swift" \
+   "$APP/Core/Models/DynamicModels.swift" \
+   "$APP/Core/Models/SearchModels.swift" \
+   "$APP/Core/Models/SpaceModels.swift" \
    "$APP/Core/Models/AccountModels.swift" \
    "$APP/Core/Models/DynamicVote.swift" \
    "$APP/Core/Models/CommentModels.swift" \
+   "$APP/Core/Models/LenientDecoding.swift" \
+   "$APP/Core/UI/AppLanguage.swift" \
+   "$APP/Core/Extensions/Int+BiliFormatting.swift" \
    "$APP/Core/Networking/APIClient.swift" \
    "$APP/Core/Networking/BiliAPI.swift" \
+   "$APP/Core/Networking/BiliAPI+Recommendation.swift" \
    "$APP/Core/Networking/AppRecommendationPage.swift" \
    "$APP/Core/Networking/BiliPassport.swift" \
    "$APP/Core/Networking/WBISigner.swift" \
@@ -33,6 +41,7 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Networking/URL+Bili.swift" \
    "$APP/Core/UI/EnvironmentAction.swift" \
    "$APP/Features/Danmaku/DanmakuModels.swift" \
+   "$APP/Features/Danmaku/DanmakuLoader.swift" \
    "$APP/Features/Home/HomeViewModel.swift" \
    "$HARNESS/src/Tests.swift" \
    "$HARNESS/src/Stubs.swift" \

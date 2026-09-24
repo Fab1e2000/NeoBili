@@ -64,6 +64,10 @@ final class PortraitVideoStore {
     @ObservationIgnored private var queue: [String] = []
     @ObservationIgnored private var activeRequests = 0
 
+    /// 供离线回归检查排队与共享等待者（offline-harness）。
+    var queuedRequestCount: Int { requests.values.filter { $0.task == nil }.count }
+    func subscriberCount(for bvid: String) -> Int { requests[bvid]?.subscribers.count ?? 0 }
+
     convenience init(defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init,
                      maximumConcurrentRequests: Int = defaultMaximumConcurrentRequests,
                      loader: @escaping @MainActor (String) async throws -> VideoDimension?) {
