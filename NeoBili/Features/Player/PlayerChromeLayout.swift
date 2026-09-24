@@ -10,6 +10,8 @@ struct PlayerChromeLayout {
     let transport: CGRect
     let timeline: CGRect
     let fullScreen: CGRect
+    /// 全屏时进度条与全屏按钮之间的「发弹幕」按钮。
+    let sendDanmaku: CGRect
     let danmaku: CGRect
     let metadata: CGRect
     let secondaryActions: CGRect
@@ -18,7 +20,7 @@ struct PlayerChromeLayout {
 
     init(bounds: CGRect, textScale: CGFloat = 1, isFullScreen: Bool = false,
          hasVideoQuality: Bool = false, hasAudioQuality: Bool = false,
-         hasDanmaku: Bool = false,
+         hasDanmaku: Bool = false, hasSendDanmaku: Bool = false,
          videoQualityWidth: CGFloat? = nil, audioQualityWidth: CGFloat? = nil) {
         let target: CGFloat = 48
         let gap: CGFloat = 6
@@ -26,8 +28,12 @@ struct PlayerChromeLayout {
         mode = bounds.height >= 320 * scale ? .expanded : bounds.height >= 152 ? .inline : bounds.height >= 96 ? .compact : .minimal
         let lowerY = max(bounds.minY, bounds.maxY - target)
         fullScreen = CGRect(x: bounds.maxX - target, y: lowerY, width: target, height: target)
+        // 全屏时进度条缩短，把右侧让给「发弹幕」。
+        sendDanmaku = isFullScreen && hasSendDanmaku
+            ? CGRect(x: fullScreen.minX - gap - target, y: lowerY, width: target, height: target) : .zero
+        let timelineEnd = sendDanmaku.isEmpty ? fullScreen.minX : sendDanmaku.minX
         timeline = CGRect(x: bounds.minX, y: lowerY,
-                          width: max(0, fullScreen.minX - gap - bounds.minX), height: target)
+                          width: max(0, timelineEnd - gap - bounds.minX), height: target)
         secondaryActions = .zero
         // The collapsed title strip cannot fit two 48pt hit rows. Its own page
         // controls handle expansion; keep only the timeline/fullscreen row here.

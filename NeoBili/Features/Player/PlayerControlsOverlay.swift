@@ -9,6 +9,8 @@ struct PlayerControlsOverlay: View {
     @Binding var controlsVisible: Bool
     let isFullScreen: Bool
     let onToggleFullScreen: () -> Void
+    /// 全屏控件里的「发弹幕」。
+    var onSendDanmaku: (() -> Void)? = nil
     var onToggleCompact: (() -> Void)? = nil
     var isCompact = false
     var controlsSafeAreaInsets = EdgeInsets()
@@ -79,6 +81,7 @@ struct PlayerControlsOverlay: View {
                     onBack: { if isFullScreen { onToggleFullScreen() } else { onDismiss?() } },
                     onTogglePlayback: togglePlayback,
                     onToggleFullScreen: { onToggleFullScreen(); scheduleAutoHide() },
+                    onSendDanmaku: onSendDanmaku,
                     onToggleCompact: compactAction,
                     onScrub: scrub(to:), onScrubEnd: endScrub(at:), onMenuInteraction: keepControlsForMenu
                 ) { playbackMenuContent }

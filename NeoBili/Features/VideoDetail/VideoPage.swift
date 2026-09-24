@@ -53,6 +53,7 @@ struct VideoPage: View {
     @State private var isShowingParts = false
     @State private var isShowingFavoriteFolders = false
     @State private var isShowingDanmakuComposer = false
+    @State private var isShowingFullScreenDanmakuInput = false
     /// 发弹幕面板的草稿和位置：没发出去就关掉时保留。
     @State private var danmakuDraft = ""
     @State private var danmakuMode = DanmakuMode.scroll
@@ -123,7 +124,10 @@ struct VideoPage: View {
             }
         }
         .modifier(DanmakuComposerPresentation(
-            isPresented: $isShowingDanmakuComposer, draft: $danmakuDraft, mode: $danmakuMode,
+            isPresented: $isShowingDanmakuComposer,
+            isFullScreenInputPresented: $isShowingFullScreenDanmakuInput,
+            isFullScreen: isFullScreen,
+            draft: $danmakuDraft, mode: $danmakuMode,
             send: sendDanmaku,
             onDismiss: {
                 if resumesAfterDanmaku { store.player?.play() }
@@ -313,6 +317,7 @@ struct VideoPage: View {
                 coverURL: store.route?.secureCoverURL,
                 isFullScreen: isFullScreen,
                 onToggleFullScreen: toggleFullScreen,
+                onSendDanmaku: sendDanmakuAction,
                 onToggleCompact: compactVideoAction,
                 isCompact: videoCollapseDistance > 0,
                 isDanmakuSuppressed: isVideoHidden,
@@ -584,7 +589,12 @@ struct VideoPage: View {
         }
         resumesAfterDanmaku = store.player?.isPlaying == true
         store.player?.pause()
-        isShowingDanmakuComposer = true
+        // 全屏横屏时浮在画面上输入，竖屏用系统卡片。
+        if isFullScreen {
+            isShowingFullScreenDanmakuInput = true
+        } else {
+            isShowingDanmakuComposer = true
+        }
     }
 
     private func sendDanmaku(_ text: String, mode: DanmakuMode) async throws {

@@ -11,6 +11,8 @@ struct InlineVideoPlayer: View {
     let coverURL: URL?
     let isFullScreen: Bool
     let onToggleFullScreen: () -> Void
+    /// 全屏控件里的「发弹幕」。
+    var onSendDanmaku: (() -> Void)? = nil
     var onToggleCompact: (() -> Void)? = nil
     var isCompact = false
     var isDanmakuSuppressed = false
@@ -64,6 +66,7 @@ struct InlineVideoPlayer: View {
                 controlsVisible: $controlsVisible,
                 isFullScreen: isFullScreen,
                 onToggleFullScreen: onToggleFullScreen,
+                onSendDanmaku: onSendDanmaku,
                 onToggleCompact: onToggleCompact,
                 isCompact: isCompact,
                 controlsSafeAreaInsets: controlsSafeAreaInsets,

@@ -83,6 +83,8 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     var onBack: () -> Void = {}
     var onTogglePlayback: () -> Void = {}
     var onToggleFullScreen: () -> Void = {}
+    /// 全屏时显示「发弹幕」按钮。
+    var onSendDanmaku: (() -> Void)?
     var onToggleCompact: (() -> Void)?
     var onScrub: (Double) -> Void = { _ in }
     var onScrubEnd: (Double) -> Void = { _ in }
@@ -104,6 +106,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                                             hasVideoQuality: videoQualityControl != nil,
                                             hasAudioQuality: audioQualityControl != nil,
                                             hasDanmaku: showsDanmakuToggle && onToggleDanmaku != nil,
+                                            hasSendDanmaku: onSendDanmaku != nil && !hasError,
                                             videoQualityWidth: preferredWidth(videoQualityControl),
                                             audioQualityWidth: preferredWidth(audioQualityControl))
             GlassEffectContainer(spacing: 6) {
@@ -115,6 +118,15 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                             .chromeFrame(layout.more)
                     }
                     fullScreenButton.chromeFrame(layout.fullScreen)
+                    if let onSendDanmaku, !layout.sendDanmaku.isEmpty {
+                        Button(action: onSendDanmaku) {
+                            PlayerGlassCircleLabel(symbol: "text.bubble", diameter: 32, symbolSize: 15, hitDiameter: 48)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("发弹幕")
+                        .accessibilityIdentifier("player.sendDanmaku")
+                        .chromeFrame(layout.sendDanmaku)
+                    }
                     if showsDanmakuToggle, let onToggleDanmaku, layout.danmaku != .zero {
                         Button(action: onToggleDanmaku) {
                             DanmakuBadge(isEnabled: isDanmakuEnabled)
