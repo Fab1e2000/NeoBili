@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="design/app-icon-2026/A-white-inset-production.png" width="128" height="128" alt="NeoBili 图标">
+<img src="design/app-icon-2026/NMark-production.png" width="128" height="128" alt="NeoBili 图标">
 
 # NeoBili
 
@@ -22,6 +22,8 @@ SwiftUI 原生构建 · iOS 26 液态玻璃 · MPVKit 播放内核
 </div>
 
 <br>
+
+## 应用截图
 
 <table>
   <tr>
@@ -68,6 +70,12 @@ SwiftUI 原生构建 · iOS 26 液态玻璃 · MPVKit 播放内核
 
 更完整的行为说明见 [使用手册](docs/USAGE.md)。
 
+## 运行环境
+
+- iOS 26.0 或更高版本的 iPhone（暂不支持 iPad）
+- 从源码构建：支持 iOS 26 SDK 的 Xcode，Swift 6
+- 安装到真机：可用于签名的 Apple ID 或开发者账号
+
 ## 安装
 
 NeoBili 目前以**未签名 IPA** 的形式发布，需要用你自己的方式签名后安装。
@@ -78,8 +86,6 @@ NeoBili 目前以**未签名 IPA** 的形式发布，需要用你自己的方式
    shasum -a 256 -c SHA256SUMS.txt
    ```
 3. 使用你自己的开发者证书或常用的签名工具签名，然后安装到设备
-
-**系统要求**：iOS 26.0 或更高版本。
 
 ## 从源码构建
 
@@ -106,18 +112,29 @@ xcodebuild -project NeoBili.xcodeproj -scheme NeoBili \
 
 ## 项目结构
 
-```
-NeoBili/            App 源码（SwiftUI + Swift 6 严格并发）
-NeoBiliTests/       单元测试
-offline-harness/    可在 macOS 上直接运行的离线逻辑测试
-design/             App 图标设计源文件
-scripts/            图标生成等脚本
-docs/               架构说明、使用手册与版本说明
+```text
+.
+├── NeoBili/
+│   ├── App/              # 应用入口、根视图与标签栏设置
+│   ├── Core/
+│   │   ├── Models/       # 数据模型与设置项
+│   │   ├── Networking/   # 接口客户端、请求签名与各业务接口
+│   │   ├── Platform/     # 屏幕方向控制
+│   │   ├── UI/           # 主题、玻璃控件与通用视图
+│   │   └── …             # 诊断与扩展
+│   ├── Features/         # 推荐、关注、直播、搜索、播放器、弹幕、
+│   │                     # 视频详情、媒体库、我的、设置等功能
+│   └── Resources/        # 24 个主题色图标、资源与多语言文本
+├── NeoBiliTests/         # 单元测试
+├── offline-harness/      # 可在 macOS 上直接运行的离线逻辑测试
+├── design/               # App 图标设计源文件
+├── scripts/              # 图标生成等脚本
+└── docs/                 # 架构说明、使用手册与版本说明
 ```
 
 - **架构**：目录职责、数据流与状态所有权见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **测试**：离线回归套件运行 `zsh offline-harness/run.sh`，无需设备或模拟器
-- **图标**：白底叠层播放图标，可编辑源文件在 [`design/app-icon-2026/`](design/app-icon-2026/)，由 `scripts/generate-app-icons.py` 生成全部 24 个主题色版本
+- **图标**：白底立体挤出的 N 字图标，可编辑源文件在 [`design/app-icon-2026/`](design/app-icon-2026/)，由 `scripts/generate-app-icons.py` 生成全部 24 个主题色版本
 
 ## 文档
 
@@ -130,10 +147,13 @@ docs/               架构说明、使用手册与版本说明
 | [第三方声明](THIRD_PARTY_NOTICES.md) | 依赖与参考项目的许可信息 |
 | [免责声明](DISCLAIMER.zh-CN.md) | 与哔哩哔哩的关系、内容与数据、使用者责任 |
 
-## 致谢
+## 已知限制
 
-- [MPVKit](https://github.com/mpvkit/MPVKit)：基于 libmpv 的播放内核（使用 LGPL 构建）
-- [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus)：接口与播放行为的实现参考，锁定的参考版本见 [references/README.md](references/README.md)
+- 哔哩哔哩没有公开或保证这些接口，服务端变更可能导致部分功能失效，需等待 NeoBili 更新
+- 清晰度、音质和部分内容取决于账号、大会员、版权与地区
+- NeoBili 不提供视频下载，也不以绕过付费、会员或地区限制为目标
+- 仅发布未签名 IPA，没有 App Store 或 TestFlight 版本
+- 目前只支持 iPhone
 
 ## 免责声明
 
@@ -148,3 +168,12 @@ docs/               架构说明、使用手册与版本说明
 ## 许可证
 
 本项目源代码以 [MIT 许可证](LICENSE) 发布。许可证只覆盖本项目自身的代码，不涉及哔哩哔哩的任何内容、商标或服务；第三方依赖以各自的许可证为准，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 致谢
+
+- [youshen2/MeloX](https://github.com/youshen2/MeloX)：SwiftUI 原生、液态玻璃风格的第三方网易云音乐客户端，本 README 的结构参考
+- [guozhigq/pilipala](https://github.com/guozhigq/pilipala)：PiliPlus 的前身，Flutter 编写的第三方哔哩哔哩客户端；NeoBili 的立体 N 字图标参考了它的 logo
+- [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus)：接口与播放行为的实现参考，锁定的参考版本见 [references/README.md](references/README.md)
+- [mpvkit/MPVKit](https://github.com/mpvkit/MPVKit)：基于 libmpv 的播放内核（使用 LGPL 构建）
+
+以上项目的代码与资源仍分别受其原始许可证约束。

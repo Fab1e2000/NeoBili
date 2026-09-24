@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="design/app-icon-2026/A-white-inset-production.png" width="128" height="128" alt="NeoBili app icon">
+<img src="design/app-icon-2026/NMark-production.png" width="128" height="128" alt="NeoBili app icon">
 
 # NeoBili
 
@@ -22,6 +22,8 @@ Built with SwiftUI · Liquid Glass on iOS 26 · Powered by MPVKit
 </div>
 
 <br>
+
+## Screenshots
 
 <table>
   <tr>
@@ -74,6 +76,12 @@ Built with SwiftUI · Liquid Glass on iOS 26 · Powered by MPVKit
 
 The [user guide](docs/USAGE.md) describes every setting in detail (currently in Chinese).
 
+## Requirements
+
+- iPhone running iOS 26.0 or later (iPad is not supported yet)
+- To build: Xcode with the iOS 26 SDK and Swift 6
+- To run on a device: an Apple ID or developer account that can sign apps
+
 ## Installation
 
 NeoBili is distributed as an **unsigned IPA**, which you sign yourself before installing.
@@ -84,8 +92,6 @@ NeoBili is distributed as an **unsigned IPA**, which you sign yourself before in
    shasum -a 256 -c SHA256SUMS.txt
    ```
 3. Sign it with your own developer certificate or your preferred signing tool, then install it on your device.
-
-**Requirements:** iOS 26.0 or later.
 
 ## Building from source
 
@@ -112,18 +118,29 @@ The Xcode project is generated from `project.yml` with [XcodeGen](https://github
 
 ## Project layout
 
-```
-NeoBili/            App source (SwiftUI, Swift 6 strict concurrency)
-NeoBiliTests/       Unit tests
-offline-harness/    Offline logic tests that run directly on macOS
-design/             App icon sources
-scripts/            Icon generation and other scripts
-docs/               Architecture, user guide and release notes
+```text
+.
+├── NeoBili/
+│   ├── App/              # App entry, root view and tab settings
+│   ├── Core/
+│   │   ├── Models/       # Data models and settings
+│   │   ├── Networking/   # API client, request signing, endpoints
+│   │   ├── Platform/     # Orientation control
+│   │   ├── UI/           # Themes, glass components and shared views
+│   │   └── …             # Diagnostics and extensions
+│   ├── Features/         # Home, Following, Live, Search, Player, Danmaku,
+│   │                     # Video detail, Library, Mine, Settings and more
+│   └── Resources/        # 24 theme app icons, assets and localizations
+├── NeoBiliTests/         # Unit tests
+├── offline-harness/      # Offline logic tests that run directly on macOS
+├── design/               # App icon sources
+├── scripts/              # Icon generation and other scripts
+└── docs/                 # Architecture, user guide and release notes
 ```
 
 - **Architecture:** module map, data flow and state ownership in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Tests:** run the offline regression suite with `zsh offline-harness/run.sh`. It needs no device or simulator.
-- **Icon:** the layered play icon's editable source is in [`design/app-icon-2026/`](design/app-icon-2026/). `scripts/generate-app-icons.py` generates all 24 theme variants.
+- **Icon:** the extruded N icon's editable source is in [`design/app-icon-2026/`](design/app-icon-2026/). `scripts/generate-app-icons.py` generates all 24 theme variants.
 
 ## Documentation
 
@@ -131,6 +148,7 @@ docs/               Architecture, user guide and release notes
 | --- | --- |
 | [User guide](docs/USAGE.md) | Detailed behavior of playback, live, following, animation and gesture settings (Chinese) |
 | [Architecture](docs/ARCHITECTURE.md) | Module map and where new features belong (Chinese) |
+| [Settings notes](docs/SETTINGS.md) | Settings keys, compatibility and wiring (Chinese) |
 | [Release notes](docs/releases) | What changed in each version (Chinese) |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Licenses of dependencies and reference projects |
 | [Disclaimer](DISCLAIMER.md) | Relationship with Bilibili, content and data, user responsibility |
@@ -139,10 +157,13 @@ docs/               Architecture, user guide and release notes
 
 Bug reports and feature requests are welcome in [Issues](https://github.com/Fab1e2000/NeoBili/issues). Before opening a pull request, please make sure the project builds and `zsh offline-harness/run.sh` passes.
 
-## Acknowledgements
+## Known limitations
 
-- [MPVKit](https://github.com/mpvkit/MPVKit): the libmpv-based playback engine (LGPL build).
-- [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus): reference for API usage and playback behavior. The pinned revision is recorded in [references/README.md](references/README.md).
+- Bilibili does not publish or guarantee these APIs. Server-side changes can break features until NeoBili is updated.
+- Resolutions, audio quality and some content depend on your account, membership, copyright and region.
+- NeoBili does not download videos and does not try to get around paid, membership or regional restrictions.
+- Releases are unsigned IPAs. There is no App Store or TestFlight build.
+- iPhone only for now. The user guide, architecture notes and release notes are in Chinese.
 
 ## Disclaimer
 
@@ -157,3 +178,12 @@ The full terms are in [DISCLAIMER.md](DISCLAIMER.md).
 ## License
 
 NeoBili's source code is released under the [MIT License](LICENSE). The license covers this project's own code only and grants no rights to any Bilibili content, trademark or service. Third-party dependencies are covered by their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Acknowledgements
+
+- [youshen2/MeloX](https://github.com/youshen2/MeloX): a native SwiftUI, Liquid Glass third-party client for NetEase Cloud Music, and the model for this README.
+- [guozhigq/pilipala](https://github.com/guozhigq/pilipala): the Flutter Bilibili client PiliPlus grew out of. NeoBili's extruded N icon is modeled on its logo.
+- [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus): reference for API usage and playback behavior. The pinned revision is recorded in [references/README.md](references/README.md).
+- [mpvkit/MPVKit](https://github.com/mpvkit/MPVKit): the libmpv-based playback engine (LGPL build).
+
+These projects remain under their own licenses.
