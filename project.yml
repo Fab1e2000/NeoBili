@@ -32,6 +32,8 @@ targets:
         # 系统语言既不是中文也不是英文时，回退到英文。
         CFBundleDevelopmentRegion: en
         CFBundleLocalizations: [zh-Hans, en]
+        # 后台继续播放音频（退出视频页后的缩略播放器、锁屏）。
+        UIBackgroundModes: [audio]
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
