@@ -6,6 +6,7 @@ struct InlineVideoCollapseOverlay: View {
     let progress: Double
     let videoHeight: CGFloat
     let topInset: CGFloat
+    let bottomGap: CGFloat
     let isCollapsed: Bool
     let player: PlayerViewModel?
     let onBack: () -> Void
@@ -19,7 +20,7 @@ struct InlineVideoCollapseOverlay: View {
     var body: some View {
         ZStack(alignment: .top) {
             themeColor
-                .frame(height: videoHeight + topInset + 10)
+                .frame(height: videoHeight + topInset + bottomGap)
                 .offset(y: -topInset)
                 .opacity(progress)
                 .allowsHitTesting(false)

@@ -26,7 +26,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>8</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>保存登录二维码到相册，便于在哔哩哔哩 App 的扫一扫里从相册识别登录。</string>
 	<key>UIApplicationSceneManifest</key>
