@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用手册 / User guide
+    url: https://github.com/Fab1e2000/NeoBili/blob/main/docs/USAGE.md
+    about: 先看看手册里有没有答案 / Check whether the guide already answers your question

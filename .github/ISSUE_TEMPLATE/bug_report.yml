@@ -1,0 +1,100 @@
+name: Bug 反馈 / Bug report
+description: 应用崩溃、功能异常或显示问题 / Crashes, broken features or display issues
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！信息越完整，问题越容易复现和修复。
+        Thanks for reporting! The more detail you give, the easier it is to reproduce and fix.
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App 版本 / App version
+      description: 在「设置 → 关于」中查看，例如 `1.1.0 (8)` / Shown in Settings → About
+      placeholder: "1.1.0 (8)"
+    validations:
+      required: true
+
+  - type: input
+    id: ios-version
+    attributes:
+      label: iOS 版本 / iOS version
+      description: 在系统「设置 → 通用 → 关于本机」中查看 / Shown in iOS Settings → General → About
+      placeholder: "26.1"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: 设备型号 / Device
+      placeholder: "iPhone 17"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: 安装方式 / How you installed it
+      options:
+        - Release 中的 IPA，自行签名 / IPA from Releases, self-signed
+        - 从源码构建 / Built from source
+        - 其他 / Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述 / What happened
+      description: 发生了什么？和你预期的有什么不同？ / What went wrong, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: 从打开应用开始，一步步写出如何触发问题 / Step by step, starting from opening the app
+      placeholder: |
+        1. 打开「推荐」页
+        2. 点开任意视频
+        3. ……
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: 出现频率 / How often
+      options:
+        - 每次都出现 / Every time
+        - 有时出现 / Sometimes
+        - 只出现过一次 / Only once
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: 截图或录屏 / Screenshots or recordings
+      description: 可直接拖入图片或视频，注意遮挡账号等隐私信息 / Drag files here; hide account details and other private info
+
+  - type: input
+    id: xcode
+    attributes:
+      label: Xcode 版本（仅从源码构建时填写）/ Xcode version (source builds only)
+      description: 运行 `xcodebuild -version` 查看 / Run `xcodebuild -version`
+      placeholder: "Xcode 26.2 (17C52)"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认 / Checklist
+      options:
+        - label: 我已搜索过现有 issue，没有重复 / I searched existing issues and this is not a duplicate
+          required: true
+        - label: 问题在最新版本中仍然存在 / The problem still happens on the latest release
+          required: false
