@@ -336,6 +336,8 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         private func configure(_ cell: UICollectionViewCell, id: String) {
+            // 页头分支也要用这份局部副本，所以放在最前面声明。
+            let environment = environment
             if id == Self.headerID {
                 cell.contentConfiguration = UIHostingConfiguration {
                     PageHeader(title: String(localized: "推荐"), onOpenMine: { [weak self] in self?.onOpenMine() })
@@ -349,7 +351,6 @@ struct HomeFeedCollection: UIViewRepresentable {
             // 页头与分隔条共用 hosting cell，复用时不能带走下拉补偿。
             if id == HomeFeedItem.lastSeen.id { cell.transform = .identity }
             guard let row = itemsByID[id], let viewModel else { return }
-            let environment = environment
             let starts = entranceStarts(for: row)
             configuredStarts[id] = starts
             let content = HomeFeedCellView(

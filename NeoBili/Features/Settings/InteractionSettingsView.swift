@@ -26,7 +26,9 @@ struct InteractionSettingsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     LabeledContent("左缘触控死区", value: "\(Int(deadZoneWidth)) pt")
                         .monospacedDigit()
-                    Slider(value: Binding(get: { deadZoneWidth }, set: updateDeadZone),
+                    // set 必须写成闭包：直接传方法引用 `set: updateDeadZone` 会让
+                    // Xcode 26.2 的编译器在生成 IR 时崩溃。
+                    Slider(value: Binding(get: { deadZoneWidth }, set: { updateDeadZone($0) }),
                            in: 0...LeftEdgeTapDeadZone.maxWidth, step: 1)
                         .accessibilityLabel("左缘触控死区宽度")
                         .accessibilityValue(String(localized: "\(Int(deadZoneWidth)) 点"))

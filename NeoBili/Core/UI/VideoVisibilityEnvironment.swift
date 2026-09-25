@@ -8,7 +8,9 @@ extension EnvironmentValues {
 private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModifier {
     @Environment(\.hidesPortraitVideos) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private var animations = CardAnimationPreferences()
+    // 不能标 private：Xcode 26 会因此把合成的成员初始化器也变成 private，
+    // 下面的 resolvePortraitVideos 就调用不了。
+    var animations = CardAnimationPreferences()
     let videos: [Video]
     let batchID: Int
     let animationCategory: CardAnimationCategory
