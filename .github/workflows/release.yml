@@ -1,0 +1,85 @@
+# 推送 vX.Y.Z 标签时，用 Xcode 27 构建未签名 IPA，并创建 Release 草稿。
+# 草稿检查无误后，在 GitHub 的 Releases 页面点「Publish release」发布。
+#
+# - 标签必须和 NeoBili/Info.plist 的 CFBundleShortVersionString 一致。
+# - 说明文字取自 docs/releases/vX.Y.Z.md；首行若是「# 标题」，就用作 Release 标题。
+# - 在 Actions 页面手动运行只打包、不发布，IPA 在该次运行的 Artifacts 里下载。
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check version
+        id: version
+        run: |
+          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" NeoBili/Info.plist)
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::标签 $GITHUB_REF_NAME 和 Info.plist 里的版本 $version 不一致"
+            exit 1
+          fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: |
+          xcodebuild -version
+          xcodebuild -project NeoBili.xcodeproj \
+            -scheme NeoBili -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            -skipMacroValidation -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Package
+        run: |
+          ipa="NeoBili-${{ steps.version.outputs.tag }}-unsigned.ipa"
+          mkdir -p dist/Payload
+          cp -R build/Build/Products/Release-iphoneos/NeoBili.app dist/Payload/
+          cd dist
+          zip -qry "$ipa" Payload
+          shasum -a 256 "$ipa" > SHA256SUMS.txt
+          ls -l "$ipa"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: NeoBili-${{ steps.version.outputs.tag }}
+          path: |
+            dist/*.ipa
+            dist/SHA256SUMS.txt
+
+      - name: Create draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          notes="docs/releases/$TAG.md"
+          if [[ ! -f "$notes" ]]; then
+            echo "::error::缺少更新说明 $notes"
+            exit 1
+          fi
+          title="NeoBili $TAG"
+          body=$(mktemp)
+          if head -1 "$notes" | grep -q '^# '; then
+            title=$(head -1 "$notes" | sed 's/^# //')
+            tail -n +2 "$notes" > "$body"
+          else
+            cp "$notes" "$body"
+          fi
+          # 写明产物对应的提交和工具链。
+          printf '\n**构建信息**：提交 `%s`，%s，由 [GitHub Actions](%s) 构建。\n' \
+            "${GITHUB_SHA::7}" "$(xcodebuild -version | paste -sd ' ' -)" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> "$body"
+          gh release create "$TAG" dist/*.ipa dist/SHA256SUMS.txt \
+            --draft --verify-tag --title "$title" --notes-file "$body"
