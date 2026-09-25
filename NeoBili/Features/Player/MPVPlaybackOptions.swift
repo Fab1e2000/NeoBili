@@ -26,12 +26,15 @@ struct VideoPlaybackConfiguration: Sendable, Equatable {
     /// 不必重启应用；已打开的视频页保持原来的配置不受影响。
     static var current: VideoPlaybackConfiguration {
         var configuration = VideoPlaybackConfiguration()
-        let stored = UserDefaults.standard.object(forKey: "neobili.preferredQuality") as? Int
+        configuration.quality = PlaybackQuality.defaultVideoQuality
+        configuration.audioQuality = PlaybackQuality.defaultAudioQuality
+        let stored = UserDefaults.standard.object(forKey: PlaybackQuality.videoStorageKey) as? Int
         if let stored, Self.validQualities.contains(stored) {
             configuration.quality = stored
         }
-        let audio = UserDefaults.standard.integer(forKey: PlaybackQuality.audioStorageKey)
-        if PlaybackQuality.audioOptions.contains(where: { $0.id == audio }) {
+        // 用 object 而不是 integer：没设置过时 integer 会读成 0（「自动」），盖掉默认音质。
+        if let audio = UserDefaults.standard.object(forKey: PlaybackQuality.audioStorageKey) as? Int,
+           PlaybackQuality.audioOptions.contains(where: { $0.id == audio }) {
             configuration.audioQuality = audio
         }
         return configuration

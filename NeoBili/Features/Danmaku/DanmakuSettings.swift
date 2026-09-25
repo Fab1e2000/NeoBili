@@ -9,6 +9,10 @@ enum DanmakuSettings {
     static let videoEnabledKey = "danmaku.video.enabled"
     static let liveEnabledKey = "danmaku.live.enabled"
     static let defaultValue = true
+    static let defaultFontScale = 0.8
+    static let defaultOpacity = 1.0
+    static let defaultBlockTop = false
+    static let defaultBlockBottom = true
 
     static func isEnabled(_ defaults: UserDefaults = .standard, key: String) -> Bool {
         defaults.object(forKey: key) as? Bool ?? defaultValue

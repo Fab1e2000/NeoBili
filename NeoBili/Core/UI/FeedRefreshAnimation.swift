@@ -100,7 +100,7 @@ private struct VideoCardEntrance: ViewModifier {
     @Environment(\.videoEntranceProvided) private var provided
     @Environment(\.videoCardAnimationSource) private var source
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var speed = AnimationSpeedSettings.defaultSpeed
+    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var speed = AnimationSpeedSettings.defaultEnterSpeed
 
     func body(content: Content) -> some View {
         if provided || !enabled || !CardAnimationSettings.supports(category: category, phase: .enter, source: source) {

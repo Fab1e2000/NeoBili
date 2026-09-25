@@ -102,10 +102,12 @@ final class MiniPlayerTests: XCTestCase {
         func playerSurfaceOwnershipDidChange() { observed.append(ownership.presentation) }
     }
 
+    /// 缩略播放器默认关闭；这里的生命周期测试都假定它开着，关闭的情况由各测试自己设置。
     private func makeDefaults() throws -> UserDefaults {
         let suite = "neobili.mini-player.tests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: PlaybackWindowSettings.storageKey)
         return defaults
     }
 
@@ -209,9 +211,10 @@ final class MiniPlayerTests: XCTestCase {
         XCTAssertNil(store.videoPresentation)
     }
 
-    func testMiniPlayerPreferenceDefaultsOnAndRespectsChanges() throws {
+    func testMiniPlayerPreferenceDefaultsOffAndRespectsChanges() throws {
         let defaults = try makeDefaults()
-        XCTAssertTrue(PlaybackWindowSettings.isEnabled(in: defaults))
+        defaults.removeObject(forKey: PlaybackWindowSettings.storageKey)
+        XCTAssertFalse(PlaybackWindowSettings.isEnabled(in: defaults))
         defaults.set(false, forKey: PlaybackWindowSettings.storageKey)
         XCTAssertFalse(PlaybackWindowSettings.isEnabled(in: defaults))
         defaults.set(true, forKey: PlaybackWindowSettings.storageKey)

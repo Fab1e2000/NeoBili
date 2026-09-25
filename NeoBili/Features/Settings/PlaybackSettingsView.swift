@@ -2,8 +2,8 @@ import SwiftUI
 
 struct PlaybackSettingsView: View {
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
-    @AppStorage("neobili.preferredQuality") private var preferredQuality = 64
-    @AppStorage(PlaybackQuality.audioStorageKey) private var preferredAudioQuality = 0
+    @AppStorage(PlaybackQuality.videoStorageKey) private var preferredQuality = PlaybackQuality.defaultVideoQuality
+    @AppStorage(PlaybackQuality.audioStorageKey) private var preferredAudioQuality = PlaybackQuality.defaultAudioQuality
 
     var body: some View {
         Form {

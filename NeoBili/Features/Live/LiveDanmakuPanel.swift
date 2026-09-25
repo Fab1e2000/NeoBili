@@ -3,10 +3,10 @@ import SwiftUI
 /// 全屏时铺在直播画面上的实时飘幕层。引擎挂在模型上，
 /// 新弹幕到达即从右缘进入，不依赖任何播放时间轴。
 struct LiveDanmakuFlowView: UIViewRepresentable {
-    @AppStorage(DanmakuSettings.fontScaleKey) private var fontScale = 1.0
-    @AppStorage(DanmakuSettings.opacityKey) private var opacity = 1.0
-    @AppStorage(DanmakuSettings.blockTopKey) private var blockTop = false
-    @AppStorage(DanmakuSettings.blockBottomKey) private var blockBottom = false
+    @AppStorage(DanmakuSettings.fontScaleKey) private var fontScale = DanmakuSettings.defaultFontScale
+    @AppStorage(DanmakuSettings.opacityKey) private var opacity = DanmakuSettings.defaultOpacity
+    @AppStorage(DanmakuSettings.blockTopKey) private var blockTop = DanmakuSettings.defaultBlockTop
+    @AppStorage(DanmakuSettings.blockBottomKey) private var blockBottom = DanmakuSettings.defaultBlockBottom
     @AppStorage(DanmakuSettings.coloredEnabledKey) private var coloredEnabled = true
     let model: LiveDanmakuModel
 

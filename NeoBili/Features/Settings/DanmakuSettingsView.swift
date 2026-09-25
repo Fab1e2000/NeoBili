@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct DanmakuSettingsView: View {
-    @AppStorage(DanmakuSettings.fontScaleKey) private var fontScale = 1.0
-    @AppStorage(DanmakuSettings.opacityKey) private var opacity = 1.0
-    @AppStorage(DanmakuSettings.blockTopKey) private var blockTop = false
-    @AppStorage(DanmakuSettings.blockBottomKey) private var blockBottom = false
+    @AppStorage(DanmakuSettings.fontScaleKey) private var fontScale = DanmakuSettings.defaultFontScale
+    @AppStorage(DanmakuSettings.opacityKey) private var opacity = DanmakuSettings.defaultOpacity
+    @AppStorage(DanmakuSettings.blockTopKey) private var blockTop = DanmakuSettings.defaultBlockTop
+    @AppStorage(DanmakuSettings.blockBottomKey) private var blockBottom = DanmakuSettings.defaultBlockBottom
     @AppStorage(DanmakuSettings.coloredEnabledKey) private var colored = true
 
     var body: some View {
@@ -34,7 +34,8 @@ struct DanmakuSettingsView: View {
             }
             Section {
                 Button("恢复默认设置") {
-                    fontScale = 1; opacity = 1; blockTop = false; blockBottom = false; colored = true
+                    fontScale = DanmakuSettings.defaultFontScale; opacity = DanmakuSettings.defaultOpacity
+                    blockTop = DanmakuSettings.defaultBlockTop; blockBottom = DanmakuSettings.defaultBlockBottom; colored = true
                 }
             }
         }

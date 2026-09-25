@@ -5,9 +5,9 @@ enum LeftEdgeTapDeadZone {
     /// 与设置页共用的存储键。
     static let storageKey = "neobili.edgeDeadZoneWidth"
 
-    /// 默认宽度，和系统边缘手势的感应范围（约 20pt）同量级、略小一点，
-    /// 尽量少挡住卡片本身。
-    static let defaultWidth: Double = 16
+    /// 默认宽度，比系统边缘手势的感应范围（约 20pt）略宽，
+    /// 侧滑返回时更不容易误点到卡片。
+    static let defaultWidth: Double = 30
 
     /// 设置页滑杆允许的最大宽度。
     static let maxWidth: Double = 100

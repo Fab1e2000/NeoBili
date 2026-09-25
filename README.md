@@ -60,7 +60,7 @@ Built with SwiftUI · Liquid Glass on iOS 26 · Powered by MPVKit
 
 ### Watch
 
-- **Keep watching.** Leave a video or stream and it shrinks into a mini player that collapses with the tab bar. Tap the title to bring it back.
+- **Keep watching.** Turn on the mini player in Settings, and leaving a video or stream shrinks it into a mini player that collapses with the tab bar. Tap the title to bring it back.
 - **Send danmaku** (Bilibili's scrolling comments) from the video page or in full screen. Your own messages get a green outline. Colored danmaku can be turned off.
 - **Native glass controls.** Full-screen controls stay clear of rounded corners and the Dynamic Island, and you can reposition them. Resolution and audio quality each have their own menu.
 - **Fits every aspect ratio.** The player follows each video's real shape, vertical videos shrink as you swipe up, and playback position is remembered per video and per part.

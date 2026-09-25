@@ -5,7 +5,8 @@ import SwiftUI
 enum AnimationSpeedSettings {
     static let exitSpeedKey = "neobili.feedExitSpeed"
     static let enterSpeedKey = "neobili.feedEnterSpeed"
-    static let defaultSpeed = 1.0
+    static let defaultEnterSpeed = 1.5
+    static let defaultExitSpeed = 4.0
     static let range = 0.1...10.0
 
     /// 主页面切换时单侧淡出/淡入的基准时长。
@@ -15,7 +16,7 @@ enum AnimationSpeedSettings {
     static let tabFadeDuration: Double = 0.25
 
     static func clamped(_ value: Double) -> Double {
-        value.isFinite ? min(max(value, range.lowerBound), range.upperBound) : defaultSpeed
+        value.isFinite ? min(max(value, range.lowerBound), range.upperBound) : 1
     }
 
     static func tabFade(speed: Double) -> Double {

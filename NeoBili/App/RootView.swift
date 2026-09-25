@@ -30,7 +30,7 @@ struct RootView: View {
 
     /// 主页面切换特效：新页面内容淡入，快慢用设置页那条「进入」滑杆。
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultSpeed
+    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultEnterSpeed
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEntranceEnabled = CardAnimationSettings.defaultValue
     /// 当前页面。点下去立刻就换，高亮跟着立刻走。

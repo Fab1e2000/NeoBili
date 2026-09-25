@@ -94,10 +94,10 @@ final class DanmakuController {
 
 /// 弹幕层的 SwiftUI 桥。只在这里创建/销毁 UIKit 引擎并把它接给控制器。
 struct DanmakuView: UIViewRepresentable {
-    @AppStorage(DanmakuSettings.fontScaleKey) private var fontScale = 1.0
-    @AppStorage(DanmakuSettings.opacityKey) private var opacity = 1.0
-    @AppStorage(DanmakuSettings.blockTopKey) private var blockTop = false
-    @AppStorage(DanmakuSettings.blockBottomKey) private var blockBottom = false
+    @AppStorage(DanmakuSettings.fontScaleKey) private var fontScale = DanmakuSettings.defaultFontScale
+    @AppStorage(DanmakuSettings.opacityKey) private var opacity = DanmakuSettings.defaultOpacity
+    @AppStorage(DanmakuSettings.blockTopKey) private var blockTop = DanmakuSettings.defaultBlockTop
+    @AppStorage(DanmakuSettings.blockBottomKey) private var blockBottom = DanmakuSettings.defaultBlockBottom
     @AppStorage(DanmakuSettings.coloredEnabledKey) private var coloredEnabled = true
     let controller: DanmakuController
     var isFullScreen = false

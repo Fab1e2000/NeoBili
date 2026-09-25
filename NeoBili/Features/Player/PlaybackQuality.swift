@@ -1,7 +1,11 @@
 import Foundation
 
 enum PlaybackQuality {
+    static let videoStorageKey = "neobili.preferredQuality"
     static let audioStorageKey = "neobili.preferredAudioQuality"
+    // 1080P 60帧、Hi-Res 无损；账号或视频没有这一档时自动降到可用的最高档。
+    static let defaultVideoQuality = 116
+    static let defaultAudioQuality = 30251
     static let videoOptions: [(id: Int, title: String)] = [
         (16, "360P"), (32, "480P"), (64, "720P"), (74, String(localized: "720P 60帧")),
         (80, "1080P"), (112, String(localized: "1080P 高码率")), (116, String(localized: "1080P 60帧")),

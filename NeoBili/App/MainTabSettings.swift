@@ -48,7 +48,7 @@ enum MainTabSettings {
     static let orderKey = "neobili.tabOrder"
     static let hiddenKey = "neobili.hiddenTabs"
     static let launchKey = "neobili.launchTab"
-    static let defaultOrder = MainTab.reorderable
+    static let defaultOrder: [MainTab] = [.home, .live, .following, .watchLater, .favorites, .history]
     /// 新加入的列表页默认收起，保持原来的三个主页面。
     static let defaultHidden: Set<MainTab> = [.watchLater, .favorites, .history]
     static let defaultLaunch = MainTab.home

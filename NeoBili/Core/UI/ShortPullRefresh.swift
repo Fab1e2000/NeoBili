@@ -3,7 +3,7 @@ import UIKit
 
 enum HomeRefreshSettings {
     static let storageKey = "neobili.homeRefreshDistance"
-    static let defaultDistance = 70.0
+    static let defaultDistance = 40.0
     static let range = 40.0...140.0
     static func clamped(_ value: Double) -> Double {
         value.isFinite ? min(max(value, range.lowerBound), range.upperBound) : defaultDistance
