@@ -73,7 +73,7 @@ SwiftUI 原生构建 · iOS 26 液态玻璃 · MPVKit 播放内核
 ## 运行环境
 
 - iOS 26.0 或更高版本的 iPhone（暂不支持 iPad）
-- 从源码构建：支持 iOS 26 SDK 的 Xcode，Swift 6
+- 从源码构建：Xcode 26.2 或更高版本，Swift 6
 - 安装到真机：可用于签名的 Apple ID 或开发者账号
 
 ## 安装
@@ -89,7 +89,7 @@ NeoBili 目前以**未签名 IPA** 的形式发布，需要用你自己的方式
 
 ## 从源码构建
 
-**环境**：支持 iOS 26 SDK 的 Xcode。依赖通过 Swift Package Manager 自动解析，目前只有 [MPVKit](https://github.com/mpvkit/MPVKit)。
+**环境**：Xcode 26.2 或更高版本。依赖通过 Swift Package Manager 自动解析，目前只有 [MPVKit](https://github.com/mpvkit/MPVKit)。
 
 ```sh
 git clone https://github.com/Fab1e2000/NeoBili.git

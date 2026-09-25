@@ -1,0 +1,35 @@
+# 每次推送和 PR 都用 Xcode 26 编译一遍（无签名、模拟器 Debug）。
+# 平时开发用的 Xcode 27 更宽松，只在本机编译发现不了旧版本的兼容问题。
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Xcode ${{ matrix.xcode }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # 支持的最低版本和 26 系列最新版。更早的 26.0/26.1 的 SDK 里
+        # 没有 tabViewBottomAccessory(isEnabled:)，不再支持。
+        xcode: ["26.2", "26.6"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
+
+      - name: Build
+        run: |
+          xcodebuild -version
+          xcodebuild -project NeoBili.xcodeproj \
+            -scheme NeoBili -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -skipMacroValidation -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO build

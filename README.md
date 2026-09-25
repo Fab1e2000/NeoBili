@@ -79,7 +79,7 @@ The [user guide](docs/USAGE.md) describes every setting in detail (currently in 
 ## Requirements
 
 - iPhone running iOS 26.0 or later (iPad is not supported yet)
-- To build: Xcode with the iOS 26 SDK and Swift 6
+- To build: Xcode 26.2 or later, Swift 6
 - To run on a device: an Apple ID or developer account that can sign apps
 
 ## Installation
@@ -95,7 +95,7 @@ NeoBili is distributed as an **unsigned IPA**, which you sign yourself before in
 
 ## Building from source
 
-**Prerequisites:** Xcode with the iOS 26 SDK. Swift Package Manager resolves the only dependency, [MPVKit](https://github.com/mpvkit/MPVKit).
+**Prerequisites:** Xcode 26.2 or later. Swift Package Manager resolves the only dependency, [MPVKit](https://github.com/mpvkit/MPVKit).
 
 ```sh
 git clone https://github.com/Fab1e2000/NeoBili.git
