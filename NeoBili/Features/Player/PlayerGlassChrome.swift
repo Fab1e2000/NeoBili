@@ -2,9 +2,12 @@ import SwiftUI
 import UIKit
 
 extension View {
-    /// 视频背景会明暗变化，控制层统一使用深色系统玻璃以保持白色符号的对比。
+    /// 播放器控件压在视频上，统一用透明变体（`.clear`），让画面透出来。
+    ///
+    /// 透明变体自己不保证对比度，靠控件层里的调暗层（`PlayerChromeScrim`）把下面的画面压暗；
+    /// Apple 要求两种变体不混用，所以控件层里的玻璃都走这里或 `.clear`。
     func playerGlassSurface<S: Shape>(in shape: S) -> some View {
-        glassEffect(.regular, in: shape)
+        glassEffect(.clear, in: shape)
             .environment(\.colorScheme, .dark)
     }
 }
@@ -18,10 +21,10 @@ struct PlayerGlassCircleLabel: View {
 
     var body: some View {
         Image(systemName: symbol)
-            .font(.system(size: symbolSize, weight: .medium))
+            .font(.system(size: symbolSize, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: diameter, height: diameter)
-            .glassEffect(.regular.interactive(), in: Circle())
+            .glassEffect(.clear.interactive(), in: Circle())
             .frame(width: hitDiameter ?? diameter, height: hitDiameter ?? diameter)
             .contentShape(Rectangle())
             .environment(\.colorScheme, .dark)
@@ -91,46 +94,37 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     var onMenuInteraction: () -> Void = {}
     @ViewBuilder var menuContent: () -> MenuContent
     @ScaledMetric(relativeTo: .body) private var textScale: CGFloat = 1
-    // 控件位置设置（PlayerChromeSettings），全屏横屏与非全屏各一组。
-    @AppStorage(PlayerChromeSettings.keys(for: .fullScreen).horizontalInset)
-    private var fullScreenHorizontalInset = PlayerChromeSettings.defaults(for: .fullScreen).horizontalInset
-    @AppStorage(PlayerChromeSettings.keys(for: .fullScreen).topInset)
-    private var fullScreenTopInset = PlayerChromeSettings.defaults(for: .fullScreen).topInset
-    @AppStorage(PlayerChromeSettings.keys(for: .fullScreen).bottomInset)
-    private var fullScreenBottomInset = PlayerChromeSettings.defaults(for: .fullScreen).bottomInset
-    @AppStorage(PlayerChromeSettings.keys(for: .fullScreen).spacing)
-    private var fullScreenSpacing = PlayerChromeSettings.defaults(for: .fullScreen).spacing
-    @AppStorage(PlayerChromeSettings.keys(for: .inline).horizontalInset)
-    private var inlineHorizontalInset = PlayerChromeSettings.defaults(for: .inline).horizontalInset
-    @AppStorage(PlayerChromeSettings.keys(for: .inline).topInset)
-    private var inlineTopInset = PlayerChromeSettings.defaults(for: .inline).topInset
-    @AppStorage(PlayerChromeSettings.keys(for: .inline).bottomInset)
-    private var inlineBottomInset = PlayerChromeSettings.defaults(for: .inline).bottomInset
-    @AppStorage(PlayerChromeSettings.keys(for: .inline).spacing)
-    private var inlineSpacing = PlayerChromeSettings.defaults(for: .inline).spacing
+    /// 控件位置设置，全屏横屏与非全屏各一组。
+    private var chromePreferences: PlayerChromePreferences { .shared }
 
     var body: some View {
+        // 边距和间距来自设置页（PlayerChromePreferences）。在 body 里读取，
+        // 设置变化时由这一层重算，不依赖 GeometryReader 闭包里的依赖追踪。
+        let fullScreenValues = chromePreferences.fullScreen
+        let inlineValues = chromePreferences.inline
         GeometryReader { geometry in
-            // 边距和间距来自设置页（PlayerChromeSettings）。
             // 横屏全屏：控件铺到视频两侧黑边上，左右默认跟随系统横屏安全区，正好避开屏幕圆角和
             // 灵动岛；上下默认各 4pt，右上角与右下角的按钮到边缘一样远。
             // 其余（视频页上的小窗、竖屏全屏）：在安全区内再按设置留边。
+            // 边距可以是负数（最小 -8）：点按区域有一截在边缘外，看得见的玻璃正好贴边。
             let usesScreenEdges = isFullScreen && geometry.size.width > geometry.size.height
             let vertical = PlayerChromeSettings.verticalInsetRange
-            let inlineSide = CGFloat(PlayerChromeSettings.clamp(inlineHorizontalInset,
+            let inlineSide = CGFloat(PlayerChromeSettings.clamp(inlineValues.horizontalInset,
                                                                 to: PlayerChromeSettings.horizontalInsetRange(for: .inline)))
             let leading = usesScreenEdges
-                ? PlayerChromeSettings.fullScreenHorizontalInset(stored: fullScreenHorizontalInset, safeArea: safeAreaInsets.leading)
+                ? PlayerChromeSettings.fullScreenHorizontalInset(fullScreenValues, safeArea: safeAreaInsets.leading)
                 : safeAreaInsets.leading + inlineSide
             let trailing = usesScreenEdges
-                ? PlayerChromeSettings.fullScreenHorizontalInset(stored: fullScreenHorizontalInset, safeArea: safeAreaInsets.trailing)
+                ? PlayerChromeSettings.fullScreenHorizontalInset(fullScreenValues, safeArea: safeAreaInsets.trailing)
                 : safeAreaInsets.trailing + inlineSide
             let top = usesScreenEdges
-                ? max(CGFloat(PlayerChromeSettings.clamp(fullScreenTopInset, to: vertical)), safeAreaInsets.top)
-                : safeAreaInsets.top + CGFloat(PlayerChromeSettings.clamp(inlineTopInset, to: vertical))
+                // 玻璃不进顶部安全区；横屏时顶部安全区是 0，玻璃可以贴到屏幕上缘。
+                ? max(CGFloat(PlayerChromeSettings.clamp(fullScreenValues.topInset, to: vertical)),
+                      safeAreaInsets.top - CGFloat(PlayerChromeSettings.tapAreaMargin))
+                : safeAreaInsets.top + CGFloat(PlayerChromeSettings.clamp(inlineValues.topInset, to: vertical))
             let bottom = usesScreenEdges
-                ? CGFloat(PlayerChromeSettings.clamp(fullScreenBottomInset, to: vertical))
-                : safeAreaInsets.bottom + CGFloat(PlayerChromeSettings.clamp(inlineBottomInset, to: vertical))
+                ? CGFloat(PlayerChromeSettings.clamp(fullScreenValues.bottomInset, to: vertical))
+                : safeAreaInsets.bottom + CGFloat(PlayerChromeSettings.clamp(inlineValues.bottomInset, to: vertical))
             let bounds = CGRect(x: leading, y: top,
                                 width: max(0, geometry.size.width - leading - trailing),
                                 height: max(0, geometry.size.height - top - bottom))
@@ -142,7 +136,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                                             videoQualityWidth: preferredWidth(videoQualityControl),
                                             audioQualityWidth: preferredWidth(audioQualityControl),
                                             spacing: CGFloat(PlayerChromeSettings.clamp(
-                                                usesScreenEdges ? fullScreenSpacing : inlineSpacing,
+                                                usesScreenEdges ? fullScreenValues.spacing : inlineValues.spacing,
                                                 to: PlayerChromeSettings.spacingRange)))
             GlassEffectContainer(spacing: 6) {
                 ZStack {
@@ -166,7 +160,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                         Button(action: onToggleDanmaku) {
                             DanmakuBadge(isEnabled: isDanmakuEnabled)
                                 .frame(width: 32, height: 32)
-                                .glassEffect(.regular.interactive(), in: Circle())
+                                .glassEffect(.clear.interactive(), in: Circle())
                                 .frame(width: 48, height: 48)
                                 .contentShape(Rectangle())
                         }
@@ -223,8 +217,19 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
             }
+            // 调暗层在玻璃下面、弹幕上面（控件层本身盖在弹幕上），跟控件一起出现和隐藏。
+            .background {
+                PlayerChromeScrim(layout: layout, size: geometry.size,
+                                  errorControls: hasError ? errorStateControls(layout) : nil)
+            }
         }
         .environment(\.colorScheme, .dark)
+    }
+
+    /// 出错时仍然显示的控件：返回、更多、弹幕开关和全屏。
+    private func errorStateControls(_ layout: PlayerChromeLayout) -> [CGRect] {
+        let danmaku = showsDanmakuToggle && onToggleDanmaku != nil ? layout.danmaku : .zero
+        return [layout.back, layout.more, danmaku, layout.fullScreen].filter { !$0.isEmpty }
     }
 
     private func preferredWidth(_ control: PlayerQualityControl?) -> CGFloat? {
@@ -283,11 +288,11 @@ struct PlayerGlassChrome<MenuContent: View>: View {
             if !isFullScreen, let onToggleCompact {
                 Button(action: onToggleCompact) {
                     Label(isCompact ? "展开" : "收起", systemImage: compactSymbol)
-                        .font(.subheadline.weight(.medium))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
                         .frame(height: 48)
-                        .glassEffect(.regular.interactive(), in: Capsule())
+                        .glassEffect(.clear.interactive(), in: Capsule())
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel(compactTitle)
@@ -348,7 +353,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                 .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
                 .padding(.horizontal, 10)
                 .frame(maxWidth: .infinity).frame(height: 32)
-                .glassEffect(.regular, in: Capsule())
+                .glassEffect(.clear, in: Capsule())
                 .opacity(control.isEnabled ? 1 : 0.4)
                 .allowsHitTesting(false).accessibilityHidden(true)
         }
@@ -362,6 +367,97 @@ struct PlayerGlassChrome<MenuContent: View>: View {
             }
             .disabled(!control.isEnabled)
         }
+    }
+}
+
+/// 透明玻璃下面的调暗层。
+///
+/// 透明变体本身不压暗画面，白色图标和文字遇到白墙、雪地这类亮画面会看不清：
+/// - 平时：整个画面轻压一层，上下两排控件后面各加一段渐变，中间的播放按钮后面再压一小片。
+/// - 出错时：错误提示和重试按钮在控件层下面，不能跟着变暗，只在仍然显示的几个按钮背后各压一小圈。
+///
+/// 控件自动隐藏后调暗层也跟着消失，平时观看不受影响。
+private struct PlayerChromeScrim: View {
+    let layout: PlayerChromeLayout
+    let size: CGSize
+    /// 出错时仍然显示的控件；为 nil 表示正常状态。
+    let errorControls: [CGRect]?
+
+    /// 整个画面的基础调暗。
+    private static let baseOpacity = 0.15
+    /// 渐变贴着画面上下边缘处的浓度，往画面中间逐渐变淡。
+    private static let edgeOpacity = 0.5
+    /// 渐变越过控件行后再延伸的距离，让过渡更柔和。
+    private static let fadeExtent: CGFloat = 28
+    /// 单个控件背后那一小片调暗的中心浓度。
+    private static let spotOpacity = 0.35
+
+    var body: some View {
+        Group {
+            if let errorControls {
+                ZStack {
+                    ForEach(Array(errorControls.enumerated()), id: \.offset) { _, rect in
+                        spot(behind: rect)
+                    }
+                }
+            } else {
+                normalScrim
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var normalScrim: some View {
+        let rows = rowExtents
+        return ZStack {
+            Color.black.opacity(Self.baseOpacity)
+            if let top = rows.top {
+                edgeGradient(from: .top)
+                    .frame(height: min(size.height, top + Self.fadeExtent))
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+            if let bottom = rows.bottom {
+                edgeGradient(from: .bottom)
+                    .frame(height: min(size.height, size.height - bottom + Self.fadeExtent))
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+            }
+            if !layout.transport.isEmpty {
+                spot(behind: layout.transport)
+            }
+        }
+    }
+
+    /// 从画面边缘往里淡出；中段放缓，控件所在的那一截保持较深。
+    private func edgeGradient(from edge: UnitPoint) -> some View {
+        let opacity = Self.edgeOpacity
+        return LinearGradient(stops: [
+            .init(color: .black.opacity(opacity), location: 0),
+            .init(color: .black.opacity(opacity * 0.8), location: 0.4),
+            .init(color: .black.opacity(opacity * 0.35), location: 0.75),
+            .init(color: .black.opacity(0), location: 1)
+        ], startPoint: edge, endPoint: edge == .top ? .bottom : .top)
+    }
+
+    /// 以控件中心为圆心的一小片柔和调暗，边缘淡到透明。
+    private func spot(behind rect: CGRect) -> some View {
+        let radius = max(rect.width, rect.height) * 1.1
+        return RadialGradient(colors: [.black.opacity(Self.spotOpacity), .black.opacity(0)],
+                              center: .center, startRadius: 0, endRadius: radius)
+            .frame(width: radius * 2, height: radius * 2)
+            .position(x: rect.midX, y: rect.midY)
+    }
+
+    /// 上排控件最靠下的边、下排控件最靠上的边；中间的播放按钮不算在内。
+    private var rowExtents: (top: CGFloat?, bottom: CGFloat?) {
+        let controls = [layout.back, layout.more, layout.metadata, layout.danmaku,
+                        layout.videoQuality, layout.audioQuality,
+                        layout.timeline, layout.fullScreen, layout.sendDanmaku, layout.secondaryActions]
+            .filter { !$0.isEmpty }
+        let middle = size.height / 2
+        return (controls.filter { $0.midY < middle }.map(\.maxY).max(),
+                controls.filter { $0.midY >= middle }.map(\.minY).min())
     }
 }
 
@@ -390,4 +486,33 @@ private extension View {
     func chromeFrame(_ rect: CGRect) -> some View {
         frame(width: rect.width, height: rect.height).position(x: rect.midX, y: rect.midY)
     }
+}
+
+#Preview("播放器控件 · 非全屏") {
+    PlayerGlassChrome(
+        title: "示例视频标题",
+        videoQualityControl: PlayerQualityControl(title: "1080P", accessibilityLabel: "分辨率", options: [],
+                                                 selectedID: 0, isEnabled: true, onSelect: { _ in }),
+        audioQualityControl: PlayerQualityControl(title: "192K", accessibilityLabel: "音质", options: [],
+                                                 selectedID: 0, isEnabled: true, onSelect: { _ in }),
+        position: 83, duration: 300, buffered: 120, isPlaying: true,
+        isDanmakuEnabled: true, showsDanmakuToggle: true, onToggleDanmaku: {}
+    ) { EmptyView() }
+    .frame(height: 230)
+    .background(.indigo.gradient)
+}
+
+#Preview("播放器控件 · 全屏", traits: .landscapeLeft) {
+    PlayerGlassChrome(
+        title: "示例视频标题",
+        videoQualityControl: PlayerQualityControl(title: "1080P", accessibilityLabel: "分辨率", options: [],
+                                                 selectedID: 0, isEnabled: true, onSelect: { _ in }),
+        audioQualityControl: PlayerQualityControl(title: "192K", accessibilityLabel: "音质", options: [],
+                                                 selectedID: 0, isEnabled: true, onSelect: { _ in }),
+        position: 83, duration: 300, buffered: 120, isPlaying: false, isFullScreen: true,
+        safeAreaInsets: EdgeInsets(top: 0, leading: 59, bottom: 21, trailing: 59),
+        isDanmakuEnabled: true, showsDanmakuToggle: true, onToggleDanmaku: {}, onSendDanmaku: {}
+    ) { EmptyView() }
+    .background(.indigo.gradient)
+    .ignoresSafeArea()
 }

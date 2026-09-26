@@ -14,7 +14,8 @@ final class EnvironmentAction<Argument> {
         self.handler = handler
     }
 
-    /// body 里调用，让盒子始终持有最新一轮的处理闭包。
+    /// 在宿主的 `onAppear` 里调用；处理闭包依赖的值会变时，改用 `onChange(of:initial:)`。
+    /// 不要在 body 里调用：body 每次求值都会重写一遍盒子。
     func setHandler(_ handler: @escaping (Argument) -> Void) {
         self.handler = handler
     }

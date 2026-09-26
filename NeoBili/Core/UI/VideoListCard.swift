@@ -149,3 +149,15 @@ private struct VideoListCardContent: View, Equatable {
         .contentShape(Rectangle())
     }
 }
+
+#Preview("横向视频卡片") {
+    VStack(spacing: VideoListCardLayout.cardVerticalSpacing * 2) {
+        VideoListCard(coverURL: nil, title: "示例视频标题，两行时会在这里换行，放不下的部分以省略号结尾",
+                      author: "示例 UP 主", playCount: 161_000, durationText: "19:56", animatesEntrance: false)
+        VideoListCard(coverURL: nil, title: "单行标题", author: "示例 UP 主",
+                      playCount: -1, durationText: "", animatesEntrance: false)
+    }
+    .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
+    .frame(maxHeight: .infinity)
+    .background(Color(uiColor: .systemGroupedBackground))
+}

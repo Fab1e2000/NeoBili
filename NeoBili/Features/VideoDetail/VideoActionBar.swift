@@ -10,7 +10,7 @@ private enum VideoActionBarLayout {
 ///
 /// 五项等分整行宽度，每项是一颗圆形按钮，数字写在圆下面。
 /// 参考 Apple Music 专辑页的「随机播放 / 添加」：内容里的按钮不用玻璃，平时是浅灰填充，
-/// 点亮后换成主题色实心。普通操作长按后松手执行，持续按住执行扩展操作。
+/// 点亮后换成主题色实心。轻点执行；点赞和收藏按住 0.5 秒执行扩展操作。
 ///
 /// 圆里只放图标：数字放进圆里会把它撑成胶囊，五颗并排也放不下。
 /// 数字挪到圆下方之后，「不喜欢」也能把文字写全。
@@ -30,12 +30,12 @@ struct VideoActionBar: View {
     let shareURL: URL?
 
     let onLike: () -> Void
-    /// 持续按住点赞 1.2 秒＝一键三连。
+    /// 按住点赞 0.5 秒＝一键三连。
     let onTriple: () -> Void
     let onDislike: () -> Void
     let onCoin: () -> Void
     let onFavorite: () -> Void
-    /// 持续按住收藏 1.2 秒＝挑收藏夹；普通长按松手执行收藏／取消。
+    /// 按住收藏 0.5 秒＝挑收藏夹；轻点执行收藏／取消。
     let onPickFavoriteFolder: () -> Void
 
     @State private var showsShare = false
@@ -119,7 +119,7 @@ struct VideoActionBar: View {
     }
 }
 
-/// 原生 UIKit 按钮，按下时的高亮由系统处理。
+/// 原生 UIKit 按钮：轻点执行，按下时的高亮由系统处理。
 private struct VideoHoldButton: UIViewRepresentable {
     let icon: String
     let isActive: Bool
@@ -141,41 +141,40 @@ private struct VideoHoldButton: UIViewRepresentable {
         button.configuration = config
         button.isEnabled = isEnabled
         button.accessibilityLabel = label
-        button.accessibilityHint = secondaryAction == nil ? String(localized: "长按后松手") : String(localized: "长按后松手，或持续按住执行更多操作")
+        button.accessibilityHint = secondaryLabel
         button.primary = action
         button.secondary = secondaryAction
         button.accessibilityCustomActions = secondaryLabel.map {
             [UIAccessibilityCustomAction(name: $0, target: button, selector: #selector(HoldButton.accessibleSecondary))]
         }
     }
-
-    static func dismantleUIView(_ uiView: HoldButton, coordinator: ()) { uiView.cancelHold() }
 }
 
+/// 轻点走按钮自己的点击事件。有扩展操作时再挂一个长按手势：按住 0.5 秒执行扩展操作，
+/// 手势识别的同时系统会取消按钮这一次的触摸，松手时不会再算一次轻点。
 private final class HoldButton: UIButton, UIGestureRecognizerDelegate {
+    static let holdDuration: TimeInterval = 0.5
+
     var primary: (() -> Void)?
-    var secondary: (() -> Void)?
-    private var pending: Task<Void, Never>?
-    private var eligible = false
-    private var consumed = false
-    private var origin = CGPoint.zero
+    var secondary: (() -> Void)? {
+        didSet {
+            let enabled = secondary != nil
+            if hold.isEnabled != enabled { hold.isEnabled = enabled }
+        }
+    }
+    private let hold = UILongPressGestureRecognizer()
 
     init() {
         super.init(frame: .zero)
-        let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
-        hold.minimumPressDuration = 0.45
+        addAction(UIAction { [weak self] _ in self?.primary?() }, for: .primaryActionTriggered)
+        hold.addTarget(self, action: #selector(held(_:)))
+        hold.minimumPressDuration = Self.holdDuration
         hold.allowableMovement = 10
         hold.delegate = self
+        hold.isEnabled = false
         addGestureRecognizer(hold)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    func cancelHold() {
-        pending?.cancel()
-        pending = nil
-        eligible = false
-        isHighlighted = false
-    }
 
     private var isScrolling: Bool {
         var ancestor = superview
@@ -187,34 +186,9 @@ private final class HoldButton: UIButton, UIGestureRecognizerDelegate {
     }
 
     @objc private func held(_ gesture: UILongPressGestureRecognizer) {
-        switch gesture.state {
-        case .began:
-            cancelHold()
-            guard !isScrolling else { return }
-            origin = gesture.location(in: window)
-            eligible = true
-            consumed = false
-            isHighlighted = true
-            UISelectionFeedbackGenerator().selectionChanged()
-            if secondary != nil {
-                pending = Task { [weak self] in
-                    do { try await Task.sleep(for: .milliseconds(750)) } catch { return }
-                    guard let self, self.eligible, !self.isScrolling else { return }
-                    self.consumed = true
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    self.secondary?()
-                }
-            }
-        case .changed:
-            let point = gesture.location(in: window)
-            if hypot(point.x - origin.x, point.y - origin.y) > 10 || isScrolling { cancelHold() }
-        case .ended:
-            let fire = eligible && !consumed && !isScrolling
-            cancelHold()
-            if fire { primary?() }
-        case .cancelled, .failed: cancelHold()
-        default: break
-        }
+        guard gesture.state == .began, isEnabled, !isScrolling, let secondary else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        secondary()
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
@@ -240,4 +214,12 @@ private struct VideoActionShareSheet: UIViewControllerRepresentable {
         UIActivityViewController(activityItems: [url], applicationActivities: nil)
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+#Preview("操作栏") {
+    VideoActionBar(likeCount: 1329, coinCount: 68, favoriteCount: 273, shareCount: 28,
+                   isLiked: true, isDisliked: false, isCoined: false, isFavorited: true,
+                   shareURL: URL(string: "https://www.bilibili.com"),
+                   onLike: {}, onTriple: {}, onDislike: {}, onCoin: {}, onFavorite: {}, onPickFavoriteFolder: {})
+        .padding()
 }

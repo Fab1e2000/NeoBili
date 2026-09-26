@@ -53,9 +53,11 @@ private struct ImageViewerHost: ViewModifier {
     @State private var openAction = EnvironmentAction<ImageViewerPayload> { _ in }
 
     func body(content: Content) -> some View {
-        openAction.setHandler { [payload = $payload] in payload.wrappedValue = $0 }
-        return content
+        content
             .environment(\.openImageViewer, openAction)
+            .onAppear {
+                openAction.setHandler { [payload = $payload] in payload.wrappedValue = $0 }
+            }
             .sheet(item: $payload) {
                 ImageViewer(payload: $0)
                     .presentationDetents([.large])

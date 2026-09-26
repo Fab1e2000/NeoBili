@@ -264,6 +264,28 @@ final class PlayerGlassStyleTests: XCTestCase {
         }
     }
 
+    /// 透明玻璃最难的情况：接近纯白的画面加顶部弹幕。截图留给人看，
+    /// 断言只检查控件层和调暗层照常铺满画面。
+    func testClearGlassControlsOverBrightVideoOnRealDevice() async throws {
+        let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
+        defer { host.close() }
+        for (name, landscape, inlineRatio) in [("bright-inline-16x9", false, 16.0 / 9 as Double?),
+                                               ("bright-landscape-fullscreen", true, nil)] {
+            try await host.show(Color.black, landscape: landscape)
+            let insets = host.window.safeAreaInsets
+            let safeArea = EdgeInsets(top: insets.top, leading: insets.left,
+                                      bottom: insets.bottom, trailing: insets.right)
+            var fixture = PlayerGlassScreenFixture(size: host.window.bounds.size, safeAreaInsets: safeArea,
+                                                   inlineRatio: inlineRatio, state: .playing, isLive: false,
+                                                   frameRecorder: host.frameRecorder)
+            fixture.usesBrightBackdrop = true
+            try await host.show(fixture, landscape: landscape)
+            let chrome = try XCTUnwrap(host.frameRecorder.frames["chrome"], "Missing actual UIKit chrome frame")
+            XCTAssertEqual(chrome.width, host.window.bounds.width, accuracy: 0.5, name)
+            attachSnapshot(name, from: host)
+        }
+    }
+
     func testFullscreenQualityMenusUseTheBlackSidebarsOnRealDevice() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
@@ -362,6 +384,8 @@ private struct PlayerGlassScreenFixture: View {
     let frameRecorder: PlayerGlassFrameRecorder
     var fittedAspectRatio: Double?
     var usesLongQualityLabels = false
+    /// 接近纯白、顶部带弹幕的画面，检查透明玻璃在最亮的情况下是否还看得清。
+    var usesBrightBackdrop = false
 
     var body: some View {
         Group {
@@ -417,13 +441,13 @@ private struct PlayerGlassScreenFixture: View {
                     let width = min(geometry.size.width, geometry.size.height * fittedAspectRatio)
                     ZStack {
                         Color.black
-                        PlayerGlassFixtureBackdrop()
+                        PlayerGlassFixtureBackdrop(isBright: usesBrightBackdrop)
                             .frame(width: width, height: width / fittedAspectRatio)
                             .background(PlayerGlassFrameProbe(name: "fitted-video", recorder: frameRecorder))
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
                 }
-            } else { PlayerGlassFixtureBackdrop() }
+            } else { PlayerGlassFixtureBackdrop(isBright: usesBrightBackdrop) }
             if state == .error {
                 ContentUnavailableView {
                     Label("无法播放", systemImage: "play.slash")
@@ -569,7 +593,33 @@ private final class PlayerGlassSnapshotHost {
 /// Local colors provide visible detail behind translucent glass without
 /// downloading a video or embedding an image asset in the test bundle.
 private struct PlayerGlassFixtureBackdrop: View {
+    var isBright = false
+
     var body: some View {
+        if isBright { brightBody } else { standardBody }
+    }
+
+    /// 雪地、白墙一类的亮画面，顶部几行白字模拟正在飘的弹幕。
+    private var brightBody: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                LinearGradient(colors: [.white, Color(red: 0.98, green: 0.96, blue: 0.88), .white],
+                               startPoint: .top, endPoint: .bottom)
+                ForEach(0..<4) { row in
+                    Text(["前方高能", "哈哈哈哈哈哈哈", "这里是弹幕测试 666", "来了来了"][row])
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.6), radius: 1)
+                        .offset(x: geometry.size.width * [0.08, 0.45, 0.2, 0.62][row],
+                                y: 8 + CGFloat(row) * 26)
+                }
+            }
+        }
+        .clipped()
+        .allowsHitTesting(false)
+    }
+
+    private var standardBody: some View {
         GeometryReader { geometry in
             ZStack {
                 LinearGradient(colors: [Color(red: 0.08, green: 0.18, blue: 0.35),

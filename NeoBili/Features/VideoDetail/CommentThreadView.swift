@@ -28,9 +28,11 @@ private struct CommentThreadHost: ViewModifier {
     @State private var openAction = EnvironmentAction<Comment> { _ in }
 
     func body(content: Content) -> some View {
-        openAction.setHandler { [root = $root] in root.wrappedValue = $0 }
-        return content
+        content
             .environment(\.openCommentThread, openAction)
+            .onAppear {
+                openAction.setHandler { [root = $root] in root.wrappedValue = $0 }
+            }
             .sheet(item: $root) { comment in
                 CommentThreadView(root: comment, viewModel: viewModel)
                     .environment(\.commentBottomInset, 0)

@@ -55,15 +55,13 @@ private struct CommentComposerHost: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        replyAction.setHandler { [sending = $sending, draft = savedDraft,
-                                  rootID = root?.rpid, focused = $focused] comment in
-            guard !sending.wrappedValue else { return }
-            draft.target = CommentReplyTarget(root: rootID ?? comment.rpid,
-                                             parent: comment.rpid, name: comment.member.uname)
-            focused.wrappedValue = true
-        }
-        return content
+        content
             .environment(\.replyToComment, replyAction)
+            // 处理闭包记着当前的草稿和楼层；换视频（换评论模型、换草稿）或换楼层时重新装一次。
+            // 旧草稿被旧闭包持有，新草稿不会和它撞上同一个对象标识。
+            .onChange(of: ReplyHandlerKey(draft: ObjectIdentifier(savedDraft), root: root?.rpid), initial: true) {
+                installReplyHandler()
+            }
             .contentMargins(.bottom, barHeight + inputBottomInset, for: .scrollContent)
             .overlay(alignment: .bottom) {
                 inputBar
@@ -75,6 +73,21 @@ private struct CommentComposerHost: ViewModifier {
                 sendError = nil
                 focused = false
             }
+    }
+
+    private struct ReplyHandlerKey: Equatable {
+        let draft: ObjectIdentifier
+        let root: Int?
+    }
+
+    private func installReplyHandler() {
+        replyAction.setHandler { [sending = $sending, draft = savedDraft,
+                                  rootID = root?.rpid, focused = $focused] comment in
+            guard !sending.wrappedValue else { return }
+            draft.target = CommentReplyTarget(root: rootID ?? comment.rpid,
+                                             parent: comment.rpid, name: comment.member.uname)
+            focused.wrappedValue = true
+        }
     }
 
     private var inputBar: some View {

@@ -68,6 +68,29 @@ struct VideoPage: View {
     @State private var spacePath = NavigationPath()
 
     var body: some View {
+        NavigationStack(path: $spacePath) {
+            withSheets(videoPageRoot)
+                // 视频页自己不显示导航栏；推入 UP 主空间页后由那一页显示。
+                .toolbarVisibility(.hidden, for: .navigationBar)
+                .navigationDestination(for: FollowedUp.self) { up in
+                    SpaceView(up: up)
+                }
+                .navigationDestination(for: VideoTagSearchRoute.self) { route in
+                    VideoTagSearchPage(keyword: route.keyword)
+                }
+        }
+        .onAppear(perform: installCommentTimeJump)
+        .onDisappear {
+            // 播放画面由 cover 的 onDismiss 在原生缩小动画完成后交给小窗。
+            OrientationController.enterPortrait()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { store.player?.savePlaybackProgress() }
+        }
+    }
+
+    /// 评论里的时间链接跳到对应进度。只用到全局的 store 和提示浮层，页面出现时装一次即可。
+    private func installCommentTimeJump() {
         commentTimeJump.setHandler { [store, feedback] seconds in
             guard let player = store.player, player.hasRenderedFirstFrame,
                   !player.isLoading, player.duration.isFinite, player.duration > 0 else {
@@ -82,24 +105,6 @@ struct VideoPage: View {
                 guard store.player === player else { return }
                 await player.seek(to: seconds)
             }
-        }
-        return NavigationStack(path: $spacePath) {
-            withSheets(videoPageRoot)
-                // 视频页自己不显示导航栏；推入 UP 主空间页后由那一页显示。
-                .toolbarVisibility(.hidden, for: .navigationBar)
-                .navigationDestination(for: FollowedUp.self) { up in
-                    SpaceView(up: up)
-                }
-                .navigationDestination(for: VideoTagSearchRoute.self) { route in
-                    VideoTagSearchPage(keyword: route.keyword)
-                }
-        }
-        .onDisappear {
-            // 播放画面由 cover 的 onDismiss 在原生缩小动画完成后交给小窗。
-            OrientationController.enterPortrait()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active { store.player?.savePlaybackProgress() }
         }
     }
 

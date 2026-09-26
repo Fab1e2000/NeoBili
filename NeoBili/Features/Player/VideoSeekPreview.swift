@@ -239,10 +239,11 @@ struct VideoSeekPreview: View {
                 }
                 .frame(height: 74)
             }
-            Text(PlaybackTime.text(seconds)).font(.caption.monospacedDigit())
+            Text(PlaybackTime.text(seconds)).font(.caption.monospacedDigit().weight(.semibold))
         }
         .padding(5)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
+        // 和播放器控件同一层，跟着用透明变体；下面有控件层的调暗层托底。
+        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 10))
         .environment(\.colorScheme, .dark)
         .accessibilityHidden(true)
         .task(id: video) {

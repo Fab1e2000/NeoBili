@@ -143,7 +143,7 @@ struct LiveRoomView: View {
                           systemImage: player.isOffline ? "moon.zzz" : "wifi.exclamationmark")
                         .font(.headline)
                     Button("重新连接", systemImage: "arrow.clockwise", action: reconnect)
-                        .buttonStyle(.glass)
+                        .modifier(PlayerClearGlassButtonStyle())
                         .controlSize(.regular)
                 }
                 .foregroundStyle(.white)
@@ -275,4 +275,16 @@ struct LiveRoomView: View {
         }
     }
 
+}
+
+/// 直播画面上的按钮和播放器控件同时出现，跟着用透明变体，不和控件混用两种玻璃。
+/// 带参数的玻璃按钮样式从 iOS 26.1 起才有，26.0 仍用默认样式。
+private struct PlayerClearGlassButtonStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.1, *) {
+            content.buttonStyle(.glass(.clear))
+        } else {
+            content.buttonStyle(.glass)
+        }
+    }
 }

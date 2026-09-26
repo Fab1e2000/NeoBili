@@ -58,7 +58,8 @@ struct VideoOwnerRow: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// 系统原生胶囊按钮：未关注是主题色醒目样式（同 App Store「获取」），已关注退为灰色。
+    /// 系统液态玻璃胶囊按钮，和 UP 主空间页一致：未关注是主题色实底玻璃，已关注退成普通玻璃配灰字。
+    /// 玻璃样式与原来的 bordered 样式尺寸相同（真机实测 62×32 / 77×32），整行排版不变。
     @ViewBuilder
     private var followButton: some View {
         let button = Button(action: onToggleFollow) {
@@ -72,9 +73,9 @@ struct VideoOwnerRow: View {
         .accessibilityLabel(isFollowing ? "取消关注 \(owner.name)" : "关注 \(owner.name)")
         .accessibilityIdentifier("video.owner.follow")
         if isFollowing {
-            button.buttonStyle(.bordered).tint(.secondary)
+            button.buttonStyle(.glass).foregroundStyle(.secondary)
         } else {
-            button.buttonStyle(.borderedProminent).tint(themeColor)
+            button.buttonStyle(.glassProminent).tint(themeColor)
         }
     }
 }

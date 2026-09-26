@@ -1102,16 +1102,6 @@
         }
       }
     },
-    "内容与交互": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Content & Interaction"
-          }
-        }
-      }
-    },
     "内容加载失败": {
       "localizations": {
         "en": {
@@ -1364,6 +1354,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Animation Speed"
+          }
+        }
+      }
+    },
+    "动画速度、手势分区、控件位置和防误触的细调，一般保持默认即可。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fine-tuning for animation speed, gesture zones, control positions and accidental-tap protection. The defaults suit most people."
           }
         }
       }
@@ -2006,16 +2006,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Side Margins"
-          }
-        }
-      }
-    },
-    "左右边距默认跟随系统横屏安全区，正好避开屏幕圆角和灵动岛；调得太小时控件会伸进四角的圆弧里。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Side margins follow the system's landscape safe area by default, clearing the rounded corners and Dynamic Island. If set too small, controls extend into the corners."
           }
         }
       }
@@ -3660,6 +3650,16 @@
         }
       }
     },
+    "浏览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browsing"
+          }
+        }
+      }
+    },
     "清晰度": {
       "localizations": {
         "en": {
@@ -4948,6 +4948,26 @@
         }
       }
     },
+    "边距按看得见的控件计算，调到 0 时控件贴着屏幕边缘。左右边距默认跟随系统横屏安全区，正好避开屏幕圆角和灵动岛；调得太小时控件会伸进四角的圆弧里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Margins are measured to the visible controls; at 0 they touch the screen edge. Side margins follow the system's landscape safe area by default, clearing the rounded corners and Dynamic Island. If set too small, controls extend into the corners."
+          }
+        }
+      }
+    },
+    "边距按看得见的控件计算，调到 0 时控件贴着画面边缘。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Margins are measured to the visible controls; at 0 they touch the edge of the video."
+          }
+        }
+      }
+    },
     "返回": {
       "localizations": {
         "en": {
@@ -5288,26 +5308,6 @@
         }
       }
     },
-    "长按后松手": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Long-press and release"
-          }
-        }
-      }
-    },
-    "长按后松手，或持续按住执行更多操作": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Long-press and release, or keep holding for more actions"
-          }
-        }
-      }
-    },
     "防误触": {
       "localizations": {
         "en": {
@@ -5448,16 +5448,6 @@
         }
       }
     },
-    "页面": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pages"
-          }
-        }
-      }
-    },
     "页面切换": {
       "localizations": {
         "en": {
@@ -5504,6 +5494,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "HD"
+          }
+        }
+      }
+    },
+    "高级": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced"
           }
         }
       }

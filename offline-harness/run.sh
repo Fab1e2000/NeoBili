@@ -138,6 +138,13 @@ swiftc -swift-version 6 -parse-as-library \
     -o "$BUILD_DIR/theme-icon"
 "$BUILD_DIR/theme-icon"
 
+# 播放器控件位置设置对象：沿用旧键、只写入改动项、恢复默认。
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/Player/PlayerChromeSettings.swift" \
+    "$HARNESS/src/PlayerChromePreferencesRegression.swift" \
+    -o "$BUILD_DIR/player-chrome-preferences"
+"$BUILD_DIR/player-chrome-preferences"
+
 # 缩略播放器退出期间的快速展开、关闭和切换媒体，不启动 UI 或网络。
 swiftc -swift-version 6 -parse-as-library \
     "$APP/Features/NowPlaying/MediaPresentationState.swift" \

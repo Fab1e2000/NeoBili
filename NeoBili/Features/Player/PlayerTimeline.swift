@@ -46,7 +46,7 @@ struct PlayerTimeline: View {
                         .lineLimit(1).minimumScaleFactor(0.7)
                 }
             }
-            .font(.caption.monospacedDigit())
+            .font(.caption.monospacedDigit().weight(.semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, showsTimeLabels ? 12 : 6)
             .frame(height: 32)

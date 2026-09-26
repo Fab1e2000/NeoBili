@@ -34,7 +34,7 @@ struct PlayerChromeSettingsView: View {
                      : "视频页顶部的播放区域，按本机屏幕宽度等比缩小。竖屏视频全屏播放时也使用这组设置。")
             }
 
-            // 两组设置各用一套 @AppStorage，切换时整组换掉。
+            // 两组设置各自一组滑条，切换时整组换掉。
             PlayerChromeSliders(mode: mode, automaticSideInset: screen.landscapeSideInset)
                 .id(mode)
         }
@@ -45,54 +45,63 @@ struct PlayerChromeSettingsView: View {
 /// 一种状态的滑条和恢复默认。
 private struct PlayerChromeSliders: View {
     let mode: PlayerChromeSettings.Mode
-    /// 全屏「跟随系统」时滑条显示的数值。
+    /// 全屏「跟随系统」时的横屏安全区宽度。
     let automaticSideInset: CGFloat
 
-    @AppStorage private var horizontalInset: Double
-    @AppStorage private var topInset: Double
-    @AppStorage private var bottomInset: Double
-    @AppStorage private var spacing: Double
-
+    private var preferences: PlayerChromePreferences { .shared }
+    private var values: PlayerChromeSettings.Values { preferences.values(for: mode) }
     private var defaults: PlayerChromeSettings.Values { PlayerChromeSettings.defaults(for: mode) }
 
-    init(mode: PlayerChromeSettings.Mode, automaticSideInset: CGFloat) {
-        self.mode = mode
-        self.automaticSideInset = automaticSideInset
-        let keys = PlayerChromeSettings.keys(for: mode)
-        let defaults = PlayerChromeSettings.defaults(for: mode)
-        _horizontalInset = AppStorage(wrappedValue: defaults.horizontalInset, keys.horizontalInset)
-        _topInset = AppStorage(wrappedValue: defaults.topInset, keys.topInset)
-        _bottomInset = AppStorage(wrappedValue: defaults.bottomInset, keys.bottomInset)
-        _spacing = AppStorage(wrappedValue: defaults.spacing, keys.spacing)
+    private var isAutomaticSide: Bool { mode == .fullScreen && values.followsSafeArea }
+
+    /// 边距滑条显示看得见的玻璃到边缘的距离，存储值是点按区域到边缘的距离，差一个 `tapAreaMargin`。
+    private static let margin = PlayerChromeSettings.tapAreaMargin
+
+    private static func visible(_ range: ClosedRange<Double>) -> ClosedRange<Double> {
+        (range.lowerBound + margin)...(range.upperBound + margin)
     }
 
-    private var isAutomaticSide: Bool { mode == .fullScreen && horizontalInset < 0 }
+    /// 滑条直接读写共用的设置对象，播放器控件跟着实时重排。
+    private func binding(_ field: WritableKeyPath<PlayerChromeSettings.Values, Double>, offset: Double) -> Binding<Double> {
+        Binding(get: { preferences.values(for: mode)[keyPath: field] + offset },
+                set: { newValue in preferences.update(mode) { $0[keyPath: field] = newValue - offset } })
+    }
 
     var body: some View {
         Section {
             slider(String(localized: "左右边距"),
-                   value: Binding(get: { isAutomaticSide ? Double(automaticSideInset) : horizontalInset },
-                                  set: { horizontalInset = $0 }),
-                   range: PlayerChromeSettings.horizontalInsetRange(for: mode),
+                   value: Binding(
+                       get: {
+                           isAutomaticSide
+                               ? Double(PlayerChromeSettings.fullScreenHorizontalInset(values, safeArea: automaticSideInset)) + Self.margin
+                               : values.horizontalInset + Self.margin
+                       },
+                       set: { newValue in
+                           preferences.update(mode) {
+                               $0.followsSafeArea = false
+                               $0.horizontalInset = newValue - Self.margin
+                           }
+                       }),
+                   range: Self.visible(PlayerChromeSettings.horizontalInsetRange(for: mode)),
                    note: isAutomaticSide ? String(localized: "跟随系统") : nil)
-            slider(String(localized: "上边距"), value: $topInset, range: PlayerChromeSettings.verticalInsetRange)
-            slider(String(localized: "下边距"), value: $bottomInset, range: PlayerChromeSettings.verticalInsetRange)
-            slider(String(localized: "控件间距"), value: $spacing, range: PlayerChromeSettings.spacingRange)
+            slider(String(localized: "上边距"), value: binding(\.topInset, offset: Self.margin),
+                   range: Self.visible(PlayerChromeSettings.verticalInsetRange))
+            slider(String(localized: "下边距"), value: binding(\.bottomInset, offset: Self.margin),
+                   range: Self.visible(PlayerChromeSettings.verticalInsetRange))
+            slider(String(localized: "控件间距"), value: binding(\.spacing, offset: 0), range: PlayerChromeSettings.spacingRange)
         } footer: {
             if mode == .fullScreen {
-                Text("左右边距默认跟随系统横屏安全区，正好避开屏幕圆角和灵动岛；调得太小时控件会伸进四角的圆弧里。")
+                Text("边距按看得见的控件计算，调到 0 时控件贴着屏幕边缘。左右边距默认跟随系统横屏安全区，正好避开屏幕圆角和灵动岛；调得太小时控件会伸进四角的圆弧里。")
+            } else {
+                Text("边距按看得见的控件计算，调到 0 时控件贴着画面边缘。")
             }
         }
 
         Section {
             Button("恢复默认") {
-                horizontalInset = defaults.horizontalInset
-                topInset = defaults.topInset
-                bottomInset = defaults.bottomInset
-                spacing = defaults.spacing
+                preferences.update(mode) { $0 = PlayerChromeSettings.defaults(for: mode) }
             }
-            .disabled(horizontalInset == defaults.horizontalInset && topInset == defaults.topInset
-                      && bottomInset == defaults.bottomInset && spacing == defaults.spacing)
+            .disabled(values == defaults)
         }
     }
 

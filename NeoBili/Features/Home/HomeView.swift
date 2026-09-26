@@ -328,3 +328,27 @@ struct HomeVideoCard: View {
         .environment(AccountStore())
         .environment(ActionFeedback())
 }
+
+#Preview("推荐卡片") {
+    let video = VideoSummary(
+        bvid: "BV1Preview", aid: 1, cid: 1,
+        title: "示例视频标题，两行时会在这里换行，放不下的部分以省略号结尾",
+        pic: "", desc: "", duration: 334, pubdate: 0,
+        owner: VideoOwner(mid: 1, name: "示例 UP 主", face: ""),
+        stat: VideoStat(view: 82_000, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0)
+    )
+    let width: CGFloat = 186
+    VStack(spacing: HomeCardLayout.rowSpacing) {
+        HStack(alignment: .top, spacing: HomeCardLayout.columnSpacing) {
+            // 左：SwiftUI 版；右：列表实际使用的 UIKit 版。
+            HomeVideoCard(video: video, titleWidth: width - HomeCardLayout.detailsHorizontalPadding * 2)
+                .frame(width: width, height: width / HomeCardLayout.coverAspectRatio + HomeCardLayout.detailsHeight)
+            NativeHomeVideoCard(video: video, titleWidth: width - HomeCardLayout.detailsHorizontalPadding * 2)
+                .frame(width: width)
+        }
+        LastSeenCard()
+            .frame(width: width * 2 + HomeCardLayout.columnSpacing)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color(uiColor: .systemGroupedBackground))
+}

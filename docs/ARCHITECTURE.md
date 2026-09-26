@@ -166,7 +166,8 @@ NeoBili/
   新增文字后用 `xcodebuild -exportLocalizations` 导出、补英文、`-importLocalizations` 导回；
   中文条目的状态需为 translated，否则不会生成 `zh-Hans.lproj`，中文系统会回退到英文。
 - **新的环境动作回调**（列表行要触发弹层）：用 `EnvironmentAction` 盒子 +
-  `@State` 持有，宿主在 body 里 `setHandler`——不要往 `@Entry` 里塞裸闭包。
+  `@State` 持有，宿主在 `onAppear` 里 `setHandler`（闭包依赖的值会变时用
+  `onChange(of:initial:)`），不要在 body 里设置，也不要往 `@Entry` 里塞裸闭包。
 
 ## 离线测试（不需要 Simulator/真机）
 

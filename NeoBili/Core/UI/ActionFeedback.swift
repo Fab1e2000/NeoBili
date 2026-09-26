@@ -17,6 +17,7 @@ final class ActionFeedback {
     func show(_ text: String) {
         finish(commit: true)
         message = text
+        announce(text)
         scheduleExpiry(after: .seconds(2))
     }
 
@@ -31,6 +32,7 @@ final class ActionFeedback {
                 pending = continuation
                 message = text
                 canUndo = true
+                announce(text)
                 scheduleExpiry(after: duration, token: request)
             }
         } onCancel: {
@@ -42,6 +44,11 @@ final class ActionFeedback {
     }
 
     func undo() { finish(commit: false) }
+
+    /// 浮层不抢 VoiceOver 焦点，提示内容单独播报一次。浮层挂在两处，播报放在这里才不会念两遍。
+    private func announce(_ text: String) {
+        AccessibilityNotification.Announcement(text).post()
+    }
 
     private func scheduleExpiry(after duration: Duration, token request: UUID? = nil) {
         let request = request ?? UUID()
@@ -94,11 +101,11 @@ struct ActionFeedbackOverlay: ViewModifier {
                             }
                         }
                         .font(.subheadline)
-                        .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 18)
                         .padding(.vertical, 11)
-                        .background(.black.opacity(0.82), in: Capsule())
+                        // 系统玻璃随浅色／深色外观和下方内容自动调整，深色模式下也能和背景分开。
+                        .glassEffect(.regular, in: Capsule())
                         .padding(.horizontal, 32)
                         .padding(.bottom, 80)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -166,4 +173,16 @@ extension Error {
         if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled { return true }
         return nsError.domain == "NSPOSIXErrorDomain" && nsError.code == 89
     }
+}
+
+#Preview("操作提示") {
+    @Previewable @State var feedback = ActionFeedback()
+    VStack(spacing: 16) {
+        Button("显示提示") { feedback.show("已加入稍后再看") }
+        Button("显示可撤销的提示") { Task { _ = await feedback.confirmRemoval("已移除") } }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color(uiColor: .systemGroupedBackground))
+    .actionFeedbackOverlay()
+    .environment(feedback)
 }

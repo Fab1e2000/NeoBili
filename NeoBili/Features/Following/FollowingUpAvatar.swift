@@ -89,3 +89,13 @@ struct AllDynamicsAvatar: View {
             .rotationEffect(.degrees(rotation))
     }
 }
+
+#Preview("关注头像") {
+    HStack(spacing: 16) {
+        FollowingUpAvatar(item: .all, selected: true)
+        FollowingUpAvatar(item: .up(FollowedUp(mid: 1, uname: "示例 UP 主", face: "", hasUpdate: true)))
+        FollowingUpAvatar(item: .up(FollowedUp(mid: 2, uname: "示例 UP 主", face: "", hasUpdate: false, liveRoomID: 1)))
+    }
+    .padding()
+    .background(Color(uiColor: .systemGroupedBackground))
+}

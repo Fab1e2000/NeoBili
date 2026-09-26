@@ -11,11 +11,13 @@ private struct MineSheetHost: ViewModifier {
     @State private var openAction = EnvironmentAction<Void> { _ in }
 
     func body(content: Content) -> some View {
-        openAction.setHandler { [isPresented = $isPresented] in
-            isPresented.wrappedValue = true
-        }
-        return content
+        content
             .environment(\.openMine, openAction)
+            .onAppear {
+                openAction.setHandler { [isPresented = $isPresented] in
+                    isPresented.wrappedValue = true
+                }
+            }
             .sheet(isPresented: $isPresented) {
                 MineView()
                     .appTextSize()
