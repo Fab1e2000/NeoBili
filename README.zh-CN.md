@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="design/app-icon-2026/NMark-production.png" width="128" height="128" alt="NeoBili 图标">
+<img src="design/app-icon-2026/BMark-production.png" width="128" height="128" alt="NeoBili 图标">
 
 # NeoBili
 
@@ -134,7 +134,7 @@ xcodebuild -project NeoBili.xcodeproj -scheme NeoBili \
 
 - **架构**：目录职责、数据流与状态所有权见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **测试**：离线回归套件运行 `zsh offline-harness/run.sh`，无需设备或模拟器
-- **图标**：白底立体挤出的 N 字图标，可编辑源文件在 [`design/app-icon-2026/`](design/app-icon-2026/)，由 `scripts/generate-app-icons.py` 生成全部 24 个主题色版本
+- **图标**：白底立体挤出的 B 字图标，可编辑源文件在 [`design/app-icon-2026/`](design/app-icon-2026/)，由 `scripts/generate-app-icons.py` 生成全部 24 个主题色版本
 
 ## 文档
 
@@ -172,7 +172,7 @@ xcodebuild -project NeoBili.xcodeproj -scheme NeoBili \
 ## 致谢
 
 - [youshen2/MeloX](https://github.com/youshen2/MeloX)：SwiftUI 原生、液态玻璃风格的第三方网易云音乐客户端，本 README 的结构参考
-- [guozhigq/pilipala](https://github.com/guozhigq/pilipala)：PiliPlus 的前身，Flutter 编写的第三方哔哩哔哩客户端；NeoBili 的立体 N 字图标参考了它的 logo
+- [guozhigq/pilipala](https://github.com/guozhigq/pilipala)：PiliPlus 的前身，Flutter 编写的第三方哔哩哔哩客户端；NeoBili 的立体 B 字图标参考了它的 logo
 - [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus)：接口与播放行为的实现参考，锁定的参考版本见 [references/README.md](references/README.md)
 - [mpvkit/MPVKit](https://github.com/mpvkit/MPVKit)：基于 libmpv 的播放内核（使用 LGPL 构建）
 

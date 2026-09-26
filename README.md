@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="design/app-icon-2026/NMark-production.png" width="128" height="128" alt="NeoBili app icon">
+<img src="design/app-icon-2026/BMark-production.png" width="128" height="128" alt="NeoBili app icon">
 
 # NeoBili
 
@@ -140,7 +140,7 @@ The Xcode project is generated from `project.yml` with [XcodeGen](https://github
 
 - **Architecture:** module map, data flow and state ownership in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Tests:** run the offline regression suite with `zsh offline-harness/run.sh`. It needs no device or simulator.
-- **Icon:** the extruded N icon's editable source is in [`design/app-icon-2026/`](design/app-icon-2026/). `scripts/generate-app-icons.py` generates all 24 theme variants.
+- **Icon:** the extruded B icon's editable source is in [`design/app-icon-2026/`](design/app-icon-2026/). `scripts/generate-app-icons.py` generates all 24 theme variants.
 
 ## Documentation
 
@@ -182,7 +182,7 @@ NeoBili's source code is released under the [MIT License](LICENSE). The license 
 ## Acknowledgements
 
 - [youshen2/MeloX](https://github.com/youshen2/MeloX): a native SwiftUI, Liquid Glass third-party client for NetEase Cloud Music, and the model for this README.
-- [guozhigq/pilipala](https://github.com/guozhigq/pilipala): the Flutter Bilibili client PiliPlus grew out of. NeoBili's extruded N icon is modeled on its logo.
+- [guozhigq/pilipala](https://github.com/guozhigq/pilipala): the Flutter Bilibili client PiliPlus grew out of. NeoBili's extruded B icon is modeled on its logo.
 - [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus): reference for API usage and playback behavior. The pinned revision is recorded in [references/README.md](references/README.md).
 - [mpvkit/MPVKit](https://github.com/mpvkit/MPVKit): the libmpv-based playback engine (LGPL build).
 
