@@ -23,7 +23,6 @@ final class InlineVideoCollapseVisualTests: XCTestCase {
             try await host.show(CollapseVisualFixture(phase: phase, fraction: fraction, recorder: recorder).id(name))
             let metrics = try XCTUnwrap(recorder.metrics, name)
             let video = try XCTUnwrap(recorder.frames["video"], name)
-            let gap = try XCTUnwrap(recorder.frames["gap"], name)
             let comments = try XCTUnwrap(recorder.frames["comments"], name)
             let underlyingButton = try XCTUnwrap(recorder.underlyingButton, name)
 
@@ -31,9 +30,7 @@ final class InlineVideoCollapseVisualTests: XCTestCase {
             XCTAssertGreaterThan(metrics.topInset, 0, "Exercise the physical iPhone top safe area: \(name)")
             XCTAssertEqual(video.minY, host.window.safeAreaInsets.top - metrics.topOverlap, accuracy: 0.5, name)
             XCTAssertEqual(video.height, metrics.height, accuracy: 0.5, name)
-            XCTAssertEqual(gap.minY, video.maxY, accuracy: 0.5, name)
-            XCTAssertEqual(gap.height, 10, accuracy: 0.5, name)
-            XCTAssertEqual(comments.minY, gap.maxY, accuracy: 0.5, name)
+            XCTAssertEqual(comments.minY, video.maxY, accuracy: 0.5, name)
             XCTAssertEqual(metrics.progress, phase == .paused ? Double(fraction) : 0, accuracy: 0.0001, name)
 
             let buttonCenter = underlyingButton.convert(
@@ -53,15 +50,14 @@ final class InlineVideoCollapseVisualTests: XCTestCase {
             add(attachment)
 
             // x=20 is deliberately black in the safe area, video reference
-            // rail and gap. Equal composited pixels prove one uninterrupted
+            // rail. Equal composited pixels prove one uninterrupted
             // tint layer, independently of the local colorful central image.
             let samples = try [CGPoint(x: 20, y: metrics.topInset / 2),
-                               CGPoint(x: 20, y: video.midY),
-                               CGPoint(x: 20, y: gap.midY)].map { try rgbPixel(in: screenshot, at: $0) }
+                               CGPoint(x: 20, y: video.midY)].map { try rgbPixel(in: screenshot, at: $0) }
             for sample in samples.dropFirst() {
                 for channel in 0..<3 {
                     XCTAssertEqual(Double(sample[channel]), Double(samples[0][channel]), accuracy: 2,
-                                   "Safe area, video and gap must share the same tint: \(name)")
+                                   "Safe area and video must share the same tint: \(name)")
                 }
             }
             for x in [CGFloat(1), host.window.bounds.width - 1] {
@@ -79,7 +75,7 @@ final class InlineVideoCollapseVisualTests: XCTestCase {
                 XCTAssertLessThanOrEqual(tint, 6, "Playing/loading must keep the standard-size image untinted: \(name)")
             }
 
-            let evidence = XCTAttachment(string: "LOCAL STATIC FIXTURE, NO VIDEO/NETWORK\nwindow=\(host.window.bounds)\nsafeArea=\(host.window.safeAreaInsets)\nvideo=\(video)\ngap=\(gap)\ncomments=\(comments)\nprogress=\(metrics.progress)\nisCollapsed=\(metrics.isCollapsed)\nRGB.safeArea/video/gap=\(samples)\nunderlyingControlReceivesHit=\(reachesUnderlyingButton)")
+            let evidence = XCTAttachment(string: "LOCAL STATIC FIXTURE, NO VIDEO/NETWORK\nwindow=\(host.window.bounds)\nsafeArea=\(host.window.safeAreaInsets)\nvideo=\(video)\ncomments=\(comments)\nprogress=\(metrics.progress)\nisCollapsed=\(metrics.isCollapsed)\nRGB.safeArea/video=\(samples)\nunderlyingControlReceivesHit=\(reachesUnderlyingButton)")
             evidence.name = "inline-collapse-local-fixture-\(name)-geometry-and-pixels"
             evidence.lifetime = .keepAlways
             add(evidence)
@@ -140,9 +136,6 @@ private struct CollapseVisualFixture: View {
                 .allowsHitTesting(!isCollapsed)
                 .background(CollapseVisualProbe(name: "video", recorder: recorder, metrics: metrics))
 
-                Color.clear.frame(height: 10)
-                    .background(CollapseVisualProbe(name: "gap", recorder: recorder))
-
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         HStack(spacing: 24) {
@@ -150,7 +143,7 @@ private struct CollapseVisualFixture: View {
                             Text("评论 128").fontWeight(.semibold)
                         }
                         Text(caption).font(.headline)
-                        Text("上方画面为测试绘制。左右黑栏用于验证状态栏、视频与 10pt 间隔是否连续染色。")
+                        Text("上方画面为测试绘制。左右黑栏用于验证状态栏与视频是否连续染色，内容区应紧贴视频。")
                             .font(.subheadline).foregroundStyle(.secondary)
                         ForEach(0..<6) { index in
                             HStack(spacing: 12) {
@@ -174,7 +167,7 @@ private struct CollapseVisualFixture: View {
                    height: geometry.size.height + topOverlap + geometry.safeAreaInsets.bottom, alignment: .top)
             .overlay(alignment: .top) {
                 InlineVideoCollapseOverlay(progress: progress, videoHeight: height,
-                                           topInset: geometry.safeAreaInsets.top, bottomGap: 8, isCollapsed: isCollapsed,
+                                           topInset: geometry.safeAreaInsets.top, isCollapsed: isCollapsed,
                                            player: nil, onBack: {}) {}
             }
             .offset(y: -topOverlap)

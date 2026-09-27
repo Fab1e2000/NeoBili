@@ -45,8 +45,6 @@ struct VideoPage: View {
 
     /// 简介区左右留白。tag 那一行要用同样的值才能和正文对齐。
     private static let contentInset: CGFloat = 16
-    /// 播放器与内容卡片之间的间距；收缩染色层必须恰好填满它，不能压到下方白色内容。
-    private static let videoContentGap: CGFloat = 8
 
     @State private var collapseLayout = InlineVideoCollapseLayout(expandedHeight: 0, standardHeight: 0, allowsCompact: false)
     /// 同一段滚动距离先缩小竖屏画面，暂停后才继续将画面收进 56pt 标题栏。
@@ -208,10 +206,6 @@ struct VideoPage: View {
                 }
 
                 if !isFullScreen {
-                    Color.clear.frame(height: Self.videoContentGap)
-                }
-
-                if !isFullScreen {
                     // 选择器固定在播放器下方，作为简介和评论两页的顶部栏：内容从它下面滑过，
                     // 由系统给出与主页一致的原生顶部模糊。
                     sectionPages
@@ -255,7 +249,7 @@ struct VideoPage: View {
             .overlay(alignment: .top) {
                 if !isFullScreen {
                     InlineVideoCollapseOverlay(progress: collapseProgress, videoHeight: videoHeight,
-                                               topInset: geometry.safeAreaInsets.top, bottomGap: Self.videoContentGap,
+                                               topInset: geometry.safeAreaInsets.top,
                                                isCollapsed: hidesVideo,
                                                player: store.player, onBack: store.goBack) {
                         withAnimation(.easeInOut(duration: 0.25)) {
