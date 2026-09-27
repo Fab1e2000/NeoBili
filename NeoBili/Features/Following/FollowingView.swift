@@ -23,8 +23,6 @@ struct FollowingView: View {
     // 设置
     @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
-    @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultExitSpeed
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultEnterSpeed
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicRefreshEnterKey) private var dynamicEnterEnabled = CardAnimationSettings.defaultValue
@@ -321,7 +319,7 @@ struct FollowingView: View {
         isRefreshing = true
         let model = viewModel
         let feed = model.activeFeed
-        let duration = animatesCardExit ? FeedRefreshTuning.fadeExit(speed: exitSpeed) : 0
+        let duration = animatesCardExit ? FeedRefreshTuning.fadeExit : 0
         let stagingID = UUID()
         // 与推荐页一致：松手即开始淡出，请求并行进行，两者都结束后再换上新内容。
         let exitStart = ProcessInfo.processInfo.systemUptime
@@ -358,7 +356,7 @@ struct FollowingView: View {
                 try? await Task.sleep(for: .milliseconds(16))
                 // 期间又开始了新的刷新时由新刷新接管浓度。
                 if !Task.isCancelled {
-                    withAnimation(.easeIn(duration: FeedRefreshTuning.fadeInDuration / AnimationSpeedSettings.clamped(enterSpeed))) {
+                    withAnimation(.easeIn(duration: FeedRefreshTuning.fadeIn)) {
                         refreshOpacity = 1
                     }
                 }
@@ -432,7 +430,7 @@ struct FollowingView: View {
         let hadUpdate = model.beginSelection(target)
         let needsLoad = targetFeed.entries.isEmpty || hadUpdate
         let stagingID = UUID()
-        let exitDuration = animatesCardExit ? FollowingSwitchFade.exit / AnimationSpeedSettings.clamped(exitSpeed) : 0
+        let exitDuration = animatesCardExit ? FollowingSwitchFade.exit / AnimationSpeedSettings.exitSpeed : 0
         let exitStart = ProcessInfo.processInfo.systemUptime
         if exitDuration > 0 { withAnimation(.easeOut(duration: exitDuration)) { feedOpacity = 0 } }
 
@@ -477,7 +475,7 @@ struct FollowingView: View {
     }
 
     private var fadeInDuration: Double {
-        FeedRefreshTuning.fadeInDuration / AnimationSpeedSettings.clamped(enterSpeed)
+        FeedRefreshTuning.fadeIn
     }
 
     private func cancelSelectionTransition() {

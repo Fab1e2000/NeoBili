@@ -11,7 +11,7 @@ final class OtherPagePerformanceTests: XCTestCase {
         let cache = VideoPreparationCache(detailLoader: { _ in
             await calls.record()
             throw URLError(.cancelled)
-        })
+        }, scrollPrefetchEnabled: { true })
         let transient = Task { await cache.prefetchWhenSettled(bvid: "transient") }
         try await Task.sleep(for: .milliseconds(30))
         let beforeDwell = await calls.count
@@ -23,6 +23,17 @@ final class OtherPagePerformanceTests: XCTestCase {
         await cache.prefetchWhenSettled(bvid: "settled")
         let afterDwell = await calls.count
         XCTAssertEqual(afterDwell, 1)
+    }
+
+    func testScrollPrefetchIsOffUnlessEnabled() async {
+        let calls = PreparationCalls()
+        let cache = VideoPreparationCache(detailLoader: { _ in
+            await calls.record()
+            throw URLError(.cancelled)
+        }, scrollPrefetchEnabled: { false })
+        await cache.prefetchWhenSettled(bvid: "settled")
+        let count = await calls.count
+        XCTAssertEqual(count, 0)
     }
 
     func testUnrelatedEmoteDoesNotInvalidateWaitingComment() async {

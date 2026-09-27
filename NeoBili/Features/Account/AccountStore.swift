@@ -4,6 +4,7 @@ import Network
 
 struct AccountCredentialsSnapshot: Sendable {
     let hasCredentials: Bool
+    var hasAppCredential = false
     let accountID: Int?
 }
 
@@ -14,12 +15,23 @@ struct AccountSessionClient {
     var save: @MainActor (BiliPassport.LoginCookies, String?) async -> Void
     var clear: @MainActor () async -> Void
     var profile: @MainActor () async throws -> AccountProfilePayload
+    /// 用当前 Cookie 换一份 App 凭据并保存。
+    var exchangeAppCredential: @MainActor () async throws -> Void = {}
 
     static var live: AccountSessionClient { AccountSessionClient(
         credentials: { await DeviceIdentity.shared.accountSnapshot() },
         save: { await DeviceIdentity.shared.saveLogin($0, accessKey: $1) },
         clear: { await DeviceIdentity.shared.clearLoginCookies() },
-        profile: { try await BiliAPI.myProfile() }
+        profile: { try await BiliAPI.myProfile() },
+        exchangeAppCredential: {
+            guard let cookies = await DeviceIdentity.shared.loginCookies() else {
+                throw BiliPassport.PassportError.missingCookies
+            }
+            let key = try await BiliPassport.exchangeAccessKey(cookies: cookies)
+            guard await DeviceIdentity.shared.setAccessKey(key, forAccount: cookies.dedeUserID) else {
+                throw CancellationError()
+            }
+        }
     ) }
 }
 
@@ -42,6 +54,9 @@ final class AccountStore {
     private(set) var profile: Profile?
     private(set) var accountID: Int?
     private(set) var isLoggedIn = false
+    /// 有没有 App 登录凭据（access_key）。App 推荐按账号个性化、点踩和不感兴趣都要靠它。
+    private(set) var hasAppCredential = false
+    private(set) var isExchangingAppCredential = false
     private(set) var isRestoringSession = true
     private(set) var isRefreshingProfile = false
     private(set) var sessionError: String?
@@ -86,6 +101,7 @@ final class AccountStore {
         }
         isLoggedIn = true
         accountID = snapshot.accountID
+        hasAppCredential = snapshot.hasAppCredential
         if let data = defaults.data(forKey: Self.profileKey),
            let cached = try? JSONDecoder().decode(Profile.self, from: data),
            cached.mid == snapshot.accountID {
@@ -144,8 +160,30 @@ final class AccountStore {
         guard sessionID == session else { return }
         isLoggedIn = true
         accountID = Int(cookies.dedeUserID)
+        hasAppCredential = accessKey?.isEmpty == false
         await refreshProfile()
-        if sessionID == session { isRestoringSession = false }
+        guard sessionID == session else { return }
+        isRestoringSession = false
+        // 账号密码登录和网页扫码只拿到 Cookie：登录时顺带换一份 App 凭据，不拖慢登录本身。
+        if !hasAppCredential { Task { await ensureAppCredential() } }
+    }
+
+    /// 只有 Cookie 时换一份 App 凭据。返回失败原因；成功或已有凭据时返回 nil。
+    @discardableResult
+    func ensureAppCredential() async -> String? {
+        guard isLoggedIn, !hasAppCredential, !isExchangingAppCredential else { return nil }
+        let session = sessionID
+        isExchangingAppCredential = true
+        defer { if sessionID == session { isExchangingAppCredential = false } }
+        do {
+            try await client.exchangeAppCredential()
+            guard sessionID == session else { return nil }
+            hasAppCredential = true
+            return nil
+        } catch {
+            guard sessionID == session, !(error is CancellationError) else { return nil }
+            return BiliPassport.failureText(for: error)
+        }
     }
 
     func logout() async {
@@ -160,6 +198,8 @@ final class AccountStore {
         isRestoringSession = false
         isLoggedIn = false
         accountID = nil
+        hasAppCredential = false
+        isExchangingAppCredential = false
         profile = nil
         sessionError = nil
         defaults.removeObject(forKey: Self.profileKey)

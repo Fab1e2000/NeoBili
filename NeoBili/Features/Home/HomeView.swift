@@ -3,15 +3,15 @@ import SwiftUI
 struct HomeView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
+    @Environment(ActionFeedback.self) private var feedback
     @Environment(\.openMine) private var openMine
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    @AppStorage(RecommendationFilter.appRecommendKey) private var usesAppRecommendation = true
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
-    /// 刷新动画的快慢，设置页可调。
-    @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultExitSpeed
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
 
     @State private var viewModel = HomeViewModel()
@@ -46,9 +46,14 @@ struct HomeView: View {
             }
             .background(Color(uiColor: .systemGroupedBackground))
             .task { await viewModel.loadInitial() }
-            // 登录/退出后同一套推荐接口在服务端会切到个性化/通用推流，
+            // 登录/退出/拿到 App 凭据后服务端会切到个性化/通用推流，
             // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。
-            .onChange(of: account.profile?.mid) {
+            .onChange(of: HomeFeedAccount(accountID: account.accountID,
+                                          hasAppCredential: account.hasAppCredential)) { _, current in
+                Task { await viewModel.refreshIfAccountChanged(to: current) }
+            }
+            // 换了推荐来源，旧的翻页位置对新接口没有意义，从第一页重新取。
+            .onChange(of: usesAppRecommendation) {
                 Task { await viewModel.refresh() }
             }
             .onAppear {
@@ -56,6 +61,25 @@ struct HomeView: View {
                 OrientationController.enterPortrait()
             }
             .onTabReselected(.home, perform: scrollToTopOrRefresh)
+            .sheet(item: $viewModel.sheet) { sheet in
+                switch sheet {
+                case .dynamic(let id):
+                    RecommendedDynamicSheet(id: id)
+                case .space(let up):
+                    RecommendedSpaceSheet(up: up)
+                }
+            }
+            // 照 PiliPlus：拉黑前先确认一次。NeoBili 没有黑名单管理，解除要去 B 站 App 或网页。
+            .alert("拉黑 UP 主", isPresented: Binding(get: { viewModel.pendingBlock != nil },
+                                                   set: { if !$0 { viewModel.pendingBlock = nil } }),
+                   presenting: viewModel.pendingBlock) { owner in
+                Button("拉黑", role: .destructive) {
+                    Task { feedback.show(await viewModel.block(owner)) }
+                }
+                Button("点错了", role: .cancel) {}
+            } message: { owner in
+                Text("确定拉黑 \(owner.name)（\(String(owner.mid))）？\n拉黑后不会再收到他的推荐。可以在 B 站 App 或网页的黑名单管理中解除。")
+            }
             .resolvePortraitVideos(viewModel.videos, batchID: landingGeneration) {
                 await viewModel.loadReplacementPage()
                 return viewModel.videos
@@ -84,7 +108,9 @@ struct HomeView: View {
                 onOpenMine: { openMine?(()) },
                 pinsTitleBar: pinsTitleBar,
                 safeInsets: safeInsets,
-                contentOpacity: tabContentOpacity
+                contentOpacity: tabContentOpacity,
+                // 补位整段 0.3 秒，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。
+                removalAnimationDuration: animatesExit ? 0.3 : nil
             )
             .opacity(animatesExit ? listOpacity : 1)
             // 内容从状态栏、标题栏和标签栏下面滑过；被忽略的这段安全区量出来补进列表边距。
@@ -126,7 +152,7 @@ struct HomeView: View {
             }
             // Keep existing content until the request is ready, including when
             // animation settings change in the middle of the request.
-            await viewModel.refresh(staged: true)
+            await viewModel.refresh(staged: true, userInitiated: true)
             guard !Task.isCancelled else { return }
             await finishRefresh(scrollToTop: scrollToTop)
             refreshTask = nil
@@ -136,7 +162,7 @@ struct HomeView: View {
     private func beginRefresh() {
         isRefreshing = true
         guard animatesExit else { listOpacity = 1; exitTiming = nil; return }
-        let duration = FeedRefreshTuning.fadeExit(speed: exitSpeed)
+        let duration = FeedRefreshTuning.fadeExit
         exitTiming = FeedRefreshExitTiming(start: ProcessInfo.processInfo.systemUptime, duration: duration)
         withAnimation(.easeOut(duration: duration)) { listOpacity = 0 }
     }

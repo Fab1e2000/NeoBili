@@ -30,5 +30,6 @@ actor VideoPreparationCache {
 /// AccountStore（依赖 SwiftUI/Network）里的凭据快照，测试只需要这个形状。
 struct AccountCredentialsSnapshot: Sendable {
     let hasCredentials: Bool
+    var hasAppCredential = false
     let accountID: Int?
 }

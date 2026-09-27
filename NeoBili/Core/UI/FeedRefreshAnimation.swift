@@ -11,12 +11,11 @@ enum FeedRefreshTuning {
     /// 现在不再等：淡出自己走完，数据没到就是空屏，到了再让新卡片淡入。
     static let fadeExitDuration: Double = 0.9
 
-    static func fadeExit(speed: Double) -> Double {
-        fadeExitDuration / AnimationSpeedSettings.clamped(speed)
-    }
+    static let fadeExit = fadeExitDuration / AnimationSpeedSettings.exitSpeed
 
     // MARK: 原位淡入
     static let fadeInDuration: Double = 0.25
+    static let fadeIn = fadeInDuration / AnimationSpeedSettings.enterSpeed
 }
 
 /// Only opacity changes; card geometry and hit-testing bounds stay fixed.
@@ -32,8 +31,6 @@ struct FeedFadeInEffect: ViewModifier {
 /// 光靠 `onChange(of: generation)` 是等不到的。行一出生就是全透明的起始态，
 /// 不会先闪一下已经淡入的样子。
 struct FeedFadeInRow<Content: View>: View {
-    /// 淡入速度倍率，来自设置页。
-    let speed: Double
     let reduceMotion: Bool
     let category: CardAnimationCategory
     @ViewBuilder var content: Content
@@ -44,12 +41,10 @@ struct FeedFadeInRow<Content: View>: View {
     @State private var legacyStart: TimeInterval?
 
     init(
-        speed: Double,
         reduceMotion: Bool,
         category: CardAnimationCategory = .video,
         @ViewBuilder content: () -> Content
     ) {
-        self.speed = speed
         self.reduceMotion = reduceMotion
         self.category = category
         self.content = content()
@@ -65,7 +60,7 @@ struct FeedFadeInRow<Content: View>: View {
                 // 起点来自整个列表的判断结果，卡片被懒加载回收也不会重置。
                 let scope = entranceClocks.first { $0.ids.contains(videoID) }
                 let start = scope?.start(for: videoID)
-                TimedVideoEntrance(start: start, speed: speed, enabled: animatable) {
+                TimedVideoEntrance(start: start, enabled: animatable) {
                     content
                 }
             } else {
@@ -76,7 +71,7 @@ struct FeedFadeInRow<Content: View>: View {
     }
 
     private var legacyEntrance: some View {
-        TimedVideoEntrance(start: legacyStart, speed: speed, enabled: animatable) {
+        TimedVideoEntrance(start: legacyStart, enabled: animatable) {
             content
         }
         .task {
@@ -100,13 +95,12 @@ private struct VideoCardEntrance: ViewModifier {
     @Environment(\.videoEntranceProvided) private var provided
     @Environment(\.videoCardAnimationSource) private var source
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var speed = AnimationSpeedSettings.defaultEnterSpeed
 
     func body(content: Content) -> some View {
         if provided || !enabled || !CardAnimationSettings.supports(category: category, phase: .enter, source: source) {
             content
         } else {
-            FeedFadeInRow(speed: speed, reduceMotion: reduceMotion, category: category) {
+            FeedFadeInRow(reduceMotion: reduceMotion, category: category) {
                 content
             }
         }
@@ -145,23 +139,21 @@ struct VideoEntranceScope: Equatable {
 /// 这类列表由 UIKit 一侧监听时钟，在配置格子时把起点直接传进来。
 struct TimedFeedEntrance<Content: View>: View {
     let start: TimeInterval?
-    let speed: Double
     let reduceMotion: Bool
     let category: CardAnimationCategory
     @ViewBuilder var content: Content
     private var animations = CardAnimationPreferences()
 
-    init(start: TimeInterval?, speed: Double, reduceMotion: Bool,
+    init(start: TimeInterval?, reduceMotion: Bool,
          category: CardAnimationCategory = .video, @ViewBuilder content: () -> Content) {
         self.start = start
-        self.speed = speed
         self.reduceMotion = reduceMotion
         self.category = category
         self.content = content()
     }
 
     var body: some View {
-        TimedVideoEntrance(start: start, speed: speed,
+        TimedVideoEntrance(start: start,
                            enabled: !reduceMotion && animations.isEnabled(category: category, phase: .enter)) {
             content
         }
@@ -171,16 +163,13 @@ struct TimedFeedEntrance<Content: View>: View {
 
 private struct TimedVideoEntrance<Content: View>: View {
     let start: TimeInterval?
-    let speed: Double
     let enabled: Bool
     @ViewBuilder var content: Content
     @State private var finishedStart: TimeInterval?
 
     private var finished: Bool { start != nil && finishedStart == start }
 
-    private var duration: Double {
-        FeedRefreshTuning.fadeInDuration / AnimationSpeedSettings.clamped(speed)
-    }
+    private var duration: Double { FeedRefreshTuning.fadeIn }
 
     private var progress: Double {
         guard enabled, !finished else { return 1 }
@@ -204,7 +193,7 @@ private struct TimedVideoEntrance<Content: View>: View {
         .onChange(of: enabled) { _, enabled in
             if !enabled { finishedStart = start }
         }
-        .task(id: EntranceTaskID(start: start, enabled: enabled, speed: speed)) {
+        .task(id: EntranceTaskID(start: start, enabled: enabled)) {
             if !enabled {
                 finishedStart = start
                 return
@@ -222,7 +211,6 @@ private struct TimedVideoEntrance<Content: View>: View {
     private struct EntranceTaskID: Hashable {
         let start: TimeInterval?
         let enabled: Bool
-        let speed: Double
     }
 
 }

@@ -49,6 +49,8 @@ protocol VideoDimensionProviding {
     var dimension: VideoDimension? { get }
     var dimensionLookupBVID: String? { get }
     var videoDurationSeconds: Int? { get }
+    /// 不是视频的条目（推荐里的直播、图文卡）：画幅和时长过滤直接放行。
+    var skipsVideoFilters: Bool { get }
 }
 
 extension Sequence where Element: VideoDimensionProviding {
@@ -72,11 +74,12 @@ enum PortraitVideoFilterSettings {
 
 extension VideoDimensionProviding {
     var videoDurationSeconds: Int? { nil }
+    var skipsVideoFilters: Bool { false }
 
     /// 列表值优先，缓存补齐；任何一个已知过滤条件成立，就不再查询其它字段。
     @MainActor
     func metadataRequest(hidingPortrait enabled: Bool, minimumSeconds: Int) -> PortraitVideoStore.Request? {
-        guard enabled || minimumSeconds > 0,
+        guard !skipsVideoFilters, enabled || minimumSeconds > 0,
               let bvid = dimensionLookupBVID, !bvid.isEmpty else { return nil }
         let store = PortraitVideoStore.shared
         let portrait = dimension.flatMap { $0.isValid ? $0.isPortrait : nil }
@@ -95,6 +98,7 @@ extension VideoDimensionProviding {
 
     @MainActor
     func canDisplayVideo(hidingPortrait enabled: Bool) -> Bool {
+        if skipsVideoFilters { return true }
         let minimum = VideoDurationFilterSettings.shared.minimumSeconds
         if minimum > 0 {
             let duration = videoDurationSeconds.flatMap { $0 > 0 ? $0 : nil }

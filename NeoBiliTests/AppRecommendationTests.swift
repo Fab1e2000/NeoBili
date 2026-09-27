@@ -13,15 +13,126 @@ final class AppRecommendationTests: XCTestCase {
         XCTAssertEqual(video.owner.name, "测试 UP")
         XCTAssertEqual(video.stat.view, 125_000)
         XCTAssertEqual(video.stat.danmaku, 345)
-        XCTAssertEqual(video.recommendationTrackID, "fixture-track")
+        XCTAssertEqual(video.recommendationFeedback?.goto, "av")
+        XCTAssertEqual(video.recommendationFeedback?.param, 170001)
+        XCTAssertEqual(video.recommendationFeedback?.dislikeReasons?.first?.id, 1)
+        XCTAssertEqual(video.recommendationFeedback?.feedbacks?.first?.toast, "感谢反馈")
     }
 
-    func testAdsLiveAndMalformedCardsDoNotDiscardValidVideos() throws {
+    func testAdsAndMalformedCardsDoNotDiscardValidVideos() throws {
         var ad = card; ad["ad_info"] = ["id": 1]
-        var live = card; live["goto"] = "live"
+        var bangumi = card; bangumi["card_goto"] = "bangumi"
+        var promoted = card; promoted["card_goto"] = "ad_web_s"
+        var inlineAd = card; inlineAd["card_goto"] = "ad_inline_av"
+        var noArgs = card; noArgs["args"] = nil
         var unplayable = card; unplayable["can_play"] = 0
         var malformed = card; malformed["player_args"] = "invalid"
-        XCTAssertEqual(try decode([ad, live, unplayable, malformed, card]).videos.count, 1)
+        XCTAssertEqual(try decode([ad, bangumi, promoted, inlineAd, noArgs, unplayable, malformed, card]).videos.count, 1)
+    }
+
+    @MainActor
+    func testInlineLiveAndPictureCardsAreShown() throws {
+        var inline = card; inline["card_goto"] = "inline_av_v2"
+        let live: [String: Any] = ["card_goto": "live", "param": "7736134", "title": "直播标题",
+                                   "cover": "https://example.com/l.jpg", "cover_left_text_1": "1015",
+                                   "args": ["room_id": 7736134, "up_id": 28027385, "up_name": "主播", "tname": "其他单机", "online": 1156]]
+        let picture: [String: Any] = ["card_goto": "picture", "param": "1", "title": "图文",
+                                      "cover": "https://example.com/p.jpg", "uri": "bilibili://following/detail/987654321",
+                                      "args": ["up_id": 5], "desc_button": ["text": "作者"]]
+        let videos = try decode([inline, live, picture]).videos
+        XCTAssertEqual(videos.count, 3)
+        XCTAssertNil(videos[0].recommendationTarget)
+        guard case .live(let room) = videos[1].recommendationTarget else { return XCTFail("直播卡") }
+        XCTAssertEqual(room.roomID, 7736134)
+        XCTAssertEqual(room.username, "主播")
+        XCTAssertEqual(videos[1].bvid, "live-7736134")
+        XCTAssertEqual(videos[1].coverCornerText, "直播")
+        XCTAssertTrue(videos[1].canDisplayVideo(hidingPortrait: true), "直播卡不受竖屏过滤影响")
+        XCTAssertEqual(videos[2].recommendationTarget, .dynamic(id: "987654321"))
+        XCTAssertEqual(videos[2].owner.name, "作者")
+        XCTAssertEqual(videos[2].recommendationBadge, "动态")
+        XCTAssertEqual(AppRecommendationCard.dynamicID(from: "bilibili://opus/detail/42?x=1"), "42")
+        XCTAssertNil(AppRecommendationCard.dynamicID(from: "bilibili://article/42"))
+    }
+
+    func testLocalFiltersMatchPiliPlusRules() throws {
+        var liked = card; liked["rcmd_reason"] = "1万点赞"          // 12.5万播放，点赞率 8%
+        var followed = card; followed["rcmd_reason"] = "已关注"; followed["title"] = "广告测试"
+        var zone = card; zone["args"] = ["up_id": 1, "up_name": "A", "tname": "鬼畜调教"]
+        var short = card; short["player_args"] = ["aid": 170001, "cid": 1, "duration": 20]
+        let page = try decode([liked, followed, zone, short])
+        XCTAssertEqual(page.cards[0].like, 10_000)
+        XCTAssertTrue(page.cards[1].isFollowed)
+        XCTAssertEqual(page.cards[0].video.recommendationBadge, "1万点赞")
+        XCTAssertEqual(page.cards[1].video.recommendationBadge, "已关注")
+        XCTAssertNil(page.cards[2].video.recommendationBadge)
+
+        var filter = RecommendationFilter()
+        filter.minLikeRatio = 4
+        filter.minDuration = 30
+        filter.titleBanWord = RecommendationFilter.pattern("广告|推广")
+        filter.zoneBanWord = RecommendationFilter.pattern("鬼畜")
+        // 点赞率 8% 保留；已关注豁免标题过滤；分区命中和太短的都去掉。
+        XCTAssertEqual(page.videos(filter: filter).map(\.title), ["测试视频", "广告测试"])
+        filter.exemptFollowed = false
+        XCTAssertEqual(page.videos(filter: filter).map(\.title), ["测试视频"])
+        filter.minPlay = 200_000
+        XCTAssertTrue(page.videos(filter: filter).isEmpty)
+    }
+
+    func testWebCardsKeepOnlyVideosAndUseExactCounters() throws {
+        let video: [String: Any] = ["goto": "av", "id": 170001, "bvid": "BV17x411w7KC", "cid": 279786,
+                                    "title": "网页视频", "pic": "https://example.com/p.jpg", "duration": 90,
+                                    "owner": ["mid": 42, "name": "UP", "face": ""], "is_followed": 1,
+                                    "stat": ["view": 1000, "like": 5, "danmaku": 3]]
+        var live = video; live["goto"] = "live"
+        var noOwner = video; noOwner["owner"] = NSNull()
+        let data = try JSONSerialization.data(withJSONObject: ["item": [live, noOwner, video]])
+        let page = try JSONDecoder().decode(WebRecommendationPage.self, from: data)
+        XCTAssertEqual(page.cards.count, 1)
+        XCTAssertTrue(page.cards[0].isFollowed)
+        XCTAssertTrue(page.cards[0].video.isWebRecommendation)
+        XCTAssertEqual(page.cards[0].video.recommendationBadge, "已关注")
+        var filter = RecommendationFilter()
+        filter.minLikeRatio = 1                       // 点赞率 0.5%
+        XCTAssertEqual(page.videos(filter: filter).count, 1, "已关注默认豁免")
+        filter.exemptFollowed = false
+        XCTAssertTrue(page.videos(filter: filter).isEmpty)
+        XCTAssertEqual(WebRecommendationPage.parameters(freshIndex: 3)["brush"], "3")
+    }
+
+    func testBlockedOwnersAndMissingCidFollowPiliPlus() throws {
+        var noCid = card; noCid["player_args"] = ["aid": 170001, "duration": 30]
+        var other = card; other["param"] = "170002"; other["player_args"] = ["aid": 170002, "cid": 1, "duration": 30]
+        other["args"] = ["up_id": 7, "up_name": "别人"]
+        let page = try decode([noCid, other])
+        XCTAssertEqual(page.videos.map(\.cid), [0, 1], "缺 cid 的视频卡保留，点开时再查")
+        var filter = RecommendationFilter()
+        filter.blockedMids = [42]
+        XCTAssertEqual(page.videos(filter: filter).map(\.owner.mid), [7])
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        RecommendationFilter.block(42, defaults: defaults)
+        XCTAssertEqual(RecommendationFilter.current(defaults).blockedMids, [42])
+    }
+
+    func testOnlyConnectionFailuresAreRetried() {
+        XCTAssertTrue(APIClient.isRetryable(URLError(.timedOut)))
+        XCTAssertTrue(APIClient.isRetryable(URLError(.notConnectedToInternet)))
+        XCTAssertFalse(APIClient.isRetryable(URLError(.networkConnectionLost)), "中途断开时请求可能已到服务端")
+        XCTAssertFalse(APIClient.isRetryable(URLError(.cancelled)))
+    }
+
+    func testAppRecommendationClaimsIPhoneInHeaders() {
+        let headers = AppRecommendationPage.headers(buvid: "b")
+        XCTAssertEqual(headers["app-key"], "iphone")
+        XCTAssertTrue(headers["User-Agent"]?.contains("mobi_app/iphone") == true)
+        XCTAssertNil(headers["bili-http-engine"])
+    }
+
+    func testAuroraEIDMatchesPiliPlus() {
+        XCTAssertEqual(BiliHeaders.auroraEID(mid: 1), "UA")
+        XCTAssertNil(BiliHeaders.appAccountHeaders(mid: nil)["x-bili-mid"])
+        XCTAssertEqual(BiliHeaders.appAccountHeaders(mid: 42)["app-key"], "android64")
     }
 
     func testStringIDsAndProvidedBVIDAreSupported() throws {
@@ -37,7 +148,10 @@ final class AppRecommendationTests: XCTestCase {
     func testAppParametersPreserveExistingCursor() {
         let params = AppRecommendationPage.parameters(freshIndex: 123)
         XCTAssertEqual(params["idx"], "123")
-        XCTAssertEqual(params["mobi_app"], "android_i")
+        XCTAssertEqual(params["mobi_app"], "iphone")
+        XCTAssertEqual(params["platform"], "ios")
+        XCTAssertNil(AppRecommendationPage.headers(buvid: "b")["fp_local"])
+        XCTAssertEqual(AppRecommendationPage.traceID().split(separator: ":").map(\.count), [32, 16, 1, 1])
         XCTAssertNil(params["fresh_idx"])
         XCTAssertEqual(AppRecommendationPage.parameters(freshIndex: 0)["pull"], "true")
         XCTAssertEqual(AppRecommendationPage.count("1.2亿"), 120_000_000)
@@ -50,14 +164,17 @@ final class AppRecommendationTests: XCTestCase {
         let videos = try await BiliAPI.recommendFeed(freshIndex: 0)
         print("AppRecommendationSmoke: cards=\(videos.count), appCredential=\(hasAppCredential)")
         XCTAssertFalse(videos.isEmpty)
-        XCTAssertTrue(videos.allSatisfy { $0.aid > 0 && $0.cid > 0 && $0.bvid.hasPrefix("BV") })
+        XCTAssertTrue(videos.filter { $0.recommendationTarget == nil }.allSatisfy { $0.aid > 0 && $0.bvid.hasPrefix("BV") })
     }
 
     private var card: [String: Any] {
         ["goto": "av", "card_goto": "av", "can_play": 1, "param": "170001",
          "title": "测试视频", "cover": "https://example.com/cover.jpg",
          "player_args": ["aid": 170001, "cid": 279786, "duration": 180],
-         "args": ["up_id": 42, "up_name": "测试 UP"], "track_id": "fixture-track",
+         "args": ["up_id": 42, "up_name": "测试 UP"],
+         "three_point_v2": [["type": "watch_later"],
+                            ["type": "dislike", "reasons": [["id": 1, "name": "不感兴趣", "toast": "将减少相似内容推荐"]]],
+                            ["type": "feedback", "reasons": [["id": 2, "name": "内容引起不适", "toast": "感谢反馈"]]]],
          "cover_left_text_1": "12.5万", "cover_left_text_2": "345"]
     }
     private func decode(_ items: [[String: Any]]) throws -> AppRecommendationPage {

@@ -1,24 +1,74 @@
 import Foundation
 
 extension BiliAPI {
-    /// 使用 PiliPlus 的 App 推荐接口，列表刷新与分页仍由原 ViewModel 管理。
+    /// 首页推荐：和 PiliPlus 一样默认用 App 推荐，设置里可换成网页推荐；
+    /// 两者都在请求后按推荐流设置做本地过滤。
     static func recommendFeed(freshIndex: Int) async throws -> [VideoSummary] {
-        let page: AppRecommendationPage = try await APIClient.shared.getApp(
-            path: "x/v2/feed/index", params: AppRecommendationPage.parameters(freshIndex: freshIndex)
+        let usesApp = UserDefaults.standard.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
+        return usesApp ? try await appRecommendFeed(freshIndex: freshIndex)
+                       : try await webRecommendFeed(freshIndex: freshIndex)
+    }
+
+    /// 网页推荐：Cookie 认证 + WBI 签名，每次 20 条。
+    static func webRecommendFeed(freshIndex: Int) async throws -> [VideoSummary] {
+        let page: WebRecommendationPage = try await APIClient.shared.get(
+            path: "x/web-interface/wbi/index/top/feed/rcmd",
+            params: WebRecommendationPage.parameters(freshIndex: freshIndex), requiresWBI: true
         )
-        return page.videos
+        return page.videos(filter: .current())
     }
 
-    /// 首页推荐的内容反馈，与视频页的点踩分别上报。
-    static func markRecommendationUninterested(_ video: VideoSummary) async throws {
-        var form = recommendationFeedbackForm(video)
-        form["csrf"] = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(path: "x/web-interface/feedback/dislike", form: form)
+    static func appRecommendFeed(freshIndex: Int) async throws -> [VideoSummary] {
+        let page: AppRecommendationPage = try await APIClient.shared.getApp(
+            path: "x/v2/feed/index", params: AppRecommendationPage.parameters(freshIndex: freshIndex),
+            headers: AppRecommendationPage.headers(buvid: await DeviceIdentity.shared.appBuvid())
+        )
+        return page.videos(filter: .current())
     }
 
-    static func recommendationFeedbackForm(_ video: VideoSummary) -> [String: String] {
-        ["app_id": "100", "platform": "5", "from_spmid": "", "spmid": "333.1007.0.0",
-         "goto": "av", "id": String(video.aid), "mid": String(video.owner.mid),
-         "track_id": video.recommendationTrackID ?? "", "feedback_page": "1", "reason_id": "1"]
+    /// 「不感兴趣」：`reason` 是用户在卡片原因里选的一项，「我不想看」或「反馈」。
+    static func feedDislike(_ options: RecommendationFeedbackOptions,
+                            reason: RecommendationFeedbackOptions.Reason) async throws {
+        var params = feedbackParameters(options)
+        if options.dislikeReasons?.contains(reason) == true {
+            params["reason_id"] = String(reason.id)
+        } else {
+            params["feedback_id"] = String(reason.id)
+        }
+        try await sendFeedback(path: "x/feed/dislike", params: params)
+    }
+
+    /// 撤销这张卡片的「不感兴趣」。
+    static func feedDislikeCancel(_ options: RecommendationFeedbackOptions) async throws {
+        try await sendFeedback(path: "x/feed/dislike/cancel", params: feedbackParameters(options))
+    }
+
+    static func feedbackParameters(_ options: RecommendationFeedbackOptions) -> [String: String] {
+        ["goto": options.goto, "id": String(options.param), "build": "1", "mobi_app": "android"]
+    }
+
+    private static func sendFeedback(path: String, params: [String: String]) async throws {
+        guard await DeviceIdentity.shared.accessKey?.isEmpty == false else {
+            throw await DeviceIdentity.shared.isLoggedIn
+                ? RecommendationFeedbackError.missingAccessKey : RecommendationFeedbackError.notLoggedIn
+        }
+        let _: IgnoredData = try await APIClient.shared.getApp(path: path, params: params)
+    }
+}
+
+/// 反馈接口只看 code，data 是什么都不关心。
+private struct IgnoredData: Decodable {
+    init(from decoder: Decoder) throws {}
+}
+
+enum RecommendationFeedbackError: LocalizedError {
+    case notLoggedIn
+    case missingAccessKey
+
+    var errorDescription: String? {
+        switch self {
+        case .notLoggedIn: String(localized: "账号未登录")
+        case .missingAccessKey: String(localized: "请退出账号后重新登录")
+        }
     }
 }

@@ -214,6 +214,36 @@ enum BiliPassport {
         }
     }
 
+    // MARK: - 用 Cookie 换 App 凭据
+
+    /// 网页登录（账号密码、网页扫码兜底）只有 Cookie，没有 `access_key`，App 推荐就只能按访客推。
+    /// PiliPlus 的每种登录方式都会拿到 App 凭据；这里用已登录的 Cookie 替自己确认一张 App（HD）
+    /// 登录二维码，再像扫码一样轮询出 `access_key`（PiliPlus 把这个确认接口标为「cookie转access_key」）。
+    /// 效果等同于用 B 站 App 扫码确认，账号的登录设备里会多一条 HD 端记录。
+    static func exchangeAccessKey(cookies: LoginCookies) async throws -> String {
+        let info = try await generateAppQRCode()
+        var request = try makeRequest(path: "x/passport-tv-login/h5/qrcode/confirm")
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("SESSDATA=\(cookies.sessdata); bili_jct=\(cookies.biliJct); DedeUserID=\(cookies.dedeUserID)",
+                         forHTTPHeaderField: "Cookie")
+        request.httpBody = formEncoded(["auth_code": info.authCode, "csrf": cookies.biliJct, "scanning_type": "3"])
+            .data(using: .utf8)
+        let (envelope, response) = try await sendEnvelope(request)
+        guard (200...299).contains(response.statusCode) else { throw PassportError.invalidResponse }
+        guard envelope.code == 0 else {
+            throw PassportError.rejected("\(envelope.message ?? String(localized: "确认登录失败")) (code \(envelope.code))")
+        }
+        // 确认后服务端偶尔要一小会儿才把状态改成已确认。
+        for attempt in 0..<4 {
+            if attempt > 0 { try await Task.sleep(for: .milliseconds(500)) }
+            if case .confirmed(_, let accessKey?) = try await pollAppQRCode(info.authCode), !accessKey.isEmpty {
+                return accessKey
+            }
+        }
+        throw PassportError.rejected(String(localized: "未能获取 App 登录凭据"))
+    }
+
     /// App 端接口统一走 POST + 签名后的表单体。
     private static func postSigned<Response: Decodable>(
         path: String,

@@ -116,7 +116,7 @@ struct APIClient {
         for (name, value) in additionalHeaders {
             request.setValue(value, forHTTPHeaderField: name)
         }
-        return try await perform(request)
+        return try await perform(request, retries: 2)
     }
 
     /// 少数接口不在 api.bilibili.com 上，返回体也没有 `{code, message, data}`
@@ -134,7 +134,7 @@ struct APIClient {
             request.setValue(value, forHTTPHeaderField: name)
         }
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await data(for: request, retries: 2)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw BiliAPIError.httpStatus((response as? HTTPURLResponse)?.statusCode ?? -1)
         }
@@ -229,14 +229,14 @@ struct APIClient {
         return try await perform(request)
     }
 
-    /// App 只读接口使用同一套 HD 签名；无 App 凭据时允许访客请求。
-    func getApp<T: Decodable>(path: String, params: [String: String]) async throws -> T {
+    /// App GET 接口，照 PiliPlus 的账号拦截器：有 access_key 就带上，没有就按访客请求；
+    /// 整组参数用 HD 密钥签名。`headers` 是接口自带的请求头，可以覆盖账号相关的通用头
+    /// （首页推荐按 iPhone 身份请求，要把 app-key 换掉）。
+    func getApp<T: Decodable>(path: String, params: [String: String],
+                              headers: [String: String] = [:]) async throws -> T {
         var query = params
-        if let key = await DeviceIdentity.shared.accessKey, !key.isEmpty {
-            query["access_key"] = key
-        } else if await DeviceIdentity.shared.isLoggedIn {
-            throw BiliAPIError.missingAccessKey
-        }
+        let account = await DeviceIdentity.shared.appAccount()
+        if let key = account.accessKey { query["access_key"] = key }
         guard var components = URLComponents(url: Self.appBaseURL.appendingPathComponent(path),
                                              resolvingAgainstBaseURL: false) else { throw BiliAPIError.invalidURL }
         components.percentEncodedQuery = AppSigner.queryString(from: AppSigner.signed(query))
@@ -245,18 +245,12 @@ struct APIClient {
         request.timeoutInterval = 15
         request.httpShouldHandleCookies = false
         request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue("android_hd", forHTTPHeaderField: "app-key")
-        request.setValue(await DeviceIdentity.shared.appBuvid(), forHTTPHeaderField: "buvid")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-        request.setValue(String(repeating: "1", count: 64), forHTTPHeaderField: "fp_local")
-        request.setValue(String(repeating: "1", count: 64), forHTTPHeaderField: "fp_remote")
-        request.setValue("11111111", forHTTPHeaderField: "session_id")
-        request.setValue("prod", forHTTPHeaderField: "env")
-        request.setValue("11111111111111111111111111111111:1111111111111111:0:0", forHTTPHeaderField: "x-bili-trace-id")
-        request.setValue("", forHTTPHeaderField: "x-bili-aurora-eid")
-        request.setValue("", forHTTPHeaderField: "x-bili-aurora-zone")
-        request.setValue("cronet", forHTTPHeaderField: "bili-http-engine")
-        return try await perform(request)
+        for (name, value) in BiliHeaders.appAccountHeaders(mid: account.mid) {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        return try await perform(request, retries: 2)
     }
 
     /// APP 端接口（app.bilibili.com）。
@@ -309,8 +303,29 @@ struct APIClient {
         }
     }
 
-    private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
-        let (data, response) = try await session.data(for: request)
+    /// 照 PiliPlus 的 RetryInterceptor：只读请求遇到连不上、超时这类网络错误时自动重试，
+    /// 最多 2 次，间隔 0.5 秒、1 秒。连接中途断开不重试，请求可能已经到了服务端。
+    private func data(for request: URLRequest, retries: Int) async throws -> (Data, URLResponse) {
+        var attempt = 0
+        while true {
+            do {
+                return try await session.data(for: request)
+            } catch let error as URLError where attempt < retries && Self.isRetryable(error) {
+                attempt += 1
+                try await Task.sleep(for: .milliseconds(500 * attempt))
+            }
+        }
+    }
+
+    static func isRetryable(_ error: URLError) -> Bool {
+        switch error.code {
+        case .timedOut, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .notConnectedToInternet: true
+        default: false
+        }
+    }
+
+    private func perform<T: Decodable>(_ request: URLRequest, retries: Int = 0) async throws -> T {
+        let (data, response) = try await data(for: request, retries: retries)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
             throw BiliAPIError.httpStatus(status)

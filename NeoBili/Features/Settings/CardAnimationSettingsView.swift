@@ -5,8 +5,6 @@ struct CardAnimationSettingsView: View {
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExit = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicRefreshEnterKey) private var dynamicEnter = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEnter = CardAnimationSettings.defaultValue
-    @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultExitSpeed
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultEnterSpeed
 
     private var enabledEffects: [Bool] { [enabled, dynamicEnter, dynamicExit, pageEnter] }
 
@@ -44,12 +42,6 @@ struct CardAnimationSettingsView: View {
             Section("页面切换") {
                 Toggle("页面淡入", isOn: $pageEnter)
                     .accessibilityIdentifier("settings.cardAnimations.pageEnter")
-            }
-            .disabled(!enabled)
-
-            Section("动画速度") {
-                AnimationSpeedSlider(title: String(localized: "进入速度"), value: $enterSpeed)
-                AnimationSpeedSlider(title: String(localized: "退出速度"), value: $exitSpeed)
             }
             .disabled(!enabled)
         }
@@ -123,26 +115,6 @@ private struct VideoCardSourceAnimationSettingsView: View {
         .leftEdgeTapDeadZone()
         .onChange(of: [enter, exit]) {
             NotificationCenter.default.post(name: CardAnimationSettings.didChangeNotification, object: nil)
-        }
-    }
-}
-
-private struct AnimationSpeedSlider: View {
-    let title: String
-    @Binding var value: Double
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text(String(format: "%.1f×", AnimationSpeedSettings.clamped(value)))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            Slider(value: $value, in: AnimationSpeedSettings.range, step: 0.1)
-                .accessibilityLabel(title)
-                .accessibilityValue(String(format: String(localized: "%.1f 倍速"), value))
         }
     }
 }

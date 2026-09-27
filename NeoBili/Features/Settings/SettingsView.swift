@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// 设置首页。按「外观 → 浏览 → 播放 → 高级 → 账号」排列：
-/// 越常调整、越影响整体观感的越靠前；动画速度、手势分区、控件位置这类细调收进「高级」。
+/// 越常调整、越影响整体观感的越靠前；动画开关、手势分区、控件位置这类细调收进「高级」。
 /// 每行右侧给出当前值，不必点进去就能看到。
 struct SettingsView: View {
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
@@ -27,6 +27,7 @@ struct SettingsView: View {
                     id: "tabBar") { TabBarSettingsView() }
                 row("标题栏", value: TitleBarSettings.summary(pinned: pinsTitleBar), id: "titleBar") { TitleBarSettingsView() }
                 row("内容过滤", value: contentFilterSummary, id: "contentFilter") { ContentFilterSettingsView() }
+                row("推荐流", id: "recommendation") { RecommendationSettingsView() }
             }
 
             Section("播放") {
@@ -42,7 +43,7 @@ struct SettingsView: View {
             } header: {
                 Text("高级")
             } footer: {
-                Text("动画速度、手势分区、控件位置和防误触的细调，一般保持默认即可。")
+                Text("动画开关、手势分区、控件位置和防误触的细调，一般保持默认即可。")
             }
 
             Section {

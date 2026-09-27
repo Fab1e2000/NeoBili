@@ -67,6 +67,30 @@ enum HomeFeedRow: Identifiable {
     }
 }
 
+enum HomeSheet: Identifiable, Hashable {
+    /// 图文卡的动态编号。
+    case dynamic(id: String)
+    case space(FollowedUp)
+
+    var id: String {
+        switch self {
+        case .dynamic(let id): "dynamic-\(id)"
+        case .space(let up): "space-\(up.mid)"
+        }
+    }
+}
+
+/// 请求推荐时用的是哪个账号、有没有 App 凭据；两者不变，推荐就不必重取。
+struct HomeFeedAccount: Equatable, Sendable {
+    let accountID: Int?
+    let hasAppCredential: Bool
+
+    static func current() async -> HomeFeedAccount {
+        let account = await DeviceIdentity.shared.appAccount()
+        return HomeFeedAccount(accountID: account.mid, hasAppCredential: account.accessKey != nil)
+    }
+}
+
 @MainActor
 @Observable
 final class HomeViewModel {
@@ -75,46 +99,79 @@ final class HomeViewModel {
     private(set) var isLoadingMore = false
     private(set) var errorMessage: String?
     private(set) var lastRefreshAt: Int?
-    private(set) var uninterestedIDs: Set<String> = []
     private(set) var reportingIDs: Set<String> = []
-    private(set) var replacingIDs: Set<String> = []
-    private(set) var replacementAnimationIDs: Set<String> = []
-    private let reportUninterested: (VideoSummary) async throws -> Void
+    /// 首页从底部弹出的页面：推荐里的图文卡详情，或卡片菜单里的「访问 UP 主页」。
+    /// 首页没有导航栈，这两种页面都用弹出页打开。
+    var sheet: HomeSheet?
+    /// 等用户确认拉黑的 UP 主。
+    var pendingBlock: VideoOwner?
+    private let defaults: UserDefaults
+    private let reportUninterested: (RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason) async throws -> Void
+    private let cancelUninterested: (RecommendationFeedbackOptions) async throws -> Void
+    private let dislikeVideo: (Int, Bool) async throws -> Void
+    private let blockUser: (Int) async throws -> Void
+    private let currentAccount: () async -> HomeFeedAccount
+    /// 最近一次从第一页取推荐时用的账号。
+    private var loadedAccount: HomeFeedAccount?
 
-    func markUninterested(_ video: VideoSummary) async -> String? {
-        guard !reportingIDs.contains(video.bvid), !uninterestedIDs.contains(video.bvid) else { return nil }
+    /// 登录、退出、换号或刚拿到 App 凭据时重取推荐。启动时恢复账号也会让界面上的账号
+    /// 从空变成已登录，但那时第一页本来就是用这个账号取的，不能再刷掉它。
+    func refreshIfAccountChanged(to account: HomeFeedAccount) async {
+        guard let loadedAccount, loadedAccount != account else { return }
+        await refresh()
+    }
+
+    /// 与 PiliPlus 一致：选一个原因提交，成功后提示服务端给的文案并移除这张卡。
+    func markUninterested(_ video: VideoSummary, reason: RecommendationFeedbackOptions.Reason) async -> String? {
+        guard let options = video.recommendationFeedback, !reportingIDs.contains(video.bvid) else { return nil }
         reportingIDs.insert(video.bvid)
         defer { reportingIDs.remove(video.bvid) }
         do {
-            try await reportUninterested(video)
-            uninterestedIDs.insert(video.bvid)
-            return await replaceUninterested(video)
+            try await reportUninterested(options, reason)
+            remove(video)
+            return reason.toast ?? String(localized: "已提交")
         } catch { return error.localizedDescription }
     }
 
-    func replaceUninterested(_ video: VideoSummary) async -> String? {
-        guard uninterestedIDs.contains(video.bvid), !replacingIDs.contains(video.bvid) else { return nil }
-        replacingIDs.insert(video.bvid)
-        defer { replacingIDs.remove(video.bvid) }
+    /// 撤销这张卡片的「不感兴趣」，卡片本身不动。
+    func cancelUninterested(_ video: VideoSummary) async -> String? {
+        guard let options = video.recommendationFeedback, !reportingIDs.contains(video.bvid) else { return nil }
+        reportingIDs.insert(video.bvid)
+        defer { reportingIDs.remove(video.bvid) }
         do {
-            let batch = try await fetchNextBatch()
-            let existing = Set(videos.map(\.bvid)).union(uninterestedIDs)
-            guard let replacement = batch.first(where: { !existing.contains($0.bvid) }) else {
-                return String(localized: "暂时没有新的推荐，请稍后重试")
-            }
-            // 等待网络期间刷新可能已改变列表，以原视频标识重新定位。
-            guard let index = videos.firstIndex(where: { $0.bvid == video.bvid }) else { return nil }
-            replacementAnimationIDs.insert(replacement.bvid)
-            videos[index] = replacement
-            return nil
+            try await cancelUninterested(options)
+            return String(localized: "成功")
         } catch { return error.localizedDescription }
     }
 
-    func didShowReplacement(_ id: String) {
-        // 每张卡出现都会调用。@Observable 不比较新旧值，集合里没有这个 id 时
-        // remove 也算一次修改，会让读过它的每一行跟着重算，所以先判断再删。
-        guard replacementAnimationIDs.contains(id) else { return }
-        replacementAnimationIDs.remove(id)
+    /// 网页推荐卡片没有原因可选，和 PiliPlus 一样改用视频点踩：点踩成功后移除卡片，撤销只取消点踩。
+    func dislikeWebRecommendation(_ video: VideoSummary, dislike: Bool) async -> String? {
+        guard !reportingIDs.contains(video.bvid) else { return nil }
+        reportingIDs.insert(video.bvid)
+        defer { reportingIDs.remove(video.bvid) }
+        do {
+            try await dislikeVideo(video.aid, dislike)
+            if dislike { remove(video) }
+            return dislike ? String(localized: "点踩成功") : String(localized: "取消踩")
+        } catch { return error.localizedDescription }
+    }
+
+    /// 拉黑 UP 主：照 PiliPlus 成功后记进本地黑名单，之后的推荐不再出现他。
+    /// PiliPlus 只移除当前这张卡；这里把列表里他的卡都移除，免得拉黑后眼前还留着。
+    func block(_ owner: VideoOwner) async -> String {
+        do {
+            try await blockUser(owner.mid)
+            RecommendationFilter.block(owner.mid, defaults: defaults)
+            for video in videos where video.owner.mid == owner.mid { remove(video) }
+            return String(localized: "已拉黑 \(owner.name)")
+        } catch { return error.localizedDescription }
+    }
+
+    /// 移除卡片；它在「上次看到这里」之前时，提示卡跟着前移一位。
+    private func remove(_ video: VideoSummary) {
+        guard let index = videos.firstIndex(where: { $0.bvid == video.bvid }) else { return }
+        videos.remove(at: index)
+        if let lastRefreshAt, index < lastRefreshAt { self.lastRefreshAt = lastRefreshAt - 1 }
     }
 
     /// 这是页面真正显示的顺序。提示卡会被插在“本次刷新内容”和“上次内容”之间。
@@ -159,10 +216,20 @@ final class HomeViewModel {
         case loadMore
     }
 
-    init(defaults _: UserDefaults = .standard,
-         reportUninterested: @escaping (VideoSummary) async throws -> Void = BiliAPI.markRecommendationUninterested,
+    init(defaults: UserDefaults = .standard,
+         reportUninterested: @escaping (RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason) async throws -> Void
+            = BiliAPI.feedDislike,
+         cancelUninterested: @escaping (RecommendationFeedbackOptions) async throws -> Void = BiliAPI.feedDislikeCancel,
+         dislikeVideo: @escaping (Int, Bool) async throws -> Void = BiliAPI.dislikeVideo,
+         blockUser: @escaping (Int) async throws -> Void = BiliAPI.blockUser,
+         currentAccount: @escaping () async -> HomeFeedAccount = HomeFeedAccount.current,
          fetchRecommendations: @escaping (Int) async throws -> [VideoSummary] = BiliAPI.recommendFeed) {
+        self.defaults = defaults
         self.reportUninterested = reportUninterested
+        self.cancelUninterested = cancelUninterested
+        self.dislikeVideo = dislikeVideo
+        self.blockUser = blockUser
+        self.currentAccount = currentAccount
         #if PERFORMANCE_DEMO
         if ProcessInfo.processInfo.arguments.contains("--feed-record") || ProcessInfo.processInfo.arguments.contains("--feed-replay") {
             self.fetchRecommendations = { try await PerformanceFeedSource.shared.fetch($0) }
@@ -181,8 +248,11 @@ final class HomeViewModel {
 
     /// `staged` 为真时新批次只寄存不入列，由界面在合适的时机调用
     /// `commitStagedRefresh()` 合并——留给退出动画把旧卡片淡完。
-    func refresh(staged: Bool = false) async {
-        // 下拉刷新优先级最高：取消可能仍在进行的分页，并立刻开始新的刷新。
+    /// `userInitiated` 为真（下拉、点标签刷新）时照 PiliPlus：正在加载就忽略这次刷新，
+    /// 不取消已发出的请求，免得多用掉一页推荐。换账号、换推荐来源的刷新不能被忽略，
+    /// 会取消进行中的加载并立刻开始。
+    func refresh(staged: Bool = false, userInitiated: Bool = false) async {
+        if userInitiated, isLoading { return }
         // 刷新从 idx=0 / pull=true 开始；分页游标只在当前推荐会话内递增。
         stageNextRefresh = staged
         await startLoad(reason: .refresh, replacingActiveLoad: true)
@@ -251,6 +321,7 @@ final class HomeViewModel {
             freshIndex = 0
             pendingRefresh = nil
         }
+        if reason != .loadMore { loadedAccount = await currentAccount() }
 
         do {
             let newBatch = try await fetchNextBatch()
@@ -285,11 +356,13 @@ final class HomeViewModel {
 
     /// 复刻 PiliPlus 的保留刷新：新内容放在上面，旧内容接在提示卡之后。
     /// 旧列表超过 200 条时只保留前 50 条，避免连续刷新让内存无限增长。
+    /// 两项都可以在推荐流设置里关掉：不保留就整页换新，不提示就不插提示卡。
     private func applyRefresh(_ batch: [VideoSummary]) {
-        let newVideos = Self.removingDuplicates(from: batch).filter { !uninterestedIDs.contains($0.bvid) }
+        let newVideos = Self.removingDuplicates(from: batch)
         guard !newVideos.isEmpty else { return }
 
-        guard !videos.isEmpty else {
+        let keepsLastData = defaults.object(forKey: RecommendationFilter.keepLastDataKey) as? Bool ?? true
+        guard keepsLastData, !videos.isEmpty else {
             videos = newVideos
             lastRefreshAt = nil
             return
@@ -300,14 +373,15 @@ final class HomeViewModel {
         let previousVideos = videos.prefix(keepCount).filter { !newIDs.contains($0.bvid) }
 
         videos = newVideos + previousVideos
-        lastRefreshAt = previousVideos.isEmpty ? nil : newVideos.count
+        let showsTip = defaults.object(forKey: RecommendationFilter.lastSeenTipKey) as? Bool ?? true
+        lastRefreshAt = previousVideos.isEmpty || !showsTip ? nil : newVideos.count
     }
 
     /// 分页只追加尚未出现的视频，避免重复 bvid 破坏 SwiftUI 卡片标识。
     private func appendUnique(_ batch: [VideoSummary]) {
         let existingIDs = Set(videos.map(\.bvid))
         let uniqueBatch = Self.removingDuplicates(from: batch)
-            .filter { !existingIDs.contains($0.bvid) && !uninterestedIDs.contains($0.bvid) }
+            .filter { !existingIDs.contains($0.bvid) }
         videos.append(contentsOf: uniqueBatch)
     }
 

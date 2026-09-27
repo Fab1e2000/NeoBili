@@ -68,6 +68,19 @@ extension BiliAPI {
         )
     }
 
+    /// 按编号取单条动态（推荐流里的图文卡点开用）。参数照 PiliPlus `DynamicsHttp.dynamicDetail`，
+    /// `features` 与关注流一致，解析沿用 `DynamicItem`。
+    static func dynamicDetail(id: String) async throws -> DynamicItem {
+        let payload: DynamicDetailPayload = try await APIClient.shared.get(
+            path: "x/polymer/web-dynamic/v1/detail",
+            params: ["id": id, "timezone_offset": "-480", "features": "itemOpusStyle", "gaia_source": "Athena",
+                     "web_location": "333.1330",
+                     "x-bili-device-req-json": #"{"platform":"web","device":"pc","spmid":"333.1330"}"#],
+            additionalHeaders: DynamicRequest.headers
+        )
+        return payload.item
+    }
+
     /// 某个 UP 主自己的动态。结构和关注流完全一样，只是换了个端点。
     static func spaceDynamics(hostMid: Int, offset: String?) async throws -> DynamicFeedPage {
         var params = [
@@ -107,6 +120,10 @@ extension BiliAPI {
 }
 
 /// 动态接口会校验来源站点，来源要写成动态站而不是全站默认的 www。
+private struct DynamicDetailPayload: Decodable {
+    let item: DynamicItem
+}
+
 enum DynamicRequest {
     static let headers = [
         "Origin": "https://t.bilibili.com",

@@ -32,19 +32,55 @@ struct VideoSummary: Decodable, Identifiable, Hashable, VideoDimensionProviding 
     /// 部分列表接口会直接返回画面尺寸；缺失时由内容过滤服务补查详情。
     var dimension: VideoDimension? = nil
 
-    /// 首页推荐反馈必须携带服务端返回的追踪标识。
-    var recommendationTrackID: String? = nil
+    /// App 推荐卡片的「不感兴趣」选项，反馈时原样带回卡片的 goto 和 param。
+    var recommendationFeedback: RecommendationFeedbackOptions? = nil
+    /// 来自网页推荐：没有原因可选，「不感兴趣」和 PiliPlus 一样只能点踩。
+    var isWebRecommendation = false
+    /// 推荐卡上 UP 主名字前的小标签，如「已关注」「4万点赞」，和 PiliPlus 一样。
+    var recommendationBadge: String? = nil
+    /// 推荐流里的直播、图文卡借用视频卡片的外观，点开时去直播间或动态详情，不是视频。
+    /// 它们的 `bvid` 是 `live-房间号`、`dynamic-动态编号` 这样的本地标识，只用来区分卡片。
+    var recommendationTarget: RecommendationTarget? = nil
 
     var id: String { bvid }
 
     var secureCoverURL: URL? { URL.biliSecure(pic) }
     var secureAvatarURL: URL? { URL.biliSecure(owner.face) }
 
+    /// 封面右下角的文字：视频是时长，直播卡是「直播」。
+    var coverCornerText: String {
+        if case .live = recommendationTarget { return String(localized: "直播") }
+        return recommendationTarget == nil ? formattedDuration : ""
+    }
+
     var formattedDuration: String {
         let minutes = duration / 60
         let seconds = duration % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+}
+
+enum RecommendationTarget: Decodable, Hashable, Sendable {
+    case live(LiveRoom)
+    /// 图文动态的编号，点开时再取详情。
+    case dynamic(id: String)
+}
+
+/// App 推荐卡片 `three_point_v2` 里的两组原因：「我不想看」与「反馈」。
+struct RecommendationFeedbackOptions: Decodable, Hashable, Sendable {
+    struct Reason: Decodable, Hashable, Sendable {
+        let id: Int
+        let name: String?
+        let toast: String?
+    }
+
+    /// 反馈接口要求原样带回卡片的 `card_goto` 与 `param`。
+    let goto: String
+    let param: Int
+    var dislikeReasons: [Reason]?
+    var feedbacks: [Reason]?
+
+    var hasReasons: Bool { dislikeReasons != nil || feedbacks != nil }
 }
 
 struct VideoPart: Decodable, Identifiable, Hashable, Sendable {

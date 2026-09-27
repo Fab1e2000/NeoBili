@@ -30,7 +30,6 @@ struct RootView: View {
 
     /// 主页面切换特效：新页面内容淡入，快慢用设置页那条「进入」滑杆。
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(AnimationSpeedSettings.enterSpeedKey) private var enterSpeed = AnimationSpeedSettings.defaultEnterSpeed
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEntranceEnabled = CardAnimationSettings.defaultValue
     /// 当前页面。点下去立刻就换，高亮跟着立刻走。
@@ -201,7 +200,7 @@ struct RootView: View {
         tabContentOpacity = 0
         displayedTab = tab
 
-        let fadeIn = AnimationSpeedSettings.tabFade(speed: enterSpeed)
+        let fadeIn = AnimationSpeedSettings.tabFade
         tabSwitchTask = Task { @MainActor in
             // 隔一帧再启动：同一帧内改两次状态会被合并成"没有动画"。
             try? await Task.sleep(for: .milliseconds(16))

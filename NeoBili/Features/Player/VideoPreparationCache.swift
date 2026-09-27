@@ -22,6 +22,7 @@ actor VideoPreparationCache {
 
     private let detailLoader: @Sendable (String) async throws -> VideoDetail
     private let playbackLoader: @Sendable (String, Int) async throws -> PlayURLData
+    private let scrollPrefetchEnabled: @Sendable () -> Bool
 
     private let lifetime: TimeInterval = 5 * 60
     private let maximumEntries = 8
@@ -45,10 +46,14 @@ actor VideoPreparationCache {
         },
         playbackLoader: @escaping @Sendable (String, Int) async throws -> PlayURLData = {
             try await BiliAPI.playURL(bvid: $0, cid: $1)
+        },
+        scrollPrefetchEnabled: @escaping @Sendable () -> Bool = {
+            UserDefaults.standard.bool(forKey: VideoPreparationCache.scrollPrefetchKey)
         }
     ) {
         self.detailLoader = detailLoader
         self.playbackLoader = playbackLoader
+        self.scrollPrefetchEnabled = scrollPrefetchEnabled
     }
 
     /// 用户真正点开视频时走这里，不受预取名额限制；如果同一个请求正在预取，直接复用它。
@@ -128,10 +133,15 @@ actor VideoPreparationCache {
         playbackURLs[PlaybackKey(bvid: bvid, cid: cid)] = nil
     }
 
+    /// 「滑过时预取」开关，默认关闭：和 PiliPlus 一样只在点开视频时请求播放地址，
+    /// B 站服务端就不会看到一串没点开的视频请求。打开后点开更快。
+    static let scrollPrefetchKey = "neobili.prefetchOnScroll"
+
     /// 卡片出现在屏幕上时调用。推荐卡已经有 cid；搜索卡没有，所以先取一次详情。
     /// Reuse the recommendation feed's dwell policy across all scrolling lists.
     /// Cancellation before the delay expires never enters the network queue.
     func prefetchWhenSettled(bvid: String, cid: Int? = nil) async {
+        guard scrollPrefetchEnabled() else { return }
         do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
         guard !Task.isCancelled else { return }
         await prefetch(bvid: bvid, cid: cid)

@@ -26,9 +26,17 @@ struct NativeHomeVideoCard: UIViewRepresentable {
         private let resolveAvatar: @Sendable (Int) async -> URL?
         private let title = UIImageView()
         private let owner = UILabel()
+        /// 推荐理由小标签（「已关注」「4万点赞」），放在头像和 UP 主名字之间。
+        private let badge = UILabel()
+        private var badgeWidth: CGFloat = 0
         private let playCount = UILabel()
         private let duration = UILabel()
         private let playIcon = UIImageView()
+        /// 弹幕数，和 PiliPlus 一样跟在播放数后面；直播、图文卡不显示。
+        private let danmakuCount = UILabel()
+        private let danmakuIcon = UIImageView()
+        private var playCountWidth: CGFloat = 0
+        private var danmakuWidth: CGFloat = 0
         private let gradient = CAGradientLayer()
         /// 不能预排版的标题（含 emoji，或排版参数还没量好）用它显示。
         private let fallbackTitle = UILabel()
@@ -62,7 +70,19 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                                UIColor.black.withAlphaComponent(0.6).cgColor]
             gradient.locations = [0, 0.4, 1]
             layer.addSublayer(gradient)
-            for view in [title, fallbackTitle, owner, playCount, duration, playIcon, avatar] { addSubview(view) }
+            for view in [title, fallbackTitle, owner, badge, playCount, duration, playIcon, danmakuCount, danmakuIcon, avatar] {
+                addSubview(view)
+            }
+            danmakuCount.textColor = .white
+            danmakuIcon.tintColor = .white
+            danmakuIcon.contentMode = .scaleAspectFit
+            badge.textColor = .secondaryLabel
+            badge.backgroundColor = .tertiarySystemFill
+            badge.textAlignment = .center
+            badge.layer.cornerRadius = 3
+            badge.layer.cornerCurve = .continuous
+            badge.clipsToBounds = true
+            badge.isHidden = true
             title.contentMode = .topLeft
             title.tintColor = .label
             fallbackTitle.numberOfLines = 2
@@ -101,19 +121,40 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                 let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
                 let small = UIFont.preferredFont(forTextStyle: .caption2, compatibleWith: traits)
                 owner.font = small
+                badge.font = small
                 let semibold = UIFont.systemFont(ofSize: small.pointSize, weight: .semibold)
                 playCount.font = semibold
+                danmakuCount.font = semibold
+                danmakuIcon.image = UIImage(systemName: "text.bubble", withConfiguration: UIImage.SymbolConfiguration(font: semibold))
                 duration.font = semibold
                 playIcon.image = UIImage(systemName: "play.rectangle", withConfiguration: UIImage.SymbolConfiguration(font: semibold))
                 durationMeasurement = nil
+                badge.text = nil
             }
             playCount.text = video.stat.view.biliCountText
-            let durationText = video.formattedDuration
+            // 图文卡没有播放数时不画这一组。
+            let hidesCount = video.recommendationTarget != nil && video.stat.view == 0
+            playCount.isHidden = hidesCount
+            playIcon.isHidden = hidesCount
+            playCountWidth = ceil(playCount.intrinsicContentSize.width)
+            danmakuCount.text = video.stat.danmaku.biliCountText
+            let hidesDanmaku = video.recommendationTarget != nil
+            danmakuCount.isHidden = hidesDanmaku
+            danmakuIcon.isHidden = hidesDanmaku
+            danmakuWidth = hidesDanmaku ? 0 : ceil(danmakuCount.intrinsicContentSize.width)
+            let durationText = video.coverCornerText
             if duration.text != durationText {
                 duration.text = durationText
                 durationMeasurement = nil
             }
-            owner.text = video.owner.name
+            // 网页推荐带发布时间，和 PiliPlus 一样显示出来；App 推荐没有这个字段。
+            owner.text = video.isWebRecommendation && video.pubdate > 0
+                ? "\(video.owner.name) · \(video.pubdate.biliRelativeTimeText)" : video.owner.name
+            if badge.text != video.recommendationBadge {
+                badge.text = video.recommendationBadge
+                badge.isHidden = video.recommendationBadge == nil
+                badgeWidth = video.recommendationBadge == nil ? 0 : ceil(badge.intrinsicContentSize.width) + 8
+            }
             let fontSize = PreparedTitle.fontSize(for: dynamicTypeSize)
             let metrics = PreparedTitle.metrics(fontSize: fontSize)
             titleHeight = metrics?.boxHeight ?? 40
@@ -158,7 +199,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                     self.avatar.load(url, size: HomeCardLayout.avatarSize, scale: scale)
                 }
             }
-            accessibilityLabel = "\(video.title)，\(video.owner.name)，\(video.stat.view.biliCountText)，\(video.formattedDuration)"
+            accessibilityLabel = "\(video.title)，\(video.recommendationBadge.map { "\($0)，" } ?? "")\(video.owner.name)，\(video.stat.view.biliCountText)，\(video.coverCornerText)"
             isAccessibilityElement = true
             setNeedsLayout()
         }
@@ -180,8 +221,13 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             let ownerY = titleFrame.maxY + 7
             avatar.frame = CGRect(x: 8, y: ownerY, width: 16, height: 16)
             let ownerHeight = owner.font.lineHeight
-            owner.frame = CGRect(x: 28, y: ownerY + (16 - ownerHeight) / 2,
-                                 width: max(0, width - 36), height: ownerHeight)
+            // 标签最多占这一行的一半，UP 主名字始终留得下。
+            let shownBadgeWidth = badge.isHidden ? 0 : min(badgeWidth, max(0, (width - 36) / 2))
+            badge.frame = CGRect(x: 28, y: ownerY + (16 - ownerHeight - 2) / 2,
+                                 width: shownBadgeWidth, height: ownerHeight + 2)
+            let ownerX = shownBadgeWidth > 0 ? badge.frame.maxX + 4 : 28
+            owner.frame = CGRect(x: ownerX, y: ownerY + (16 - ownerHeight) / 2,
+                                 width: max(0, width - 8 - ownerX), height: ownerHeight)
             let labelHeight = playCount.font.lineHeight
             let labelY = coverHeight - 6 - labelHeight
             let iconSize = playIcon.image?.size ?? CGSize(width: 13, height: 11)
@@ -192,8 +238,18 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             }
             let durationWidth = durationMeasurement?.width ?? 0
             duration.frame = CGRect(x: width - 8 - durationWidth, y: labelY, width: durationWidth, height: labelHeight)
+            let statsLimit = duration.frame.minX - 8
             playCount.frame = CGRect(x: playIcon.frame.maxX + 2, y: labelY,
-                                     width: max(0, duration.frame.minX - playIcon.frame.maxX - 8), height: labelHeight)
+                                     width: max(0, min(playCountWidth, statsLimit - playIcon.frame.maxX - 2)), height: labelHeight)
+            let danmakuIconSize = danmakuIcon.image?.size ?? iconSize
+            let danmakuIconX = playCount.frame.maxX + 8
+            // 空间不够（大字号、窄屏）时宁可不显示弹幕数，也不和播放数、时长挤在一起。
+            let fitsDanmaku = danmakuIconX + danmakuIconSize.width + 2 + danmakuWidth <= statsLimit
+            danmakuIcon.alpha = fitsDanmaku ? 1 : 0
+            danmakuCount.alpha = fitsDanmaku ? 1 : 0
+            danmakuIcon.frame = CGRect(x: danmakuIconX, y: labelY + (labelHeight - danmakuIconSize.height) / 2,
+                                       width: danmakuIconSize.width, height: danmakuIconSize.height)
+            danmakuCount.frame = CGRect(x: danmakuIcon.frame.maxX + 2, y: labelY, width: danmakuWidth, height: labelHeight)
         }
     }
 

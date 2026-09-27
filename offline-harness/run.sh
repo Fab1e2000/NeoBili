@@ -18,6 +18,7 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Models/PortraitVideoStore.swift" \
    "$APP/Core/Models/VideoDimensionProviders.swift" \
    "$APP/Core/Models/VideoModels.swift" \
+   "$APP/Core/Models/LiveModels.swift" \
    "$APP/Core/Models/UgcSeasonModels.swift" \
    "$APP/Core/Models/FollowModels.swift" \
    "$APP/Core/Models/DynamicModels.swift" \
@@ -27,12 +28,15 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Models/DynamicVote.swift" \
    "$APP/Core/Models/CommentModels.swift" \
    "$APP/Core/Models/LenientDecoding.swift" \
+   "$APP/Core/Models/RecommendationFilter.swift" \
    "$APP/Core/UI/AppLanguage.swift" \
    "$APP/Core/Extensions/Int+BiliFormatting.swift" \
    "$APP/Core/Networking/APIClient.swift" \
    "$APP/Core/Networking/BiliAPI.swift" \
    "$APP/Core/Networking/BiliAPI+Recommendation.swift" \
+   "$APP/Core/Networking/BiliAPI+VideoActions.swift" \
    "$APP/Core/Networking/AppRecommendationPage.swift" \
+   "$APP/Core/Networking/WebRecommendationPage.swift" \
    "$APP/Core/Networking/BiliPassport.swift" \
    "$APP/Core/Networking/WBISigner.swift" \
    "$APP/Core/Networking/DeviceIdentity.swift" \

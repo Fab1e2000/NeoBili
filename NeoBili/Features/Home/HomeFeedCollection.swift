@@ -26,6 +26,9 @@ struct HomeFeedCollection: UIViewRepresentable {
     var safeInsets = EdgeInsets()
     /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身不透明，顶部模糊不受影响。
     var contentOpacity: Double = 1
+    /// 移除卡片（不感兴趣、点踩、拉黑）时，后面的卡片挪过来补位的动画时长；nil 表示不做动画
+    /// （卡片动画关闭或系统开启了「减弱动态效果」）。
+    var removalAnimationDuration: Double? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -33,7 +36,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         let coordinator = context.coordinator
         let configuration = UICollectionViewCompositionalLayoutConfiguration()
         configuration.interSectionSpacing = HomeCardLayout.rowSpacing
-        let layout = UICollectionViewCompositionalLayout(sectionProvider: { [weak coordinator] index, environment in
+        let layout = HomeFeedLayout(sectionProvider: { [weak coordinator] index, environment in
             coordinator?.layoutSection(at: index, environment: environment)
         }, configuration: configuration)
 
@@ -68,6 +71,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             context.animate { coordinator.applyContentOpacityToVisibleCells() }
         }
         coordinator.onOpenMine = onOpenMine
+        coordinator.removalAnimationDuration = removalAnimationDuration
         coordinator.showsHeaderRow = !pinsTitleBar
         applyInsets(to: view)
         if view.topEdgeEffect.style != topEdgeStyle { view.topEdgeEffect.style = topEdgeStyle }
@@ -185,6 +189,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         private var configuredStarts: [String: [TimeInterval?]] = [:]
         /// App 的文字档位，决定标题预排版用的字号。
         private var dynamicTypeSize: DynamicTypeSize = .large
+        var removalAnimationDuration: Double?
 
         func attach(_ view: UICollectionView) {
             collectionView = view
@@ -286,6 +291,14 @@ struct HomeFeedCollection: UIViewRepresentable {
             }
             let structureChanged = dataSource.snapshot().sectionIdentifiers.isEmpty || latest != latestIDs || earlier != earlierIDs || marker != hasMarker
                 || showsHeaderRow != hasHeaderRow
+            // 只是移除了几张卡（其余卡片、页头、分隔条都还在，先后顺序不变）时，才用补位动画；
+            // 翻页、刷新、设置变化仍然直接套用，不引入额外的动画。
+            let previous = latestIDs + earlierIDs
+            let current = latest + earlier
+            let remaining = Set(current)
+            let isRemovalOnly = current.count < previous.count && marker == hasMarker
+                && showsHeaderRow == hasHeaderRow && changed.isEmpty && !needsReconfigureAll
+                && previous.filter(remaining.contains) == current
             // 没有变化时直接返回：刷新淡出、滚动开关这些状态也会触发这里。
             guard structureChanged || !changed.isEmpty || needsReconfigureAll else { return }
 
@@ -324,7 +337,19 @@ struct HomeFeedCollection: UIViewRepresentable {
                 snapshot.reconfigureItems(changed)
             }
             needsReconfigureAll = false
-            dataSource.apply(snapshot, animatingDifferences: false)
+            if isRemovalOnly, let duration = removalAnimationDuration,
+               let collectionView, let layout = collectionView.collectionViewLayout as? HomeFeedLayout {
+                // 被移除的卡缩小淡出，后面的卡用略带回弹的曲线移到新位置。
+                layout.shrinksDeletedItems = true
+                UIView.animate(withDuration: duration, delay: 0, usingSpringWithDamping: 0.88, initialSpringVelocity: 0,
+                               options: [.allowUserInteraction, .beginFromCurrentState]) {
+                    dataSource.apply(snapshot, animatingDifferences: true)
+                } completion: { _ in
+                    layout.shrinksDeletedItems = false
+                }
+            } else {
+                dataSource.apply(snapshot, animatingDifferences: false)
+            }
         }
 
         private static func sameContent(_ lhs: HomeFeedItem, _ rhs: HomeFeedItem) -> Bool {
@@ -526,5 +551,31 @@ private final class HomeFeedCollectionView: UICollectionView {
             }
             responder = current.next
         }
+    }
+}
+
+/// 首页的网格布局。只在移除卡片的补位动画里，让被删掉的那张缩小淡出；
+/// 移动到新位置的卡片照常平移，不受影响。
+final class HomeFeedLayout: UICollectionViewCompositionalLayout {
+    var shrinksDeletedItems = false
+    private var deletedIndexPaths: Set<IndexPath> = []
+
+    override func prepare(forCollectionViewUpdates updateItems: [UICollectionViewUpdateItem]) {
+        super.prepare(forCollectionViewUpdates: updateItems)
+        deletedIndexPaths = Set(updateItems.filter { $0.updateAction == .delete }.compactMap(\.indexPathBeforeUpdate))
+    }
+
+    override func finalizeCollectionViewUpdates() {
+        super.finalizeCollectionViewUpdates()
+        deletedIndexPaths = []
+    }
+
+    override func finalLayoutAttributesForDisappearingItem(at itemIndexPath: IndexPath) -> UICollectionViewLayoutAttributes? {
+        let attributes = super.finalLayoutAttributesForDisappearingItem(at: itemIndexPath)
+        guard shrinksDeletedItems, deletedIndexPaths.contains(itemIndexPath),
+              let shrunk = attributes?.copy() as? UICollectionViewLayoutAttributes else { return attributes }
+        shrunk.alpha = 0
+        shrunk.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
+        return shrunk
     }
 }

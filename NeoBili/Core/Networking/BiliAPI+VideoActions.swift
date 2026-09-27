@@ -75,6 +75,26 @@ extension BiliAPI {
         )
     }
 
+    /// 拉黑 UP 主。参数照 PiliPlus `VideoHttp.relationMod`（act=5）。
+    static func blockUser(mid: Int) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(
+            path: "x/relation/modify",
+            form: [
+                "fid": String(mid),
+                "act": "5",
+                "re_src": "11",
+                "gaia_source": "web_main",
+                "spmid": "333.1387",
+                "csrf": csrf
+            ],
+            additionalHeaders: [
+                "Origin": "https://space.bilibili.com",
+                "Referer": "https://space.bilibili.com/\(mid)/dynamic"
+            ]
+        )
+    }
+
     /// 关注 / 取消关注 UP 主。
     ///
     /// 这个接口会校验来源站点，所以要把 Origin/Referer 换成 space 站——沿用

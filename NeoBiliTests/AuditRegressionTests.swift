@@ -99,6 +99,29 @@ final class AuditRegressionTests: XCTestCase {
         XCTAssertEqual(restored.profile?.mid, 42, "同账号可使用缓存资料离线启动")
     }
 
+    func testCookieOnlyLoginExchangesAppCredentialButRestoreDoesNot() async throws {
+        var exchanges = 0
+        let payload = try profile()
+        let client = AccountSessionClient(
+            credentials: { AccountCredentialsSnapshot(hasCredentials: true, accountID: 42) },
+            save: { _, _ in }, clear: {}, profile: { payload },
+            exchangeAppCredential: { exchanges += 1 }
+        )
+        let restored = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
+        await restored.restoreSessionIfNeeded()
+        XCTAssertEqual(exchanges, 0, "已登录的账号不在后台悄悄换取，由用户在设置里确认")
+        XCTAssertFalse(restored.hasAppCredential)
+
+        let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.completeLogin(BiliPassport.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42"))
+        for _ in 0..<20 where !account.hasAppCredential { await Task.yield() }
+        XCTAssertEqual(exchanges, 1)
+        XCTAssertTrue(account.hasAppCredential)
+        let again = await account.ensureAppCredential()
+        XCTAssertNil(again)
+        XCTAssertEqual(exchanges, 1, "已有凭据时不重复换取")
+    }
+
     func testLateProfileResponseCannotLogBackInAfterLogout() async throws {
         let pending = Deferred<AccountProfilePayload>()
         let store = VideoLikeStore()

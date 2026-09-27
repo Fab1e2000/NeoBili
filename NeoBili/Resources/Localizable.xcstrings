@@ -2,16 +2,6 @@
   "sourceLanguage": "zh-Hans",
   "strings": {
     "": {},
-    "%.1f 倍速": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%.1f×"
-          }
-        }
-      }
-    },
     "%.1f 硬币": {
       "localizations": {
         "en": {
@@ -1348,22 +1338,12 @@
         }
       }
     },
-    "动画速度": {
+    "动画开关、手势分区、控件位置和防误触的细调，一般保持默认即可。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Animation Speed"
-          }
-        }
-      }
-    },
-    "动画速度、手势分区、控件位置和防误触的细调，一般保持默认即可。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fine-tuning for animation speed, gesture zones, control positions and accidental-tap protection. The defaults suit most people."
+            "value": "Fine-tuning for animation toggles, gesture zones, control positions and accidental-tap protection. The defaults suit most people."
           }
         }
       }
@@ -5128,16 +5108,6 @@
         }
       }
     },
-    "进入速度": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter Speed"
-          }
-        }
-      }
-    },
     "连接": {
       "localizations": {
         "en": {
@@ -5204,16 +5174,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Playback continues at the bottom when you leave the video page, and the tab bar can shrink as you scroll."
-          }
-        }
-      }
-    },
-    "退出速度": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Exit Speed"
           }
         }
       }

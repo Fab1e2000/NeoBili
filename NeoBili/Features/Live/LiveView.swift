@@ -102,7 +102,6 @@ private struct LiveFeedPage: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(AnimationSpeedSettings.exitSpeedKey) private var exitSpeed = AnimationSpeedSettings.defaultExitSpeed
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .live)
 
@@ -293,7 +292,7 @@ private struct LiveFeedPage: View {
         let requestID = UUID()
         refreshID = requestID
         isRefreshing = true
-        let duration = animatesExit && !model.rooms.isEmpty ? FeedRefreshTuning.fadeExit(speed: exitSpeed) : 0
+        let duration = animatesExit && !model.rooms.isEmpty ? FeedRefreshTuning.fadeExit : 0
         // 与推荐页一致：松手即开始淡出，请求并行进行，两者都结束后再换上新内容；全程不显示提示。
         let exitStart = ProcessInfo.processInfo.systemUptime
         if duration > 0 { withAnimation(.easeOut(duration: duration)) { listOpacity = 0 } }

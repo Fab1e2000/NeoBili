@@ -8,7 +8,11 @@ extension UgcSeasonEpisode { var dimensionLookupBVID: String? { bvid } }
 extension SpaceVideo { var dimensionLookupBVID: String? { bvid } }
 extension VideoDetail { var dimensionLookupBVID: String? { bvid } }
 
-extension VideoSummary { var videoDurationSeconds: Int? { duration } }
+extension VideoSummary {
+    var videoDurationSeconds: Int? { duration }
+    /// 推荐里的直播、图文卡不是视频，画幅和时长过滤都不该挡住它们。
+    var skipsVideoFilters: Bool { recommendationTarget != nil }
+}
 
 extension SearchResultItem { var videoDurationSeconds: Int? { VideoDurationFilterSettings.seconds(from: duration) } }
 

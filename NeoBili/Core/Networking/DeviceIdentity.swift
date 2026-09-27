@@ -38,6 +38,7 @@ actor DeviceIdentity {
 
     func accountSnapshot() -> AccountCredentialsSnapshot {
         AccountCredentialsSnapshot(hasCredentials: cachedSessdata != nil,
+                                   hasAppCredential: cachedAccessKey?.isEmpty == false,
                                    accountID: cachedDedeUserID.flatMap(Int.init))
     }
 
@@ -60,6 +61,18 @@ actor DeviceIdentity {
     /// 网页密码登录只有 Cookie，所以这里可能为 nil。
     var accessKey: String? {
         cachedAccessKey
+    }
+
+    /// 当前登录的 Cookie 凭据；用来换取 App 凭据。
+    func loginCookies() -> BiliPassport.LoginCookies? {
+        guard let cachedSessdata, let cachedBiliJct, let cachedDedeUserID else { return nil }
+        return BiliPassport.LoginCookies(sessdata: cachedSessdata, biliJct: cachedBiliJct, dedeUserID: cachedDedeUserID)
+    }
+
+    /// App 接口的身份：access_key 与登录账号的 mid，在同一次 actor 调用里读出。
+    func appAccount() -> (accessKey: String?, mid: Int?) {
+        let key = cachedAccessKey.flatMap { $0.isEmpty ? nil : $0 }
+        return (key, cachedSessdata == nil ? nil : cachedDedeUserID.flatMap(Int.init))
     }
 
     /// PiliPlus 的 App buvid 与网页 buvid3 分开持久化，不随刷新重建。
@@ -112,6 +125,13 @@ actor DeviceIdentity {
     func setAccessKey(_ accessKey: String?) {
         cachedAccessKey = accessKey
         KeychainStore.set(accessKey, for: Self.accessKeyKeychainKey)
+    }
+
+    /// 换取到的 App 凭据只在仍是同一账号时保存，换取途中退出或换号就丢弃。
+    func setAccessKey(_ accessKey: String, forAccount dedeUserID: String) -> Bool {
+        guard cachedSessdata != nil, cachedDedeUserID == dedeUserID else { return false }
+        setAccessKey(accessKey)
+        return true
     }
 
     /// 退出登录或凭据失效时清除。
@@ -196,4 +216,21 @@ enum BiliHeaders {
     /// APP 端接口只认 BiliDroid 的 UA。带着浏览器 UA 去请求 app.bilibili.com
     /// 会被当成非法客户端，即使签名正确也拿不到数据。
     static let appUserAgent = "Mozilla/5.0 BiliDroid/2.0.1 (bbcallen@gmail.com) os/android model/android_hd mobi_app/android_hd build/2001100 channel/master innerVer/2001100 osVer/15 network/2"
+
+    /// PiliPlus 账号拦截器给 App 请求补的头；登录后再带上 mid 和由它算出的 aurora eid。
+    static func appAccountHeaders(mid: Int?) -> [String: String] {
+        var headers = ["env": "prod", "app-key": "android64", "x-bili-aurora-zone": "sh001"]
+        if let mid, mid > 0 {
+            headers["x-bili-mid"] = String(mid)
+            headers["x-bili-aurora-eid"] = auroraEID(mid: mid)
+        }
+        return headers
+    }
+
+    /// 与 PiliPlus IdUtils.genAuroraEid 相同：mid 的十进制字节逐位异或固定密钥，再做无填充 base64。
+    static func auroraEID(mid: Int) -> String {
+        let key = Array("ad1va46a7lza".utf8)
+        let bytes = Array(String(mid).utf8).enumerated().map { $0.element ^ key[$0.offset % key.count] }
+        return Data(bytes).base64EncodedString().replacingOccurrences(of: "=", with: "")
+    }
 }
