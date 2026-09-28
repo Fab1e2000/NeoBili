@@ -28,7 +28,7 @@ final class InlineVideoCollapseVisualTests: XCTestCase {
 
             XCTAssertLessThan(host.window.bounds.width, host.window.bounds.height, name)
             XCTAssertGreaterThan(metrics.topInset, 0, "Exercise the physical iPhone top safe area: \(name)")
-            XCTAssertEqual(video.minY, host.window.safeAreaInsets.top - metrics.topOverlap, accuracy: 0.5, name)
+            XCTAssertEqual(video.minY, host.window.safeAreaInsets.top, accuracy: 0.5, name)
             XCTAssertEqual(video.height, metrics.height, accuracy: 0.5, name)
             XCTAssertEqual(comments.minY, video.maxY, accuracy: 0.5, name)
             XCTAssertEqual(metrics.progress, phase == .paused ? Double(fraction) : 0, accuracy: 0.0001, name)
@@ -105,7 +105,6 @@ private struct CollapseVisualFixture: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let topOverlap = min(9, max(0, geometry.safeAreaInsets.top - 47))
             let fullSize = CGSize(width: geometry.size.width,
                                   height: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
             let layout = InlineVideoCollapseLayout(
@@ -118,7 +117,7 @@ private struct CollapseVisualFixture: View {
             let progress = layout.visualProgress(for: distance, phase: phase)
             let isCollapsed = layout.hidesVideo(for: distance)
             let metrics = CollapseVisualMetrics(height: height, topInset: geometry.safeAreaInsets.top,
-                                                topOverlap: topOverlap, progress: progress, isCollapsed: isCollapsed)
+                                                progress: progress, isCollapsed: isCollapsed)
 
             VStack(spacing: 0) {
                 ZStack {
@@ -164,13 +163,12 @@ private struct CollapseVisualFixture: View {
                 .background(CollapseVisualProbe(name: "comments", recorder: recorder))
             }
             .frame(width: geometry.size.width,
-                   height: geometry.size.height + topOverlap + geometry.safeAreaInsets.bottom, alignment: .top)
+                   height: geometry.size.height + geometry.safeAreaInsets.bottom, alignment: .top)
             .overlay(alignment: .top) {
                 InlineVideoCollapseOverlay(progress: progress, videoHeight: height,
                                            topInset: geometry.safeAreaInsets.top, isCollapsed: isCollapsed,
                                            player: nil, onBack: {}) {}
             }
-            .offset(y: -topOverlap)
         }
         .background(Color.black.ignoresSafeArea(edges: .top))
         .preferredColorScheme(.light)
@@ -190,7 +188,6 @@ private struct CollapseVisualFixture: View {
 private struct CollapseVisualMetrics {
     let height: CGFloat
     let topInset: CGFloat
-    let topOverlap: CGFloat
     let progress: Double
     let isCollapsed: Bool
 }
