@@ -80,8 +80,8 @@ NeoBili/
 ```
 卡片点击 → NowPlayingStore.open(route)
   ├─ VideoDetailViewModel.load()            详情（经 VideoPreparationCache 去重）
-  ├─ VideoPreparationCache.prefetch 已把     播放地址（卡片露面时已预取）
-  │   playURL 缓存好 → PlayerViewModel.load()
+  ├─ VideoPreparationCache                 同会话播放地址缓存/在途去重
+  │   → PlayerViewModel.load()              滑动预取默认关闭
   └─ 详情回来后 → loadExtras()（标签/互动关系/名片并行）+ 评论模型
 ```
 
@@ -91,6 +91,14 @@ NeoBili/
 - **PlayerViewModel** 只管播放本身：加载、画质切换（不换 session 就地重开）、备用
   地址逐个尝试（`PlaybackSource.candidates`）、心跳上报、定时休眠。内核事件经
   `engineID` 过滤，旧内核的迟到事件不会污染新会话。
+- **PlaybackWatchProgress** 用首帧后的连续解码位置和单调时钟确认真实观看，拖动目标和
+  本地续播位置不作为上传依据。首次累计 5 秒、随后每 15 秒发心跳；暂停、退出和正常
+  播放结束补发已确认进度。同登录会话、视频及分 P 共用弱引用登记的发送队列，慢网
+  时合并待发值；上传绑定创建
+  播放器时的登录会话，账号切换后旧任务不使用新凭据。
+- 播放详情/地址缓存按登录会话隔离。旧会话响应不能回填；关闭页面只取消属于该播放
+  器的请求，不会误取消刚重开的同一视频。启用滑动预取时等待卡片停留 300 ms，最多
+  同时预取 2 个、排队 4 个，仅获取接口元数据，不预下载媒体。
 
 ### 2. 列表与内容过滤
 
@@ -101,10 +109,13 @@ NeoBili/
 
 1. 对整批视频算 `metadataRequest`（列表已知的直接用；缺的查
    `PortraitVideoStore`，还没有的经 `VideoPreparationCache.detail` 补查，同 bvid 全
-   App 合并，最多 50 并发，成功缓存 7 天、失败冷却 5 分钟）；
+   App 合并，最多 6 并发，成功缓存 7 天、失败冷却 5 分钟）；
 2. 全部判断/补位（最多 8 页）结束后才发布统一的入场动画起点
    （`VideoEntranceClock`），屏幕外卡片共用同一批起点；
 3. 关闭过滤或全部已知时零请求。
+
+画幅/时长缓存按查询批次合并持久化；JSON 编码和写入在后台串行队列完成，旧快照
+不能覆盖新快照。页面取消后，已开始的共享查询完成时仍保存结果。
 
 各数据源到「画幅/时长」的适配都在 `Core/Models/VideoDimensionProviders.swift`：
 新增一种列表模型时，在这里加两个 extension 即可接入过滤。
@@ -116,6 +127,8 @@ NeoBili/
   持久化，并发签名合并为一次 nav 请求）。
 - 风控（v_voucher）在取流和搜索两个口子上有专门处理：换格式重试 / 报「被风控拦截」。
 - 写操作不回读：接口成功即认为本地乐观值正确（服务端写入有延迟，回读会闪回旧值）。
+- 写操作不自动重试，包括形式为 GET 的推荐反馈。推荐反馈和观看心跳绑定登录会话；
+  非零业务错误先于成功数据模型处理，避免错误响应的异构 `data` 掩盖账号失效。
 - 取消语义：结构化任务与独立共享任务要分别处理。`PortraitVideoStore` 按等待者登记取消：
   排队且无人等待的请求移除；仍有人等待的请求保留；已开始的请求继续完成并缓存。
   页面取消可以立即退出等待，不必等待共享下载结束。
@@ -139,8 +152,13 @@ NeoBili/
 | 关注流/UP 主动态 | `DynamicFeedModel`（各持一份，翻页点赞共用） | 页面可见 + 账号会话 |
 | 点赞差量 | `VideoLikeStore.shared`（会话版本号） | 登录会话 |
 | 画幅/时长补查缓存 | `PortraitVideoStore.shared`（MainActor，7 天持久化） | 进程 + 磁盘 |
-| 播放地址/详情预取 | `VideoPreparationCache.shared`（actor，5 分钟，预取并发 2） | 进程 |
-| 图片内存缓存 | `BiliImageCache.shared`（actor，300 张 LRU 逐出，在途合并） | 进程 |
+| 播放地址/详情预取 | `VideoPreparationCache.shared`（actor，按登录会话隔离，5 分钟，预取并发 2） | 进程 |
+| 图片内存缓存 | `BiliImageCache.shared`（单份 64 MiB / 300 张 LRU，支持同步命中，在途消费者合并） | 进程 |
+
+图片请求按消费者管理生命周期：卡片离屏立即退出等待，最后一个消费者取消时终止
+传输及排队解码；其他可见卡片仍可共享同一个请求。同步显示和异步加载使用同一份
+位图缓存，内存告警统一清空。已进入 ImageIO 的同步解码不能在中途抢占，但其并发
+有上限，取消后的结果不会回填缓存。
 
 网络任务一律由 **ViewModel 或全局缓存** 持有（`HomeViewModel.activeLoadTask`、
 `DynamicFeedModel.reloadTask`、`NowPlayingStore.loadTasks` 等），不依附单个卡片视图；
@@ -184,7 +202,7 @@ macOS 可执行文件直接断言运行。每次运行都取仓库当前源码�
   Binding 或独立数据，禁止捕获拥有动作盒子的宿主整体，以免形成循环引用。
 - `PageOffsetBox` 只消除滚动位置字典造成的状态失效；`headerCollapse` 等状态仍会变化。
   首页、空间页、评论区的实际 body 更新次数及帧率，需要运行时测量，不能由 diff 推算成实测值。
-- 离线测试覆盖请求去重、50 并发、缓存、排队取消、共享等待者和在途完成语义；
+- 离线测试覆盖请求去重、6 并发、缓存、排队取消、共享等待者和在途完成语义；
   独立的 `EnvironmentActionLifetime.swift` 在 macOS 上检查相同 Binding 捕获结构的 ARC 释放，
   不启动界面。这不替代真实 SwiftUI 页面生命周期与性能验证。
 - 夜间改动的基线提交是 `30c70b5`，`9.8-Night` 是提交消息，不是 Git 引用。

@@ -46,7 +46,7 @@ final class ShortRefreshTests: XCTestCase {
         XCTAssertTrue(state.armed)
         XCTAssertEqual(HomeRefreshSettings.clamped(-1), 40)
         XCTAssertEqual(HomeRefreshSettings.clamped(999), 140)
-        XCTAssertEqual(HomeRefreshSettings.clamped(.nan), 70)
+        XCTAssertEqual(HomeRefreshSettings.clamped(.nan), HomeRefreshSettings.defaultDistance)
     }
 
     func testTabReselectionPreservesOriginalDelegate() async {

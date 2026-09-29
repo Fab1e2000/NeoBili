@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Synchronization
 
 /// Manages the anonymous device identity (buvid3/buvid4) that Bilibili's web
 /// API expects as a cookie on every request, even for guest (logged-out) traffic.
@@ -26,6 +27,30 @@ actor DeviceIdentity {
     private var cachedDedeUserID: String?
     private var cachedAccessKey: String?
     private var fetchTask: Task<Void, Never>?
+    private nonisolated let credentialSessionID = Mutex(UUID())
+
+    /// 播放器在创建时同步绑定会话，不能等异步任务调度后才读取账号。
+    nonisolated var loginSessionID: UUID { credentialSessionID.withLock { $0 } }
+
+    /// Cookie、CSRF 和会话版本必须在同一次 actor 调用中读取。
+    /// 排队中的写请求绑定这个版本，退出后即使重登同一个账号也不会误发。
+    struct AuthenticatedRequestSnapshot: Sendable {
+        let sessionID: UUID
+        let accountID: Int?
+        let csrfToken: String?
+        let cookieHeader: String
+        let isLoggedIn: Bool
+    }
+
+    func authenticatedRequestSnapshot() -> AuthenticatedRequestSnapshot {
+        AuthenticatedRequestSnapshot(
+            sessionID: loginSessionID,
+            accountID: cachedDedeUserID.flatMap(Int.init),
+            csrfToken: cachedBiliJct,
+            cookieHeader: cookieHeader(),
+            isLoggedIn: cachedSessdata != nil
+        )
+    }
 
     private init() {
         cachedBuvid3 = defaults.string(forKey: buvid3Key)
@@ -70,9 +95,17 @@ actor DeviceIdentity {
     }
 
     /// App 接口的身份：access_key 与登录账号的 mid，在同一次 actor 调用里读出。
-    func appAccount() -> (accessKey: String?, mid: Int?) {
+    struct AppRequestAccount: Sendable {
+        let accessKey: String?
+        let mid: Int?
+        let sessionID: UUID
+    }
+
+    func appAccount() -> AppRequestAccount {
         let key = cachedAccessKey.flatMap { $0.isEmpty ? nil : $0 }
-        return (key, cachedSessdata == nil ? nil : cachedDedeUserID.flatMap(Int.init))
+        return AppRequestAccount(accessKey: key,
+                                 mid: cachedSessdata == nil ? nil : cachedDedeUserID.flatMap(Int.init),
+                                 sessionID: loginSessionID)
     }
 
     /// PiliPlus 的 App buvid 与网页 buvid3 分开持久化，不随刷新重建。
@@ -113,6 +146,7 @@ actor DeviceIdentity {
     /// 扫码或密码登录成功后写入凭据。SESSDATA 的值本来就是 URL 转义过的
     ///（含 %2C 等），原样存、原样发即可，不要再做一次编解码。
     func setLoginCookies(sessdata: String, biliJct: String, dedeUserID: String) {
+        credentialSessionID.withLock { $0 = UUID() }
         cachedSessdata = sessdata
         cachedBiliJct = biliJct
         cachedDedeUserID = dedeUserID
@@ -136,6 +170,7 @@ actor DeviceIdentity {
 
     /// 退出登录或凭据失效时清除。
     func clearLoginCookies() {
+        credentialSessionID.withLock { $0 = UUID() }
         cachedSessdata = nil
         cachedBiliJct = nil
         cachedDedeUserID = nil

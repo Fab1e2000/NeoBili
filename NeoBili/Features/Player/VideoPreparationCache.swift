@@ -5,9 +5,27 @@ import Foundation
 actor VideoPreparationCache {
     static let shared = VideoPreparationCache()
 
+    private struct DetailKey: Hashable, Sendable {
+        let sessionID: UUID
+        let bvid: String
+    }
+
     private struct PlaybackKey: Hashable, Sendable {
+        let sessionID: UUID
         let bvid: String
         let cid: Int
+    }
+
+    private struct PlaybackFlight {
+        let id: UUID
+        let task: Task<PlayURLData, Error>
+        var owners: Set<UUID>
+        var hasUnownedWaiter: Bool
+    }
+
+    private struct DetailFlight {
+        let id: UUID
+        let task: Task<VideoDetail, Error>
     }
 
     private struct CachedValue<Value: Sendable>: Sendable {
@@ -23,6 +41,7 @@ actor VideoPreparationCache {
     private let detailLoader: @Sendable (String) async throws -> VideoDetail
     private let playbackLoader: @Sendable (String, Int) async throws -> PlayURLData
     private let scrollPrefetchEnabled: @Sendable () -> Bool
+    private let sessionProvider: @Sendable () -> UUID
 
     private let lifetime: TimeInterval = 5 * 60
     private let maximumEntries = 8
@@ -31,11 +50,11 @@ actor VideoPreparationCache {
     /// 等待队列的上限。超过这个数量说明用户在快速滑动，多余的卡片直接放弃预取。
     private let maximumQueuedPrefetches = 4
 
-    private var details: [String: CachedValue<VideoDetail>] = [:]
+    private var activeSessionID: UUID?
+    private var details: [DetailKey: CachedValue<VideoDetail>] = [:]
     private var playbackURLs: [PlaybackKey: CachedValue<PlayURLData>] = [:]
-    private var detailTasks: [String: Task<VideoDetail, Error>] = [:]
-    private var playbackTasks: [PlaybackKey: Task<PlayURLData, Error>] = [:]
-    private var playbackRequestIDs: [PlaybackKey: UUID] = [:]
+    private var detailTasks: [DetailKey: DetailFlight] = [:]
+    private var playbackTasks: [PlaybackKey: PlaybackFlight] = [:]
     private var activePrefetchCount = 0
     private var prefetchWaiters: [PrefetchWaiter] = []
     var queuedPrefetchCount: Int { prefetchWaiters.count }
@@ -49,71 +68,73 @@ actor VideoPreparationCache {
         },
         scrollPrefetchEnabled: @escaping @Sendable () -> Bool = {
             UserDefaults.standard.bool(forKey: VideoPreparationCache.scrollPrefetchKey)
-        }
+        },
+        sessionProvider: @escaping @Sendable () -> UUID = { DeviceIdentity.shared.loginSessionID }
     ) {
         self.detailLoader = detailLoader
         self.playbackLoader = playbackLoader
         self.scrollPrefetchEnabled = scrollPrefetchEnabled
+        self.sessionProvider = sessionProvider
     }
 
     /// 用户真正点开视频时走这里，不受预取名额限制；如果同一个请求正在预取，直接复用它。
     func detail(for bvid: String) async throws -> VideoDetail {
         try Task.checkCancellation()
+        let key = DetailKey(sessionID: synchronizeSession(), bvid: bvid)
         removeExpiredValues()
-        if let cached = details[bvid] {
+        if let cached = details[key] {
             return cached.value
         }
-        if let existingTask = detailTasks[bvid] {
-            return try await existingTask.value
-        }
-
-        let task = Task { try await detailLoader(bvid) }
-        detailTasks[bvid] = task
+        let flight = detailTasks[key] ?? DetailFlight(id: UUID(), task: Task { try await detailLoader(bvid) })
+        detailTasks[key] = flight
         do {
-            let detail = try await task.value
-            detailTasks[bvid] = nil
-            details[bvid] = CachedValue(value: detail, savedAt: Date())
+            let detail = try await flight.task.value
+            guard sessionProvider() == key.sessionID, !flight.task.isCancelled else { throw CancellationError() }
+            if detailTasks[key]?.id == flight.id {
+                detailTasks[key] = nil
+                details[key] = CachedValue(value: detail, savedAt: Date())
+            }
             trimIfNeeded()
+            try Task.checkCancellation()
             return detail
         } catch {
-            detailTasks[bvid] = nil
+            if detailTasks[key]?.id == flight.id { detailTasks[key] = nil }
             throw error
         }
     }
 
-    func playbackURL(bvid: String, cid: Int) async throws -> PlayURLData {
+    func playbackURL(bvid: String, cid: Int, ownerID: UUID? = nil,
+                     expectedSessionID: UUID? = nil) async throws -> PlayURLData {
         try Task.checkCancellation()
+        let sessionID = synchronizeSession()
+        guard expectedSessionID == nil || expectedSessionID == sessionID else { throw CancellationError() }
         removeExpiredValues()
-        let key = PlaybackKey(bvid: bvid, cid: cid)
+        let key = PlaybackKey(sessionID: sessionID, bvid: bvid, cid: cid)
         if let cached = playbackURLs[key] {
             return cached.value
         }
-        if let existingTask = playbackTasks[key] {
-            if existingTask.isCancelled {
-                playbackTasks[key] = nil
-                playbackRequestIDs[key] = nil
-            } else {
-                return try await existingTask.value
-            }
+        var flight: PlaybackFlight
+        if let existing = playbackTasks[key], !existing.task.isCancelled {
+            flight = existing
+        } else {
+            flight = PlaybackFlight(id: UUID(), task: Task { try await playbackLoader(bvid, cid) },
+                                    owners: [], hasUnownedWaiter: false)
         }
-
-        let requestID = UUID()
-        let task = Task { try await playbackLoader(bvid, cid) }
-        playbackTasks[key] = task
-        playbackRequestIDs[key] = requestID
+        if let ownerID { flight.owners.insert(ownerID) } else { flight.hasUnownedWaiter = true }
+        playbackTasks[key] = flight
         do {
-            let payload = try await task.value
-            if playbackRequestIDs[key] == requestID {
+            let payload = try await flight.task.value
+            guard sessionProvider() == sessionID, !flight.task.isCancelled else { throw CancellationError() }
+            if playbackTasks[key]?.id == flight.id {
                 playbackTasks[key] = nil
-                playbackRequestIDs[key] = nil
                 playbackURLs[key] = CachedValue(value: payload, savedAt: Date())
             }
             trimIfNeeded()
+            try Task.checkCancellation()
             return payload
         } catch {
-            if playbackRequestIDs[key] == requestID {
+            if playbackTasks[key]?.id == flight.id {
                 playbackTasks[key] = nil
-                playbackRequestIDs[key] = nil
             }
             throw error
         }
@@ -121,16 +142,25 @@ actor VideoPreparationCache {
 
     /// A page-owned playback request is no longer useful after its player is
     /// closed. Cancel the shared in-flight task as well as the caller's wait.
-    func cancelPlaybackURL(bvid: String, cid: Int) {
-        let key = PlaybackKey(bvid: bvid, cid: cid)
-        playbackTasks[key]?.cancel()
+    func cancelPlaybackURL(bvid: String, cid: Int, ownerID: UUID? = nil, sessionID: UUID? = nil) {
+        let key = PlaybackKey(sessionID: sessionID ?? synchronizeSession(), bvid: bvid, cid: cid)
+        guard var flight = playbackTasks[key] else { return }
+        if let ownerID {
+            guard flight.owners.remove(ownerID) != nil else { return }
+            if !flight.owners.isEmpty || flight.hasUnownedWaiter {
+                playbackTasks[key] = flight
+                return
+            }
+        }
+        flight.task.cancel()
         playbackTasks[key] = nil
-        playbackRequestIDs[key] = nil
     }
 
-    func invalidatePlaybackURL(bvid: String, cid: Int) {
-        cancelPlaybackURL(bvid: bvid, cid: cid)
-        playbackURLs[PlaybackKey(bvid: bvid, cid: cid)] = nil
+    func invalidatePlaybackURL(bvid: String, cid: Int, expectedSessionID: UUID? = nil) {
+        let sessionID = synchronizeSession()
+        guard expectedSessionID == nil || expectedSessionID == sessionID else { return }
+        cancelPlaybackURL(bvid: bvid, cid: cid, sessionID: sessionID)
+        playbackURLs[PlaybackKey(sessionID: sessionID, bvid: bvid, cid: cid)] = nil
     }
 
     /// 「滑过时预取」开关，默认关闭：和 PiliPlus 一样只在点开视频时请求播放地址，
@@ -142,21 +172,24 @@ actor VideoPreparationCache {
     /// Cancellation before the delay expires never enters the network queue.
     func prefetchWhenSettled(bvid: String, cid: Int? = nil) async {
         guard scrollPrefetchEnabled() else { return }
+        let sessionID = synchronizeSession()
         do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
         guard !Task.isCancelled else { return }
-        await prefetch(bvid: bvid, cid: cid)
+        await prefetch(bvid: bvid, cid: cid, expectedSessionID: sessionID)
     }
 
-    func prefetch(bvid: String, cid: Int? = nil) async {
+    func prefetch(bvid: String, cid: Int? = nil, expectedSessionID: UUID? = nil) async {
         guard !Task.isCancelled else { return }
+        let sessionID = synchronizeSession()
+        guard expectedSessionID == nil || expectedSessionID == sessionID else { return }
         removeExpiredValues()
-        if let cid, playbackURLs[PlaybackKey(bvid: bvid, cid: cid)] != nil { return }
-        if cid == nil, let detail = details[bvid]?.value,
-           playbackURLs[PlaybackKey(bvid: bvid, cid: detail.cid)] != nil { return }
+        if let cid, playbackURLs[PlaybackKey(sessionID: sessionID, bvid: bvid, cid: cid)] != nil { return }
+        if cid == nil, let detail = details[DetailKey(sessionID: sessionID, bvid: bvid)]?.value,
+           playbackURLs[PlaybackKey(sessionID: sessionID, bvid: bvid, cid: detail.cid)] != nil { return }
 
         guard await acquirePrefetchSlot() else { return }
-        defer { releasePrefetchSlot() }
-        guard !Task.isCancelled else { return }
+        defer { releasePrefetchSlot(sessionID: sessionID) }
+        guard !Task.isCancelled, sessionProvider() == sessionID else { return }
 
         do {
             let resolvedCid: Int
@@ -166,7 +199,7 @@ actor VideoPreparationCache {
                 resolvedCid = try await detail(for: bvid).cid
             }
             try Task.checkCancellation()
-            _ = try await playbackURL(bvid: bvid, cid: resolvedCid)
+            _ = try await playbackURL(bvid: bvid, cid: resolvedCid, expectedSessionID: sessionID)
         } catch {
             // 预取失败不能影响列表使用；用户真正点开时仍会正常重试并显示错误。
         }
@@ -198,12 +231,33 @@ actor VideoPreparationCache {
         prefetchWaiters.remove(at: index).continuation.resume(returning: false)
     }
 
-    private func releasePrefetchSlot() {
+    private func releasePrefetchSlot(sessionID: UUID) {
+        guard activeSessionID == sessionID else { return }
         if prefetchWaiters.isEmpty {
             activePrefetchCount = max(activePrefetchCount - 1, 0)
         } else {
             prefetchWaiters.removeFirst().continuation.resume(returning: true)
         }
+    }
+
+    /// Cache entries and in-flight requests are credentials-dependent (guest
+    /// previews, member quality, private details). Even re-login to the same
+    /// account starts a new epoch, and old completions may never repopulate it.
+    private func synchronizeSession() -> UUID {
+        let sessionID = sessionProvider()
+        guard activeSessionID != sessionID else { return sessionID }
+        activeSessionID = sessionID
+        for flight in detailTasks.values { flight.task.cancel() }
+        for flight in playbackTasks.values { flight.task.cancel() }
+        detailTasks.removeAll()
+        playbackTasks.removeAll()
+        details.removeAll()
+        playbackURLs.removeAll()
+        activePrefetchCount = 0
+        let waiters = prefetchWaiters
+        prefetchWaiters.removeAll()
+        for waiter in waiters { waiter.continuation.resume(returning: false) }
+        return sessionID
     }
 
     private func removeExpiredValues() {

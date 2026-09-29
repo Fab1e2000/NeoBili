@@ -21,15 +21,17 @@ extension BiliAPI {
     /// 网页端没有这个写接口，只能走 App 端，因此它需要 `access_key`——也就是
     /// 只有扫码登录的账号能用（见 `APIClient.postApp`）。密码登录的账号调用时
     /// 会拿到 `BiliAPIError.missingAccessKey`。
-    static func dislikeVideo(aid: Int, dislike: Bool) async throws {
-        try await APIClient.shared.postApp(
+    static func dislikeVideo(aid: Int, dislike: Bool, expectedSessionID: UUID? = nil,
+                             client: APIClient = .shared) async throws {
+        try await client.postApp(
             path: "x/v2/view/dislike",
             form: [
                 "aid": String(aid),
                 // 注意这个接口是反的：0 才是点踩，1 是取消点踩。传反了服务端会回
                 // 65005「取消踩失败，未点踩过」，看起来像点踩功能整个不能用。
                 "dislike": dislike ? "0" : "1"
-            ]
+            ],
+            expectedSessionID: expectedSessionID
         )
     }
 

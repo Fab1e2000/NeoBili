@@ -23,7 +23,13 @@ final class SearchInputContinuityTests: XCTestCase {
         }
         try await Task.sleep(for: .milliseconds(250))
         let field = try XCTUnwrap(input(host.view))
+        // This fixture supplies marked text itself. A real third-party keyboard
+        // can asynchronously replace that synthetic composition while its XPC
+        // extension starts, independently of the search view's identity.
+        field.inputView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 216))
+        field.reloadInputViews()
         XCTAssertTrue(field.becomeFirstResponder())
+        try await Task.sleep(for: .milliseconds(100))
         field.setMarkedText("n", selectedRange: NSRange(location: 1, length: 0))
         model.query = "n"
         try await Task.sleep(for: .milliseconds(200))

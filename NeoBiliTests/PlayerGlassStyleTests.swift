@@ -35,6 +35,11 @@ final class PlayerGlassStyleTests: XCTestCase {
     }
 
     func testDanmakuUsesTopRowAndFooterFillsWidthForEveryAspectRatio() {
+        // The chrome spaces visible 32pt circles inside their 48pt hit areas.
+        // Since the uniform-spacing redesign, neighbouring hit areas can touch;
+        // the timeline aligns to the circle's visible edge, not its hit area.
+        let circleInset: CGFloat = 8
+        let visualSpacing: CGFloat = 16
         for width: CGFloat in [288, 361, 788] {
             for height: CGFloat in [96, 130, 152, 210, 320, 820] {
                 for fullscreen in [false, true] {
@@ -44,10 +49,15 @@ final class PlayerGlassStyleTests: XCTestCase {
                         videoQualityWidth: 140, audioQualityWidth: 100)
                     XCTAssertEqual(layout.audioQuality.midY, layout.danmaku.midY)
                     XCTAssertEqual(layout.danmaku.midY, layout.more.midY)
-                    XCTAssertLessThan(layout.audioQuality.maxX, layout.danmaku.minX)
-                    XCTAssertLessThan(layout.danmaku.maxX, layout.more.minX)
-                    XCTAssertEqual(layout.timeline.minX, bounds.minX)
-                    XCTAssertEqual(layout.timeline.maxX + 6, layout.fullScreen.minX)
+                    let backCircle = layout.back.insetBy(dx: circleInset, dy: circleInset)
+                    let danmakuCircle = layout.danmaku.insetBy(dx: circleInset, dy: circleInset)
+                    let moreCircle = layout.more.insetBy(dx: circleInset, dy: circleInset)
+                    let fullScreenCircle = layout.fullScreen.insetBy(dx: circleInset, dy: circleInset)
+                    XCTAssertEqual(danmakuCircle.minX - layout.audioQuality.maxX, visualSpacing, accuracy: 0.001)
+                    XCTAssertEqual(moreCircle.minX - danmakuCircle.maxX, visualSpacing, accuracy: 0.001)
+                    XCTAssertLessThanOrEqual(layout.danmaku.maxX, layout.more.minX)
+                    XCTAssertEqual(layout.timeline.minX, backCircle.minX)
+                    XCTAssertEqual(fullScreenCircle.minX - layout.timeline.maxX, visualSpacing, accuracy: 0.001)
                     XCTAssertEqual(layout.fullScreen.maxX, bounds.maxX)
                     XCTAssertEqual(layout.timeline.midY, layout.fullScreen.midY)
                     XCTAssertTrue(layout.secondaryActions.isEmpty)

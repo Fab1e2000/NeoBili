@@ -58,6 +58,17 @@ struct BiliResponse<T: Decodable>: Decodable {
     let code: Int
     let message: String
     let data: T?
+
+    private enum CodingKeys: String, CodingKey { case code, message, data }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        code = try container.decode(Int.self, forKey: .code)
+        message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+        // 错误响应的 data 可能是字符串或诊断对象，不能先按成功模型解码，
+        // 否则 -101 等业务错误会被吞成解析失败，账号失效处理也不会执行。
+        data = code == 0 ? try container.decodeIfPresent(T.self, forKey: .data) : nil
+    }
 }
 
 /// Thin async wrapper around URLSession for talking to Bilibili's public web
@@ -68,9 +79,28 @@ struct APIClient {
     private static let baseURL = URL(string: "https://api.bilibili.com")!
     private static let appBaseURL = URL(string: "https://app.bilibili.com")!
     private let session: URLSession
+    private let authentication: @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot
+    private let appAuthentication: @Sendable () async -> DeviceIdentity.AppRequestAccount
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared,
+         authentication: @escaping @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot = {
+             await DeviceIdentity.shared.authenticatedRequestSnapshot()
+         },
+         appAuthentication: @escaping @Sendable () async -> DeviceIdentity.AppRequestAccount = {
+             await DeviceIdentity.shared.appAccount()
+         }) {
         self.session = session
+        self.authentication = authentication
+        self.appAuthentication = appAuthentication
+    }
+
+    /// 在实际读取 App 凭据时校验调用方绑定的会话；不能在异步调度之后
+    /// 重新绑定到当前账号，否则旧点击可能使用新登录的 access_key。
+    func appAccount(expectedSessionID: UUID? = nil) async throws -> DeviceIdentity.AppRequestAccount {
+        let account = await appAuthentication()
+        try Task.checkCancellation()
+        if let expectedSessionID, account.sessionID != expectedSessionID { throw CancellationError() }
+        return account
     }
 
     /// Performs a GET request against `path` with `params`, optionally WBI-signing
@@ -152,22 +182,26 @@ struct APIClient {
     func post(
         path: String,
         form: [String: String] = [:],
-        additionalHeaders: [String: String] = [:]
+        additionalHeaders: [String: String] = [:],
+        expectedSessionID: UUID? = nil
     ) async throws {
-        let _: BiliEmptyData = try await post(path: path, form: form, additionalHeaders: additionalHeaders)
+        let _: BiliEmptyData = try await post(path: path, form: form, additionalHeaders: additionalHeaders,
+                                            expectedSessionID: expectedSessionID)
     }
 
     /// 同上，但把响应的 `data` 解出来。点赞这类接口会在 data 里回一段提示文案。
     func post<T: Decodable>(
         path: String,
         form: [String: String] = [:],
-        additionalHeaders: [String: String] = [:]
+        additionalHeaders: [String: String] = [:],
+        expectedSessionID: UUID? = nil
     ) async throws -> T {
         try await postJSONBody(
             path: path,
             query: form,
             jsonBody: nil,
-            additionalHeaders: additionalHeaders
+            additionalHeaders: additionalHeaders,
+            expectedSessionID: expectedSessionID
         )
     }
 
@@ -192,7 +226,8 @@ struct APIClient {
         path: String,
         query: [String: String],
         jsonBody: [String: Any]?,
-        additionalHeaders: [String: String]
+        additionalHeaders: [String: String],
+        expectedSessionID: UUID? = nil
     ) async throws -> T {
         guard var components = URLComponents(
             string: Self.baseURL.appendingPathComponent(path).absoluteString
@@ -208,7 +243,18 @@ struct APIClient {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.httpMethod = "POST"
-        await applyCommonHeaders(to: &request)
+        let identity = await authentication()
+        try Task.checkCancellation()
+        if let expectedSessionID,
+           (!identity.isLoggedIn || identity.sessionID != expectedSessionID) {
+            throw CancellationError()
+        }
+        request.httpShouldHandleCookies = false
+        request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
+        if !identity.cookieHeader.isEmpty {
+            request.setValue(identity.cookieHeader, forHTTPHeaderField: "Cookie")
+        }
         // 关注等接口会校验自己的来源站点，调用方最后覆盖默认的全站 Referer。
         for (name, value) in additionalHeaders {
             request.setValue(value, forHTTPHeaderField: name)
@@ -233,9 +279,10 @@ struct APIClient {
     /// 整组参数用 HD 密钥签名。`headers` 是接口自带的请求头，可以覆盖账号相关的通用头
     /// （首页推荐按 iPhone 身份请求，要把 app-key 换掉）。
     func getApp<T: Decodable>(path: String, params: [String: String],
-                              headers: [String: String] = [:]) async throws -> T {
+                              headers: [String: String] = [:], retries: Int = 2,
+                              expectedSessionID: UUID? = nil) async throws -> T {
         var query = params
-        let account = await DeviceIdentity.shared.appAccount()
+        let account = try await appAccount(expectedSessionID: expectedSessionID)
         if let key = account.accessKey { query["access_key"] = key }
         guard var components = URLComponents(url: Self.appBaseURL.appendingPathComponent(path),
                                              resolvingAgainstBaseURL: false) else { throw BiliAPIError.invalidURL }
@@ -250,7 +297,7 @@ struct APIClient {
             request.setValue(value, forHTTPHeaderField: name)
         }
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
-        return try await perform(request, retries: 2)
+        return try await perform(request, retries: retries)
     }
 
     /// APP 端接口（app.bilibili.com）。
@@ -262,9 +309,11 @@ struct APIClient {
     /// 「点踩」等 App 写接口要求具备 App 登录凭据。
     func postApp(
         path: String,
-        form: [String: String] = [:]
+        form: [String: String] = [:],
+        expectedSessionID: UUID? = nil
     ) async throws {
-        guard let accessKey = await DeviceIdentity.shared.accessKey, !accessKey.isEmpty else {
+        let account = try await appAccount(expectedSessionID: expectedSessionID)
+        guard let accessKey = account.accessKey, !accessKey.isEmpty else {
             throw BiliAPIError.missingAccessKey
         }
         guard let url = URL(string: Self.appBaseURL.appendingPathComponent(path).absoluteString) else {
@@ -297,7 +346,7 @@ struct APIClient {
         request.httpShouldHandleCookies = false
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-        let cookie = await DeviceIdentity.shared.cookieHeader()
+        let cookie = await authentication().cookieHeader
         if !cookie.isEmpty {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
@@ -308,6 +357,7 @@ struct APIClient {
     private func data(for request: URLRequest, retries: Int) async throws -> (Data, URLResponse) {
         var attempt = 0
         while true {
+            try Task.checkCancellation()
             do {
                 return try await session.data(for: request)
             } catch let error as URLError where attempt < retries && Self.isRetryable(error) {

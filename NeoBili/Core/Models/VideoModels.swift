@@ -60,6 +60,34 @@ struct VideoSummary: Decodable, Identifiable, Hashable, VideoDimensionProviding 
     }
 }
 
+extension VideoSummary {
+    private enum CodingKeys: String, CodingKey {
+        case bvid, aid, cid, title, pic, desc, duration, pubdate, owner, stat, dimension
+        case recommendationFeedback, isWebRecommendation, recommendationBadge, recommendationTarget
+    }
+
+    /// `isWebRecommendation` is local presentation metadata, absent from normal
+    /// video-list responses. A stored Swift default is not a Decodable default.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        bvid = try values.decode(String.self, forKey: .bvid)
+        aid = try values.decode(Int.self, forKey: .aid)
+        cid = try values.decode(Int.self, forKey: .cid)
+        title = try values.decode(String.self, forKey: .title)
+        pic = try values.decode(String.self, forKey: .pic)
+        desc = try values.decode(String.self, forKey: .desc)
+        duration = try values.decode(Int.self, forKey: .duration)
+        pubdate = try values.decode(Int.self, forKey: .pubdate)
+        owner = try values.decode(VideoOwner.self, forKey: .owner)
+        stat = try values.decode(VideoStat.self, forKey: .stat)
+        dimension = try values.decodeIfPresent(VideoDimension.self, forKey: .dimension)
+        recommendationFeedback = try values.decodeIfPresent(RecommendationFeedbackOptions.self, forKey: .recommendationFeedback)
+        isWebRecommendation = try values.decodeIfPresent(Bool.self, forKey: .isWebRecommendation) ?? false
+        recommendationBadge = try values.decodeIfPresent(String.self, forKey: .recommendationBadge)
+        recommendationTarget = try values.decodeIfPresent(RecommendationTarget.self, forKey: .recommendationTarget)
+    }
+}
+
 enum RecommendationTarget: Decodable, Hashable, Sendable {
     case live(LiveRoom)
     /// 图文动态的编号，点开时再取详情。

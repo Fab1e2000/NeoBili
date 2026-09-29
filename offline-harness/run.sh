@@ -75,6 +75,13 @@ swiftc -swift-version 6 -parse-as-library \
     -o "$BUILD_DIR/playback-resume"
 "$BUILD_DIR/playback-resume"
 
+# 只有真实播放进度才能上传历史；seek、预载、缓冲、EOF 和慢网队列回归。
+swiftc -swift-version 6 -parse-as-library \
+    "$APP/Features/Player/PlaybackWatchProgress.swift" \
+    "$HARNESS/src/PlaybackWatchProgressRegression.swift" \
+    -o "$BUILD_DIR/playback-watch-progress"
+"$BUILD_DIR/playback-watch-progress"
+
 swiftc -swift-version 6 -parse-as-library \
     "$APP/Features/VideoDetail/InlineVideoLayout.swift" \
     "$HARNESS/src/InlineVideoLayoutRegression.swift" \
@@ -155,3 +162,11 @@ swiftc -swift-version 6 -parse-as-library \
     "$HARNESS/src/MiniPlayerInteractionRegression.swift" \
     -o "$BUILD_DIR/mini-player-interaction"
 "$BUILD_DIR/mini-player-interaction"
+
+# HTTP 身份隔离、WBI 并发和首页过期加载：同一批生产源码，独立入口。
+network_sources=("$BUILD_DIR"/*.swift)
+network_sources=("${(@)network_sources:#*/Tests.swift}")
+swiftc -parse-as-library "${network_sources[@]}" \
+    "$HARNESS/src/NetworkLoadingRegression.swift" \
+    -o "$BUILD_DIR/network-loading"
+"$BUILD_DIR/network-loading"

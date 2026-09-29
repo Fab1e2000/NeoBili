@@ -27,7 +27,11 @@ final class AppRecommendationTests: XCTestCase {
         var noArgs = card; noArgs["args"] = nil
         var unplayable = card; unplayable["can_play"] = 0
         var malformed = card; malformed["player_args"] = "invalid"
-        XCTAssertEqual(try decode([ad, bangumi, promoted, inlineAd, noArgs, unplayable, malformed, card]).videos.count, 1)
+        let videos = try decode([ad, bangumi, promoted, inlineAd, noArgs, unplayable, malformed, card]).videos
+        XCTAssertEqual(videos.count, 2)
+        XCTAssertEqual(videos.map(\.aid), [170001, 170001])
+        XCTAssertEqual(videos.map(\.cid), [0, 279786],
+                       "A valid param still opens the video when player_args needs a detail lookup")
     }
 
     @MainActor

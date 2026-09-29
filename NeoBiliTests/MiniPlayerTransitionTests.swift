@@ -53,38 +53,40 @@ final class MiniPlayerTransitionTests: XCTestCase {
         XCTAssertGreaterThan(expanded.height, window.bounds.height * 0.9)
 
         fixture.isPresented = false
-        var samples: [CGRect] = []
-        var lastImage: UIImage?
+        var samples: [(bounds: CGRect, image: UIImage)] = []
         for _ in 0..<28 {
             try await Task.sleep(for: .milliseconds(20))
             let image = render(window, scale: 0.25)
             if let bounds = greenBounds(in: image) {
-                if bounds.height < expanded.height * 0.6 {
-                    samples.append(bounds)
-                    lastImage = image
+                if bounds.height < expanded.height * 0.6, bounds.height > target.height {
+                    samples.append((bounds, image))
                 }
             }
             if fixture.didDismiss { break }
         }
-        let final = try XCTUnwrap(samples.last, "Capture an intermediate native zoom frame, not only the destination ID")
-        let geometry = XCTAttachment(string: "target=\(target), expanded=\(expanded), final=\(final), window=\(window.bounds)")
+        // Keep an actual captured frame, using the median vertical center of the
+        // last three visible frames to reduce cross-fade threshold jitter.
+        let recent = samples.suffix(3).sorted { $0.bounds.midY < $1.bounds.midY }
+        let sample = try XCTUnwrap(recent.isEmpty ? nil : recent[recent.count / 2],
+                                  "Capture an intermediate native zoom frame, not only the destination ID")
+        let final = sample.bounds
+        let geometry = XCTAttachment(string: "target=\(target), expanded=\(expanded), final=\(final), samples=\(samples.map(\.bounds)), window=\(window.bounds)")
         geometry.lifetime = .keepAlways
         add(geometry)
-        // Native zoom cross-fades before the page reaches its final bounds.
-        // Check its trajectory at the captured scale, not an already-faded endpoint.
-        let progress = (expanded.height - final.height) / (expanded.height - target.height)
-        XCTAssertGreaterThan(progress, 0.25)
-        let projectedX = expanded.midX + (final.midX - expanded.midX) / progress
-        let projectedY = expanded.midY + (final.midY - expanded.midY) / progress
-        XCTAssertLessThan(abs(projectedX - target.midX), 45)
-        XCTAssertLessThan(abs(projectedY - target.midY), 60,
+        // Native zoom animates position, scale and cross-fade independently.
+        // The green color threshold therefore cannot supply a linear progress
+        // value for extrapolating position; check the observed center directly.
+        XCTAssertLessThan(final.height, expanded.height * 0.6)
+        XCTAssertGreaterThan(final.height, target.height)
+        XCTAssertGreaterThan(final.midY, window.bounds.midY,
+                             "The shrinking page must travel toward the lower mini bar, away from the original top card")
+        XCTAssertLessThan(abs(final.midX - target.midX), 45)
+        XCTAssertLessThan(abs(final.midY - target.midY), 60,
                           "The sampled zoom trajectory must lead to the actual mini bar, not the original top card")
-        if let lastImage {
-            let attachment = XCTAttachment(image: lastImage)
-            attachment.name = "native-video-dismissal-approaches-mini-window"
-            attachment.lifetime = .keepAlways
-            add(attachment)
-        }
+        let attachment = XCTAttachment(image: sample.image)
+        attachment.name = "native-video-dismissal-approaches-mini-window"
+        attachment.lifetime = .keepAlways
+        add(attachment)
         XCTAssertTrue(fixture.didDismiss)
     }
 

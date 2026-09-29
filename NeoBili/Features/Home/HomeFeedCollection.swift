@@ -109,6 +109,7 @@ struct HomeFeedCollection: UIViewRepresentable {
 
     static func dismantleUIView(_ view: UICollectionView, coordinator: Coordinator) {
         coordinator.pull.detach()
+        coordinator.cancelImagePrefetches()
         #if PERFORMANCE_DEMO
         coordinator.scrollProbe.stop()
         #endif
@@ -187,6 +188,8 @@ struct HomeFeedCollection: UIViewRepresentable {
         private weak var clock: VideoEntranceClock?
         /// 每一行配置时拿到的入场起点，用来判断哪些行需要重新配置。
         private var configuredStarts: [String: [TimeInterval?]] = [:]
+        private var imagePrefetches: [IndexPath: [Task<Void, Never>]] = [:]
+        private var displayedImagePrefetches: [ObjectIdentifier: [Task<Void, Never>]] = [:]
         /// App 的文字档位，决定标题预排版用的字号。
         private var dynamicTypeSize: DynamicTypeSize = .large
         var removalAnimationDuration: Double?
@@ -301,6 +304,9 @@ struct HomeFeedCollection: UIViewRepresentable {
                 && previous.filter(remaining.contains) == current
             // 没有变化时直接返回：刷新淡出、滚动开关这些状态也会触发这里。
             guard structureChanged || !changed.isEmpty || needsReconfigureAll else { return }
+            // Index paths can point at different cards after refresh/removal.
+            // Their old prefetch handles must not survive the snapshot change.
+            cancelImagePrefetches()
 
             // 只有原本就在列表里的行需要重配；新插入的行出现时自然会配置。
             let existing = Set(itemsByID.keys)
@@ -310,6 +316,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             let changedIDs = Set(changed)
             prepareTitles(for: items.filter { !existing.contains($0.id) || changedIDs.contains($0.id) })
             itemsByID = byID
+            configuredStarts = configuredStarts.filter { byID[$0.key] != nil }
             latestIDs = latest
             earlierIDs = earlier
             hasMarker = marker
@@ -460,11 +467,27 @@ struct HomeFeedCollection: UIViewRepresentable {
             let cover = HomeCardLayout.coverSize(for: collectionView.bounds.width)
             prepareTitles(for: indexPaths.compactMap { dataSource.itemIdentifier(for: $0).flatMap { itemsByID[$0] } })
             for indexPath in indexPaths {
+                guard imagePrefetches[indexPath] == nil else { continue }
                 guard let id = dataSource.itemIdentifier(for: indexPath),
                       case .video(let video)? = itemsByID[id] else { continue }
-                BiliImageLoader.prefetch(video.secureCoverURL, pointSize: cover, scale: scale)
-                BiliImageLoader.prefetch(video.secureAvatarURL, pointSize: HomeCardLayout.avatarSize, scale: scale)
+                imagePrefetches[indexPath] = [
+                    BiliImageLoader.prefetch(video.secureCoverURL, pointSize: cover, scale: scale),
+                    BiliImageLoader.prefetch(video.secureAvatarURL, pointSize: HomeCardLayout.avatarSize, scale: scale)
+                ].compactMap { $0 }
             }
+        }
+
+        func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
+            for indexPath in indexPaths {
+                imagePrefetches.removeValue(forKey: indexPath)?.forEach { $0.cancel() }
+            }
+        }
+
+        func cancelImagePrefetches() {
+            imagePrefetches.values.forEach { $0.forEach { $0.cancel() } }
+            imagePrefetches.removeAll()
+            displayedImagePrefetches.values.forEach { $0.forEach { $0.cancel() } }
+            displayedImagePrefetches.removeAll()
         }
 
         // MARK: 切换淡入
@@ -512,6 +535,12 @@ struct HomeFeedCollection: UIViewRepresentable {
 
         func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
                             forItemAt indexPath: IndexPath) {
+            // Keep the prefetch consumer cancellable until this cell leaves.
+            // Key visible handles by cell identity: a snapshot may reuse the
+            // old index path for a different card before didEndDisplaying.
+            let cellID = ObjectIdentifier(cell)
+            displayedImagePrefetches.removeValue(forKey: cellID)?.forEach { $0.cancel() }
+            displayedImagePrefetches[cellID] = imagePrefetches.removeValue(forKey: indexPath)
             applyContentOpacity(to: cell, id: dataSource?.itemIdentifier(for: indexPath))
             if dataSource?.itemIdentifier(for: indexPath) == Self.headerID {
                 positionHeader(cell, in: collectionView)
@@ -531,6 +560,11 @@ struct HomeFeedCollection: UIViewRepresentable {
                   indexPath.item >= collectionView.numberOfItems(inSection: lastSection) - 6 else { return }
             let hides = hidesPortraitVideos
             Task { await viewModel.loadMoreIfNeeded(current: video, hidingKnownPortraitVideos: hides) }
+        }
+
+        func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell,
+                            forItemAt indexPath: IndexPath) {
+            displayedImagePrefetches.removeValue(forKey: ObjectIdentifier(cell))?.forEach { $0.cancel() }
         }
     }
 }
