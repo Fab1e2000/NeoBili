@@ -80,14 +80,15 @@ NeoBili/
 ```
 卡片点击 → NowPlayingStore.open(route)
   ├─ VideoDetailViewModel.load()            详情（经 VideoPreparationCache 去重）
-  ├─ VideoPreparationCache.prefetch 已把     播放地址（卡片露面时已预取）
-  │   playURL 缓存好 → PlayerViewModel.load()
+  ├─ 「详情页直接播放」开启 → PlayerViewModel.load()（若已有预取地址则复用）
+  │   关闭 → 等待页面/小窗播放键调用 requestPlayback() 后才创建播放器
   └─ 详情回来后 → loadExtras()（标签/互动关系/名片并行）+ 评论模型
 ```
 
 - **NowPlayingStore**（`Features/NowPlaying/`，挂在 RootView 环境上）拥有视频页的全部
   状态：route、播放器、详情/评论模型、分 P、滚动位置、返回历史。相关视频/合集是
-  「就地换片 + 历史栈」；`close()` 负责停播放器并取消全部加载任务。
+  「就地换片 + 历史栈」；每次换片从 `DetailPlaybackSettings` 读取自动播放设置；
+  `close()` 负责停播放器并取消全部加载任务。
 - **PlayerViewModel** 只管播放本身：加载、画质切换（不换 session 就地重开）、备用
   地址逐个尝试（`PlaybackSource.candidates`）、心跳上报、定时休眠。内核事件经
   `engineID` 过滤，旧内核的迟到事件不会污染新会话。

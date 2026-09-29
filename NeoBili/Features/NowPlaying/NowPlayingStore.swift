@@ -20,6 +20,8 @@ final class NowPlayingStore {
     private(set) var commentsViewModel: CommentsViewModel?
     private(set) var player: PlayerViewModel?
     private(set) var livePlayer: LivePlayerModel?
+    private var hasRequestedPlayback = false
+    var isWaitingForPlayback: Bool { route != nil && !hasRequestedPlayback }
     private var liveLoadTask: Task<Void, Never>?
 
     var hasMedia: Bool { route != nil || livePlayer != nil }
@@ -30,7 +32,14 @@ final class NowPlayingStore {
 
     func togglePlayback() {
         if let livePlayer { livePlayer.togglePlayback() }
-        else { player?.togglePlayPause() }
+        else if let player { player.togglePlayPause() }
+        else { requestPlayback() }
+    }
+
+    func requestPlayback() {
+        guard route != nil, !hasRequestedPlayback else { return }
+        hasRequestedPlayback = true
+        startPlayerIfPossible()
     }
 
     func openLive(_ room: LiveRoom, from sourceID: String) {
@@ -275,6 +284,7 @@ final class NowPlayingStore {
         cancelLoads()
         player?.stop()
         player = nil
+        hasRequestedPlayback = false
         detailViewModel = nil
         commentsViewModel = nil
         route = nil
@@ -332,6 +342,7 @@ final class NowPlayingStore {
         isMiniPlayerPresented = false
 
         route = newRoute
+        hasRequestedPlayback = DetailPlaybackSettings.isAutoPlayEnabled(in: defaults)
         selectedCid = newRoute.cid
         section = .description
         isDescriptionExpanded = false
@@ -361,12 +372,12 @@ final class NowPlayingStore {
             }
         ]
 
-        // 入口带了 cid 的话这里就能直接开始取流，不用等上面的详情接口。
+        // 自动播放且入口带了 cid 时直接取流；手动播放只加载页面数据。
         startPlayerIfPossible()
     }
 
     private func startPlayerIfPossible() {
-        guard let route, let cid = activeCid else { return }
+        guard hasRequestedPlayback, let route, let cid = activeCid else { return }
         // 已经在放这一个了就不要重建，否则会打断正在进行的播放。
         if let player, player.bvid == route.bvid, player.cid == cid { return }
 
