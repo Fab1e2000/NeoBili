@@ -1,5 +1,15 @@
 # 开发与测试
 
+## 分支与合并
+
+- `develop` 用于日常开发和集成，普通功能、修复、文档和翻译 PR 的目标分支均为 `develop`。
+- 外部贡献者从最新的 `develop` 创建自己的工作分支，完成相关改动后向 `develop` 提 PR。
+- `main` 保留稳定发布版本；维护者准备发版时，确认相关测试与 CI 通过后，将 `develop`
+  合入 `main`，再创建版本标签和发布产物。
+- 紧急修复等需要直接向 `main` 提 PR 的情况，先与维护者确认；修复合入后同步回 `develop`。
+
+提交问题和 PR 的说明要求见根目录 [CONTRIBUTING.md](../CONTRIBUTING.md)。
+
 ## 环境与入口
 
 使用 Xcode 26.2 或更新版本，安装 iOS Simulator runtime，并让 Command Line Tools

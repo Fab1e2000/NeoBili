@@ -150,7 +150,7 @@ when editing project configuration.
 
 ## Contributing
 
-Bug reports and feature requests are welcome in [Issues](https://github.com/Fab1e2000/NeoBili/issues). Before opening a pull request, please make sure the project builds and `zsh offline-harness/run.sh` passes.
+Bug reports and feature requests are welcome in [Issues](https://github.com/Fab1e2000/NeoBili/issues). Open ordinary pull requests against `develop`. See the [contributing guide](CONTRIBUTING.md) for the workflow and validation requirements.
 
 ## Known limitations
 
