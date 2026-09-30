@@ -19,7 +19,9 @@ actor WBISigner {
         22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52
     ]
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let session: URLSession
+    private let cookieHeader: @Sendable () async -> String
     private let mixinKeyDefaultsKey = "neobili.wbi.mixinKey"
     private let savedAtDefaultsKey = "neobili.wbi.mixinKeySavedAt"
 
@@ -28,7 +30,11 @@ actor WBISigner {
     /// 同一时间只允许一个 nav 请求。多个接口同时启动时，其余的会复用这一个结果，
     /// 否则首屏会连着发好几次相同的密钥请求，把真正要用的接口挤到后面。
     private var refreshTask: Task<String, Error>?
-    private init() {
+    init(session: URLSession = AppNetwork.session, defaults: UserDefaults = .standard,
+         cookieHeader: @escaping @Sendable () async -> String = { await DeviceIdentity.shared.cookieHeader() }) {
+        self.session = session
+        self.defaults = defaults
+        self.cookieHeader = cookieHeader
         // 密钥写进本地存储，冷启动时不必再等一次 nav 请求。
         cachedMixinKey = defaults.string(forKey: mixinKeyDefaultsKey)
         let savedAt = defaults.double(forKey: savedAtDefaultsKey)
@@ -43,7 +49,11 @@ actor WBISigner {
     /// Returns the query items with `wts` and `w_rid` appended, signed with the
     /// current mixin key.
     func sign(params: [String: String]) async throws -> [String: String] {
+        try Task.checkCancellation()
         let mixinKey = try await mixinKeyValue()
+        // 共享 nav 请求不能被单个调用方取消，但它结束后已取消的调用方
+        // 必须退出，避免继续把搜索/推荐的过期请求发出去。
+        try Task.checkCancellation()
         // 过滤要在签名之前做，而且**过滤后的值也要原样发出去**：
         // 摘要是按这些值算的，发别的就对不上了。
         var signedParams = params.mapValues(sanitize)
@@ -76,7 +86,7 @@ actor WBISigner {
     private func mixinKeyValue() async throws -> String {
         if let cached = cachedMixinKey,
            let cachedAt,
-           !cached.isEmpty,
+           Self.isValidKey(cached),
            Self.isCacheFresh(savedAt: cachedAt) {
             return cached
         }
@@ -95,11 +105,7 @@ actor WBISigner {
 
         let task = Task { () throws -> String in
             let (imgKey, subKey) = try await fetchKeyFragments()
-            let raw = imgKey + subKey
-            let mixin = Self.mixinKeyEncTab
-                .prefix(32)
-                .map { raw[raw.index(raw.startIndex, offsetBy: $0)] }
-            return String(mixin)
+            return try Self.makeMixinKey(imgKey: imgKey, subKey: subKey)
         }
         refreshTask = task
         defer { refreshTask = nil }
@@ -125,6 +131,18 @@ actor WBISigner {
     private var lastFailedAt: Date?
     private var lastError: Error?
     private static let navFailureCooldown: TimeInterval = 30
+
+    private static func isValidKey(_ key: String) -> Bool {
+        key.utf8.count == 32 && key.utf8.allSatisfy {
+            (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0)
+        }
+    }
+
+    static func makeMixinKey(imgKey: String, subKey: String) throws -> String {
+        guard isValidKey(imgKey), isValidKey(subKey) else { throw BiliAPIError.missingWbiKeys }
+        let raw = Array((imgKey + subKey).utf8)
+        return String(decoding: mixinKeyEncTab.prefix(32).map { raw[$0] }, as: UTF8.self)
+    }
 
     /// WBI 图片密钥并不需要按小时刷新。PiliPlus 也是把同一天拿到的密钥直接
     /// 持久复用；这样重新打开 App 后，首页推荐和第一个视频都能立刻签名，
@@ -164,13 +182,17 @@ actor WBISigner {
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
+        request.httpShouldHandleCookies = false
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-        let cookie = await DeviceIdentity.shared.cookieHeader()
+        let cookie = await cookieHeader()
         if !cookie.isEmpty {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw BiliAPIError.httpStatus((response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
         let decoded = try JSONDecoder().decode(NavResponse.self, from: data)
         guard let wbiImg = decoded.data?.wbiImg else {
             throw BiliAPIError.missingWbiKeys

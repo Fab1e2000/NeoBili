@@ -153,7 +153,13 @@ struct AppRecommendationCard: Decodable {
         switch goto {
         case _ where Self.videoGotos.contains(goto):
             // 只有视频卡带「能否播放」；直播、图文卡没有这个字段。
-            let player = try? c.nestedContainer(keyedBy: Key.self, forKey: .player)
+            let player: KeyedDecodingContainer<Key>?
+            if c.contains(.player), try !c.decodeNil(forKey: .player) {
+                // 缺失可以用 param 补身份；已返回但格式损坏的播放参数不能视作缺失。
+                player = try c.nestedContainer(keyedBy: Key.self, forKey: .player)
+            } else {
+                player = nil
+            }
             let aid = player?.integer(.aid) ?? param
             guard c.integer(.canPlay) == 1, aid > 0,
                   let bvid = c.text(.bvid) ?? AppRecommendationPage.bvid(aid: aid), !bvid.isEmpty else { throw Skipped() }

@@ -19,17 +19,23 @@ extension BiliAPI {
     ///
     /// 格式对齐 PiliPlus：UGC 稿件 type=3，`played_time` 传秒数，
     /// 看完时传 -1。未登录（拿不到 csrf）时直接不发。
-    static func reportWatchProgress(bvid: String, cid: Int, playedTime: Double) async throws {
-        guard let csrf = await DeviceIdentity.shared.csrfToken, !csrf.isEmpty else { return }
+    static func reportWatchProgress(bvid: String, cid: Int, playedTime: Double,
+                                    expectedSessionID: UUID) async throws {
+        guard !bvid.isEmpty, cid > 0, playedTime.isFinite,
+              playedTime == -1 || (playedTime >= 1 && playedTime < Double(Int.max)) else { return }
+        let identity = await DeviceIdentity.shared.authenticatedRequestSnapshot()
+        guard identity.sessionID == expectedSessionID, identity.isLoggedIn,
+              let csrf = identity.csrfToken, !csrf.isEmpty else { return }
         try await APIClient.shared.post(
             path: "x/click-interface/web/heartbeat",
             form: [
                 "bvid": bvid,
                 "cid": String(cid),
                 "type": "3",
-                "played_time": String(Int(playedTime.rounded())),
+                "played_time": String(Int(playedTime.rounded(.down))),
                 "csrf": csrf
-            ]
+            ],
+            expectedSessionID: expectedSessionID
         )
     }
 

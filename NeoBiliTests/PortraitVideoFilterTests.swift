@@ -41,6 +41,10 @@ final class PortraitVideoFilterTests: XCTestCase {
         let video = try JSONDecoder().decode(VideoSummary.self, from: data)
 
         XCTAssertTrue(video.dimension?.isPortrait == true)
+        XCTAssertFalse(video.isWebRecommendation)
+        XCTAssertNil(video.recommendationFeedback)
+        XCTAssertNil(video.recommendationBadge)
+        XCTAssertNil(video.recommendationTarget)
     }
 
     private func video(_ id: String, dimension: VideoDimension?) -> VideoSummary {

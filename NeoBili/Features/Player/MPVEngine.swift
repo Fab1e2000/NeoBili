@@ -107,6 +107,8 @@ final class MPVEngine: @unchecked Sendable {
     }
 
     func open(source: PlaybackSource, startTime: TimeInterval = 0) {
+        // Regression exercises playback through injected sessions, never native network I/O.
+        guard !AppNetwork.isRegression else { return }
         guard !isStopped, let mpv else { return }
         hasReportedFirstFrame = false
         lastKnownPosition = 0

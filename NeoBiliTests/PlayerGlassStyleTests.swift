@@ -7,7 +7,7 @@ import XCTest
 /// injected by the tests below; no PlayerViewModel/MPV/network is needed.
 @MainActor
 final class PlayerGlassStyleTests: XCTestCase {
-    func testProgressUpdatesDoNotRebuildMenuContentOnRealDevice() async throws {
+    func testProgressUpdatesDoNotRebuildMenuContentInForegroundWindow() async throws {
         let host = try PlayerGlassSnapshotHost()
         defer { host.close() }
         let progress = PlayerProgressIsolationState()
@@ -35,6 +35,11 @@ final class PlayerGlassStyleTests: XCTestCase {
     }
 
     func testDanmakuUsesTopRowAndFooterFillsWidthForEveryAspectRatio() {
+        // The chrome spaces visible 32pt circles inside their 48pt hit areas.
+        // Since the uniform-spacing redesign, neighbouring hit areas can touch;
+        // the timeline aligns to the circle's visible edge, not its hit area.
+        let circleInset: CGFloat = 8
+        let visualSpacing: CGFloat = 16
         for width: CGFloat in [288, 361, 788] {
             for height: CGFloat in [96, 130, 152, 210, 320, 820] {
                 for fullscreen in [false, true] {
@@ -44,10 +49,15 @@ final class PlayerGlassStyleTests: XCTestCase {
                         videoQualityWidth: 140, audioQualityWidth: 100)
                     XCTAssertEqual(layout.audioQuality.midY, layout.danmaku.midY)
                     XCTAssertEqual(layout.danmaku.midY, layout.more.midY)
-                    XCTAssertLessThan(layout.audioQuality.maxX, layout.danmaku.minX)
-                    XCTAssertLessThan(layout.danmaku.maxX, layout.more.minX)
-                    XCTAssertEqual(layout.timeline.minX, bounds.minX)
-                    XCTAssertEqual(layout.timeline.maxX + 6, layout.fullScreen.minX)
+                    let backCircle = layout.back.insetBy(dx: circleInset, dy: circleInset)
+                    let danmakuCircle = layout.danmaku.insetBy(dx: circleInset, dy: circleInset)
+                    let moreCircle = layout.more.insetBy(dx: circleInset, dy: circleInset)
+                    let fullScreenCircle = layout.fullScreen.insetBy(dx: circleInset, dy: circleInset)
+                    XCTAssertEqual(danmakuCircle.minX - layout.audioQuality.maxX, visualSpacing, accuracy: 0.001)
+                    XCTAssertEqual(moreCircle.minX - danmakuCircle.maxX, visualSpacing, accuracy: 0.001)
+                    XCTAssertLessThanOrEqual(layout.danmaku.maxX, layout.more.minX)
+                    XCTAssertEqual(layout.timeline.minX, backCircle.minX)
+                    XCTAssertEqual(fullScreenCircle.minX - layout.timeline.maxX, visualSpacing, accuracy: 0.001)
                     XCTAssertEqual(layout.fullScreen.maxX, bounds.maxX)
                     XCTAssertEqual(layout.timeline.midY, layout.fullScreen.midY)
                     XCTAssertTrue(layout.secondaryActions.isEmpty)
@@ -79,7 +89,7 @@ final class PlayerGlassStyleTests: XCTestCase {
         XCTAssertLessThan(narrow.audioQuality.maxX, narrow.more.minX)
     }
 
-    func testLoadingControlsCanBeShownAndHiddenBeforeFirstFrameOnRealDevice() async throws {
+    func testLoadingControlsCanBeShownAndHiddenBeforeFirstFrameInForegroundWindow() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         try await host.show(Color.black)
@@ -218,7 +228,7 @@ final class PlayerGlassStyleTests: XCTestCase {
         XCTAssertLessThan(landscape.metadata.maxX, landscape.videoQuality.minX)
     }
 
-    func testGlassChromeAcrossRealDeviceOrientationsSizesAndLoadingStates() async throws {
+    func testGlassChromeAcrossWindowOrientationsSizesAndLoadingStates() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         let cases: [(String, Bool, Double?, PlayerGlassFixtureState, Bool)] = [
@@ -266,7 +276,7 @@ final class PlayerGlassStyleTests: XCTestCase {
 
     /// 透明玻璃最难的情况：接近纯白的画面加顶部弹幕。截图留给人看，
     /// 断言只检查控件层和调暗层照常铺满画面。
-    func testClearGlassControlsOverBrightVideoOnRealDevice() async throws {
+    func testClearGlassControlsOverBrightVideoInForegroundWindow() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         for (name, landscape, inlineRatio) in [("bright-inline-16x9", false, 16.0 / 9 as Double?),
@@ -286,7 +296,7 @@ final class PlayerGlassStyleTests: XCTestCase {
         }
     }
 
-    func testFullscreenQualityMenusUseTheBlackSidebarsOnRealDevice() async throws {
+    func testFullscreenQualityMenusUseTheBlackSidebarsInForegroundWindow() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         for (name, landscape, ratio, longLabels) in [

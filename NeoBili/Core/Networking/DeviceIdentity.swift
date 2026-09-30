@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Synchronization
 
 /// Manages the anonymous device identity (buvid3/buvid4) that Bilibili's web
 /// API expects as a cookie on every request, even for guest (logged-out) traffic.
@@ -9,9 +10,13 @@ import CryptoKit
 /// 拿到之后所有接口——推荐、评论、收藏、历史——不需要任何额外改动就能获得
 /// 登录态。凭据本体存 Keychain（见 `KeychainStore`），重启 App 后自动恢复。
 actor DeviceIdentity {
-    static let shared = DeviceIdentity()
+    static let shared = DeviceIdentity(credentials: AppNetwork.isRegression ? .memory() : .keychain,
+                                       allowsNetwork: !AppNetwork.isRegression)
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let credentials: CredentialStorage
+    private let allowsNetwork: Bool
+    private let purgeCookies: @Sendable () -> Void
     private let buvid3Key = "neobili.buvid3"
     private let buvid4Key = "neobili.buvid4"
     private static let sessdataKeychainKey = "neobili.sessdata"
@@ -26,14 +31,45 @@ actor DeviceIdentity {
     private var cachedDedeUserID: String?
     private var cachedAccessKey: String?
     private var fetchTask: Task<Void, Never>?
+    private nonisolated let credentialSessionID = Mutex(UUID())
 
-    private init() {
+    /// 播放器在创建时同步绑定会话，不能等异步任务调度后才读取账号。
+    nonisolated var loginSessionID: UUID { credentialSessionID.withLock { $0 } }
+
+    /// Cookie、CSRF 和会话版本必须在同一次 actor 调用中读取。
+    /// 排队中的写请求绑定这个版本，退出后即使重登同一个账号也不会误发。
+    struct AuthenticatedRequestSnapshot: Sendable {
+        let sessionID: UUID
+        let accountID: Int?
+        let csrfToken: String?
+        let cookieHeader: String
+        let isLoggedIn: Bool
+    }
+
+    func authenticatedRequestSnapshot() -> AuthenticatedRequestSnapshot {
+        AuthenticatedRequestSnapshot(
+            sessionID: loginSessionID,
+            accountID: cachedDedeUserID.flatMap(Int.init),
+            csrfToken: cachedBiliJct,
+            cookieHeader: cookieHeader(),
+            isLoggedIn: cachedSessdata != nil
+        )
+    }
+
+    init(defaults: UserDefaults = .standard,
+         credentials: CredentialStorage = AppNetwork.isRegression ? .memory() : .keychain,
+         allowsNetwork: Bool = !AppNetwork.isRegression,
+         purgeCookies: @escaping @Sendable () -> Void = { DeviceIdentity.purgeSharedCookieJar() }) {
+        self.defaults = defaults
+        self.credentials = credentials
+        self.allowsNetwork = allowsNetwork
+        self.purgeCookies = purgeCookies
         cachedBuvid3 = defaults.string(forKey: buvid3Key)
         cachedBuvid4 = defaults.string(forKey: buvid4Key)
-        cachedSessdata = KeychainStore.string(for: Self.sessdataKeychainKey)
-        cachedBiliJct = KeychainStore.string(for: Self.biliJctKeychainKey)
-        cachedDedeUserID = KeychainStore.string(for: Self.dedeUserIDKeychainKey)
-        cachedAccessKey = KeychainStore.string(for: Self.accessKeyKeychainKey)
+        cachedSessdata = credentials.read(Self.sessdataKeychainKey)
+        cachedBiliJct = credentials.read(Self.biliJctKeychainKey)
+        cachedDedeUserID = credentials.read(Self.dedeUserIDKeychainKey)
+        cachedAccessKey = credentials.read(Self.accessKeyKeychainKey)
     }
 
     func accountSnapshot() -> AccountCredentialsSnapshot {
@@ -70,9 +106,17 @@ actor DeviceIdentity {
     }
 
     /// App 接口的身份：access_key 与登录账号的 mid，在同一次 actor 调用里读出。
-    func appAccount() -> (accessKey: String?, mid: Int?) {
+    struct AppRequestAccount: Sendable {
+        let accessKey: String?
+        let mid: Int?
+        let sessionID: UUID
+    }
+
+    func appAccount() -> AppRequestAccount {
         let key = cachedAccessKey.flatMap { $0.isEmpty ? nil : $0 }
-        return (key, cachedSessdata == nil ? nil : cachedDedeUserID.flatMap(Int.init))
+        return AppRequestAccount(accessKey: key,
+                                 mid: cachedSessdata == nil ? nil : cachedDedeUserID.flatMap(Int.init),
+                                 sessionID: loginSessionID)
     }
 
     /// PiliPlus 的 App buvid 与网页 buvid3 分开持久化，不随刷新重建。
@@ -113,18 +157,19 @@ actor DeviceIdentity {
     /// 扫码或密码登录成功后写入凭据。SESSDATA 的值本来就是 URL 转义过的
     ///（含 %2C 等），原样存、原样发即可，不要再做一次编解码。
     func setLoginCookies(sessdata: String, biliJct: String, dedeUserID: String) {
+        credentialSessionID.withLock { $0 = UUID() }
         cachedSessdata = sessdata
         cachedBiliJct = biliJct
         cachedDedeUserID = dedeUserID
-        KeychainStore.set(sessdata, for: Self.sessdataKeychainKey)
-        KeychainStore.set(biliJct, for: Self.biliJctKeychainKey)
-        KeychainStore.set(dedeUserID, for: Self.dedeUserIDKeychainKey)
+        credentials.write(sessdata, Self.sessdataKeychainKey)
+        credentials.write(biliJct, Self.biliJctKeychainKey)
+        credentials.write(dedeUserID, Self.dedeUserIDKeychainKey)
     }
 
     /// 扫码登录额外带回来的 APP 端凭据。密码登录没有这个值，传 nil 即可。
     func setAccessKey(_ accessKey: String?) {
         cachedAccessKey = accessKey
-        KeychainStore.set(accessKey, for: Self.accessKeyKeychainKey)
+        credentials.write(accessKey, Self.accessKeyKeychainKey)
     }
 
     /// 换取到的 App 凭据只在仍是同一账号时保存，换取途中退出或换号就丢弃。
@@ -136,15 +181,16 @@ actor DeviceIdentity {
 
     /// 退出登录或凭据失效时清除。
     func clearLoginCookies() {
+        credentialSessionID.withLock { $0 = UUID() }
         cachedSessdata = nil
         cachedBiliJct = nil
         cachedDedeUserID = nil
         cachedAccessKey = nil
-        KeychainStore.set(nil, for: Self.sessdataKeychainKey)
-        KeychainStore.set(nil, for: Self.biliJctKeychainKey)
-        KeychainStore.set(nil, for: Self.dedeUserIDKeychainKey)
-        KeychainStore.set(nil, for: Self.accessKeyKeychainKey)
-        Self.purgeSharedCookieJar()
+        credentials.write(nil, Self.sessdataKeychainKey)
+        credentials.write(nil, Self.biliJctKeychainKey)
+        credentials.write(nil, Self.dedeUserIDKeychainKey)
+        credentials.write(nil, Self.accessKeyKeychainKey)
+        purgeCookies()
     }
 
     /// 把系统共享 Cookie 罐里的 B 站 Cookie 也删掉。
@@ -153,7 +199,7 @@ actor DeviceIdentity {
     /// `HTTPCookieStorage.shared`。我们自己只清 Keychain 的话，共享罐里那份
     /// SESSDATA 还在，退出登录就不彻底：界面已经是未登录，请求却仍可能带着
     /// 旧会话出去，重新登录时新旧凭据还会撞在一起。
-    private static func purgeSharedCookieJar() {
+    static func purgeSharedCookieJar() {
         let storage = HTTPCookieStorage.shared
         for cookie in storage.cookies ?? [] where cookie.domain.contains("bilibili.com") {
             storage.deleteCookie(cookie)
@@ -161,7 +207,7 @@ actor DeviceIdentity {
     }
 
     private func startFetchIfNeeded() {
-        guard fetchTask == nil else { return }
+        guard allowsNetwork, fetchTask == nil else { return }
         fetchTask = Task { [weak self] in
             await self?.fetchFromSPI()
         }
@@ -192,7 +238,7 @@ actor DeviceIdentity {
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await AppNetwork.session.data(for: request)
             let decoded = try JSONDecoder().decode(SPIResponse.self, from: data)
             if let b3 = decoded.data?.b3 {
                 cachedBuvid3 = b3

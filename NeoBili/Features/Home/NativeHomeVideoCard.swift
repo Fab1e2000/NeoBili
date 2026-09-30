@@ -272,6 +272,15 @@ struct NativeHomeVideoCard: UIViewRepresentable {
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         deinit { task?.cancel() }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window == nil {
+                task?.cancel()
+                task = nil
+            } else if imageView.image == nil, task == nil, let request {
+                start(request)
+            }
+        }
         override func layoutSubviews() {
             super.layoutSubviews()
             imageView.frame = bounds
@@ -282,10 +291,15 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             guard self.request != request else { return }
             self.request = request
             task?.cancel()
+            task = nil
             imageView.image = nil
             backgroundColor = .quaternaryLabel
             failure.isHidden = url != nil
-            guard let url, let pixels = request.pixels else { return }
+            start(request)
+        }
+        private func start(_ request: Request) {
+            guard let url = request.url, let pixels = request.pixels else { return }
+            failure.isHidden = true
             if let cached = BiliImageMemoryCache.image(for: url, pixelSize: pixels) {
                 imageView.image = cached
                 backgroundColor = .clear
@@ -297,6 +311,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                         let image = try await BiliImageLoader.load(url, pixelSize: pixels)
                         guard !Task.isCancelled, let self, self.request == request else { return }
                         self.imageView.image = image
+                        self.failure.isHidden = true
                         self.backgroundColor = .clear
                         return
                     } catch {

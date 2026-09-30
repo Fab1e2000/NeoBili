@@ -177,9 +177,13 @@ final class PlayerViewModel {
     private var metadata: SystemMediaMetadata?
     private(set) var isBuffering = false
     private let playbackURLLoader: PlaybackURLLoader
+    @ObservationIgnored private let playbackRequestOwnerID: UUID
+    @ObservationIgnored private let loginSessionID: UUID
     private let qualityPlaybackURLLoader: QualityPlaybackURLLoader
     private let sourceOpener: PlaybackSourceOpener
-    private let watchProgressReporter: @Sendable (String, Int, Double) async -> Void
+    @ObservationIgnored private let watchProgressSender: PlaybackWatchProgressSender
+    @ObservationIgnored private let watchProgressClock: () -> TimeInterval
+    @ObservationIgnored private var watchProgress = PlaybackWatchProgress()
     private let progressStore: PlaybackProgressStore
     var isPlaybackCompleted: Bool { resumeState.isCompleted }
 
@@ -187,9 +191,6 @@ final class PlayerViewModel {
     private var hasPreparedInitialSource = false
     private var lastSavedPosition: TimeInterval
     private let systemMediaSessionID = UUID()
-    /// 上次心跳已上报到的秒数。播放中每前进 5 秒报一次；暂停、换页、
-    /// 看完时再补一次，保证历史记录里的进度停在最后看的位置。
-    private var lastReportedWatchTime: Double = 0
 
     // MARK: - 定时休眠
 
@@ -251,16 +252,13 @@ final class PlayerViewModel {
         bvid: String,
         cid: Int,
         configuration: VideoPlaybackConfiguration = .fastStart,
-        playbackURLLoader: @escaping PlaybackURLLoader = { bvid, cid in
-            try await VideoPreparationCache.shared.playbackURL(bvid: bvid, cid: cid)
-        },
+        playbackURLLoader: PlaybackURLLoader? = nil,
         qualityPlaybackURLLoader: @escaping QualityPlaybackURLLoader = { bvid, cid, quality in
             try await BiliAPI.playURL(bvid: bvid, cid: cid, quality: quality)
         },
-        watchProgressReporter: @escaping @Sendable (String, Int, Double) async -> Void = { bvid, cid, time in
-            try? await BiliAPI.reportWatchProgress(bvid: bvid, cid: cid, playedTime: time)
-        },
+        watchProgressReporter: (@Sendable (String, Int, Double) async -> Void)? = nil,
         progressStore: PlaybackProgressStore = .shared,
+        watchProgressClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         sourceOpener: @escaping PlaybackSourceOpener = { session, source, position in
             try await session.open(source: source, startTime: position)
         }
@@ -268,10 +266,29 @@ final class PlayerViewModel {
         self.bvid = bvid
         self.cid = cid
         self.configuration = configuration
-        self.playbackURLLoader = playbackURLLoader
+        let playbackRequestOwnerID = UUID()
+        let loginSessionID = DeviceIdentity.shared.loginSessionID
+        self.playbackRequestOwnerID = playbackRequestOwnerID
+        self.loginSessionID = loginSessionID
+        self.playbackURLLoader = playbackURLLoader ?? { bvid, cid in
+            try await VideoPreparationCache.shared.playbackURL(bvid: bvid, cid: cid,
+                ownerID: playbackRequestOwnerID, expectedSessionID: loginSessionID)
+        }
         self.qualityPlaybackURLLoader = qualityPlaybackURLLoader
         self.sourceOpener = sourceOpener
-        self.watchProgressReporter = watchProgressReporter
+        self.watchProgressClock = watchProgressClock
+        // Bind before scheduling any async work: a delayed heartbeat must never
+        // acquire credentials from a later login, including the same account.
+        if let watchProgressReporter {
+            self.watchProgressSender = PlaybackWatchProgressSender { time in
+                await watchProgressReporter(bvid, cid, time)
+            }
+        } else {
+            self.watchProgressSender = .shared(loginSessionID: loginSessionID, bvid: bvid, cid: cid) { time in
+                try? await BiliAPI.reportWatchProgress(bvid: bvid, cid: cid, playedTime: time,
+                                                      expectedSessionID: loginSessionID)
+            }
+        }
         self.progressStore = progressStore
         let savedPosition = progressStore.resumePosition(bvid: bvid, cid: cid)
         self.currentTime = savedPosition
@@ -286,6 +303,7 @@ final class PlayerViewModel {
     deinit {
         MainActor.assumeIsolated {
             savePlaybackProgress()
+            checkpointWatchProgress()
             SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
             session.stop()
         }
@@ -312,6 +330,8 @@ final class PlayerViewModel {
 
     func load() async {
         guard !isStopped, !isFetchingSource else { return }
+        checkpointWatchProgress()
+        watchProgress.interrupt(discontinuity: true)
         isFetchingSource = true
         defer { isFetchingSource = false }
         isLoading = true
@@ -359,7 +379,8 @@ final class PlayerViewModel {
         recoveryTask?.cancel()
         recoveryTask = nil
         replaceSession()
-        await VideoPreparationCache.shared.invalidatePlaybackURL(bvid: bvid, cid: cid)
+        await VideoPreparationCache.shared.invalidatePlaybackURL(bvid: bvid, cid: cid,
+                                                                 expectedSessionID: loginSessionID)
         guard !isStopped, !Task.isCancelled else { isLoading = false; return }
         if let metadata {
             updateSystemMediaMetadata(title: metadata.title, artist: metadata.artist, artworkURL: metadata.artworkURL)
@@ -376,6 +397,8 @@ final class PlayerViewModel {
     }
 
     private func replaceSession() {
+        checkpointWatchProgress()
+        watchProgress.interrupt(discontinuity: true)
         let surfacePresentation = session.surfacePresentation
         resumeState.prepareForOpen(at: currentTime)
         engineID = UUID()
@@ -393,6 +416,8 @@ final class PlayerViewModel {
     }
 
     private func showPlaybackError(_ message: String) {
+        checkpointWatchProgress()
+        watchProgress.interrupt(discontinuity: true)
         isSwitchingQuality = false
         qualityPlaybackIntent = nil
         errorMessage = message
@@ -453,9 +478,11 @@ final class PlayerViewModel {
         recoveryTask = nil
         cancelSleepTimer()
         Task {
-            await VideoPreparationCache.shared.cancelPlaybackURL(bvid: bvid, cid: cid)
+            await VideoPreparationCache.shared.cancelPlaybackURL(bvid: bvid, cid: cid,
+                ownerID: playbackRequestOwnerID, sessionID: loginSessionID)
         }
-        reportWatchProgress(resumeState.isCompleted ? -1 : currentTime)
+        checkpointWatchProgress()
+        watchProgress.interrupt()
         session.stop()
         SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
         isPlaying = false
@@ -486,7 +513,8 @@ final class PlayerViewModel {
         if qualityPlaybackIntent != nil || !hasRenderedFirstFrame { qualityPlaybackIntent = false }
         session.pause()
         isPlaying = false
-        reportWatchProgress(resumeState.isCompleted ? -1 : currentTime)
+        checkpointWatchProgress()
+        watchProgress.interrupt()
         SystemNowPlayingCenter.shared.updatePlaybackState(
             isPlaying: false,
             sessionID: systemMediaSessionID
@@ -502,6 +530,7 @@ final class PlayerViewModel {
         guard hasRenderedFirstFrame else { return }
         danmaku?.setPaused(false)
         if resumeState.isCompleted {
+            watchProgress.interrupt(discontinuity: true)
             // EOF 会卸载文件，必须重新打开当前地址，单纯 seek/play 不会重播。
             resumeState.seek(to: 0)
             currentTime = 0
@@ -547,11 +576,12 @@ final class PlayerViewModel {
         let wasPlaying = isPlaying
         let upperBound = duration > 0 ? duration : max(seconds, 0)
         let target = min(max(seconds, 0), upperBound)
+        checkpointWatchProgress()
+        watchProgress.interrupt(discontinuity: true)
         currentTime = target
         resumeState.seek(to: target)
         danmaku?.seek(to: target)
         savePlaybackProgress()
-        reportWatchProgress(target)
         SystemNowPlayingCenter.shared.updateElapsed(
             target,
             sessionID: systemMediaSessionID,
@@ -622,13 +652,18 @@ final class PlayerViewModel {
                 return
             }
             isPlaying = playing
-            if !playing { savePlaybackProgress() }
+            if !playing {
+                savePlaybackProgress()
+                checkpointWatchProgress()
+                watchProgress.interrupt()
+            }
             SystemNowPlayingCenter.shared.updatePlaybackState(
                 isPlaying: playing,
                 sessionID: systemMediaSessionID
             )
         case .buffering(let buffering):
             isBuffering = buffering
+            if buffering { watchProgress.interrupt() }
             if !hasRenderedFirstFrame { isLoading = true }
         case .position(let position):
             guard hasRenderedFirstFrame, !isLoading, (!isSwitchingQuality || isFetchingQuality),
@@ -637,11 +672,9 @@ final class PlayerViewModel {
             currentTime = position
             danmaku?.update(currentTime: position)
             if abs(position - lastSavedPosition) >= 5 { savePlaybackProgress() }
-            // 观看进度心跳：距离上次上报前进超过 5 秒才发，对齐官方
-            // 网页播放器的节奏。
-            if isPlaying, position - lastReportedWatchTime >= 5 {
-                reportWatchProgress(position)
-            }
+            watchProgressSender.enqueue(watchProgress.observe(
+                position: position, at: watchProgressClock(), isActive: isPlaying && !isBuffering
+            ))
             SystemNowPlayingCenter.shared.updateElapsed(
                 position,
                 sessionID: systemMediaSessionID
@@ -650,6 +683,8 @@ final class PlayerViewModel {
             guard hasRenderedFirstFrame, !isLoading, (!isSwitchingQuality || isFetchingQuality),
                   resumeState.confirm(position: position) else { return }
             currentTime = position
+            // Decoding the requested frame confirms a seek, not watched time.
+            watchProgress.interrupt()
             savePlaybackProgress()
             SystemNowPlayingCenter.shared.updateElapsed(position, sessionID: systemMediaSessionID, force: true)
         case .duration(let duration):
@@ -682,8 +717,7 @@ final class PlayerViewModel {
             danmaku?.setPaused(true)
             resumeState.complete()
             savePlaybackProgress()
-            // 看完时 played_time 传 -1，服务端会把它记成「已看完」。
-            reportWatchProgress(-1)
+            watchProgressSender.enqueue(watchProgress.complete(duration: duration))
             if sleepsAfterVideoEnd {
                 enterSleep()
             }
@@ -698,14 +732,7 @@ final class PlayerViewModel {
 
     /// 观看进度上报（心跳）。失败静默：历史记录是尽力而为的副产品，
     /// 不能因为上报失败打断或提示播放。
-    private func reportWatchProgress(_ playedTime: Double) {
-        guard playedTime != lastReportedWatchTime, playedTime > 0 || currentTime > 0 else { return }
-        lastReportedWatchTime = playedTime
-        let bvid = self.bvid
-        let cid = self.cid
-        let reporter = watchProgressReporter
-        Task.detached(priority: .utility) {
-            await reporter(bvid, cid, playedTime)
-        }
+    private func checkpointWatchProgress() {
+        watchProgressSender.enqueue(watchProgress.checkpoint())
     }
 }

@@ -162,8 +162,7 @@ struct VideoPage: View {
         @Bindable var store = store
 
         return GeometryReader { geometry in
-            // 相比原始位置上移最多 9pt，仅压缩较高的顶部安全区。
-            let topOverlap: CGFloat = isFullScreen ? 0 : min(9, max(0, geometry.safeAreaInsets.top - 47))
+            // 竖屏播放区从顶部安全区下沿开始，避免画面进入屏幕圆角。
             // 把安全区还原为整屏尺寸，竖屏高度上限不会在进出全屏时因安全区变化而跳动。
             let layoutSize = CGSize(
                 width: geometry.size.width + geometry.safeAreaInsets.leading + geometry.safeAreaInsets.trailing,
@@ -244,7 +243,7 @@ struct VideoPage: View {
             }
             // 内容真正延伸到下边缘；输入栏用实测安全区抬高，不留整条不透明底栏。
             .frame(width: geometry.size.width,
-                   height: geometry.size.height + topOverlap + (isFullScreen ? 0 : geometry.safeAreaInsets.bottom),
+                   height: geometry.size.height + (isFullScreen ? 0 : geometry.safeAreaInsets.bottom),
                    alignment: .top)
             .overlay(alignment: .top) {
                 if !isFullScreen {
@@ -259,7 +258,6 @@ struct VideoPage: View {
                     }
                 }
             }
-            .offset(y: -topOverlap)
             .onChange(of: layout, initial: true) { _, layout in
                 videoCollapseDistance = layout.rebasedDistance(videoCollapseDistance, from: collapseLayout, for: collapsePhase)
                 collapseLayout = layout

@@ -106,11 +106,12 @@ final class HomeViewModel {
     /// 等用户确认拉黑的 UP 主。
     var pendingBlock: VideoOwner?
     private let defaults: UserDefaults
-    private let reportUninterested: (RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason) async throws -> Void
-    private let cancelUninterested: (RecommendationFeedbackOptions) async throws -> Void
-    private let dislikeVideo: (Int, Bool) async throws -> Void
+    private let reportUninterested: (RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason, UUID) async throws -> Void
+    private let cancelUninterested: (RecommendationFeedbackOptions, UUID) async throws -> Void
+    private let dislikeVideo: (Int, Bool, UUID) async throws -> Void
     private let blockUser: (Int) async throws -> Void
     private let currentAccount: () async -> HomeFeedAccount
+    private let currentSessionID: () -> UUID
     /// 最近一次从第一页取推荐时用的账号。
     private var loadedAccount: HomeFeedAccount?
 
@@ -124,36 +125,52 @@ final class HomeViewModel {
     /// 与 PiliPlus 一致：选一个原因提交，成功后提示服务端给的文案并移除这张卡。
     func markUninterested(_ video: VideoSummary, reason: RecommendationFeedbackOptions.Reason) async -> String? {
         guard let options = video.recommendationFeedback, !reportingIDs.contains(video.bvid) else { return nil }
+        guard options.dislikeReasons?.contains(reason) == true || options.feedbacks?.contains(reason) == true else { return nil }
+        let session = currentSessionID()
         reportingIDs.insert(video.bvid)
         defer { reportingIDs.remove(video.bvid) }
         do {
-            try await reportUninterested(options, reason)
+            try await reportUninterested(options, reason, session)
+            guard currentSessionID() == session, !Task.isCancelled else { return nil }
             remove(video)
             return reason.toast ?? String(localized: "已提交")
-        } catch { return error.localizedDescription }
+        } catch {
+            guard currentSessionID() == session, !Self.isCancellation(error) else { return nil }
+            return error.localizedDescription
+        }
     }
 
     /// 撤销这张卡片的「不感兴趣」，卡片本身不动。
     func cancelUninterested(_ video: VideoSummary) async -> String? {
         guard let options = video.recommendationFeedback, !reportingIDs.contains(video.bvid) else { return nil }
+        let session = currentSessionID()
         reportingIDs.insert(video.bvid)
         defer { reportingIDs.remove(video.bvid) }
         do {
-            try await cancelUninterested(options)
+            try await cancelUninterested(options, session)
+            guard currentSessionID() == session, !Task.isCancelled else { return nil }
             return String(localized: "成功")
-        } catch { return error.localizedDescription }
+        } catch {
+            guard currentSessionID() == session, !Self.isCancellation(error) else { return nil }
+            return error.localizedDescription
+        }
     }
 
     /// 网页推荐卡片没有原因可选，和 PiliPlus 一样改用视频点踩：点踩成功后移除卡片，撤销只取消点踩。
     func dislikeWebRecommendation(_ video: VideoSummary, dislike: Bool) async -> String? {
         guard !reportingIDs.contains(video.bvid) else { return nil }
+        let session = currentSessionID()
         reportingIDs.insert(video.bvid)
         defer { reportingIDs.remove(video.bvid) }
         do {
-            try await dislikeVideo(video.aid, dislike)
+            try await dislikeVideo(video.aid, dislike, session)
+            guard currentSessionID() == session, !Task.isCancelled else { return nil }
             if dislike { remove(video) }
             return dislike ? String(localized: "点踩成功") : String(localized: "取消踩")
-        } catch { return error.localizedDescription }
+        } catch {
+            guard currentSessionID() == session, !Self.isCancellation(error) else { return nil }
+            return error.localizedDescription
+        }
     }
 
     /// 拉黑 UP 主：照 PiliPlus 成功后记进本地黑名单，之后的推荐不再出现他。
@@ -217,19 +234,38 @@ final class HomeViewModel {
     }
 
     init(defaults: UserDefaults = .standard,
-         reportUninterested: @escaping (RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason) async throws -> Void
-            = BiliAPI.feedDislike,
-         cancelUninterested: @escaping (RecommendationFeedbackOptions) async throws -> Void = BiliAPI.feedDislikeCancel,
-         dislikeVideo: @escaping (Int, Bool) async throws -> Void = BiliAPI.dislikeVideo,
+         reportUninterested: ((RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason) async throws -> Void)? = nil,
+         cancelUninterested: ((RecommendationFeedbackOptions) async throws -> Void)? = nil,
+         dislikeVideo: ((Int, Bool) async throws -> Void)? = nil,
          blockUser: @escaping (Int) async throws -> Void = BiliAPI.blockUser,
          currentAccount: @escaping () async -> HomeFeedAccount = HomeFeedAccount.current,
+         currentSessionID: @escaping () -> UUID = { DeviceIdentity.shared.loginSessionID },
+         feedbackClient: APIClient = .shared,
          fetchRecommendations: @escaping (Int) async throws -> [VideoSummary] = BiliAPI.recommendFeed) {
         self.defaults = defaults
-        self.reportUninterested = reportUninterested
-        self.cancelUninterested = cancelUninterested
-        self.dislikeVideo = dislikeVideo
+        self.reportUninterested = { options, reason, session in
+            if let reportUninterested { try await reportUninterested(options, reason) }
+            else {
+                try await BiliAPI.feedDislike(options, reason: reason,
+                    expectedSessionID: session, client: feedbackClient)
+            }
+        }
+        self.cancelUninterested = { options, session in
+            if let cancelUninterested { try await cancelUninterested(options) }
+            else {
+                try await BiliAPI.feedDislikeCancel(options, expectedSessionID: session, client: feedbackClient)
+            }
+        }
+        self.dislikeVideo = { aid, dislike, session in
+            if let dislikeVideo { try await dislikeVideo(aid, dislike) }
+            else {
+                try await BiliAPI.dislikeVideo(aid: aid, dislike: dislike,
+                    expectedSessionID: session, client: feedbackClient)
+            }
+        }
         self.blockUser = blockUser
         self.currentAccount = currentAccount
+        self.currentSessionID = currentSessionID
         #if PERFORMANCE_DEMO
         if ProcessInfo.processInfo.arguments.contains("--feed-record") || ProcessInfo.processInfo.arguments.contains("--feed-replay") {
             self.fetchRecommendations = { try await PerformanceFeedSource.shared.fetch($0) }
@@ -266,7 +302,7 @@ final class HomeViewModel {
     }
 
     func loadMoreIfNeeded(current video: VideoSummary, hidingKnownPortraitVideos hidesPortraitVideos: Bool = false) async {
-        guard !isLoading else { return }
+        guard !isLoading, pendingRefresh == nil else { return }
         // 每张卡出现都会调用：只从末尾往前看最后 5 张可见视频，
         // 不在滚动时把整个列表过滤一遍。
         let tail = videos.reversed().lazy
@@ -283,6 +319,9 @@ final class HomeViewModel {
     /// 网络任务由 ViewModel 自己持有，不再依附某一张正在滚动的卡片。
     /// 因此 SwiftUI 回收卡片或结束下拉动画时，请求不会被意外取消。
     private func startLoad(reason: LoadReason, replacingActiveLoad: Bool) async {
+        // 淡出动画结束前，旧卡片仍可能触发分页回调。新批次尚未提交时
+        // 不能把它的下一页追加到旧列表，否则刷新边界与游标都会错位。
+        if reason == .loadMore, pendingRefresh != nil { return }
         if let activeLoadTask {
             guard replacingActiveLoad else {
                 await activeLoadTask.value
@@ -310,6 +349,7 @@ final class HomeViewModel {
     }
 
     private func performLoad(reason: LoadReason, loadID: UUID) async {
+        guard activeLoadID == loadID, !Task.isCancelled else { return }
         defer {
             if activeLoadID == loadID {
                 isLoading = false
@@ -321,9 +361,14 @@ final class HomeViewModel {
             freshIndex = 0
             pendingRefresh = nil
         }
-        if reason != .loadMore { loadedAccount = await currentAccount() }
-
         do {
+            if reason != .loadMore {
+                let account = await currentAccount()
+                guard activeLoadID == loadID else { return }
+                try Task.checkCancellation()
+                loadedAccount = account
+            }
+            try Task.checkCancellation()
             let newBatch = try await fetchNextBatch()
             guard activeLoadID == loadID, !Task.isCancelled else { return }
             guard !newBatch.isEmpty else { return }

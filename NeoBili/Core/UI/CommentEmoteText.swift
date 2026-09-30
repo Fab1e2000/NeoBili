@@ -76,7 +76,7 @@ final class CommentEmoteStore {
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
 
-        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return }
+        guard let (data, _) = try? await AppNetwork.session.data(for: request) else { return }
         // 解码 + 逐像素裁边是这条路径最贵的两步（大表情可达数百 KB 像素），
         // 全部挪出主线程；MainActor 只做一次字典赋值。
         let prepared = await Task.detached(priority: .userInitiated) { () -> UIImage? in

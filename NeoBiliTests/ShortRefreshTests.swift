@@ -46,7 +46,10 @@ final class ShortRefreshTests: XCTestCase {
         XCTAssertTrue(state.armed)
         XCTAssertEqual(HomeRefreshSettings.clamped(-1), 40)
         XCTAssertEqual(HomeRefreshSettings.clamped(999), 140)
-        XCTAssertEqual(HomeRefreshSettings.clamped(.nan), 70)
+        XCTAssertEqual(HomeRefreshSettings.defaultDistance, 40)
+        for value in [Double.nan, .infinity, -.infinity] {
+            XCTAssertEqual(HomeRefreshSettings.clamped(value), HomeRefreshSettings.defaultDistance)
+        }
     }
 
     func testTabReselectionPreservesOriginalDelegate() async {
@@ -120,16 +123,32 @@ final class ShortRefreshTests: XCTestCase {
             return view.subviews.compactMap(findScroll).first
         }
         let scroll = try XCTUnwrap(findScroll(host.view))
+        // Animation completion depends on frame delivery, not a fixed wall-clock sleep.
+        // Require three matching layout samples without widening the geometric tolerance.
+        func waitForLayout(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+            var stableSamples = 0
+            for _ in 0..<250 {
+                window.layoutIfNeeded()
+                if condition() { stableSamples += 1 } else { stableSamples = 0 }
+                if stableSamples >= 3 { return }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTFail("Refresh layout did not settle within five seconds", file: file, line: line)
+        }
+        try await waitForLayout { abs(scroll.contentOffset.y + scroll.adjustedContentInset.top) <= 1 }
         let originalTop = scroll.convert(.zero, to: host.view).y
         state.height = 70
-        try await Task.sleep(for: .milliseconds(1000))
-        XCTAssertEqual(scroll.convert(.zero, to: host.view).y, originalTop + 70, accuracy: 1)
-        XCTAssertEqual(scroll.contentOffset.y, -scroll.adjustedContentInset.top, accuracy: 1)
+        try await waitForLayout {
+            abs(scroll.convert(.zero, to: host.view).y - originalTop - 70) <= 1
+                && abs(scroll.contentOffset.y + scroll.adjustedContentInset.top) <= 1
+        }
         state.version += 1
-        try await Task.sleep(for: .milliseconds(500))
-        XCTAssertEqual(scroll.convert(.zero, to: host.view).y, originalTop + 70, accuracy: 1)
+        try await waitForLayout { abs(scroll.convert(.zero, to: host.view).y - originalTop - 70) <= 1 }
         state.height = 0
-        try await Task.sleep(for: .milliseconds(1000))
+        try await waitForLayout {
+            abs(scroll.convert(.zero, to: host.view).y - originalTop) <= 1
+                && abs(scroll.contentOffset.y + scroll.adjustedContentInset.top) <= 1
+        }
         XCTAssertEqual(scroll.convert(.zero, to: host.view).y, originalTop, accuracy: 1)
         XCTAssertEqual(scroll.contentOffset.y, -scroll.adjustedContentInset.top, accuracy: 1)
     }

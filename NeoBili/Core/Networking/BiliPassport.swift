@@ -386,10 +386,10 @@ enum BiliPassport {
         var request = request
         request.httpShouldHandleCookies = false
         do {
-            return try await URLSession.shared.data(for: request)
+            return try await AppNetwork.session.data(for: request)
         } catch let error as URLError where isTransient(error) {
             try await Task.sleep(for: .milliseconds(400))
-            return try await URLSession.shared.data(for: request)
+            return try await AppNetwork.session.data(for: request)
         }
     }
 

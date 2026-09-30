@@ -89,26 +89,20 @@ NeoBili 目前以**未签名 IPA** 的形式发布，需要用你自己的方式
 
 ## 从源码构建
 
-**环境**：Xcode 26.2 或更高版本。依赖通过 Swift Package Manager 自动解析，目前只有 [MPVKit](https://github.com/mpvkit/MPVKit)。
+使用 Xcode 26.2 或更高版本并安装 iOS Simulator runtime。打开 `NeoBili.xcodeproj`，
+等待 MPVKit 解析完成，选择 `NeoBili` scheme 和 iPhone 模拟器，无需个人签名。
+运行（`⌘R`）使用 Debug，测试（`⌘U`）使用隔离的 Regression 配置。
 
 ```sh
-git clone https://github.com/Fab1e2000/NeoBili.git
-cd NeoBili
-open NeoBili.xcodeproj
+bash scripts/simulator.sh list
+bash scripts/simulator.sh run
+bash scripts/simulator.sh test
+zsh offline-harness/run.sh
 ```
 
-1. 等待 Swift Package Manager 解析完 MPVKit
-2. 在 **Signing & Capabilities** 中选择自己的开发团队，按需修改 Bundle Identifier
-3. 选择 `NeoBili` scheme 和目标设备，构建运行
-
-只编译真机目标、不签名：
-
-```sh
-xcodebuild -project NeoBili.xcodeproj -scheme NeoBili \
-  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
-```
-
-工程由 [XcodeGen](https://github.com/yonaskolb/XcodeGen) 从 `project.yml` 生成，需要重新生成时运行 `xcodegen`。
+模拟器选择、数据隔离、CI、性能分析及显式联网/真机验收统一见
+[开发与测试指南](docs/DEVELOPMENT.md)。Agent 从 [AGENTS.md](AGENTS.md) 开始。
+修改工程配置时编辑 `project.yml`，再运行 `xcodegen generate`。
 
 ## 项目结构
 
@@ -133,7 +127,7 @@ xcodebuild -project NeoBili.xcodeproj -scheme NeoBili \
 ```
 
 - **架构**：目录职责、数据流与状态所有权见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **测试**：离线回归套件运行 `zsh offline-harness/run.sh`，无需设备或模拟器
+- **测试**：按[开发与测试指南](docs/DEVELOPMENT.md)执行分层验证。
 - **图标**：白底立体挤出的 B 字图标，可编辑源文件在 [`design/app-icon-2026/`](design/app-icon-2026/)，由 `scripts/generate-app-icons.py` 生成全部 24 个主题色版本
 
 ## 文档

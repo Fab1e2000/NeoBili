@@ -6,9 +6,9 @@ import Observation
 final class PortraitVideoStore {
     static let shared = PortraitVideoStore(metadataLoader: loadMetadata)
     // 旧值 50：一次滚一页（20 张无缓存画幅卡片）就是 20 路并发详情请求，
-    // 带宽和 CPU 双尖峰，还极易触发接口风控连累正常请求。6 路足够在
-    // 半秒内消化一页，请求集合不变，只改节奏。
-    static let defaultMaximumConcurrentRequests = 6
+    // 带宽和 CPU 双尖峰，还极易触发接口风控连累正常请求。限制后台补查，
+    // 为用户主动打开的视频留出带宽。
+    nonisolated static let defaultMaximumConcurrentRequests = 6
 
     struct Request: Sendable {
         let bvid: String
@@ -25,7 +25,7 @@ final class PortraitVideoStore {
         return Metadata(dimension: detail.dimension, durationSeconds: detail.duration)
     }
 
-    private struct Entry: Codable {
+    private struct Entry: Codable, Sendable {
         let portrait: Bool?
         var durationSeconds: Int? = nil
         var durationChecked: Bool? = nil
@@ -38,6 +38,33 @@ final class PortraitVideoStore {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let loader: @MainActor (String) async throws -> Metadata
     @ObservationIgnored private let maximumConcurrentRequests: Int
+    @ObservationIgnored private let persistence: Persistence
+    @ObservationIgnored private var activeResolutions = 0
+    @ObservationIgnored private var revision = 0
+    @ObservationIgnored private var scheduledRevision = 0
+    @ObservationIgnored private var persistenceTask: Task<Void, Never>?
+
+    /// UserDefaults is thread-safe. Only this serial queue encodes/writes a
+    /// store's snapshots; a late older snapshot cannot replace newer results.
+    private final class Persistence: @unchecked Sendable {
+        private let defaults: UserDefaults
+        private let queue = DispatchQueue(label: "com.elsterlee.NeoBili.metadata-cache", qos: .utility)
+        private var savedRevision = 0
+
+        init(defaults: UserDefaults) { self.defaults = defaults }
+
+        func write(_ entries: [String: Entry], revision: Int) async {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                queue.async {
+                    defer { continuation.resume() }
+                    guard revision > self.savedRevision,
+                          let data = try? JSONEncoder().encode(entries) else { return }
+                    self.defaults.set(data, forKey: "neobili.portraitVideoCache.v1")
+                    self.savedRevision = revision
+                }
+            }
+        }
+    }
     /// 取消标志由 cancellation handler 同步设置，排队出列时不会错过取消信号。
     private final class CancellationFlag: @unchecked Sendable {
         private let lock = NSLock()
@@ -80,6 +107,7 @@ final class PortraitVideoStore {
          maximumConcurrentRequests: Int = defaultMaximumConcurrentRequests,
          metadataLoader: @escaping @MainActor (String) async throws -> Metadata) {
         self.defaults = defaults
+        self.persistence = Persistence(defaults: defaults)
         self.now = now
         self.maximumConcurrentRequests = max(1, maximumConcurrentRequests)
         self.loader = metadataLoader
@@ -111,6 +139,8 @@ final class PortraitVideoStore {
     }
 
     func resolveRequests(_ requests: [Request]) async {
+        guard !Task.isCancelled else { return }
+        activeResolutions += 1
         var requirements: [String: Bool] = [:]
         var order: [String] = []
         for request in requests where !request.bvid.isEmpty {
@@ -138,6 +168,10 @@ final class PortraitVideoStore {
                 }
             }
         }
+        activeResolutions -= 1
+        // A page of results is persisted together, after classification has
+        // already reached visible lists. Await durability without blocking UI.
+        await persistChanges()
     }
 
     private func resolveOne(_ bvid: String, requiringDuration: Bool) async {
@@ -198,6 +232,9 @@ final class PortraitVideoStore {
                 self.activeRequests -= 1
                 subscribers.forEach { $0.continuation.resume() }
                 self.startQueuedRequests()
+                // All page waiters may have cancelled while a shared lookup
+                // was in flight. Its useful result still needs to reach disk.
+                if self.activeResolutions == 0 { await self.persistChanges() }
             }
         }
     }
@@ -210,14 +247,25 @@ final class PortraitVideoStore {
                               durationSeconds: metadata?.durationSeconds,
                               durationChecked: true,
                               expiresAt: now().addingTimeInterval(portrait == nil ? 300 : 7 * 86_400))
-        entries = entries.filter { $0.value.expiresAt > now() }
+        revision += 1
         if entries.count > 2_000 {
-            entries = Dictionary(uniqueKeysWithValues: entries.sorted {
-                $0.value.expiresAt > $1.value.expiresAt
-            }.prefix(2_000).map { ($0.key, $0.value) })
+            if let oldest = entries.min(by: { $0.value.expiresAt < $1.value.expiresAt })?.key {
+                entries[oldest] = nil
+            }
         }
-        if let data = try? JSONEncoder().encode(entries) {
-            defaults.set(data, forKey: Self.storageKey)
+    }
+
+    private func persistChanges() async {
+        if revision != scheduledRevision {
+            entries = entries.filter { $0.value.expiresAt > now() }
+            let snapshot = entries
+            let version = revision
+            let persistence = persistence
+            scheduledRevision = version
+            persistenceTask = Task { await persistence.write(snapshot, revision: version) }
         }
+        let version = scheduledRevision
+        await persistenceTask?.value
+        if scheduledRevision == version { persistenceTask = nil }
     }
 }

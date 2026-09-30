@@ -8,7 +8,7 @@ import XCTest
 @MainActor
 final class VideoQualityDeviceSmokeTests: XCTestCase {
     func testAuthorized4KSelectionRendersRealDecodedFramesOnPhysicalDevice() async throws {
-        guard ProcessInfo.processInfo.environment["NEOBILI_VIDEO_QUALITY_SMOKE"] == "1" else {
+        guard !AppNetwork.isRegression, ProcessInfo.processInfo.environment["NEOBILI_VIDEO_QUALITY_SMOKE"] == "1" else {
             throw XCTSkip("仅在 NEOBILI_VIDEO_QUALITY_SMOKE=1 时执行真机4K联网验收")
         }
         guard !PlatformInfo.isSimulator else {

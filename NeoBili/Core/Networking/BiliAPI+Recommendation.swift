@@ -28,31 +28,42 @@ extension BiliAPI {
 
     /// 「不感兴趣」：`reason` 是用户在卡片原因里选的一项，「我不想看」或「反馈」。
     static func feedDislike(_ options: RecommendationFeedbackOptions,
-                            reason: RecommendationFeedbackOptions.Reason) async throws {
+                            reason: RecommendationFeedbackOptions.Reason,
+                            expectedSessionID: UUID? = nil,
+                            client: APIClient = .shared) async throws {
         var params = feedbackParameters(options)
         if options.dislikeReasons?.contains(reason) == true {
             params["reason_id"] = String(reason.id)
         } else {
             params["feedback_id"] = String(reason.id)
         }
-        try await sendFeedback(path: "x/feed/dislike", params: params)
+        try await sendFeedback(path: "x/feed/dislike", params: params,
+                               expectedSessionID: expectedSessionID, client: client)
     }
 
     /// 撤销这张卡片的「不感兴趣」。
-    static func feedDislikeCancel(_ options: RecommendationFeedbackOptions) async throws {
-        try await sendFeedback(path: "x/feed/dislike/cancel", params: feedbackParameters(options))
+    static func feedDislikeCancel(_ options: RecommendationFeedbackOptions,
+                                 expectedSessionID: UUID? = nil,
+                                 client: APIClient = .shared) async throws {
+        try await sendFeedback(path: "x/feed/dislike/cancel", params: feedbackParameters(options),
+                               expectedSessionID: expectedSessionID, client: client)
     }
 
     static func feedbackParameters(_ options: RecommendationFeedbackOptions) -> [String: String] {
         ["goto": options.goto, "id": String(options.param), "build": "1", "mobi_app": "android"]
     }
 
-    private static func sendFeedback(path: String, params: [String: String]) async throws {
-        guard await DeviceIdentity.shared.accessKey?.isEmpty == false else {
-            throw await DeviceIdentity.shared.isLoggedIn
+    private static func sendFeedback(path: String, params: [String: String],
+                                     expectedSessionID: UUID?, client: APIClient) async throws {
+        let account = try await client.appAccount(expectedSessionID: expectedSessionID)
+        guard account.accessKey != nil else {
+            throw account.mid != nil
                 ? RecommendationFeedbackError.missingAccessKey : RecommendationFeedbackError.notLoggedIn
         }
-        let _: IgnoredData = try await APIClient.shared.getApp(path: path, params: params)
+        // 这是使用 GET 的写操作。超时不代表服务端没收到，自动重试会重复上报。
+        let _: IgnoredData = try await client.getApp(
+            path: path, params: params, retries: 0, expectedSessionID: expectedSessionID ?? account.sessionID
+        )
     }
 }
 

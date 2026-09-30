@@ -264,7 +264,7 @@ actor ImageFileCache {
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await AppNetwork.session.data(for: request)
         guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) else {
             throw URLError(.badServerResponse)
         }

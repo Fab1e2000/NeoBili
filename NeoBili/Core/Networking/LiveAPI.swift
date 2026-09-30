@@ -51,7 +51,7 @@ enum LiveAPI {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("https://live.bilibili.com/\(roomID)", forHTTPHeaderField: "Referer")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await AppNetwork.session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               root["code"] as? Int == 0,

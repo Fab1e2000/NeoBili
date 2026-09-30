@@ -27,7 +27,19 @@ final class AppRecommendationTests: XCTestCase {
         var noArgs = card; noArgs["args"] = nil
         var unplayable = card; unplayable["can_play"] = 0
         var malformed = card; malformed["player_args"] = "invalid"
-        XCTAssertEqual(try decode([ad, bangumi, promoted, inlineAd, noArgs, unplayable, malformed, card]).videos.count, 1)
+        let videos = try decode([ad, bangumi, promoted, inlineAd, noArgs, unplayable, malformed, card]).videos
+        XCTAssertEqual(videos.count, 1)
+        XCTAssertEqual(videos.map(\.aid), [170001])
+        XCTAssertEqual(videos.map(\.cid), [279786],
+                       "Malformed player_args must be filtered; missing or null arguments are tested separately")
+    }
+
+    func testMissingOrNullPlaybackArgumentsPreserveResolvableVideoIdentity() throws {
+        var missing = card; missing["player_args"] = nil
+        var null = card; null["player_args"] = NSNull()
+        let videos = try decode([missing, null]).videos
+        XCTAssertEqual(videos.map(\.bvid), ["BV17x411w7KC", "BV17x411w7KC"])
+        XCTAssertEqual(videos.map(\.cid), [0, 0], "缺少分 P 身份时仍可在详情页补查")
     }
 
     @MainActor
@@ -159,7 +171,8 @@ final class AppRecommendationTests: XCTestCase {
     }
 
     /// 只读烟雾验证：直接访问 App 推荐，不允许热门兜底掩盖接口或解析错误。
-    func testAppEndpointReturnsPlayableCardsOnDevice() async throws {
+    func testAppEndpointReturnsPlayableCardsOverNetwork() async throws {
+        try XCTSkipUnless(!AppNetwork.isRegression && ProcessInfo.processInfo.environment["NEOBILI_NETWORK_SMOKE"] == "1", "显式联网验收")
         let hasAppCredential = await DeviceIdentity.shared.accessKey?.isEmpty == false
         let videos = try await BiliAPI.recommendFeed(freshIndex: 0)
         print("AppRecommendationSmoke: cards=\(videos.count), appCredential=\(hasAppCredential)")
