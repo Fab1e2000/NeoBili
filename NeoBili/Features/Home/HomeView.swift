@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    var isSelected = true
+    let isSelected: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
@@ -29,6 +29,10 @@ struct HomeView: View {
     @State private var exitTiming: FeedRefreshExitTiming?
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
+
+    init(isSelected: Bool = true) {
+        self.isSelected = isSelected
+    }
 
     private var animatesExit: Bool {
         !reduceMotion && animations.isEnabled(phase: .exit)
