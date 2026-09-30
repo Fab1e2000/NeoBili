@@ -28,5 +28,10 @@ screenshot_home.png
 # 官网参考用的真机截图含账号头像、关注列表和他人视频画面
 design/website-screenshots/
 
+# 独立产品网站与旧图标方案保留在本地，不随 App 源码分发
+/website/
+/design/app-icon-2026/*.png
+!/design/app-icon-2026/BMark-production.png
+
 # Local device build cache
 .build-device/

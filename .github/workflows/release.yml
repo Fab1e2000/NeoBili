@@ -1,4 +1,4 @@
-# 推送 vX.Y.Z 标签时，用 Xcode 27 构建未签名 IPA，并创建 Release 草稿。
+# 推送 vX.Y.Z 标签时，用 Xcode 26.6 构建未签名 IPA，并创建 Release 草稿。
 # 草稿检查无误后，在 GitHub 的 Releases 页面点「Publish release」发布。
 #
 # - 标签必须和 NeoBili/Info.plist 的 CFBundleShortVersionString 一致。
@@ -16,10 +16,13 @@ permissions:
 
 jobs:
   release:
-    runs-on: xcode-27
+    runs-on: macos-26
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
 
       - name: Check version
         id: version
