@@ -7,6 +7,8 @@
     }
   ],
   "defaultOptions": {
+    "language": "zh-Hans",
+    "region": "CN",
     "environmentVariableEntries": [
       {
         "key": "NEOBILI_TEST_HOST",

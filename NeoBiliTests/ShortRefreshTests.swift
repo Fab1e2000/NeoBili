@@ -74,18 +74,18 @@ final class ShortRefreshTests: XCTestCase {
         XCTAssertTrue(tab.delegate === original)
     }
 
-    func testModernSwiftUITabContainerConnectsReselectionObserver() async throws {
+    func testSwiftUITabContainerConnectsReselectionObserver() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousKey = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
-        let reselected = expectation(description: "实际 SwiftUI 标签容器的新回调")
+        var reselectionCount = 0
         let host = UIHostingController(rootView: TabView {
             Tab("推荐", systemImage: "house.fill") {
                 NavigationStack { Text("推荐内容") }
             }
             Tab("搜索", systemImage: "magnifyingglass", role: .search) { Text("搜索") }
         }.background {
-            TabReselectionObserver { reselected.fulfill() }.frame(width: 0, height: 0)
+            TabReselectionObserver { reselectionCount += 1 }.frame(width: 0, height: 0)
         })
         window.rootViewController = host
         window.makeKeyAndVisible()
@@ -99,12 +99,27 @@ final class ShortRefreshTests: XCTestCase {
         }
         let tab = try XCTUnwrap(findTab(host))
         XCTAssertTrue(tab.delegate is TabReselectionObserver.Coordinator)
-        let search = try XCTUnwrap(tab.tabs.last)
-        XCTAssertEqual(tab.delegate?.tabBarController?(tab, shouldSelectTab: search), true)
-        try await Task.sleep(for: .milliseconds(50))
-        tab.selectedTab = search
-        XCTAssertEqual(tab.delegate?.tabBarController?(tab, shouldSelectTab: search), true)
-        await fulfillment(of: [reselected], timeout: 1)
+        // SwiftUI uses viewControllers on iOS 26 and UITab on newer runtimes.
+        // Exercise the delegate path of the actual mounted container on each OS.
+        if let search = tab.tabs.last {
+            XCTAssertEqual(tab.delegate?.tabBarController?(tab, shouldSelectTab: search), true)
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertEqual(reselectionCount, 0, "Switching tabs must not count as reselection")
+            tab.selectedTab = search
+            XCTAssertEqual(tab.delegate?.tabBarController?(tab, shouldSelectTab: search), true)
+        } else {
+            let search = try XCTUnwrap(tab.viewControllers?.last)
+            XCTAssertEqual(tab.delegate?.tabBarController?(tab, shouldSelect: search), true)
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertEqual(reselectionCount, 0, "Switching tabs must not count as reselection")
+            tab.selectedViewController = search
+            XCTAssertEqual(tab.delegate?.tabBarController?(tab, shouldSelect: search), true)
+        }
+        for _ in 0..<50 {
+            if reselectionCount > 0 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(reselectionCount, 1, "Reselecting the current tab must notify exactly once")
     }
 
     func testSwiftUIScrollViewPreservesRefreshSpaceAcrossLayoutUpdates() async throws {

@@ -6,7 +6,8 @@ import XCTest
 @MainActor
 final class SearchInputContinuityTests: XCTestCase {
     func testFirstComposingCharacterKeepsInputIdentityFocusAndMarkedText() async throws {
-        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first(where: { $0.activationState == .foregroundActive }))
         let previous = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         let model = SearchViewModel()
@@ -28,9 +29,20 @@ final class SearchInputContinuityTests: XCTestCase {
         // extension starts, independently of the search view's identity.
         field.inputView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 216))
         field.reloadInputViews()
+        // Install the synthetic keyboard before requesting focus. Otherwise a
+        // cold simulator may still be starting its real keyboard when we mark text.
+        focus.focused = true
         XCTAssertTrue(field.becomeFirstResponder())
-        try await Task.sleep(for: .milliseconds(100))
+        var stableFocusSamples = 0
+        for _ in 0..<100 {
+            window.layoutIfNeeded()
+            stableFocusSamples = field.isFirstResponder && focus.focused ? stableFocusSamples + 1 : 0
+            if stableFocusSamples == 5 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(stableFocusSamples, 5, "Search input must settle before composition starts")
         field.setMarkedText("n", selectedRange: NSRange(location: 1, length: 0))
+        XCTAssertNotNil(field.markedTextRange, "The fixture must establish marked text before switching content")
         model.query = "n"
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertTrue(model.isShowingSuggestions)
@@ -56,5 +68,5 @@ final class SearchInputContinuityTests: XCTestCase {
 }
 
 @MainActor @Observable private final class SearchFocusFixture {
-    var focused = true
+    var focused = false
 }
