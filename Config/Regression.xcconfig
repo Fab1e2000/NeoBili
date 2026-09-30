@@ -1,0 +1,7 @@
+// Separate installation on the SAME simulator; never include local signing overrides.
+NEOBILI_BUNDLE_IDENTIFIER = com.elsterlee.NeoBili.regression
+NEOBILI_DEVELOPMENT_TEAM =
+NEOBILI_CODE_SIGN_STYLE = Automatic
+NEOBILI_CODE_SIGN_IDENTITY = -
+NEOBILI_PROVISIONING_PROFILE =
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) DEBUG NEOBILI_REGRESSION

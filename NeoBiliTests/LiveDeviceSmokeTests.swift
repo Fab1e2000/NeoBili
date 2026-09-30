@@ -127,9 +127,9 @@ final class LiveDeviceSmokeTests: XCTestCase {
     }
 
     private func requireLiveSmoke() throws {
-        guard ProcessInfo.processInfo.environment["NEOBILI_LIVE_SMOKE"] == "1" else {
+        guard !AppNetwork.isRegression, ProcessInfo.processInfo.environment["NEOBILI_LIVE_SMOKE"] == "1" else {
             throw XCTSkip("仅显式启用的真机联网验收运行")
         }
-        XCTAssertFalse(PlatformInfo.isSimulator)
+        try XCTSkipIf(PlatformInfo.isSimulator, "真实直播播放专项要求真机")
     }
 }

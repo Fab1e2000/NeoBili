@@ -193,11 +193,9 @@ final class DanmakuRegressionTests: XCTestCase {
 }
 
 @MainActor
-final class DanmakuDeviceSmokeTests: XCTestCase {
-    func testLiveMessagesAndFollowingPortalOnPhysicalDevice() async throws {
-        #if targetEnvironment(simulator)
-        throw XCTSkip("Physical device only")
-        #endif
+final class DanmakuNetworkSmokeTests: XCTestCase {
+    func testLiveMessagesAndFollowingPortalOverNetwork() async throws {
+        try XCTSkipUnless(!AppNetwork.isRegression && ProcessInfo.processInfo.environment["NEOBILI_NETWORK_SMOKE"] == "1", "显式联网验收")
         let account = AccountStore(monitorNetwork: false)
         await account.restoreSessionIfNeeded()
         if account.isLoggedIn {

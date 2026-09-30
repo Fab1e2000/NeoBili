@@ -117,6 +117,7 @@ final class LiveDanmakuModel {
     // MARK: - 连接
 
     private func connect() async {
+        guard !AppNetwork.isRegression else { return }
         let generation = connectGeneration
         connection = .connecting
         // 服务器列表逐个尝试；每个候选 8 秒内没完成认证就换下一个。

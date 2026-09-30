@@ -1,7 +1,7 @@
 import XCTest
 @testable import NeoBili
 
-/// 所有请求与凭据均为内存假数据；允许在用户真机运行，不读写真实账号。
+/// 请求与凭据使用内存假数据，默认在隔离的模拟器宿主运行。
 @MainActor
 final class AuditRegressionTests: XCTestCase {
     private struct Row: Identifiable { let id: Int }

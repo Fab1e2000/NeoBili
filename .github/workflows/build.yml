@@ -1,5 +1,3 @@
-# 每次推送和 PR 都用 Xcode 26 编译一遍（无签名、模拟器 Debug）。
-# 平时开发用的 Xcode 27 更宽松，只在本机编译发现不了旧版本的兼容问题。
 name: Build
 
 on:
@@ -17,8 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 支持的最低版本和 26 系列最新版。更早的 26.0/26.1 的 SDK 里
-        # 没有 tabViewBottomAccessory(isEnabled:)，不再支持。
+        # 支持的最低工具链和日常 CI 工具链。
         xcode: ["26.2", "26.6"]
     steps:
       - uses: actions/checkout@v7
@@ -35,3 +32,48 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -skipMacroValidation -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO build
+
+  regression:
+    name: Deterministic regression (Xcode 26.6)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select toolchain and simulator
+        id: toolchain
+        shell: bash
+        run: |
+          test -d /Applications/Xcode_26.6.app
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/neobili-simulators.json"
+          python3 - <<'PYTHON'
+          import json, os
+          with open(os.environ["RUNNER_TEMP"] + "/neobili-simulators.json") as source:
+              devices = json.load(source)["devices"]
+          candidates = [d for runtime, ds in devices.items() if runtime.endswith(".iOS-26-5")
+                        for d in ds if d.get("isAvailable") and d["name"].startswith("iPhone")]
+          if not candidates:
+              raise SystemExit("Required iOS 26.5 iPhone Simulator is unavailable")
+          device = sorted(candidates, key=lambda d: (d["name"], d["udid"]))[0]
+          print("Selected", device["name"], device["udid"], "iOS 26.5")
+          with open(os.environ["GITHUB_ENV"], "a") as target:
+              target.write("NEOBILI_SIMULATOR_ID=" + device["udid"] + "\n")
+          PYTHON
+      - name: Offline regression
+        shell: bash
+        run: |
+          mkdir -p DerivedData/Validation
+          set -o pipefail
+          zsh offline-harness/run.sh 2>&1 | tee DerivedData/Validation/offline.log
+      - name: Simulator regression
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: bash scripts/simulator.sh test
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: regression-results
+          path: DerivedData/Validation/
+          if-no-files-found: warn
+          retention-days: 7

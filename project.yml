@@ -1,4 +1,8 @@
 name: NeoBili
+configs:
+  Debug: debug
+  Regression: debug
+  Release: release
 options:
   bundleIdPrefix: com.elsterlee
   deploymentTarget:
@@ -45,14 +49,14 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-    # 生成一个共享的 Scheme，也就是 Xcode 左上角箭头旁边的那个运行方案。
-    # 写进项目里之后，重新生成项目时它不会丢失。
-    scheme:
-      testTargets:
-        - NeoBiliTests
+    # 可选的本机真机签名设置不入库；模拟器仍使用默认设置。
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+      Regression: Config/Regression.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.elsterlee.NeoBili
+        PRODUCT_BUNDLE_IDENTIFIER: "$(NEOBILI_BUNDLE_IDENTIFIER)"
         SWIFT_VERSION: "6.0"
         LOCALIZATION_PREFERS_STRING_CATALOGS: YES
         SWIFT_EMIT_LOC_STRINGS: YES
@@ -61,8 +65,10 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_PREVIEWS: YES
-        CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: D6647H7B4X
+        CODE_SIGN_STYLE: "$(NEOBILI_CODE_SIGN_STYLE)"
+        DEVELOPMENT_TEAM: "$(NEOBILI_DEVELOPMENT_TEAM)"
+        CODE_SIGN_IDENTITY: "$(NEOBILI_CODE_SIGN_IDENTITY)"
+        PROVISIONING_PROFILE_SPECIFIER: "$(NEOBILI_PROVISIONING_PROFILE)"
 
   NeoBiliTests:
     type: bundle.unit-test
@@ -76,3 +82,43 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+
+# 共享运行方案：Debug + LLDB，重新生成工程时也保留。
+schemes:
+  NeoBili:
+    build:
+      targets:
+        NeoBili: all
+    run:
+      config: Debug
+      debugEnabled: true
+    test:
+      config: Regression
+      testPlans:
+        - path: Config/Regression.xctestplan
+          defaultPlan: true
+    profile:
+      config: Release
+    archive:
+      config: Release
+
+  NeoBili-Network:
+    build:
+      targets:
+        NeoBili: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      testPlans:
+        - path: Config/Network.xctestplan
+          defaultPlan: true
+  NeoBili-Device:
+    build:
+      targets:
+        NeoBili: all
+    test:
+      config: Debug
+      testPlans:
+        - path: Config/Device.xctestplan
+          defaultPlan: true

@@ -1,0 +1,36 @@
+{
+  "configurations": [
+    {
+      "id": "FF55C1D5-2B28-4355-BBF3-80A185C449B5",
+      "name": "Network",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "environmentVariableEntries": [
+      {
+        "key": "NEOBILI_TEST_HOST",
+        "value": "1"
+      },
+      {
+        "key": "NEOBILI_NETWORK_SMOKE",
+        "value": "1"
+      }
+    ]
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:NeoBili.xcodeproj",
+        "identifier": "A3CF3B66D543AA90E0660785",
+        "name": "NeoBiliTests"
+      },
+      "parallelizable": false,
+      "selectedTests": [
+        "AppRecommendationTests/testAppEndpointReturnsPlayableCardsOverNetwork()",
+        "DanmakuNetworkSmokeTests"
+      ]
+    }
+  ],
+  "version": 1
+}

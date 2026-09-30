@@ -18,7 +18,7 @@ audits/**/*.trace/
 !.env.example
 *.p12
 *.mobileprovision
-# 真机签名用的证书、描述文件和临时钥匙串（从 iCloud 云盘「IOS证书」拷来）
+# 本地签名证书、描述文件和临时钥匙串
 signing/
 
 # 开发过程记录、参考源码快照与截图只留在本地，不入库（避免 fork 下载大文件）
@@ -27,3 +27,6 @@ references/PiliPlus/
 screenshot_home.png
 # 官网参考用的真机截图含账号头像、关注列表和他人视频画面
 design/website-screenshots/
+
+# Local device build cache
+.build-device/

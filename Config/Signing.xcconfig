@@ -1,0 +1,9 @@
+// Signing defaults for clones without local credentials.
+NEOBILI_BUNDLE_IDENTIFIER = com.elsterlee.NeoBili
+NEOBILI_DEVELOPMENT_TEAM = D6647H7B4X
+NEOBILI_CODE_SIGN_STYLE = Automatic
+NEOBILI_CODE_SIGN_IDENTITY = Apple Development
+NEOBILI_PROVISIONING_PROFILE =
+
+// Local device settings are ignored by Git and should use [sdk=iphoneos*].
+#include? "../signing/Local.xcconfig"

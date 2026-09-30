@@ -1,0 +1,40 @@
+{
+  "configurations": [
+    {
+      "id": "518863B4-C2F6-4562-A79C-8F05D4B98199",
+      "name": "Device",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "environmentVariableEntries": [
+      {
+        "key": "NEOBILI_TEST_HOST",
+        "value": "1"
+      },
+      {
+        "key": "NEOBILI_LIVE_SMOKE",
+        "value": "1"
+      },
+      {
+        "key": "NEOBILI_VIDEO_QUALITY_SMOKE",
+        "value": "1"
+      }
+    ]
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:NeoBili.xcodeproj",
+        "identifier": "A3CF3B66D543AA90E0660785",
+        "name": "NeoBiliTests"
+      },
+      "parallelizable": false,
+      "selectedTests": [
+        "LiveDeviceSmokeTests",
+        "VideoQualityDeviceSmokeTests"
+      ]
+    }
+  ],
+  "version": 1
+}

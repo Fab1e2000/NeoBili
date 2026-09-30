@@ -7,7 +7,7 @@ import XCTest
 /// injected by the tests below; no PlayerViewModel/MPV/network is needed.
 @MainActor
 final class PlayerGlassStyleTests: XCTestCase {
-    func testProgressUpdatesDoNotRebuildMenuContentOnRealDevice() async throws {
+    func testProgressUpdatesDoNotRebuildMenuContentInForegroundWindow() async throws {
         let host = try PlayerGlassSnapshotHost()
         defer { host.close() }
         let progress = PlayerProgressIsolationState()
@@ -89,7 +89,7 @@ final class PlayerGlassStyleTests: XCTestCase {
         XCTAssertLessThan(narrow.audioQuality.maxX, narrow.more.minX)
     }
 
-    func testLoadingControlsCanBeShownAndHiddenBeforeFirstFrameOnRealDevice() async throws {
+    func testLoadingControlsCanBeShownAndHiddenBeforeFirstFrameInForegroundWindow() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         try await host.show(Color.black)
@@ -228,7 +228,7 @@ final class PlayerGlassStyleTests: XCTestCase {
         XCTAssertLessThan(landscape.metadata.maxX, landscape.videoQuality.minX)
     }
 
-    func testGlassChromeAcrossRealDeviceOrientationsSizesAndLoadingStates() async throws {
+    func testGlassChromeAcrossWindowOrientationsSizesAndLoadingStates() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         let cases: [(String, Bool, Double?, PlayerGlassFixtureState, Bool)] = [
@@ -276,7 +276,7 @@ final class PlayerGlassStyleTests: XCTestCase {
 
     /// 透明玻璃最难的情况：接近纯白的画面加顶部弹幕。截图留给人看，
     /// 断言只检查控件层和调暗层照常铺满画面。
-    func testClearGlassControlsOverBrightVideoOnRealDevice() async throws {
+    func testClearGlassControlsOverBrightVideoInForegroundWindow() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         for (name, landscape, inlineRatio) in [("bright-inline-16x9", false, 16.0 / 9 as Double?),
@@ -296,7 +296,7 @@ final class PlayerGlassStyleTests: XCTestCase {
         }
     }
 
-    func testFullscreenQualityMenusUseTheBlackSidebarsOnRealDevice() async throws {
+    func testFullscreenQualityMenusUseTheBlackSidebarsInForegroundWindow() async throws {
         let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         for (name, landscape, ratio, longLabels) in [

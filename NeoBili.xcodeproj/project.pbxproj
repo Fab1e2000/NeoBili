@@ -21,12 +21,14 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		2F97654CD063B68F1B420F87 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		4A8C9E3102B8330370E325F2 /* NeoBiliTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = NeoBiliTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BCD9220735EC3C9EF5F23D46 /* NeoBili.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NeoBili.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CF57E3CE003F57057CDC98F7 /* Regression.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Regression.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		2CD481F3DCA28231E72D491B /* Exceptions for "NeoBili" folder in "NeoBili" target */ = {
+		2CD481F3DCA28231E72D491B /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -39,13 +41,21 @@
 		7D41E51288F6941F65B5193F /* NeoBili */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				2CD481F3DCA28231E72D491B /* Exceptions for "NeoBili" folder in "NeoBili" target */,
+				2CD481F3DCA28231E72D491B /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
 			);
 			path = NeoBili;
 			sourceTree = "<group>";
 		};
 		B76F1D97FEA77A09E40DFEB8 /* NeoBiliTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
 			path = NeoBiliTests;
 			sourceTree = "<group>";
 		};
@@ -72,9 +82,19 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		75B8B63F88A0DA31B691C93F /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				CF57E3CE003F57057CDC98F7 /* Regression.xcconfig */,
+				2F97654CD063B68F1B420F87 /* Signing.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		B26BFA13DC2C5853944C71C5 = {
 			isa = PBXGroup;
 			children = (
+				75B8B63F88A0DA31B691C93F /* Config */,
 				7D41E51288F6941F65B5193F /* NeoBili */,
 				B76F1D97FEA77A09E40DFEB8 /* NeoBiliTests */,
 				275BFB2691EB7653AA782816 /* Products */,
@@ -139,8 +159,8 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					DC8260599C780FF4FF9C30D5 = {
-						DevelopmentTeam = D6647H7B4X;
-						ProvisioningStyle = Automatic;
+						DevelopmentTeam = "$(NEOBILI_DEVELOPMENT_TEAM)";
+						ProvisioningStyle = "$(NEOBILI_CODE_SIGN_STYLE)";
 					};
 				};
 			};
@@ -149,7 +169,6 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
-				en,
 				"zh-Hans",
 			);
 			mainGroup = B26BFA13DC2C5853944C71C5;
@@ -211,6 +230,24 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		02F3FD9B07D0CECF9E5ACE42 /* Regression */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/NeoBili.app/NeoBili";
+			};
+			name = Regression;
+		};
 		10C964686F31382C6CF4DDDB /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -228,6 +265,69 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/NeoBili.app/NeoBili";
 			};
 			name = Release;
+		};
+		270E3EDAF68D524DF3652FBF /* Regression */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Regression;
 		};
 		32D5B50609C1F2EF57382735 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -247,15 +347,16 @@
 			};
 			name = Debug;
 		};
-		8973EE6DD242F15B2AA483CF /* Debug */ = {
+		816BA6629564DFBFEEACC875 /* Regression */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = CF57E3CE003F57057CDC98F7 /* Regression.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "NeoBiliIcon-rose NeoBiliIcon-ruby NeoBiliIcon-coral NeoBiliIcon-orange NeoBiliIcon-amber NeoBiliIcon-olive NeoBiliIcon-lime NeoBiliIcon-leaf NeoBiliIcon-forest NeoBiliIcon-jade NeoBiliIcon-teal NeoBiliIcon-cyan NeoBiliIcon-sky NeoBiliIcon-blue NeoBiliIcon-cobalt NeoBiliIcon-indigo NeoBiliIcon-violet NeoBiliIcon-lavender NeoBiliIcon-orchid NeoBiliIcon-berry NeoBiliIcon-cocoa NeoBiliIcon-slate NeoBiliIcon-graphite";
 				ASSETCATALOG_COMPILER_APPICON_NAME = NeoBiliIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = D6647H7B4X;
+				CODE_SIGN_IDENTITY = "$(NEOBILI_CODE_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = "$(NEOBILI_CODE_SIGN_STYLE)";
+				DEVELOPMENT_TEAM = "$(NEOBILI_DEVELOPMENT_TEAM)";
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = NeoBili/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -264,7 +365,35 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBili;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(NEOBILI_BUNDLE_IDENTIFIER)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(NEOBILI_PROVISIONING_PROFILE)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Regression;
+		};
+		8973EE6DD242F15B2AA483CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2F97654CD063B68F1B420F87 /* Signing.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "NeoBiliIcon-rose NeoBiliIcon-ruby NeoBiliIcon-coral NeoBiliIcon-orange NeoBiliIcon-amber NeoBiliIcon-olive NeoBiliIcon-lime NeoBiliIcon-leaf NeoBiliIcon-forest NeoBiliIcon-jade NeoBiliIcon-teal NeoBiliIcon-cyan NeoBiliIcon-sky NeoBiliIcon-blue NeoBiliIcon-cobalt NeoBiliIcon-indigo NeoBiliIcon-violet NeoBiliIcon-lavender NeoBiliIcon-orchid NeoBiliIcon-berry NeoBiliIcon-cocoa NeoBiliIcon-slate NeoBiliIcon-graphite";
+				ASSETCATALOG_COMPILER_APPICON_NAME = NeoBiliIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "$(NEOBILI_CODE_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = "$(NEOBILI_CODE_SIGN_STYLE)";
+				DEVELOPMENT_TEAM = "$(NEOBILI_DEVELOPMENT_TEAM)";
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = NeoBili/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(NEOBILI_BUNDLE_IDENTIFIER)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(NEOBILI_PROVISIONING_PROFILE)";
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
@@ -393,13 +522,14 @@
 		};
 		FD849950D7F08FEC5DE31FAE /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2F97654CD063B68F1B420F87 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "NeoBiliIcon-rose NeoBiliIcon-ruby NeoBiliIcon-coral NeoBiliIcon-orange NeoBiliIcon-amber NeoBiliIcon-olive NeoBiliIcon-lime NeoBiliIcon-leaf NeoBiliIcon-forest NeoBiliIcon-jade NeoBiliIcon-teal NeoBiliIcon-cyan NeoBiliIcon-sky NeoBiliIcon-blue NeoBiliIcon-cobalt NeoBiliIcon-indigo NeoBiliIcon-violet NeoBiliIcon-lavender NeoBiliIcon-orchid NeoBiliIcon-berry NeoBiliIcon-cocoa NeoBiliIcon-slate NeoBiliIcon-graphite";
 				ASSETCATALOG_COMPILER_APPICON_NAME = NeoBiliIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = D6647H7B4X;
+				CODE_SIGN_IDENTITY = "$(NEOBILI_CODE_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = "$(NEOBILI_CODE_SIGN_STYLE)";
+				DEVELOPMENT_TEAM = "$(NEOBILI_DEVELOPMENT_TEAM)";
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = NeoBili/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -408,7 +538,8 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBili;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(NEOBILI_BUNDLE_IDENTIFIER)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(NEOBILI_PROVISIONING_PROFILE)";
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
@@ -423,6 +554,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A6BA709D3FBA263659626DDB /* Debug */,
+				270E3EDAF68D524DF3652FBF /* Regression */,
 				FABE0B0A2EF919A72ABED2FC /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -432,6 +564,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				32D5B50609C1F2EF57382735 /* Debug */,
+				02F3FD9B07D0CECF9E5ACE42 /* Regression */,
 				10C964686F31382C6CF4DDDB /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -441,6 +574,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				8973EE6DD242F15B2AA483CF /* Debug */,
+				816BA6629564DFBFEEACC875 /* Regression */,
 				FD849950D7F08FEC5DE31FAE /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;

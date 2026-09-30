@@ -1,10 +1,11 @@
 import Foundation
 import Security
+import Synchronization
 
 /// 极小的 Keychain 封装，只用来保存登录凭据（SESSDATA / bili_jct / DedeUserID）。
 /// buvid 这类设备标识留在 UserDefaults；登录态是真正的敏感凭据，必须进 Keychain。
 enum KeychainStore {
-    private static let service = "com.elsterlee.NeoBili"
+    private static let service = AppNetwork.isRegression ? "com.elsterlee.NeoBili.regression" : "com.elsterlee.NeoBili"
 
     /// 写入 `nil` 等价于删除该条目。
     static func set(_ value: String?, for key: String) {
@@ -41,5 +42,19 @@ enum KeychainStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: key
         ]
+    }
+}
+
+/// Injectable credential storage. Each memory instance has independent lifetime and contents.
+struct CredentialStorage: Sendable {
+    var read: @Sendable (String) -> String?
+    var write: @Sendable (String?, String) -> Void
+
+    static let keychain = CredentialStorage(read: { KeychainStore.string(for: $0) },
+                                            write: { KeychainStore.set($0, for: $1) })
+    static func memory() -> CredentialStorage {
+        let values = Mutex<[String: String]>([:])
+        return CredentialStorage(read: { key in values.withLock { $0[key] } },
+                                 write: { value, key in values.withLock { $0[key] = value } })
     }
 }

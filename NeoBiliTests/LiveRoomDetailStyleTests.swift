@@ -3,11 +3,10 @@ import UIKit
 import XCTest
 @testable import NeoBili
 
-/// 本地资料展示生产组件；以后在真机执行，不调用真实关注接口或直播网络。
+/// 本地资料展示生产组件，不调用真实关注接口或直播网络。
 @MainActor
 final class LiveRoomDetailStyleTests: XCTestCase {
-    func testGlassOwnerTitleAndDescriptionLayoutsOnPhysicalDevice() async throws {
-        XCTAssertFalse(PlatformInfo.isSimulator)
+    func testGlassOwnerTitleAndDescriptionLayoutsInForegroundWindow() async throws {
         var availableScene: UIWindowScene?
         for _ in 0..<100 {
             availableScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }

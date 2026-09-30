@@ -5,7 +5,7 @@ import XCTest
 
 @MainActor
 final class InteractionControlsVisualTests: XCTestCase {
-    func testCompleteTitleGlassCommentActionsAndMovementPreviewOnRealDevice() async throws {
+    func testCompleteTitleGlassCommentActionsAndMovementPreviewInForegroundWindow() async throws {
         var activeScene: UIWindowScene?
         for _ in 0..<100 {
             activeScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }

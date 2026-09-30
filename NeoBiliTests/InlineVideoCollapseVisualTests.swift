@@ -7,7 +7,7 @@ import XCTest
 /// underlying UIButton are local fixtures, not a video stream or MPV session.
 @MainActor
 final class InlineVideoCollapseVisualTests: XCTestCase {
-    func testContinuousHeaderTintAndTouchPassthroughOnRealDevice() async throws {
+    func testContinuousHeaderTintAndTouchPassthroughInForegroundWindow() async throws {
         let host = try CollapseVisualWindow()
         defer { host.close() }
         let cases: [(String, InlineVideoPlaybackPhase, CGFloat)] = [

@@ -212,7 +212,7 @@ final class SystemNowPlayingCenter {
             request.timeoutInterval = 8
             request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
             request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-            guard let (data, _) = try? await URLSession.shared.data(for: request),
+            guard let (data, _) = try? await AppNetwork.session.data(for: request),
                   !Task.isCancelled,
                   let image = UIImage(data: data)
             else { return }

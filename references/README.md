@@ -32,4 +32,4 @@ File paths below are relative to the upstream repository root.
   while playing and on status changes; finished playback uses progress `-1`.
 
 This snapshot is reference material. NeoBili's native Swift implementation is
-maintained in `NeoBili/`; upstream Flutter source is retained here for inspection.
+maintained in `NeoBili/`; the optional local Flutter checkout is reference material, not NeoBili's implementation contract.

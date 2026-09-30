@@ -82,7 +82,7 @@ struct APIClient {
     private let authentication: @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot
     private let appAuthentication: @Sendable () async -> DeviceIdentity.AppRequestAccount
 
-    init(session: URLSession = .shared,
+    init(session: URLSession = AppNetwork.session,
          authentication: @escaping @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot = {
              await DeviceIdentity.shared.authenticatedRequestSnapshot()
          },

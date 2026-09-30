@@ -2,19 +2,24 @@ import XCTest
 @testable import NeoBili
 
 final class AccountSessionTests: XCTestCase {
+    private func isolatedIdentity() -> DeviceIdentity {
+        let suite = "neobili.identity.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return DeviceIdentity(defaults: defaults, credentials: .memory(),
+                              allowsNetwork: false, purgeCookies: {})
+    }
+
     // MARK: - 登录 Cookie 拼接
 
     @MainActor
     func testCookieHeaderCarriesLoginCredentials() async {
-        let identity = DeviceIdentity.shared
+        let identity = isolatedIdentity()
         await identity.setLoginCookies(
             sessdata: "abc%2Cdef123",
             biliJct: "csrf456",
             dedeUserID: "10000"
         )
-        defer {
-            Task { await identity.clearLoginCookies() }
-        }
 
         let header = await identity.cookieHeader()
         XCTAssertTrue(header.contains("SESSDATA=abc%2Cdef123"), "SESSDATA 原样发送，不做二次转义")
@@ -28,7 +33,7 @@ final class AccountSessionTests: XCTestCase {
 
     @MainActor
     func testClearingCookiesRemovesLoginState() async {
-        let identity = DeviceIdentity.shared
+        let identity = isolatedIdentity()
         await identity.setLoginCookies(sessdata: "a", biliJct: "b", dedeUserID: "c")
         await identity.clearLoginCookies()
 

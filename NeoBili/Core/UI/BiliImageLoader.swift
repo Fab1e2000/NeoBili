@@ -73,7 +73,7 @@ private enum BiliImageDataLoader {
             request.timeoutInterval = 8
             request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
             request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await AppNetwork.session.data(for: request)
             if let response = response as? HTTPURLResponse, !(200..<300).contains(response.statusCode) {
                 throw BiliAPIError.httpStatus(response.statusCode)
             }

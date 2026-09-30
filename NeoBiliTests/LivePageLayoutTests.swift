@@ -8,7 +8,7 @@ import XCTest
 /// Keychain, remote account, stream player or HTTP endpoint is used.
 @MainActor
 final class LivePageLayoutTests: XCTestCase {
-    func testLivePageRecommendationFollowingEmptyAndFailureLayoutsOnRealDevice() async throws {
+    func testLivePageRecommendationFollowingEmptyAndFailureLayoutsInForegroundWindow() async throws {
         let host = try LivePageSnapshotHost()
         defer { host.close() }
         let rooms = await makeRooms()

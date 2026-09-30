@@ -30,7 +30,7 @@ actor WBISigner {
     /// 同一时间只允许一个 nav 请求。多个接口同时启动时，其余的会复用这一个结果，
     /// 否则首屏会连着发好几次相同的密钥请求，把真正要用的接口挤到后面。
     private var refreshTask: Task<String, Error>?
-    init(session: URLSession = .shared, defaults: UserDefaults = .standard,
+    init(session: URLSession = AppNetwork.session, defaults: UserDefaults = .standard,
          cookieHeader: @escaping @Sendable () async -> String = { await DeviceIdentity.shared.cookieHeader() }) {
         self.session = session
         self.defaults = defaults

@@ -24,7 +24,7 @@
       </BuildActionEntries>
    </BuildAction>
    <TestAction
-      buildConfiguration = "Regression"
+      buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
@@ -32,7 +32,7 @@
       <TestPlans>
          <TestPlanReference
             default = "YES"
-            reference = "container:Config/Regression.xctestplan">
+            reference = "container:Config/Network.xctestplan">
          </TestPlanReference>
       </TestPlans>
       <MacroExpansion>
@@ -88,8 +88,6 @@
             ReferencedContainer = "container:NeoBili.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <CommandLineArguments>
-      </CommandLineArguments>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

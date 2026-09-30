@@ -1,210 +1,73 @@
-# NeoBili 模块地图
+# 架构
 
-> 面向维护者的架构速览：目录职责、关键数据流、状态与任务的所有权、新功能的落点。
-> 描述的是当前实现；改动相关模块时请同步更新本文。
+NeoBili 是 SwiftUI / Swift 6 的 iOS 26+ 客户端，播放内核为 MPVKit。
+`project.yml` 管理 App 与 XCTest target；源码目录使用 synchronized folder，新增 Swift
+文件无需逐个登记。开发、测试和设备使用规则统一见 [开发与测试](DEVELOPMENT.md)。
 
-## 总览
+## 模块与状态所有权
 
-第三方 B 站客户端（SwiftUI + Swift 6 严格并发，iOS 26+）。工程用 XcodeGen 生成
-（`project.yml`），两个 target：
+| 目录 | 职责与主要入口 |
+| --- | --- |
+| `App` | `NeoBiliApp` 初始化，`RootView` 持有全局 store、标签及页面呈现，`AppDelegate` 输出方向约束 |
+| `Core/Networking` | `APIClient`、领域化 `BiliAPI`、`LiveAPI`、登录和签名、设备身份与凭据 |
+| `Core/Models` | 值模型、宽松解码、内容过滤、画幅查询及共享业务规则 |
+| `Core/UI` | 图片管线、标题栏、卡片、动画、主题、语言、交互基础设施 |
+| `Core/Platform` | 屏幕方向控制 |
+| `Core/Diagnostics` | 按启动参数开启的性能采集、回放与交互探针 |
+| `Features/Home`、`Following`、`Live`、`Search` | 推荐、关注动态、直播和搜索的页面与请求状态 |
+| `Features/VideoDetail`、`Player`、`Danmaku` | 详情、评论、互动、播放会话、内核渲染及弹幕 |
+| `Features/NowPlaying` | `NowPlayingStore` 拥有当前播放页面，协调详情呈现与缩略播放器 |
+| `Features/Account`、`Library`、`Mine`、`Settings` | 会话恢复、资料库、个人入口与设置 |
 
-- **NeoBili**：App。`sources` 是 `NeoBili/` 的 syncedFolder——新增 `.swift` 文件自动进编译，不需要登记。
-- **NeoBiliTests**：单元测试（iOS bundle，需要设备/Simulator 运行）。纯逻辑另有一套宿主机离线测试，见文末。
+`NowPlayingStore` 从打开到关闭持有路由、播放器、详情/评论及返回历史。
+`PlayerViewModel` 管播放状态、画质切换、备用源、观看上报和休眠，依次持有
+`MPVPlayerSession`、`MPVEngine`。旧内核事件按标识过滤，迟到回调不能更新新会话。
+页面模型持有加载任务；共享缓存持有共享任务，卡片退出只取消自己的等待。
 
-依赖只有 [MPVKit](https://github.com/mpvkit/MPVKit)（播放内核）。
+## 网络与账号
 
-## 目录职责
+主要接口经过 `APIClient` 组装 UA、Referer、显式 Cookie 与业务信封；登录、直播和图片
+各有独立入口，默认 HTTP 传输统一使用 `AppNetwork.session`。WBI 与 App 签名各自维护。
+非零业务码先于成功数据解码，列表用宽松解码避免单条异常拖垮整页。
 
-```
-NeoBili/
-  App/            进程入口。NeoBiliApp（预热设备标识与 WBI 密钥、音频会话）、
-                  RootView（按设置排序/隐藏的主标签 + 全局 store 环境 + 视频页与
-                  「我的」卡片的呈现）、MainTabSettings（标签顺序、隐藏、启动页）、
-                  AppDelegate（方向锁的 UIKit 出口）。
-  Core/
-    Extensions/   标准库/框架类型的小扩展（Int+BiliFormatting、Color+Hex）。
-    Networking/   传输与接口。APIClient 负责主要业务 API（公共头、Cookie、
-                  信封解码）；BiliAPI 按领域拆成 `BiliAPI+<领域>.swift` 扩展
-                  （Recommendation、Video、VideoActions、Playback、Comment、Search、
-                  Dynamic、Space、Account、Favorites、History、WatchLater）；
-                  BiliPassport 负责登录；WBISigner、AppSigner 负责两套签名；
-                  DeviceIdentity（actor）管 buvid 与登录凭据（Keychain）。
-    Models/       值类型模型（按领域分文件：Video、PlayURL、UgcSeason、Comment、
-                  Search、Follow、Dynamic、Space、Account、Live）+ 跨页共享的业务规则：
-                  VideoDimension（画幅/旋转）、VideoDurationFilterSettings、
-                  PortraitVideoStore（画幅/时长补查缓存）、VideoLikeStore（点赞差量）、
-                  FollowingReadStore、ListRemovalState（删除动效 + 回滚保护）。
-                  列表接口一律宽松解码（LenientDecoding：LenientList +
-                  flexibleInt/String/Bool，一条坏数据不拖垮整页）。
-    Platform/     方向控制（OrientationController / OrientationLock）。
-    UI/           共享视图与列表展示基础设施：PageHeader（各主页面的标题 + 头像）、
-                  BiliImage / BiliImageLoader（取图、解码与内存缓存）、VideoListCard、
-                  FeedRefreshAnimation（刷新动画 + 入场时钟）、AnimationSpeedSettings、
-                  VideoVisibilityEnvironment（整批画幅判断 + 补位 + 统一动画起点）、
-                  TabReselectionObserver（重复点标签 → `.onTabReselected`）、
-                  EnvironmentAction（环境值里的动作盒子）、ImageViewer（QuickLook）、
-                  ShortPullRefresh、LeftEdgeTapDeadZone、ActionFeedback（全局浮层）。
-  Features/
-    Home/         推荐流：HomeView（两种标题栏样式）、HomeFeedCollection（UIKit 双列列表）、
-                  HomeFeedCellView、HomeViewModel。
-    Live/         直播：推荐/关注两页、直播间、直播弹幕。
-    Following/    关注动态：FollowingViewModel（头像行）+ DynamicFeedModel（关注流与
-                  UP 主动态共用的翻页/点赞）+ FollowingUpStrip
-                  （标题下方的横向头像条）+ FollowingAllUpsView（全部关注）+ SpaceView（UP 主空间页）。
-    Search/       搜索标签：SearchPage、HomeSearchBar、SearchResultsView。
-    Library/      收藏、历史、稍后再看；LibraryTabPage 把它们作为标签页呈现，
-                  「我的」卡片里复用同一套列表视图。
-    Mine/         「我的」页面、服务卡片（MineServiceSheet）、点头像后以卡片弹出的呈现（MineSheetHost）。
-    Settings/     系统设置：SettingsView 首页，每个设置页一个文件。
-    VideoDetail/  视频页：VideoPage（页面骨架）、VideoDetailRoute、VideoDetailViewModel
-                  （详情、互动）、CommentsView / CommentRow / CommentsViewModel、评论输入、
-                  合集与分 P、收藏夹弹窗。
-    Player/       播放器：PlayerViewModel（状态机 + 备用地址恢复）、MPVPlayerSession
-                  （会话）、MPVEngine（mpv 内核）、MPVMetalViewController / MPVMetalLayer
-                  （渲染）、PlaybackSource（选流）、PlayerControlsOverlay、
-                  PlayerVerticalGestureLayer（分区手势）、SystemNowPlayingCenter（锁屏）。
-    Danmaku/      弹幕引擎、弹幕设置与下载。
-    Account/      账号：AccountStore（会话恢复/资料/登出）、扫码与密码登录。
-    NowPlaying/   NowPlayingStore：当前视频页的唯一所有者（见下）；VideoPagePresenter
-                  （全屏呈现视频页）、MiniPlayerHost / MiniPlayerBar（标签栏上方的缩略播放条）。
-  Resources/
-```
+`DeviceIdentity` actor 管设备标识、凭据快照及登录会话版本；生产凭据存 Keychain，
+测试可注入内存存储、独立 defaults 并关闭设备标识联网补取。
+`AccountStore` 区分本地有凭据与服务端已确认登录；暂时网络失败不等同于凭据失效。
 
-文件组织约定：一个文件一个主要类型，文件名与类型同名；同一类型按领域拆分时用
-`类型+领域.swift` 扩展；只服务于某个视图的小型私有子视图可以留在同一文件。
+写操作不自动重试，包括形式为 GET 的推荐反馈。观看上报、推荐反馈和播放准备绑定
+调用时的登录会话；账号切换后的迟到响应不能使用新凭据、返回旧播放清单或回填新缓存。
 
-## 关键数据流
+## 播放与观看记录
 
-### 1. 打开一个视频
+打开视频经 `VideoPreparationCache` 获取详情与播放地址，`PlayerViewModel` 选择媒体源，
+详情额外信息和评论独立加载。缓存按登录会话去重，取消按请求所有者处理，避免旧页面关闭
+误取消刚重新打开的视频。滑动预取默认关闭；开启时只预取接口元数据，不下载媒体。
 
-```
-卡片点击 → NowPlayingStore.open(route)
-  ├─ VideoDetailViewModel.load()            详情（经 VideoPreparationCache 去重）
-  ├─ VideoPreparationCache                 同会话播放地址缓存/在途去重
-  │   → PlayerViewModel.load()              滑动预取默认关闭
-  └─ 详情回来后 → loadExtras()（标签/互动关系/名片并行）+ 评论模型
-```
+本地续播与服务端观看记录分离。`PlaybackWatchProgress` 只认可首帧后、播放中且非缓冲
+的连续推进；拖动目标和未播放的续播位置不能作为观看证据。首次累计真实观看 5 秒、
+随后每 15 秒发心跳，暂停/退出补已确认进度。完成标记要求片尾真实推进。
+同会话、视频和分 P 共用串行发送队列，慢请求合并待发值。
 
-- **NowPlayingStore**（`Features/NowPlaying/`，挂在 RootView 环境上）拥有视频页的全部
-  状态：route、播放器、详情/评论模型、分 P、滚动位置、返回历史。相关视频/合集是
-  「就地换片 + 历史栈」；`close()` 负责停播放器并取消全部加载任务。
-- **PlayerViewModel** 只管播放本身：加载、画质切换（不换 session 就地重开）、备用
-  地址逐个尝试（`PlaybackSource.candidates`）、心跳上报、定时休眠。内核事件经
-  `engineID` 过滤，旧内核的迟到事件不会污染新会话。
-- **PlaybackWatchProgress** 用首帧后的连续解码位置和单调时钟确认真实观看，拖动目标和
-  本地续播位置不作为上传依据。首次累计 5 秒、随后每 15 秒发心跳；暂停、退出和正常
-  播放结束补发已确认进度。同登录会话、视频及分 P 共用弱引用登记的发送队列，慢网
-  时合并待发值；上传绑定创建
-  播放器时的登录会话，账号切换后旧任务不使用新凭据。
-- 播放详情/地址缓存按登录会话隔离。旧会话响应不能回填；关闭页面只取消属于该播放
-  器的请求，不会误取消刚重开的同一视频。启用滑动预取时等待卡片停留 300 ms，最多
-  同时预取 2 个、排队 4 个，仅获取接口元数据，不预下载媒体。
+## 列表、图片与取消
 
-### 2. 列表与内容过滤
+画幅/最低时长过滤通过 `VideoDimensionProviders` 适配列表模型；已知信息直接判断，
+缺失信息通过 `PortraitVideoStore` 合并查询。补查最多 6 并发，成功缓存 7 天，失败冷却
+5 分钟；按批次后台串行持久化，旧快照不能覆盖新快照。过滤关闭或元数据齐全时不补查。
 
-竖屏/最低时长过滤的入口是根视图注入的环境值 `hidesPortraitVideos` +
-`VideoDurationFilterSettings.shared`。列表通过
-`.resolvePortraitVideos(videos, batchID:)`（`Core/UI/VideoVisibilityEnvironment.swift`）
-统一处理：
+图片消费者共享传输及单份位图 LRU（64 MiB / 300 项）。最后一个消费者退出后取消传输
+和排队解码，其他消费者不受影响；内存告警统一清空缓存。已进入 ImageIO 的同步解码
+不能中途抢占，取消后不能回填结果。HTTP 缓存与解码位图缓存分工不同。
 
-1. 对整批视频算 `metadataRequest`（列表已知的直接用；缺的查
-   `PortraitVideoStore`，还没有的经 `VideoPreparationCache.detail` 补查，同 bvid 全
-   App 合并，最多 6 并发，成功缓存 7 天、失败冷却 5 分钟）；
-2. 全部判断/补位（最多 8 页）结束后才发布统一的入场动画起点
-   （`VideoEntranceClock`），屏幕外卡片共用同一批起点；
-3. 关闭过滤或全部已知时零请求。
+分页与刷新使用请求代号防止旧响应覆盖新状态；取消应退出等待而非显示业务错误。
+环境动作盒子用于稳定回调身份，闭包只捕获必要 Binding 或独立数据，避免引用宿主形成环。
+实际更新次数、帧率、耗时必须运行测量，不从代码结构推断。
 
-画幅/时长缓存按查询批次合并持久化；JSON 编码和写入在后台串行队列完成，旧快照
-不能覆盖新快照。页面取消后，已开始的共享查询完成时仍保存结果。
+## 扩展与测试边界
 
-各数据源到「画幅/时长」的适配都在 `Core/Models/VideoDimensionProviders.swift`：
-新增一种列表模型时，在这里加两个 extension 即可接入过滤。
+新增领域接口放入 `BiliAPI+领域`，列表模型放入 `Core/Models`，页面状态由对应 feature
+持有；设置接线见 [设置开发](SETTINGS.md)。界面字面量使用本地化资源，动态传递文字使用
+`String(localized:)`；避免把服务端文字当成本地翻译键。
 
-### 3. 网络层约定
-
-- 主要业务请求走 `APIClient`（图片、登录等还存在独立请求路径）：手写 Cookie 头（关共享 Cookie 罐）、
-  UA/Referer、`{code,message,data}` 信封。WBI 签名由 `WBISigner` 提供（密钥按自然日
-  持久化，并发签名合并为一次 nav 请求）。
-- 风控（v_voucher）在取流和搜索两个口子上有专门处理：换格式重试 / 报「被风控拦截」。
-- 写操作不回读：接口成功即认为本地乐观值正确（服务端写入有延迟，回读会闪回旧值）。
-- 写操作不自动重试，包括形式为 GET 的推荐反馈。推荐反馈和观看心跳绑定登录会话；
-  非零业务错误先于成功数据模型处理，避免错误响应的异构 `data` 掩盖账号失效。
-- 取消语义：结构化任务与独立共享任务要分别处理。`PortraitVideoStore` 按等待者登记取消：
-  排队且无人等待的请求移除；仍有人等待的请求保留；已开始的请求继续完成并缓存。
-  页面取消可以立即退出等待，不必等待共享下载结束。
-  错误处理使用 `Error.isCancellation`；分页/刷新用请求代号（UUID）防止旧响应覆盖新状态。
-
-### 4. 账号与会话
-
-`AccountStore` 区分「有凭据未验证」（`isLoggedIn` 先行，缓存资料兜底）与「已确认登
-录」，网络恢复/回前台/手动入口都能重试 `refreshProfile`；明确失效（-101 /
-`isLogin==false`）才清凭据。会话换代（登录/登出）时 `sessionID` 更新：视频页关闭、
-关注页重建、`VideoLikeStore` 差量清空、旧请求的回包按 sessionID 丢弃。
-
-## 状态与任务所有权
-
-| 状态 | 所有者 | 生命周期 |
-| --- | --- | --- |
-| 三 Tab、全局环境 | `RootView` | 进程 |
-| 视频页全部状态 | `NowPlayingStore`（RootView 持有） | 从 `open` 到 `close` |
-| 播放内核 | `PlayerViewModel` → `MPVPlayerSession` → `MPVEngine` | 视频页/换片 |
-| 详情/评论 | `VideoDetailViewModel` / `CommentsViewModel` | 视频页 |
-| 关注流/UP 主动态 | `DynamicFeedModel`（各持一份，翻页点赞共用） | 页面可见 + 账号会话 |
-| 点赞差量 | `VideoLikeStore.shared`（会话版本号） | 登录会话 |
-| 画幅/时长补查缓存 | `PortraitVideoStore.shared`（MainActor，7 天持久化） | 进程 + 磁盘 |
-| 播放地址/详情预取 | `VideoPreparationCache.shared`（actor，按登录会话隔离，5 分钟，预取并发 2） | 进程 |
-| 图片内存缓存 | `BiliImageCache.shared`（单份 64 MiB / 300 张 LRU，支持同步命中，在途消费者合并） | 进程 |
-
-图片请求按消费者管理生命周期：卡片离屏立即退出等待，最后一个消费者取消时终止
-传输及排队解码；其他可见卡片仍可共享同一个请求。同步显示和异步加载使用同一份
-位图缓存，内存告警统一清空。已进入 ImageIO 的同步解码不能在中途抢占，但其并发
-有上限，取消后的结果不会回填缓存。
-
-网络任务一律由 **ViewModel 或全局缓存** 持有（`HomeViewModel.activeLoadTask`、
-`DynamicFeedModel.reloadTask`、`NowPlayingStore.loadTasks` 等），不依附单个卡片视图；
-视图的 `.task` 只做触发。取消来自两层：视图生命周期（SwiftUI 自动）和
-「新请求替换旧请求」（显式 `cancel()` + 代号校验）。
-
-## 新功能放哪里
-
-- **新列表页**：模型（宽松解码）→ `Core/Models`；适配过滤 →
-  `VideoDimensionProviders`；页面用 `VideoListCard`/`FeedDropInRow` +
-  `.resolvePortraitVideos`，翻页失败给「重试加载」，不要把网络失败当成到底。
-- **新接口**：endpoint 加进对应领域的 `BiliAPI+<领域>.swift`（没有合适的就新建一个）；需要 WBI 就 `requiresWBI: true`；来源校验严的
-  接口带对应的 Origin/Referer（参考 `DynamicRequest.headers`、`SearchRequest`）。
-- **新设置项**：存储键与 clamp 放在使用它的模块（像 `HomeRefreshSettings`），设置页放
-  `Features/Settings/`，一页一个文件；跨页生效的走根视图环境值。
-- **新动效参数**：集中在 `FeedRefreshTuning` / `CardRemovalAnimation` / 各
-  `*Layout` 枚举，不要散在调用点。
-- **界面文字**：源语言是简体中文，英文翻译在 `Resources/Localizable.xcstrings`。
-  `Text`/`Button`/`Label` 等直接写字面量即可被提取；以 `String` 传递、最后才显示的文字
-  （错误信息、提示浮层、枚举标题、辅助函数参数）要写成 `String(localized:)`。
-  同一个中文词在不同位置意思不同时（如「关注」作标签页与作按钮），用
-  `String(localized: "follow.action", defaultValue: "关注")` 这样的独立键区分。
-  新增文字后用 `xcodebuild -exportLocalizations` 导出、补英文、`-importLocalizations` 导回；
-  中文条目的状态需为 translated，否则不会生成 `zh-Hans.lproj`，中文系统会回退到英文。
-- **新的环境动作回调**（列表行要触发弹层）：用 `EnvironmentAction` 盒子 +
-  `@State` 持有，宿主在 `onAppear` 里 `setHandler`（闭包依赖的值会变时用
-  `onChange(of:initial:)`），不要在 body 里设置，也不要往 `@Entry` 里塞裸闭包。
-
-## 离线测试（不需要 Simulator/真机）
-
-`offline-harness/run.sh`：把纯逻辑模块（画幅/时长过滤、PortraitVideoStore、
-动态解码、首页行分组、EnvironmentAction、WBI 缓存）复制到临时目录，用 swiftc 编译成
-macOS 可执行文件直接断言运行。每次运行都取仓库当前源码，副本不漂移；新增纯逻辑回归
-就往 `offline-harness/src/Tests.swift` 里加用例。依赖 UI/UIKit 的测试在
-`NeoBiliTests/`（需要设备运行）。
-
-
-## 审查与验证边界
-
-- 环境动作盒子只保证身份稳定，不保证所有子视图都不再更新。闭包必须显式捕获需要的
-  Binding 或独立数据，禁止捕获拥有动作盒子的宿主整体，以免形成循环引用。
-- `PageOffsetBox` 只消除滚动位置字典造成的状态失效；`headerCollapse` 等状态仍会变化。
-  首页、空间页、评论区的实际 body 更新次数及帧率，需要运行时测量，不能由 diff 推算成实测值。
-- 离线测试覆盖请求去重、6 并发、缓存、排队取消、共享等待者和在途完成语义；
-  独立的 `EnvironmentActionLifetime.swift` 在 macOS 上检查相同 Binding 捕获结构的 ARC 释放，
-  不启动界面。这不替代真实 SwiftUI 页面生命周期与性能验证。
-- 夜间改动的基线提交是 `30c70b5`，`9.8-Night` 是提交消息，不是 Git 引用。
-  `git diff 30c70b5` 只包含已跟踪文件；审阅还应结合 `git status --short` 查看未跟踪文件。
-  回退前应保存当前工作，并逐项确认范围，不使用全目录清理命令代替审阅。
+Regression 是独立 App 沙盒，关闭真实网络与业务根页面启动。测试注入传输、身份、
+加载器或播放器会话，窗口测试仍挂载真实生产组件。添加网络或持久化通道时，同时验证
+测试隔离；完整测试入口与专项选择统一由开发指南和 `Config/*.xctestplan` 定义。

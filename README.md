@@ -95,26 +95,21 @@ NeoBili is distributed as an **unsigned IPA**, which you sign yourself before in
 
 ## Building from source
 
-**Prerequisites:** Xcode 26.2 or later. Swift Package Manager resolves the only dependency, [MPVKit](https://github.com/mpvkit/MPVKit).
+Use Xcode 26.2 or later with an installed iOS Simulator runtime. Open `NeoBili.xcodeproj`,
+resolve MPVKit, select the `NeoBili` scheme and an iPhone simulator. No personal signing is needed.
+Run (`⌘R`) uses Debug; Test (`⌘U`) uses the isolated Regression configuration.
 
 ```sh
-git clone https://github.com/Fab1e2000/NeoBili.git
-cd NeoBili
-open NeoBili.xcodeproj
+bash scripts/simulator.sh list
+bash scripts/simulator.sh run
+bash scripts/simulator.sh test
+zsh offline-harness/run.sh
 ```
 
-1. Wait for Swift Package Manager to resolve MPVKit.
-2. Under **Signing & Capabilities**, choose your development team and change the bundle identifier if needed.
-3. Select the `NeoBili` scheme and your device, then build and run.
-
-To compile for devices without signing:
-
-```sh
-xcodebuild -project NeoBili.xcodeproj -scheme NeoBili \
-  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
-```
-
-The Xcode project is generated from `project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen). Run `xcodegen` to regenerate it.
+The [development and testing guide](docs/DEVELOPMENT.md) defines simulator selection,
+data isolation, CI, profiling, and explicit network/device validation (Chinese).
+Agent entry point: [AGENTS.md](AGENTS.md). Change `project.yml` and run `xcodegen generate`
+when editing project configuration.
 
 ## Project layout
 
@@ -139,7 +134,7 @@ The Xcode project is generated from `project.yml` with [XcodeGen](https://github
 ```
 
 - **Architecture:** module map, data flow and state ownership in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- **Tests:** run the offline regression suite with `zsh offline-harness/run.sh`. It needs no device or simulator.
+- **Tests:** use the layered workflow in the [development guide](docs/DEVELOPMENT.md).
 - **Icon:** the extruded B icon's editable source is in [`design/app-icon-2026/`](design/app-icon-2026/). `scripts/generate-app-icons.py` generates all 24 theme variants.
 
 ## Documentation
