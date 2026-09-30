@@ -318,7 +318,7 @@ struct VideoPage: View {
             InlineVideoPlayer(
                 viewModel: player,
                 controlsVisible: $playerControlsVisible,
-                coverURL: store.route?.secureCoverURL,
+                coverURL: viewModel?.detail?.secureCoverURL ?? store.route?.secureCoverURL,
                 isFullScreen: isFullScreen,
                 onToggleFullScreen: toggleFullScreen,
                 onSendDanmaku: sendDanmakuAction,
@@ -332,12 +332,11 @@ struct VideoPage: View {
                 shareURL: store.route.flatMap { URL(string: "https://www.bilibili.com/video/\($0.bvid)") }
             )
         } else {
-            // 播放器可能先于详情建好，所以只要还没出错就一直显示等待状态。
-            // 先铺上列表里那张封面，比一整块黑屏更接近最终画面。
+            // 等待详情或等待用户点播放时都保留列表封面。
             ZStack {
                 Color.black
 
-                if let coverURL = store.route?.secureCoverURL {
+                if let coverURL = viewModel?.detail?.secureCoverURL ?? store.route?.secureCoverURL {
                     BiliImage(url: coverURL)
                         .aspectRatio(contentMode: .fit)
                 }
@@ -352,13 +351,13 @@ struct VideoPage: View {
                 if viewModel?.errorMessage == nil {
                     Color.clear.contentShape(Rectangle())
                         .onTapGesture { playerControlsVisible.toggle() }
-                    if !playerControlsVisible {
+                    if !playerControlsVisible && !store.isWaitingForPlayback {
                         ProgressView().tint(.white).allowsHitTesting(false)
                     }
                 }
             }
             .overlay {
-                if playerControlsVisible || viewModel?.errorMessage != nil {
+                if playerControlsVisible || store.isWaitingForPlayback || viewModel?.errorMessage != nil {
                     PlayerGlassChrome(
                         title: viewModel?.detail?.title ?? store.route?.title ?? "",
                         subtitle: viewModel?.detail?.owner.name ?? store.route?.artist ?? "",
@@ -366,12 +365,13 @@ struct VideoPage: View {
                                                                  selectedID: 0, isEnabled: false, onSelect: { _ in }),
                         audioQualityControl: PlayerQualityControl(title: String(localized: "音质"), accessibilityLabel: String(localized: "音质"), options: [],
                                                                  selectedID: 0, isEnabled: false, onSelect: { _ in }),
-                        canControlPlayback: false,
-                        isWaiting: viewModel?.errorMessage == nil,
+                        canControlPlayback: store.isWaitingForPlayback && viewModel?.errorMessage == nil,
+                        isWaiting: !store.isWaitingForPlayback && viewModel?.errorMessage == nil,
                         isFullScreen: isFullScreen, isCompact: videoCollapseDistance > 0,
                         hasError: viewModel?.errorMessage != nil,
                         safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
                         onBack: { if isFullScreen { toggleFullScreen() } else { store.goBack() } },
+                        onTogglePlayback: store.requestPlayback,
                         onToggleFullScreen: toggleFullScreen, onToggleCompact: compactVideoAction
                     ) {
                         if let bvid = store.route?.bvid { WatchLaterMenuButton(bvid: bvid) }

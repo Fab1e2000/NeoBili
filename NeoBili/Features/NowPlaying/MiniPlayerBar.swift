@@ -28,6 +28,8 @@ struct MiniPlayerBar: View {
                     Group {
                         if error != nil {
                             Image(systemName: "exclamationmark.triangle")
+                        } else if store.isWaitingForPlayback {
+                            Image(systemName: "play.fill")
                         } else if store.isLoading || (store.livePlayer?.isBuffering ?? store.player?.isBuffering ?? false) {
                             ProgressView().controlSize(.small)
                         } else {
@@ -39,7 +41,7 @@ struct MiniPlayerBar: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(!store.hasRenderedFirstFrame || error != nil)
+                .disabled((!store.hasRenderedFirstFrame && !store.isWaitingForPlayback) || error != nil)
                 .accessibilityLabel(store.isPlaying ? "暂停" : "播放")
                 .accessibilityIdentifier("miniPlayer.playPause")
 

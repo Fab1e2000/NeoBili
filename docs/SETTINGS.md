@@ -11,6 +11,13 @@
 可注入 UserDefaults 的模型测试应使用独立 suite 并清理该 suite；窗口测试中依赖
 `UserDefaults.standard` / `@AppStorage` 的部分由 Regression 应用沙盒隔离。
 
+## 详情页自动播放
+
+「详情页直接播放」使用 `neobili.detailAutoPlay`，默认开启。`NowPlayingStore` 每次
+打开新视频（包括相关视频、合集及历史返回）时读取偏好；关闭后等待用户点击播放键。
+未开始播放时切换分 P 只更新待播放分段，播放后切换仍直接播放。列表预取播放地址是
+独立设置，不因关闭自动播放而清除或禁用缓存。
+
 ## 动画能力与偏好
 
 `VideoCardAnimationSource.supportedPhases` 定义页面实际支持的阶段，先检查能力，

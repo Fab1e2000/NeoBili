@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PlaybackSettingsView: View {
+    @AppStorage(DetailPlaybackSettings.storageKey) private var detailAutoPlay = DetailPlaybackSettings.defaultValue
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @AppStorage(PlaybackQuality.videoStorageKey) private var preferredQuality = PlaybackQuality.defaultVideoQuality
     @AppStorage(PlaybackQuality.audioStorageKey) private var preferredAudioQuality = PlaybackQuality.defaultAudioQuality
@@ -19,6 +20,11 @@ struct PlaybackSettingsView: View {
                         Text(option.title).tag(option.id)
                     }
                 }
+            }
+            Section {
+                Toggle("详情页直接播放", isOn: $detailAutoPlay)
+            } footer: {
+                Text("关闭后打开视频详情页只加载页面内容，点击播放键后才开始播放。")
             }
             Section {
                 Toggle("缩略播放器", isOn: $miniPlayerEnabled)

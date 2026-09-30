@@ -240,6 +240,8 @@ final class PlayerGlassStyleTests: XCTestCase {
             ("inline-21x9", false, 21.0 / 9, .playing, false),
             ("inline-ultrawide", false, 4.5, .playing, false),
             ("inline-loading", false, 16.0 / 9, .loading, false),
+            ("inline-manual-play", false, 16.0 / 9, .manual, false),
+            ("landscape-manual-play", true, nil, .manual, false),
             ("inline-ultrawide-loading", false, 4.5, .loading, false),
             ("inline-error", false, 16.0 / 9, .error, false),
             ("live-inline", false, 16.0 / 9, .playing, true),
@@ -383,7 +385,7 @@ private final class PlayerLoadingVisibilityFixtureState {
     var visible = false
 }
 
-private enum PlayerGlassFixtureState { case playing, loading, error }
+private enum PlayerGlassFixtureState { case playing, manual, loading, error }
 
 private struct PlayerGlassScreenFixture: View {
     let size: CGSize
@@ -473,7 +475,8 @@ private struct PlayerGlassScreenFixture: View {
                               videoQualityControl: videoQualityControl,
                               audioQualityControl: isLive ? nil : audioQualityControl,
                               position: 37, duration: 184, buffered: 92,
-                              isPlaying: true, canControlPlayback: state == .playing,
+                              isPlaying: state == .playing,
+                              canControlPlayback: state == .playing || state == .manual,
                               isWaiting: state == .loading, isLive: isLive,
                               isFullScreen: fullScreen, hasError: state == .error,
                               safeAreaInsets: fullScreen ? safeAreaInsets : EdgeInsets(),

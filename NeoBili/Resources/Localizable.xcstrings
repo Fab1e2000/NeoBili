@@ -1032,6 +1032,16 @@
         }
       }
     },
+    "关闭后打开视频详情页只加载页面内容，点击播放键后才开始播放。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When off, opening a video loads its details without playing. Tap Play to start."
+          }
+        }
+      }
+    },
     "关闭弹幕": {
       "localizations": {
         "en": {
@@ -4754,6 +4764,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "This video can't be played right now"
+          }
+        }
+      }
+    },
+    "详情页直接播放": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autoplay on Video Details"
           }
         }
       }
