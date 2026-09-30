@@ -160,7 +160,7 @@ struct NetworkLoadingRegression {
         let model = HomeViewModel(defaults: defaults(), currentAccount: {
             reads += 1
             return reads == 1 ? await oldAccount.value() : account
-        }, currentSessionID: { fixtureSessionID }, fetchRecommendations: { _ in fetches += 1; return [video(fetches)] })
+        }, currentSessionID: { fixtureSessionID }, fetchRecommendations: { request in fetches += 1; return RecommendationBatch(videos: [video(fetches)], nextRequest: request.next(appCursor: request.pageIndex + 1)) })
         let oldLoad = Task { await model.loadInitial() }
         await waitUntil { oldAccount.pending != nil }
         await model.refresh()
@@ -174,9 +174,10 @@ struct NetworkLoadingRegression {
     private static func stagedRefresh() async {
         var requested: [Int] = []
         let model = HomeViewModel(defaults: defaults(), currentAccount: { fixtureAccount },
-                                  currentSessionID: { fixtureSessionID }, fetchRecommendations: { index in
+                                  currentSessionID: { fixtureSessionID }, fetchRecommendations: { request in
+            let index = request.pageIndex
             requested.append(index)
-            return [video(requested.count)]
+            return RecommendationBatch(videos: [video(requested.count)], nextRequest: request.next(appCursor: request.pageIndex + 1))
         })
         await model.loadInitial()
         await model.refresh(staged: true)
@@ -196,7 +197,7 @@ struct NetworkLoadingRegression {
         let model = HomeViewModel(defaults: defaults(), reportUninterested: { _, _ in
             reports += 1
             await gate.value()
-        }, currentAccount: { fixtureAccount }, currentSessionID: { session }, fetchRecommendations: { _ in [video(1)] })
+        }, currentAccount: { fixtureAccount }, currentSessionID: { session }, fetchRecommendations: { request in RecommendationBatch(videos: [video(1)], nextRequest: request.next(appCursor: 1)) })
         await model.loadInitial()
         let invalid = RecommendationFeedbackOptions.Reason(id: 999, name: "foreign", toast: nil)
         _ = await model.markUninterested(model.videos[0], reason: invalid)
@@ -229,7 +230,7 @@ struct NetworkLoadingRegression {
                     currentSession = newSession
                     return clickedSession
                 }, feedbackClient: client,
-                fetchRecommendations: { _ in [video(1)] })
+                fetchRecommendations: { request in RecommendationBatch(videos: [video(1)], nextRequest: request.next(appCursor: 1)) })
             await model.loadInitial()
             let click = Task {
                 switch action {
@@ -258,7 +259,7 @@ struct NetworkLoadingRegression {
             })
             let model = HomeViewModel(defaults: defaults(), currentAccount: { fixtureAccount },
                 currentSessionID: { token }, feedbackClient: client,
-                fetchRecommendations: { _ in [video(1)] })
+                fetchRecommendations: { request in RecommendationBatch(videos: [video(1)], nextRequest: request.next(appCursor: 1)) })
             await model.loadInitial()
             switch action {
             case 0: _ = await model.markUninterested(model.videos[0], reason: reason)
@@ -266,6 +267,18 @@ struct NetworkLoadingRegression {
             default: _ = await model.dislikeWebRecommendation(model.videos[0], dislike: true)
             }
             expect(NetworkFixture.requests.count == 1, "Valid feedback action \(action) still sends exactly once")
+            if action < 2, let request = NetworkFixture.requests.first {
+                let params = Dictionary(uniqueKeysWithValues: URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
+                    .queryItems!.map { ($0.name, $0.value ?? "") })
+                expect(params["appkey"] == AppSigner.appKey, "Feedback uses the login signing identity")
+                expect(params["mobi_app"] == "android_hd" && params["build"] == "2001100"
+                       && params["platform"] == "android", "Feedback parameters identify Android HD")
+                expect(request.value(forHTTPHeaderField: "app-key") == "android_hd"
+                       && request.value(forHTTPHeaderField: "User-Agent") == AppClientIdentity.userAgent,
+                       "Feedback headers match parameters and signature")
+                expect(params["sign"] == AppSigner.signed(params, timestamp: Int(params["ts"]!)!)["sign"],
+                       "Feedback signature covers the final identity parameters")
+            }
         }
     }
 }

@@ -7,9 +7,10 @@ final class HomeFeedLayoutTests: XCTestCase {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         defaults.set(1234, forKey: "neobili.recommendFreshIndex")
         var requested: [Int] = []
-        let model = HomeViewModel(defaults: defaults, fetchRecommendations: { index in
+        let model = HomeViewModel(defaults: defaults, fetchRecommendations: { request in
+            let index = request.pageIndex
             requested.append(index)
-            return [self.video(requested.count)]
+            return RecommendationBatch(videos: [self.video(requested.count)], nextRequest: request.next(appCursor: request.pageIndex + 1))
         })
         await model.loadInitial()
         await model.loadMoreIfNeeded(current: model.videos.last!)
@@ -20,10 +21,11 @@ final class HomeFeedLayoutTests: XCTestCase {
 
     func testFailedRefreshKeepsContentAndRetriesRecommendationFromZero() async {
         var requested: [Int] = []
-        let model = HomeViewModel(fetchRecommendations: { index in
+        let model = HomeViewModel(fetchRecommendations: { request in
+            let index = request.pageIndex
             requested.append(index)
             if requested.count == 2 { throw URLError(.notConnectedToInternet) }
-            return [self.video(requested.count)]
+            return RecommendationBatch(videos: [self.video(requested.count)], nextRequest: request.next(appCursor: request.pageIndex + 1))
         })
         await model.loadInitial()
         await model.refresh()
@@ -37,15 +39,96 @@ final class HomeFeedLayoutTests: XCTestCase {
 
     func testStagedRefreshDoesNotReplaceCardsBeforeExitCompletes() async {
         var requests = 0
-        let model = HomeViewModel(fetchRecommendations: { _ in
+        let model = HomeViewModel(fetchRecommendations: { request in
             requests += 1
-            return [self.video(requests)]
+            return RecommendationBatch(videos: [self.video(requests)], nextRequest: request.next(appCursor: request.pageIndex + 1))
         })
         await model.loadInitial()
         await model.refresh(staged: true)
         XCTAssertEqual(model.videos.first?.aid, 1)
         model.commitStagedRefresh()
         XCTAssertEqual(model.videos.first?.aid, 2)
+    }
+
+    func testAppPaginationUsesServerCursorAcrossRetryFilteredAndDuplicatePages() async {
+        var requested: [RecommendationRequest] = []
+        let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!, fetchRecommendations: { request in
+            requested.append(request)
+            switch requested.count {
+            case 1: return RecommendationBatch(videos: [self.video(1)], nextRequest: request.next(appCursor: 1745482992))
+            case 2: throw URLError(.notConnectedToInternet)
+            case 3: return RecommendationBatch(videos: [], nextRequest: request.next(appCursor: 1745482980))
+            case 4: return RecommendationBatch(videos: [self.video(1)], nextRequest: request.next(appCursor: 1745482970))
+            default: return RecommendationBatch(videos: [self.video(2)], nextRequest: nil)
+            }
+        })
+        await model.loadInitial()
+        await model.loadReplacementPage()
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertEqual(model.videos.map(\.aid), [1])
+        await model.loadReplacementPage()
+        await model.loadReplacementPage()
+        await model.loadReplacementPage()
+        await model.loadReplacementPage() // No cursor: no extra request.
+        XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 1745482992, 1745482980, 1745482970])
+        XCTAssertEqual(requested.map(\.pageIndex), [0, 1, 1, 2, 3])
+        XCTAssertEqual(model.videos.map(\.aid), [1, 2])
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testSourceChangeRefreshAndAccountChangeResetAppCursorAndWebPage() async {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        var account = HomeFeedAccount(accountID: 1, hasAppCredential: true)
+        var requested: [RecommendationRequest] = []
+        let model = HomeViewModel(defaults: defaults, currentAccount: { account }, fetchRecommendations: { request in
+            requested.append(request)
+            return RecommendationBatch(videos: [self.video(requested.count)],
+                nextRequest: request.next(appCursor: request.source == .app ? 1745482992 : 0))
+        })
+        await model.loadInitial()
+        await model.loadReplacementPage()
+        defaults.set(false, forKey: RecommendationFilter.appRecommendKey)
+        await model.refresh()
+        await model.loadReplacementPage()
+        defaults.set(true, forKey: RecommendationFilter.appRecommendKey)
+        await model.refresh(staged: true)
+        await model.loadReplacementPage()
+        XCTAssertEqual(requested.count, 5, "Pending animation blocks pagination")
+        model.commitStagedRefresh()
+        await model.loadReplacementPage()
+        account = HomeFeedAccount(accountID: 2, hasAppCredential: true)
+        await model.refreshIfAccountChanged(to: account)
+        XCTAssertEqual(requested.map(\.source), [.app, .app, .web, .web, .app, .app, .app])
+        XCTAssertEqual(requested.map(\.pageIndex), [0, 1, 0, 1, 0, 1, 0])
+        XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 0, 0, 0, 1745482992, 0])
+    }
+
+    func testLateCancelledPageCannotOverwriteRefreshedCursor() async {
+        var requested: [RecommendationRequest] = []
+        var pending: CheckedContinuation<RecommendationBatch, Never>?
+        let suspended = expectation(description: "Old pagination suspended")
+        let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!, fetchRecommendations: { request in
+            requested.append(request)
+            if requested.count == 2 {
+                return await withCheckedContinuation {
+                    pending = $0
+                    suspended.fulfill()
+                }
+            }
+            return RecommendationBatch(videos: [self.video(requested.count)],
+                nextRequest: request.next(appCursor: requested.count == 1 ? 111 : 222))
+        })
+        await model.loadInitial()
+        let oldPage = Task { await model.loadReplacementPage() }
+        await fulfillment(of: [suspended], timeout: 2)
+        await model.refresh()
+        pending?.resume(returning: RecommendationBatch(videos: [video(99)],
+            nextRequest: RecommendationRequest(source: .app, pageIndex: 2, appCursor: 999)))
+        await oldPage.value
+        await model.loadReplacementPage()
+        XCTAssertEqual(requested.map(\.appCursor), [0, 111, 0, 222])
+        XCTAssertFalse(model.videos.contains { $0.aid == 99 })
+        XCTAssertNil(model.errorMessage)
     }
 
     func testExitStartsWithRefreshAndOnlyWaitsForRemainingTime() {
@@ -91,7 +174,9 @@ final class HomeFeedLayoutTests: XCTestCase {
 
     func testFeedbackUsesCardGotoAndParam() {
         let params = BiliAPI.feedbackParameters(video(123).recommendationFeedback!)
-        XCTAssertEqual(params, ["goto": "av", "id": "123", "build": "1", "mobi_app": "android"])
+        XCTAssertEqual(params["goto"], "av")
+        XCTAssertEqual(params["id"], "123")
+        for (key, value) in AppClientIdentity.parameters { XCTAssertEqual(params[key], value) }
     }
 
     func testSuccessfulFeedbackRemovesCardAndShiftsLastSeenMarker() async {
@@ -99,9 +184,9 @@ final class HomeFeedLayoutTests: XCTestCase {
         var reported: [Int] = []
         let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!,
                                   reportUninterested: { options, reason in reported.append(options.param + reason.id) },
-                                  fetchRecommendations: { _ in
+                                  fetchRecommendations: { request in
             requests += 1
-            return requests == 1 ? [self.video(1), self.video(2)] : [self.video(3), self.video(4)]
+            return RecommendationBatch(videos: requests == 1 ? [self.video(1), self.video(2)] : [self.video(3), self.video(4)], nextRequest: request.next(appCursor: request.pageIndex + 1))
         })
         await model.loadInitial()
         await model.refresh()
@@ -117,7 +202,7 @@ final class HomeFeedLayoutTests: XCTestCase {
     func testFailedFeedbackKeepsCard() async {
         let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!,
                                   reportUninterested: { _, _ in throw URLError(.notConnectedToInternet) },
-                                  fetchRecommendations: { _ in [self.video(1)] })
+                                  fetchRecommendations: { request in RecommendationBatch(videos: [self.video(1)], nextRequest: request.next(appCursor: 1)) })
         await model.loadInitial()
         let error = await model.markUninterested(model.videos[0], reason: reason)
         XCTAssertNotNil(error)
@@ -129,7 +214,7 @@ final class HomeFeedLayoutTests: XCTestCase {
         var calls: [Bool] = []
         let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!,
                                   dislikeVideo: { _, dislike in calls.append(dislike) },
-                                  fetchRecommendations: { _ in [self.video(1), self.video(2)] })
+                                  fetchRecommendations: { request in RecommendationBatch(videos: [self.video(1), self.video(2)], nextRequest: request.next(appCursor: 1)) })
         await model.loadInitial()
         let undo = await model.dislikeWebRecommendation(model.videos[1], dislike: false)
         XCTAssertEqual(undo, "取消踩")
@@ -145,9 +230,10 @@ final class HomeFeedLayoutTests: XCTestCase {
         var account = HomeFeedAccount(accountID: 42, hasAppCredential: true)
         let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!,
                                   currentAccount: { account },
-                                  fetchRecommendations: { index in
+                                  fetchRecommendations: { request in
+            let index = request.pageIndex
             requests.append(index)
-            return [self.video(requests.count)]
+            return RecommendationBatch(videos: [self.video(requests.count)], nextRequest: request.next(appCursor: request.pageIndex + 1))
         })
         await model.loadInitial()
         // 启动时恢复账号：界面上的账号从空变成 42，但第一页本来就是用 42 取的。
@@ -162,7 +248,7 @@ final class HomeFeedLayoutTests: XCTestCase {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         var blocked: [Int] = []
         let model = HomeViewModel(defaults: defaults, blockUser: { blocked.append($0) },
-                                  fetchRecommendations: { _ in [self.video(1), self.video(2)] })
+                                  fetchRecommendations: { request in RecommendationBatch(videos: [self.video(1), self.video(2)], nextRequest: request.next(appCursor: 1)) })
         await model.loadInitial()
         let message = await model.block(VideoOwner(mid: 42, name: "UP", face: ""))
         XCTAssertEqual(message, "已拉黑 UP")
@@ -175,9 +261,9 @@ final class HomeFeedLayoutTests: XCTestCase {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         defaults.set(false, forKey: RecommendationFilter.keepLastDataKey)
         var requests = 0
-        let model = HomeViewModel(defaults: defaults, fetchRecommendations: { _ in
+        let model = HomeViewModel(defaults: defaults, fetchRecommendations: { request in
             requests += 1
-            return [self.video(requests)]
+            return RecommendationBatch(videos: [self.video(requests)], nextRequest: request.next(appCursor: request.pageIndex + 1))
         })
         await model.loadInitial()
         await model.refresh()

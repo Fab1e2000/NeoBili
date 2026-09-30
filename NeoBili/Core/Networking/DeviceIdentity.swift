@@ -261,11 +261,11 @@ enum BiliHeaders {
 
     /// APP 端接口只认 BiliDroid 的 UA。带着浏览器 UA 去请求 app.bilibili.com
     /// 会被当成非法客户端，即使签名正确也拿不到数据。
-    static let appUserAgent = "Mozilla/5.0 BiliDroid/2.0.1 (bbcallen@gmail.com) os/android model/android_hd mobi_app/android_hd build/2001100 channel/master innerVer/2001100 osVer/15 network/2"
+    static let appUserAgent = AppClientIdentity.userAgent
 
     /// PiliPlus 账号拦截器给 App 请求补的头；登录后再带上 mid 和由它算出的 aurora eid。
     static func appAccountHeaders(mid: Int?) -> [String: String] {
-        var headers = ["env": "prod", "app-key": "android64", "x-bili-aurora-zone": "sh001"]
+        var headers = ["env": "prod", "app-key": AppClientIdentity.mobiApp, "x-bili-aurora-zone": "sh001"]
         if let mid, mid > 0 {
             headers["x-bili-mid"] = String(mid)
             headers["x-bili-aurora-eid"] = auroraEID(mid: mid)

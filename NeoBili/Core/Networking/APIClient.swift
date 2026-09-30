@@ -277,7 +277,7 @@ struct APIClient {
 
     /// App GET 接口，照 PiliPlus 的账号拦截器：有 access_key 就带上，没有就按访客请求；
     /// 整组参数用 HD 密钥签名。`headers` 是接口自带的请求头，可以覆盖账号相关的通用头
-    /// （首页推荐按 iPhone 身份请求，要把 app-key 换掉）。
+    /// （首页推荐补充 buvid、会话与追踪标识）。
     func getApp<T: Decodable>(path: String, params: [String: String],
                               headers: [String: String] = [:], retries: Int = 2,
                               expectedSessionID: UUID? = nil) async throws -> T {

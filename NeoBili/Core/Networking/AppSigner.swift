@@ -1,6 +1,15 @@
 import CryptoKit
 import Foundation
 
+/// 与现有扫码登录签名配套的客户端身份，推荐和反馈共用，避免各接口自行拼接。
+enum AppClientIdentity {
+    static let mobiApp = "android_hd"
+    static let build = "2001100"
+    static let userAgent = "Mozilla/5.0 BiliDroid/2.0.1 (bbcallen@gmail.com) os/android model/android_hd mobi_app/android_hd build/2001100 channel/master innerVer/2001100 osVer/15 network/2"
+    static let parameters = ["mobi_app": mobiApp, "build": build, "platform": "android",
+                             "device": "pad", "channel": "master"]
+}
+
 /// B 站 APP 端接口（app.bilibili.com、passport-tv-login）的参数签名。
 ///
 /// 网页端接口靠 Cookie 认证、靠 WBI 签名（见 `WBISigner`）；APP 端是另一套：
@@ -10,8 +19,7 @@ import Foundation
 /// 末尾接上 appsec → 取 MD5 作为 `sign`。服务端用同样的步骤复算，对不上就返回
 /// 「API 校验密匙错误」。
 enum AppSigner {
-    /// android_hd（HD 版）的密钥对。扫码登录返回的 access_key 与这一对绑定，
-    /// 换成别的 appkey 去调 APP 接口会被判成无效凭据，所以两处必须用同一对。
+    /// android_hd（HD 版）的签名配置；扫码登录、推荐和反馈使用同一套身份。
     static let appKey = "dfca71928277209b"
     private static let appSecret = "b5475a8825547a4fc26c7d518eaaa02e"
 

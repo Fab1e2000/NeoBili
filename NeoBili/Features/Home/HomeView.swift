@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct HomeView: View {
+    var isSelected = true
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
@@ -59,6 +61,22 @@ struct HomeView: View {
             .onAppear {
                 // Returning to this tab always restores the app's portrait lock.
                 OrientationController.enterPortrait()
+                requestAutomaticRefresh(.appear)
+            }
+            .onChange(of: isSelected) { _, selected in
+                if selected { requestAutomaticRefresh(.appear) }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { requestAutomaticRefresh(.active) }
+            }
+            .onChange(of: nowPlaying.isExpanded) { old, expanded in
+                if old, !expanded { requestAutomaticRefresh(.behavior) }
+            }
+            .onChange(of: nowPlaying.isServiceSheetPresented) { old, presented in
+                if old, !presented { requestAutomaticRefresh(.behavior) }
+            }
+            .onChange(of: viewModel.sheet) { old, sheet in
+                if old != nil, sheet == nil { requestAutomaticRefresh(.behavior) }
             }
             .onTabReselected(.home, perform: scrollToTopOrRefresh)
             .sheet(item: $viewModel.sheet) { sheet in
@@ -140,6 +158,15 @@ struct HomeView: View {
         } else {
             startRefresh()
         }
+    }
+
+    private func requestAutomaticRefresh(_ trigger: AppRecommendationRefreshConfig.Trigger) {
+        guard isSelected, scenePhase == .active,
+              !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented,
+              viewModel.sheet == nil, viewModel.pendingBlock == nil, viewModel.reportingIDs.isEmpty,
+              !feedController.isInteracting, shortcutTask == nil, !isRefreshing,
+              viewModel.claimAutomaticRefresh(trigger) else { return }
+        startRefresh(scrollToTop: true)
     }
 
     private func startRefresh(scrollToTop: Bool = false) {

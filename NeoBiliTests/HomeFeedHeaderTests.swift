@@ -14,7 +14,7 @@ final class HomeFeedHeaderTests: XCTestCase {
                          owner: VideoOwner(mid: 1, name: "测试", face: ""),
                          stat: VideoStat(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0))
         }
-        let model = HomeViewModel(fetchRecommendations: { _ in [] })
+        let model = HomeViewModel(fetchRecommendations: { _ in RecommendationBatch(videos: [], nextRequest: nil) })
         let host = UIHostingController(rootView:
             HomeFeedCollection(rows: HomeFeedRow.group(videos.map { .video($0) }),
                                viewModel: model, hidesPortraitVideos: false, isRefreshing: false,

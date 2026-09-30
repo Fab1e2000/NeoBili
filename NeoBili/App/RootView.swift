@@ -139,7 +139,7 @@ struct RootView: View {
             LiveView(onOpenRoom: openLiveRoom)
                 .tint(.primary)
         case .home:
-            HomeView()
+            HomeView(isSelected: displayedTab == .home)
                 .tint(.primary)
         case .following:
             FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") })

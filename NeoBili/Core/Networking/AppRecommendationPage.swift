@@ -4,16 +4,32 @@ import Foundation
 /// 先去掉广告和不可播放的卡片，再按推荐流设置做本地过滤，不改变服务端给的顺序。
 struct AppRecommendationPage: Decodable {
     let cards: [AppRecommendationCard]
-    private enum Keys: String, CodingKey { case items }
+    /// 原始响应中最后一个有效 idx，包括之后不展示的卡片。
+    let nextCursor: Int?
+    let refreshConfig: AppRecommendationRefreshConfig?
+    private enum Keys: String, CodingKey { case items, idx, config }
 
     init(from decoder: Decoder) throws {
-        var items = try decoder.container(keyedBy: Keys.self).nestedUnkeyedContainer(forKey: .items)
+        let container = try decoder.container(keyedBy: Keys.self)
+        refreshConfig = try? container.decodeIfPresent(AppRecommendationRefreshConfig.self, forKey: .config)
+        var items = try container.nestedUnkeyedContainer(forKey: .items)
         var result: [AppRecommendationCard] = []
+        var cursor: Int?
         while !items.isAtEnd {
             let decoder = try items.superDecoder()
+            if let fields = try? decoder.container(keyedBy: Keys.self),
+               let idx = fields.integer(.idx), idx > 0 { cursor = idx }
             if let card = try? AppRecommendationCard(from: decoder) { result.append(card) }
         }
         cards = result
+        nextCursor = cursor
+    }
+
+    func batch(for request: RecommendationRequest, filter: RecommendationFilter) -> RecommendationBatch {
+        let next = nextCursor.flatMap { cursor in
+            cursor != request.appCursor ? request.next(appCursor: cursor) : nil
+        }
+        return RecommendationBatch(videos: videos(filter: filter), nextRequest: next, refreshConfig: refreshConfig)
     }
 
     var videos: [VideoSummary] { videos(filter: .none) }
@@ -28,37 +44,30 @@ struct AppRecommendationPage: Decodable {
         .map(\.video)
     }
 
-    /// 参数照 PiliPlus，只有客户端身份改报 iPhone。真机对比（2026-09-27，同一账号、同一次启动里
-    /// 先安卓后 iPhone）：报安卓（PiliPlus 现用的 android_i 与旧版 android_hd）累计 0/210 张来自
-    /// 已关注 UP；报 iPhone 时一次拿到 8/30 张，服务端标了「已关注」，都是关注 UP 刚发的新视频。
-    /// 这批推过之后两种身份都是 0，所以服务端似乎只插入还没推过的新投稿，并且只给 iPhone 身份。
-    /// 代价：iPhone 身份每页多 2～3 条广告卡，会被过滤掉，每页可见视频少一些。
-    static func parameters(freshIndex: Int) -> [String: String] {
-        ["build": "83500100", "c_locale": "zh_CN", "s_locale": "zh_CN", "channel": "master",
-         "column": "2", "device": "phone", "device_name": "iPhone", "device_type": "0",
-         "disable_rcmd": "0", "flush": "8", "fnval": "976", "fnver": "0", "force_host": "2",
-         "fourk": "1", "guidance": "1", "https_url_req": "1", "idx": String(freshIndex),
-         "mobi_app": "iphone", "network": "wifi", "platform": "ios", "player_net": "1",
-         "pull": freshIndex == 0 ? "true" : "false", "qn": "32", "recsys_mode": "0",
-         "splash_id": "", "voice_balance": "0",
-         "statistics": #"{"appId":1,"platform":1,"version":"8.35.0","abtest":""}"#]
+    /// 游标和刷新标记属于分页协议；客户端参数与登录签名、推荐反馈共用 Android HD 身份。
+    static func parameters(cursor: Int, pull: Bool) -> [String: String] {
+        AppClientIdentity.parameters.merging([
+            "c_locale": "zh_CN", "s_locale": "zh_CN", "column": "2",
+            "disable_rcmd": "0", "flush": "8", "fnval": "976", "fnver": "0", "force_host": "2",
+            "fourk": "1", "guidance": "1", "https_url_req": "1", "idx": String(cursor),
+            "network": "wifi", "player_net": "1", "pull": pull ? "true" : "false",
+            "qn": "32", "recsys_mode": "0", "splash_id": "", "voice_balance": "0",
+            "statistics": #"{"appId":5,"platform":3,"version":"2.0.1","abtest":""}"#
+        ]) { _, value in value }
     }
 
     /// 本次启动固定的会话标识，代替 PiliPlus 写死的 `11111111`。
     private static let sessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
 
-    /// 和请求参数一样报 iPhone 客户端。格式照官方 iPhone App 的 UA，没有抓包核对过。
-    static let userAgent = "bili-universal/83500100 CFNetwork/1.0 Darwin/27.0.0 os/ios model/iPhone 17 "
-        + "mobi_app/iphone build/83500100 osVer/27.0 network/2 channel/AppStore"
+    static let userAgent = AppClientIdentity.userAgent
 
-    /// PiliPlus 推荐请求自带的请求头，改报 iPhone：UA、app-key 换成 iPhone 的，去掉安卓网络库的
-    /// `bili-http-engine` 和写死的假设备指纹。mid、aurora 等账号相关的头由 `APIClient.getApp` 补上。
+    /// 与签名和请求参数使用同一客户端；mid、aurora 由 APIClient 补齐。
     static func headers(buvid: String) -> [String: String] {
         ["User-Agent": userAgent,
          "buvid": buvid,
          "session_id": sessionID,
          "env": "prod",
-         "app-key": "iphone",
+         "app-key": AppClientIdentity.mobiApp,
          "x-bili-trace-id": traceID()]
     }
 
@@ -238,4 +247,38 @@ private extension KeyedDecodingContainer {
         return (try? decode(String.self, forKey: key)).flatMap(Int.init)
     }
     func text(_ key: Key) -> String? { try? decode(String.self, forKey: key) }
+}
+
+/// 服务端秒数；缺失事件字段才回退到旧版 auto_refresh_time，0/负数/坏值明确关闭该事件。
+struct AppRecommendationRefreshConfig: Decodable, Equatable, Sendable {
+    enum Trigger { case active, appear, behavior }
+    let active: TimeInterval?
+    let appear: TimeInterval?
+    let behavior: TimeInterval?
+
+    private enum Keys: String, CodingKey {
+        case legacy = "auto_refresh_time"
+        case active = "auto_refresh_time_by_active"
+        case appear = "auto_refresh_time_by_appear"
+        case behavior = "auto_refresh_time_by_behavior"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        func interval(_ key: Keys) -> TimeInterval? {
+            let value = c.integer(c.contains(key) ? key : .legacy)
+            return value.flatMap { $0 > 0 ? TimeInterval($0) : nil }
+        }
+        active = interval(.active)
+        appear = interval(.appear)
+        behavior = interval(.behavior)
+    }
+
+    func interval(for trigger: Trigger) -> TimeInterval? {
+        switch trigger {
+        case .active: active
+        case .appear: appear
+        case .behavior: behavior
+        }
+    }
 }
