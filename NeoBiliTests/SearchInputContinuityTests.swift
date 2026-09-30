@@ -14,7 +14,7 @@ final class SearchInputContinuityTests: XCTestCase {
         let focus = SearchFocusFixture()
         let host = UIHostingController(rootView: NavigationStack {
             SearchPage(viewModel: model, isFocused: Binding(get: { focus.focused }, set: { focus.focused = $0 }), onSubmit: { _ in })
-        })
+        }.environment(AccountStore(monitorNetwork: false)))
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true; previous?.makeKey() }
