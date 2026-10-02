@@ -23,6 +23,7 @@ actor DeviceIdentity {
     private static let biliJctKeychainKey = "neobili.bili_jct"
     private static let dedeUserIDKeychainKey = "neobili.dedeuserid"
     private static let accessKeyKeychainKey = "neobili.access_key"
+    private static let accessKeyClientKey = "neobili.access_key.client"
 
     private var cachedBuvid3: String?
     private var cachedBuvid4: String?
@@ -30,6 +31,7 @@ actor DeviceIdentity {
     private var cachedBiliJct: String?
     private var cachedDedeUserID: String?
     private var cachedAccessKey: String?
+    private var needsAppCredentialMigration = false
     private var fetchTask: Task<Void, Never>?
     private nonisolated let credentialSessionID = Mutex(UUID())
 
@@ -69,12 +71,18 @@ actor DeviceIdentity {
         cachedSessdata = credentials.read(Self.sessdataKeychainKey)
         cachedBiliJct = credentials.read(Self.biliJctKeychainKey)
         cachedDedeUserID = credentials.read(Self.dedeUserIDKeychainKey)
-        cachedAccessKey = credentials.read(Self.accessKeyKeychainKey)
+        // 未标记的旧凭据来自 HD；保留 Cookie，由 AccountStore 换取 Android 凭据。
+        if credentials.read(Self.accessKeyClientKey) == AppClientIdentity.credentialScope {
+            cachedAccessKey = credentials.read(Self.accessKeyKeychainKey)
+        } else {
+            needsAppCredentialMigration = credentials.read(Self.accessKeyKeychainKey)?.isEmpty == false
+        }
     }
 
     func accountSnapshot() -> AccountCredentialsSnapshot {
         AccountCredentialsSnapshot(hasCredentials: cachedSessdata != nil,
                                    hasAppCredential: cachedAccessKey?.isEmpty == false,
+                                   needsAppCredentialMigration: needsAppCredentialMigration,
                                    accountID: cachedDedeUserID.flatMap(Int.init))
     }
 
@@ -169,7 +177,10 @@ actor DeviceIdentity {
     /// 扫码登录额外带回来的 APP 端凭据。密码登录没有这个值，传 nil 即可。
     func setAccessKey(_ accessKey: String?) {
         cachedAccessKey = accessKey
+        needsAppCredentialMigration = false
+        credentials.write(nil, Self.accessKeyClientKey)
         credentials.write(accessKey, Self.accessKeyKeychainKey)
+        credentials.write(accessKey?.isEmpty == false ? AppClientIdentity.credentialScope : nil, Self.accessKeyClientKey)
     }
 
     /// 换取到的 App 凭据只在仍是同一账号时保存，换取途中退出或换号就丢弃。
@@ -186,10 +197,12 @@ actor DeviceIdentity {
         cachedBiliJct = nil
         cachedDedeUserID = nil
         cachedAccessKey = nil
+        needsAppCredentialMigration = false
         credentials.write(nil, Self.sessdataKeychainKey)
         credentials.write(nil, Self.biliJctKeychainKey)
         credentials.write(nil, Self.dedeUserIDKeychainKey)
         credentials.write(nil, Self.accessKeyKeychainKey)
+        credentials.write(nil, Self.accessKeyClientKey)
         purgeCookies()
     }
 

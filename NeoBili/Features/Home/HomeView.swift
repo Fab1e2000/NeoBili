@@ -11,7 +11,8 @@ struct HomeView: View {
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    @TitleBarPreference private var titleBarStyle
+    private var pinsTitleBar: Bool { titleBarStyle.isPinned }
     @AppStorage(RecommendationFilter.appRecommendKey) private var usesAppRecommendation = true
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
@@ -50,6 +51,7 @@ struct HomeView: View {
                         .padding(.horizontal, 20)
                 }
             }
+            .scrollEdgeEffectStyle(titleBarStyle.scrollEdgeStyle, for: .top)
             .background(Color(uiColor: .systemGroupedBackground))
             .task { await viewModel.loadInitial() }
             // 登录/退出/拿到 App 凭据后服务端会切到个性化/通用推流，
@@ -129,6 +131,7 @@ struct HomeView: View {
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
                 onOpenMine: { openMine?(()) },
                 pinsTitleBar: pinsTitleBar,
+                hardTitleBarEdge: titleBarStyle == .pinnedHard,
                 safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity,
                 // 补位整段 0.3 秒，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。

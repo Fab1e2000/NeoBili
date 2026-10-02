@@ -1,11 +1,42 @@
-/// 各主页面标题栏（标题 + 头像）的两种样式，设置里全局切换：
-/// - 随内容滚动（默认）：标题行是列表内容的第一行，随内容滚走；
-/// - 固定在顶部：标题行常驻顶部，内容从下面滑过。
-///
-/// 存储键沿用最早只作用于推荐页时的名字，旧版本保存的选择继续有效。
+import SwiftUI
+
+/// 推荐、搜索和资料库页面的标题栏偏好。关注、直播始终固定并使用切边背景。
 enum TitleBarSettings {
     static let storageKey = "neobili.homePinnedTitleBar"
     static let defaultValue = false
+    static let styleKey = "neobili.titleBarStyle"
 
-    static func summary(pinned: Bool) -> String { pinned ? String(localized: "固定在顶部") : String(localized: "随内容滚动") }
+    enum Style: String, CaseIterable {
+        case scrolling, pinnedHard, pinnedGradient
+
+        var isPinned: Bool { self != .scrolling }
+        var scrollEdgeStyle: ScrollEdgeEffectStyle { self == .pinnedHard ? .hard : .soft }
+        var title: String {
+            switch self {
+            case .scrolling: String(localized: "随内容滚动")
+            case .pinnedHard: String(localized: "固定·切边")
+            case .pinnedGradient: String(localized: "固定·渐变")
+            }
+        }
+    }
+
+    static func selected(_ rawValue: String, legacyPinned: Bool) -> Style {
+        Style(rawValue: rawValue) ?? (legacyPinned ? .pinnedGradient : .scrolling)
+    }
+}
+
+/// 缺少新偏好时兼容旧布尔值，遵循页面的 defaultAppStorage，便于隔离测试。
+@propertyWrapper
+struct TitleBarPreference: DynamicProperty {
+    @AppStorage(TitleBarSettings.styleKey) private var storedStyle = ""
+    @AppStorage(TitleBarSettings.storageKey) private var legacyPinned = TitleBarSettings.defaultValue
+
+    var wrappedValue: TitleBarSettings.Style {
+        get { TitleBarSettings.selected(storedStyle, legacyPinned: legacyPinned) }
+        nonmutating set { storedStyle = newValue.rawValue }
+    }
+
+    var projectedValue: Binding<TitleBarSettings.Style> {
+        Binding(get: { wrappedValue }, set: { wrappedValue = $0 })
+    }
 }

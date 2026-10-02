@@ -6,6 +6,26 @@ import XCTest
 /// 签名一旦算错，服务端只会回一句「API 校验密匙错误」，从网络日志上看不出是
 /// 哪一步偏了，所以这里用固定时间戳把整条算式钉死。
 final class VideoInteractionTests: XCTestCase {
+    func testAndroidPassportSignatureUsesLoginKey() {
+        let signed = AppSigner.signed(["auth_code": "abc", "local_id": "0"], purpose: .passport,
+                                      timestamp: 1_700_000_000)
+        XCTAssertEqual(signed["appkey"], "783bbb7264451d82")
+        XCTAssertEqual(signed["sign"], "d6cd65288033c0af568597eb8dbf063b")
+    }
+
+    func testAndroidTokenOnlyExchangeRequiresMatchingAccount() throws {
+        let payload = Data(#"{"code":0,"data":{"mid":42,"access_token":"android-token"}}"#.utf8)
+        let cookies = BiliPassport.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42")
+        guard case .confirmed(let confirmed, let key) = try BiliPassport.appPollOutcome(
+            fromPayload: payload, fallbackCookies: cookies
+        ) else { return XCTFail("Expected confirmed") }
+        XCTAssertEqual(confirmed, cookies)
+        XCTAssertEqual(key, "android-token")
+        XCTAssertThrowsError(try BiliPassport.appPollOutcome(fromPayload: payload))
+        XCTAssertThrowsError(try BiliPassport.appPollOutcome(fromPayload: payload,
+            fallbackCookies: .init(sessdata: "s", biliJct: "j", dedeUserID: "99")))
+    }
+
     // MARK: - APP 端签名
 
     func testAppSignMatchesReferenceQuery() {
@@ -14,9 +34,9 @@ final class VideoInteractionTests: XCTestCase {
             timestamp: 1_700_000_000
         )
 
-        XCTAssertEqual(signed["appkey"], "dfca71928277209b")
+        XCTAssertEqual(signed["appkey"], "1d8b6e7d45233436")
         XCTAssertEqual(signed["ts"], "1700000000")
-        XCTAssertEqual(signed["sign"], "77ac440a7f4c033d8f62ea07505fa64f")
+        XCTAssertEqual(signed["sign"], "898910e8655a1b96ea1d1b0430455779")
     }
 
     /// 参与签名的串必须按参数名排序，而且要用 `encodeURIComponent` 的转义规则
@@ -33,9 +53,9 @@ final class VideoInteractionTests: XCTestCase {
         let query = AppSigner.queryString(from: signed.filter { $0.key != "sign" })
         XCTAssertEqual(
             query,
-            "access_key=key%2Fwith%2Bspecial%20chars&aid=114514&appkey=dfca71928277209b&dislike=1&ts=1700000000"
+            "access_key=key%2Fwith%2Bspecial%20chars&aid=114514&appkey=1d8b6e7d45233436&dislike=1&ts=1700000000"
         )
-        XCTAssertEqual(signed["sign"], "5859cba7a4fe8d5c9f98bb467fa1e801")
+        XCTAssertEqual(signed["sign"], "147bb39b37caf50a9d7d24e7d8fb735e")
     }
 
     /// 重复签名不该把上一次的 sign 也算进去。

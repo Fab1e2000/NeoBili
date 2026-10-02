@@ -71,21 +71,21 @@ final class LiveAPITests: XCTestCase {
         XCTAssertTrue(finished.rooms.isEmpty)
     }
 
-    func testAppFeedKeepsExistingAndroidHDIdentityAndExactSignedQuery() throws {
+    func testAppFeedUsesAndroidPhoneIdentityAndExactSignedQuery() throws {
         let url = try LiveAPI.makeAppFeedURL(page: 0, accessKey: "test+a&b", timestamp: 123456)
         XCTAssertEqual(url.path, "/xlive/app-interface/v2/index/feed")
         let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
         let query = Dictionary((components.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
         XCTAssertEqual(query["appkey"], AppSigner.appKey)
         XCTAssertEqual(query["access_key"], "test+a&b")
-        XCTAssertEqual(query["mobi_app"], "android_hd")
-        XCTAssertEqual(query["build"], "2001100")
-        XCTAssertEqual(query["device"], "android")
+        XCTAssertEqual(query["mobi_app"], "android")
+        XCTAssertEqual(query["build"], "8430300")
+        XCTAssertEqual(query["device"], "phone")
         XCTAssertEqual(query["device_name"], "android")
         XCTAssertEqual(query["device_type"], "0")
         XCTAssertEqual(query["network"], "wifi")
         XCTAssertEqual(query["scale"], "2")
-        XCTAssertEqual(query["statistics"], #"{"appId":5,"platform":3,"version":"2.0.1","abtest":""}"#)
+        XCTAssertEqual(query["statistics"], #"{"appId":1,"platform":3,"version":"8.43.0","abtest":""}"#)
         XCTAssertEqual(query["relation_page"], "1")
         XCTAssertNil(query["module_select"])
         XCTAssertEqual(query["page"], "1")

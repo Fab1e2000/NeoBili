@@ -1,0 +1,25 @@
+#!/bin/bash
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+# Consume Git's ref list before launching tools that may read standard input.
+cat > /dev/null
+RESULT="$PWD/DerivedData/Validation/$(date +%Y%m%d-%H%M%S)-$$-pre-push"
+mkdir -p "$RESULT"
+
+echo "pre-push: running offline regression (log: $RESULT/offline.log)"
+if ! zsh offline-harness/run.sh > "$RESULT/offline.log" 2>&1; then
+    tail -60 "$RESULT/offline.log"
+    echo "pre-push: offline regression failed; push blocked. Log: $RESULT/offline.log" >&2
+    exit 1
+fi
+
+echo "pre-push: running full Simulator regression (log: $RESULT/simulator.log)"
+if ! bash scripts/simulator.sh test > "$RESULT/simulator.log" 2>&1; then
+    tail -60 "$RESULT/simulator.log"
+    echo "pre-push: Simulator regression failed; push blocked. Log: $RESULT/simulator.log" >&2
+    exit 1
+fi
+
+tail -5 "$RESULT/simulator.log"
+echo "pre-push: all checks passed. Logs: $RESULT"

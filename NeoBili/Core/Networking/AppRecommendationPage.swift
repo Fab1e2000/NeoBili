@@ -44,7 +44,7 @@ struct AppRecommendationPage: Decodable {
         .map(\.video)
     }
 
-    /// 游标和刷新标记属于分页协议；客户端参数与登录签名、推荐反馈共用 Android HD 身份。
+    /// 游标和刷新标记属于分页协议；客户端参数与登录、反馈共用 Android 手机身份。
     static func parameters(cursor: Int, pull: Bool) -> [String: String] {
         AppClientIdentity.parameters.merging([
             "c_locale": "zh_CN", "s_locale": "zh_CN", "column": "2",
@@ -52,7 +52,7 @@ struct AppRecommendationPage: Decodable {
             "fourk": "1", "guidance": "1", "https_url_req": "1", "idx": String(cursor),
             "network": "wifi", "player_net": "1", "pull": pull ? "true" : "false",
             "qn": "32", "recsys_mode": "0", "splash_id": "", "voice_balance": "0",
-            "statistics": #"{"appId":5,"platform":3,"version":"2.0.1","abtest":""}"#
+            "statistics": AppClientIdentity.statistics
         ]) { _, value in value }
     }
 

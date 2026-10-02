@@ -1,13 +1,16 @@
 import CryptoKit
 import Foundation
 
-/// 与现有扫码登录签名配套的客户端身份，推荐和反馈共用，避免各接口自行拼接。
+/// 普通 Android 手机客户端身份，登录、推荐、直播和反馈共用。
 enum AppClientIdentity {
-    static let mobiApp = "android_hd"
-    static let build = "2001100"
-    static let userAgent = "Mozilla/5.0 BiliDroid/2.0.1 (bbcallen@gmail.com) os/android model/android_hd mobi_app/android_hd build/2001100 channel/master innerVer/2001100 osVer/15 network/2"
+    static let mobiApp = "android"
+    static let build = "8430300"
+    static let version = "8.43.0"
+    static let credentialScope = "android-phone-v1"
+    static let statistics = #"{"appId":1,"platform":3,"version":"8.43.0","abtest":""}"#
+    static let userAgent = "Mozilla/5.0 BiliDroid/8.43.0 (bbcallen@gmail.com) os/android model/android mobi_app/android build/8430300 channel/master innerVer/8430300 osVer/15 network/2"
     static let parameters = ["mobi_app": mobiApp, "build": build, "platform": "android",
-                             "device": "pad", "channel": "master"]
+                             "device": "phone", "channel": "master"]
 }
 
 /// B 站 APP 端接口（app.bilibili.com、passport-tv-login）的参数签名。
@@ -19,19 +22,25 @@ enum AppClientIdentity {
 /// 末尾接上 appsec → 取 MD5 作为 `sign`。服务端用同样的步骤复算，对不上就返回
 /// 「API 校验密匙错误」。
 enum AppSigner {
-    /// android_hd（HD 版）的签名配置；扫码登录、推荐和反馈使用同一套身份。
-    static let appKey = "dfca71928277209b"
-    private static let appSecret = "b5475a8825547a4fc26c7d518eaaa02e"
+    /// 普通 Android 登录取得的 token 可配合业务签名使用，不兼容旧 HD token。
+    /// https://github.com/pskdje/bilibili-API-collect/blob/main/docs/login/login_action/QR.md
+    static let appKey = "1d8b6e7d45233436"
+    static let passportAppKey = "783bbb7264451d82"
+    enum Purpose { case app, passport }
 
     /// 返回补齐了 `appkey`、`ts`、`sign` 的参数表。
     ///
     /// `timestamp` 只给测试注入固定值用；线上走默认的当前时间。
     static func signed(
         _ params: [String: String],
+        purpose: Purpose = .app,
         timestamp: Int = Int(Date().timeIntervalSince1970)
     ) -> [String: String] {
         var signedParams = params
-        signedParams["appkey"] = appKey
+        signedParams["appkey"] = purpose == .passport ? passportAppKey : appKey
+        let appSecret = purpose == .passport
+            ? "2653583c8873dea268ab9386918b1d65"
+            : "560c52ccd288fed045859ed18bffd973"
         signedParams["ts"] = String(timestamp)
         signedParams["sign"] = nil
 

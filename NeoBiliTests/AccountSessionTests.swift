@@ -2,6 +2,38 @@ import XCTest
 @testable import NeoBili
 
 final class AccountSessionTests: XCTestCase {
+    @MainActor
+    func testLegacyHDTokenIsExcludedAndAndroidTokenSurvivesRelaunch() async {
+        let suite = "neobili.migration.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let storage = CredentialStorage.memory()
+        storage.write("cookie", "neobili.sessdata")
+        storage.write("csrf", "neobili.bili_jct")
+        storage.write("42", "neobili.dedeuserid")
+        storage.write("legacy-hd-token", "neobili.access_key")
+        func identity() -> DeviceIdentity {
+            DeviceIdentity(defaults: defaults, credentials: storage, allowsNetwork: false, purgeCookies: {})
+        }
+        let old = identity()
+        let snapshot = await old.accountSnapshot()
+        XCTAssertTrue(snapshot.hasCredentials)
+        XCTAssertTrue(snapshot.needsAppCredentialMigration)
+        XCTAssertFalse(snapshot.hasAppCredential)
+        let request = await old.appAccount()
+        XCTAssertNil(request.accessKey)
+        let saved = await old.setAccessKey("android-token", forAccount: "42")
+        XCTAssertTrue(saved)
+        let restored = identity()
+        let current = await restored.appAccount()
+        XCTAssertEqual(current.accessKey, "android-token")
+        let migrated = await restored.accountSnapshot()
+        XCTAssertFalse(migrated.needsAppCredentialMigration)
+        await restored.clearLoginCookies()
+        XCTAssertNil(storage.read("neobili.access_key.client"))
+        XCTAssertNil(storage.read("neobili.access_key"))
+    }
+
     private func isolatedIdentity() -> DeviceIdentity {
         let suite = "neobili.identity.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

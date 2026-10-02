@@ -9,7 +9,7 @@ struct SettingsView: View {
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
     @AppStorage(MainTabSettings.hiddenKey) private var hiddenTabs: String?
-    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    @TitleBarPreference private var titleBarStyle
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
     @State private var durationFilter = VideoDurationFilterSettings.shared
     @AppStorage(AppLanguage.storageKey) private var language = AppLanguage.system
@@ -25,7 +25,7 @@ struct SettingsView: View {
             Section("浏览") {
                 row("标签栏", value: MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs).map(\.title).joined(separator: " · "),
                     id: "tabBar") { TabBarSettingsView() }
-                row("标题栏", value: TitleBarSettings.summary(pinned: pinsTitleBar), id: "titleBar") { TitleBarSettingsView() }
+                row("标题栏", value: titleBarStyle.title, id: "titleBar") { TitleBarSettingsView() }
                 row("内容过滤", value: contentFilterSummary, id: "contentFilter") { ContentFilterSettingsView() }
                 row("推荐流", id: "recommendation") { RecommendationSettingsView() }
             }

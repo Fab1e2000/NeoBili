@@ -1,22 +1,21 @@
 import SwiftUI
 
-/// 全局标题栏样式：所有主页面的标题和头像随内容滚动，或固定在顶部。
+/// 标题栏样式；关注和直播保留固定切边导航栏。
 struct TitleBarSettingsView: View {
-    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    @TitleBarPreference private var style
 
     var body: some View {
         Form {
             Section {
-                Picker("标题栏", selection: $pinsTitleBar) {
-                    Text("随内容滚动").tag(false)
-                    Text("固定在顶部").tag(true)
+                Picker("标题栏", selection: $style) {
+                    ForEach(TitleBarSettings.Style.allCases, id: \.self) { option in
+                        Text(option.title).tag(option)
+                    }
                 }
                 .pickerStyle(.inline)
                 .labelsHidden()
             } footer: {
-                Text(pinsTitleBar
-                     ? "各页面的标题和头像固定在顶部，内容从下方滑过。关注页的头像条、直播页的推荐/关注切换器与标题一起固定。"
-                     : "各页面的标题和头像随内容一起滚走。关注页的头像条、直播页的推荐/关注切换器也随标题一起滚走；搜索页上滑时只收起标题，搜索框留在顶部。")
+                Text("随内容滚动时，标题随页面滚走；固定时可选择边界清晰的切边背景或柔和的渐变背景。搜索框始终保留在顶部。关注和直播始终使用固定切边导航栏，不受此设置影响。")
             }
         }
         .settingsPage("标题栏")

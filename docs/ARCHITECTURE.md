@@ -29,8 +29,10 @@ NeoBili 是 SwiftUI / Swift 6 的 iOS 26+ 客户端，播放内核为 MPVKit。
 主要接口经过 `APIClient` 组装 UA、Referer、显式 Cookie 与业务信封；登录、直播和图片
 各有独立入口，默认 HTTP 传输统一使用 `AppNetwork.session`。WBI 与 App 签名各自维护。
 非零业务码先于成功数据解码，列表用宽松解码避免单条异常拖垮整页。
-推荐与「不感兴趣」及撤销共用 Android HD 的 build、mobi_app、platform、UA 和 app-key，
-与现有扫码登录的 App 签名配置一致；客户端参数集中在 `AppClientIdentity`。
+推荐、直播与「不感兴趣」及撤销共用普通 Android 手机的 build、mobi_app、platform、UA 和 app-key，
+客户端参数集中在 `AppClientIdentity`。扫码登录使用 Android 登录签名，业务请求使用其兼容的
+Android 业务签名。凭据存储记录客户端版本，旧 HD token 不参与请求；恢复旧 HD 会话时保留
+Cookie 并换取 Android token，失败可在推荐流设置中重试。普通 Cookie-only 会话不会在恢复时自动换取。
 
 `DeviceIdentity` actor 管设备标识、凭据快照及登录会话版本；生产凭据存 Keychain，
 测试可注入内存存储、独立 defaults 并关闭设备标识联网补取。

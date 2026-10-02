@@ -136,15 +136,15 @@ final class AppRecommendationTests: XCTestCase {
 
     func testAppRecommendationUsesSigningClientInHeaders() {
         let headers = AppRecommendationPage.headers(buvid: "b")
-        XCTAssertEqual(headers["app-key"], "android_hd")
-        XCTAssertTrue(headers["User-Agent"]?.contains("mobi_app/android_hd") == true)
+        XCTAssertEqual(headers["app-key"], "android")
+        XCTAssertTrue(headers["User-Agent"]?.contains("mobi_app/android") == true)
         XCTAssertNil(headers["bili-http-engine"])
     }
 
     func testAuroraEIDMatchesPiliPlus() {
         XCTAssertEqual(BiliHeaders.auroraEID(mid: 1), "UA")
         XCTAssertNil(BiliHeaders.appAccountHeaders(mid: nil)["x-bili-mid"])
-        XCTAssertEqual(BiliHeaders.appAccountHeaders(mid: 42)["app-key"], "android_hd")
+        XCTAssertEqual(BiliHeaders.appAccountHeaders(mid: 42)["app-key"], "android")
     }
 
     func testStringIDsAndProvidedBVIDAreSupported() throws {
@@ -160,7 +160,7 @@ final class AppRecommendationTests: XCTestCase {
     func testAppParametersPreserveExistingCursor() {
         let params = AppRecommendationPage.parameters(cursor: 123, pull: false)
         XCTAssertEqual(params["idx"], "123")
-        XCTAssertEqual(params["mobi_app"], "android_hd")
+        XCTAssertEqual(params["mobi_app"], "android")
         XCTAssertEqual(params["platform"], "android")
         XCTAssertNil(AppRecommendationPage.headers(buvid: "b")["fp_local"])
         XCTAssertEqual(AppRecommendationPage.traceID().split(separator: ":").map(\.count), [32, 16, 1, 1])

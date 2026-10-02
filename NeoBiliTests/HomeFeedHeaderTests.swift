@@ -4,6 +4,20 @@ import XCTest
 
 @MainActor
 final class HomeFeedHeaderTests: XCTestCase {
+    func testTitleBarModesPreserveLegacySelectionAndNewChoiceWins() {
+        XCTAssertEqual(TitleBarSettings.selected("", legacyPinned: false), .scrolling)
+        XCTAssertEqual(TitleBarSettings.selected("", legacyPinned: true), .pinnedGradient)
+        XCTAssertEqual(TitleBarSettings.selected("unknown", legacyPinned: false), .scrolling)
+        for style in TitleBarSettings.Style.allCases {
+            for legacy in [false, true] {
+                XCTAssertEqual(TitleBarSettings.selected(style.rawValue, legacyPinned: legacy), style)
+            }
+        }
+        XCTAssertFalse(TitleBarSettings.Style.scrolling.isPinned)
+        XCTAssertTrue(TitleBarSettings.Style.pinnedHard.isPinned)
+        XCTAssertTrue(TitleBarSettings.Style.pinnedGradient.isPinned)
+    }
+
     func testPullDownKeepsHeaderStationaryWhileCardsMoveAndUpwardScrollHidesHeader() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousWindow = scene.keyWindow

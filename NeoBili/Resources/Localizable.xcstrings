@@ -1674,6 +1674,26 @@
         }
       }
     },
+    "固定·切边": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pinned - Hard Edge"
+          }
+        }
+      }
+    },
+    "固定·渐变": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pinned - Gradient"
+          }
+        }
+      }
+    },
     "固定在顶部": {
       "localizations": {
         "en": {
@@ -5304,6 +5324,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Scroll with Content"
+          }
+        }
+      }
+    },
+    "随内容滚动时，标题随页面滚走；固定时可选择边界清晰的切边背景或柔和的渐变背景。搜索框始终保留在顶部。关注和直播始终使用固定切边导航栏，不受此设置影响。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The scrolling title moves with the page. Pinned titles can use a defined edge or a soft gradient. The search field stays at the top. Following and Live always use a pinned header with a defined edge, regardless of this setting."
           }
         }
       }
