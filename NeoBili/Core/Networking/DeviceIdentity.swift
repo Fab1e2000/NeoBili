@@ -23,6 +23,7 @@ actor DeviceIdentity {
     private static let biliJctKeychainKey = "neobili.bili_jct"
     private static let dedeUserIDKeychainKey = "neobili.dedeuserid"
     private static let accessKeyKeychainKey = "neobili.access_key"
+    private static let accessKeyClientKey = "neobili.access_key.client"
 
     private var cachedBuvid3: String?
     private var cachedBuvid4: String?
@@ -30,6 +31,7 @@ actor DeviceIdentity {
     private var cachedBiliJct: String?
     private var cachedDedeUserID: String?
     private var cachedAccessKey: String?
+    private var needsAppCredentialMigration = false
     private var fetchTask: Task<Void, Never>?
     private nonisolated let credentialSessionID = Mutex(UUID())
 
@@ -69,12 +71,18 @@ actor DeviceIdentity {
         cachedSessdata = credentials.read(Self.sessdataKeychainKey)
         cachedBiliJct = credentials.read(Self.biliJctKeychainKey)
         cachedDedeUserID = credentials.read(Self.dedeUserIDKeychainKey)
-        cachedAccessKey = credentials.read(Self.accessKeyKeychainKey)
+        // 未标记的旧凭据来自 HD；保留 Cookie，由 AccountStore 换取 Android 凭据。
+        if credentials.read(Self.accessKeyClientKey) == AppClientIdentity.credentialScope {
+            cachedAccessKey = credentials.read(Self.accessKeyKeychainKey)
+        } else {
+            needsAppCredentialMigration = credentials.read(Self.accessKeyKeychainKey)?.isEmpty == false
+        }
     }
 
     func accountSnapshot() -> AccountCredentialsSnapshot {
         AccountCredentialsSnapshot(hasCredentials: cachedSessdata != nil,
                                    hasAppCredential: cachedAccessKey?.isEmpty == false,
+                                   needsAppCredentialMigration: needsAppCredentialMigration,
                                    accountID: cachedDedeUserID.flatMap(Int.init))
     }
 
@@ -169,7 +177,10 @@ actor DeviceIdentity {
     /// 扫码登录额外带回来的 APP 端凭据。密码登录没有这个值，传 nil 即可。
     func setAccessKey(_ accessKey: String?) {
         cachedAccessKey = accessKey
+        needsAppCredentialMigration = false
+        credentials.write(nil, Self.accessKeyClientKey)
         credentials.write(accessKey, Self.accessKeyKeychainKey)
+        credentials.write(accessKey?.isEmpty == false ? AppClientIdentity.credentialScope : nil, Self.accessKeyClientKey)
     }
 
     /// 换取到的 App 凭据只在仍是同一账号时保存，换取途中退出或换号就丢弃。
@@ -186,10 +197,12 @@ actor DeviceIdentity {
         cachedBiliJct = nil
         cachedDedeUserID = nil
         cachedAccessKey = nil
+        needsAppCredentialMigration = false
         credentials.write(nil, Self.sessdataKeychainKey)
         credentials.write(nil, Self.biliJctKeychainKey)
         credentials.write(nil, Self.dedeUserIDKeychainKey)
         credentials.write(nil, Self.accessKeyKeychainKey)
+        credentials.write(nil, Self.accessKeyClientKey)
         purgeCookies()
     }
 
@@ -261,11 +274,11 @@ enum BiliHeaders {
 
     /// APP 端接口只认 BiliDroid 的 UA。带着浏览器 UA 去请求 app.bilibili.com
     /// 会被当成非法客户端，即使签名正确也拿不到数据。
-    static let appUserAgent = "Mozilla/5.0 BiliDroid/2.0.1 (bbcallen@gmail.com) os/android model/android_hd mobi_app/android_hd build/2001100 channel/master innerVer/2001100 osVer/15 network/2"
+    static let appUserAgent = AppClientIdentity.userAgent
 
     /// PiliPlus 账号拦截器给 App 请求补的头；登录后再带上 mid 和由它算出的 aurora eid。
     static func appAccountHeaders(mid: Int?) -> [String: String] {
-        var headers = ["env": "prod", "app-key": "android64", "x-bili-aurora-zone": "sh001"]
+        var headers = ["env": "prod", "app-key": AppClientIdentity.mobiApp, "x-bili-aurora-zone": "sh001"]
         if let mid, mid > 0 {
             headers["x-bili-mid"] = String(mid)
             headers["x-bili-aurora-eid"] = auroraEID(mid: mid)

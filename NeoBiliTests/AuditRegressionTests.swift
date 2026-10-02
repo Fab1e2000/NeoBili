@@ -122,6 +122,23 @@ final class AuditRegressionTests: XCTestCase {
         XCTAssertEqual(exchanges, 1, "已有凭据时不重复换取")
     }
 
+    func testRestoreMigratesLegacyAppCredentialWithoutLoggingOut() async throws {
+        var exchanges = 0
+        let payload = try profile()
+        let client = AccountSessionClient(
+            credentials: { AccountCredentialsSnapshot(hasCredentials: true, needsAppCredentialMigration: true, accountID: 42) },
+            save: { _, _ in }, clear: { XCTFail("Migration must preserve cookies") }, profile: { payload },
+            exchangeAppCredential: { exchanges += 1 }
+        )
+        let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.restoreSessionIfNeeded()
+        for _ in 0..<20 where !account.hasAppCredential { await Task.yield() }
+        XCTAssertEqual(exchanges, 1)
+        XCTAssertTrue(account.hasAppCredential)
+        XCTAssertTrue(account.isLoggedIn)
+        XCTAssertEqual(account.accountID, 42)
+    }
+
     func testLateProfileResponseCannotLogBackInAfterLogout() async throws {
         let pending = Deferred<AccountProfilePayload>()
         let store = VideoLikeStore()

@@ -5,6 +5,7 @@ import Network
 struct AccountCredentialsSnapshot: Sendable {
     let hasCredentials: Bool
     var hasAppCredential = false
+    var needsAppCredentialMigration = false
     let accountID: Int?
 }
 
@@ -108,6 +109,12 @@ final class AccountStore {
             profile = cached
         }
         await refreshProfile()
+        if sessionID == session, isLoggedIn, snapshot.needsAppCredentialMigration, !hasAppCredential {
+            Task { [weak self] in
+                guard let self, self.sessionID == session else { return }
+                await self.ensureAppCredential()
+            }
+        }
     }
 
     func retrySessionIfNeeded() async {

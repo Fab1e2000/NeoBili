@@ -1,12 +1,40 @@
 import Foundation
 
+/// 每轮推荐固定来源。网页使用页码，App 使用服务端游标；pageIndex 也供录制回放定位批次。
+struct RecommendationRequest: Equatable, Sendable {
+    enum Source: Sendable { case app, web }
+    let source: Source
+    var pageIndex = 0
+    var appCursor = 0
+
+    func next(appCursor: Int = 0) -> Self {
+        Self(source: source, pageIndex: pageIndex == Int.max ? 1 : pageIndex + 1, appCursor: appCursor)
+    }
+}
+
+struct RecommendationBatch {
+    let videos: [VideoSummary]
+    /// 缺失、重复游标或空页停止翻页，用户仍可刷新。不能回退到本地页码充当 App 游标。
+    let nextRequest: RecommendationRequest?
+    let refreshConfig: AppRecommendationRefreshConfig?
+
+    init(videos: [VideoSummary], nextRequest: RecommendationRequest?,
+         refreshConfig: AppRecommendationRefreshConfig? = nil) {
+        self.videos = videos
+        self.nextRequest = nextRequest
+        self.refreshConfig = refreshConfig
+    }
+}
+
 extension BiliAPI {
-    /// 首页推荐：和 PiliPlus 一样默认用 App 推荐，设置里可换成网页推荐；
-    /// 两者都在请求后按推荐流设置做本地过滤。
-    static func recommendFeed(freshIndex: Int) async throws -> [VideoSummary] {
-        let usesApp = UserDefaults.standard.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
-        return usesApp ? try await appRecommendFeed(freshIndex: freshIndex)
-                       : try await webRecommendFeed(freshIndex: freshIndex)
+    static func recommendFeed(request: RecommendationRequest) async throws -> RecommendationBatch {
+        switch request.source {
+        case .app:
+            return try await appRecommendFeed(request: request)
+        case .web:
+            let videos = try await webRecommendFeed(freshIndex: request.pageIndex)
+            return RecommendationBatch(videos: videos, nextRequest: videos.isEmpty ? nil : request.next())
+        }
     }
 
     /// 网页推荐：Cookie 认证 + WBI 签名，每次 20 条。
@@ -18,12 +46,13 @@ extension BiliAPI {
         return page.videos(filter: .current())
     }
 
-    static func appRecommendFeed(freshIndex: Int) async throws -> [VideoSummary] {
+    static func appRecommendFeed(request: RecommendationRequest) async throws -> RecommendationBatch {
         let page: AppRecommendationPage = try await APIClient.shared.getApp(
-            path: "x/v2/feed/index", params: AppRecommendationPage.parameters(freshIndex: freshIndex),
+            path: "x/v2/feed/index",
+            params: AppRecommendationPage.parameters(cursor: request.appCursor, pull: request.pageIndex == 0),
             headers: AppRecommendationPage.headers(buvid: await DeviceIdentity.shared.appBuvid())
         )
-        return page.videos(filter: .current())
+        return page.batch(for: request, filter: .current())
     }
 
     /// 「不感兴趣」：`reason` 是用户在卡片原因里选的一项，「我不想看」或「反馈」。
@@ -50,7 +79,7 @@ extension BiliAPI {
     }
 
     static func feedbackParameters(_ options: RecommendationFeedbackOptions) -> [String: String] {
-        ["goto": options.goto, "id": String(options.param), "build": "1", "mobi_app": "android"]
+        AppClientIdentity.parameters.merging(["goto": options.goto, "id": String(options.param)]) { _, value in value }
     }
 
     private static func sendFeedback(path: String, params: [String: String],

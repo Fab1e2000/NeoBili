@@ -5,6 +5,11 @@ import UIKit
 final class HomeFeedScrollController {
     weak var collectionView: UICollectionView?
 
+    var isInteracting: Bool {
+        guard let collectionView else { return false }
+        return collectionView.isTracking || collectionView.isDragging || collectionView.isDecelerating
+    }
+
     var isAwayFromTop: Bool {
         guard let collectionView else { return false }
         return collectionView.contentOffset.y + collectionView.adjustedContentInset.top > 1

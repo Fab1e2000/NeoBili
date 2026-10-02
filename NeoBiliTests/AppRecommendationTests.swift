@@ -134,17 +134,17 @@ final class AppRecommendationTests: XCTestCase {
         XCTAssertFalse(APIClient.isRetryable(URLError(.cancelled)))
     }
 
-    func testAppRecommendationClaimsIPhoneInHeaders() {
+    func testAppRecommendationUsesSigningClientInHeaders() {
         let headers = AppRecommendationPage.headers(buvid: "b")
-        XCTAssertEqual(headers["app-key"], "iphone")
-        XCTAssertTrue(headers["User-Agent"]?.contains("mobi_app/iphone") == true)
+        XCTAssertEqual(headers["app-key"], "android")
+        XCTAssertTrue(headers["User-Agent"]?.contains("mobi_app/android") == true)
         XCTAssertNil(headers["bili-http-engine"])
     }
 
     func testAuroraEIDMatchesPiliPlus() {
         XCTAssertEqual(BiliHeaders.auroraEID(mid: 1), "UA")
         XCTAssertNil(BiliHeaders.appAccountHeaders(mid: nil)["x-bili-mid"])
-        XCTAssertEqual(BiliHeaders.appAccountHeaders(mid: 42)["app-key"], "android64")
+        XCTAssertEqual(BiliHeaders.appAccountHeaders(mid: 42)["app-key"], "android")
     }
 
     func testStringIDsAndProvidedBVIDAreSupported() throws {
@@ -158,26 +158,61 @@ final class AppRecommendationTests: XCTestCase {
     }
 
     func testAppParametersPreserveExistingCursor() {
-        let params = AppRecommendationPage.parameters(freshIndex: 123)
+        let params = AppRecommendationPage.parameters(cursor: 123, pull: false)
         XCTAssertEqual(params["idx"], "123")
-        XCTAssertEqual(params["mobi_app"], "iphone")
-        XCTAssertEqual(params["platform"], "ios")
+        XCTAssertEqual(params["mobi_app"], "android")
+        XCTAssertEqual(params["platform"], "android")
         XCTAssertNil(AppRecommendationPage.headers(buvid: "b")["fp_local"])
         XCTAssertEqual(AppRecommendationPage.traceID().split(separator: ":").map(\.count), [32, 16, 1, 1])
         XCTAssertNil(params["fresh_idx"])
-        XCTAssertEqual(AppRecommendationPage.parameters(freshIndex: 0)["pull"], "true")
+        XCTAssertEqual(AppRecommendationPage.parameters(cursor: 0, pull: true)["pull"], "true")
         XCTAssertEqual(AppRecommendationPage.count("1.2亿"), 120_000_000)
         XCTAssertNil(AppRecommendationPage.bvid(aid: -1))
+    }
+
+    func testCursorIsReadBeforeCardValidationAndLocalFiltering() throws {
+        var valid = card; valid["idx"] = 1_745_482_992
+        var ad = card; ad["idx"] = "1745482980"; ad["ad_info"] = ["id": 1]
+        let malformed: [String: Any] = ["idx": 1_745_482_970, "player_args": "broken"]
+        let page = try decode([valid, ad, malformed, ["idx": NSNull()], ["idx": "invalid"]])
+        XCTAssertEqual(page.videos.count, 1)
+        XCTAssertEqual(page.nextCursor, 1_745_482_970, "Use response order, not maximum idx or last visible card")
+        var filter = RecommendationFilter()
+        filter.blockedMids = [42]
+        let batch = page.batch(for: RecommendationRequest(source: .app), filter: filter)
+        XCTAssertTrue(batch.videos.isEmpty)
+        XCTAssertEqual(batch.nextRequest?.appCursor, 1_745_482_970)
+        XCTAssertEqual(batch.nextRequest?.pageIndex, 1)
+    }
+
+    func testMissingInvalidOrRepeatedCursorStopsPaginationWithoutDroppingVideos() throws {
+        let request = RecommendationRequest(source: .app, pageIndex: 1, appCursor: 123)
+        for idx: Any in [NSNull(), "bad", -1, 0, 1.5, "999999999999999999999999999", 123] {
+            var value = card; value["idx"] = idx
+            let batch = try decode([value]).batch(for: request, filter: .none)
+            XCTAssertEqual(batch.videos.count, 1)
+            XCTAssertNil(batch.nextRequest)
+        }
+        XCTAssertNil(try decode([card]).nextCursor)
+        XCTAssertNil(try decode([]).batch(for: request, filter: .none).nextRequest)
     }
 
     /// 只读烟雾验证：直接访问 App 推荐，不允许热门兜底掩盖接口或解析错误。
     func testAppEndpointReturnsPlayableCardsOverNetwork() async throws {
         try XCTSkipUnless(!AppNetwork.isRegression && ProcessInfo.processInfo.environment["NEOBILI_NETWORK_SMOKE"] == "1", "显式联网验收")
         let hasAppCredential = await DeviceIdentity.shared.accessKey?.isEmpty == false
-        let videos = try await BiliAPI.recommendFeed(freshIndex: 0)
-        print("AppRecommendationSmoke: cards=\(videos.count), appCredential=\(hasAppCredential)")
-        XCTAssertFalse(videos.isEmpty)
-        XCTAssertTrue(videos.filter { $0.recommendationTarget == nil }.allSatisfy { $0.aid > 0 && $0.bvid.hasPrefix("BV") })
+        var request = RecommendationRequest(source: .app)
+        var seen: Set<String> = []
+        for page in 0..<3 {
+            let batch = try await BiliAPI.appRecommendFeed(request: request)
+            let videos = batch.videos
+            let duplicates = videos.filter { seen.contains($0.bvid) }.count
+            print("AppRecommendationSmoke: page=\(page), cards=\(videos.count), duplicates=\(duplicates), appCredential=\(hasAppCredential), hasNext=\(batch.nextRequest != nil), refreshActive=\(batch.refreshConfig?.active ?? -1), refreshAppear=\(batch.refreshConfig?.appear ?? -1), refreshBehavior=\(batch.refreshConfig?.behavior ?? -1)")
+            XCTAssertFalse(videos.isEmpty)
+            XCTAssertTrue(videos.filter { $0.recommendationTarget == nil }.allSatisfy { $0.aid > 0 && $0.bvid.hasPrefix("BV") })
+            seen.formUnion(videos.map(\.bvid))
+            request = try XCTUnwrap(batch.nextRequest, "Server must return a usable cursor for pagination")
+        }
     }
 
     private var card: [String: Any] {

@@ -1,5 +1,15 @@
 # 开发与测试
 
+## 分支与合并
+
+- `develop` 用于日常开发和集成，普通功能、修复、文档和翻译 PR 的目标分支均为 `develop`。
+- 外部贡献者从最新的 `develop` 创建自己的工作分支，完成相关改动后向 `develop` 提 PR。
+- `main` 保留稳定发布版本；维护者准备发版时，确认相关测试与 CI 通过后，将 `develop`
+  合入 `main`，再创建版本标签和发布产物。
+- 紧急修复等需要直接向 `main` 提 PR 的情况，先与维护者确认；修复合入后同步回 `develop`。
+
+提交问题和 PR 的说明要求见根目录 [CONTRIBUTING.md](../CONTRIBUTING.md)。
+
 ## 环境与入口
 
 使用 Xcode 26.2 或更新版本，安装 iOS Simulator runtime，并让 Command Line Tools
@@ -16,6 +26,16 @@ bash scripts/simulator.sh test
 bash scripts/simulator.sh test AccountSessionTests
 zsh offline-harness/run.sh
 ```
+
+本地推送检查使用仓库中的 `.githooks/pre-push`，每个克隆启用一次：
+
+```sh
+git config --local core.hooksPath .githooks
+```
+
+启用后，每次 `git push` 依次执行离线检查和完整 Simulator 回归；任一步失败都会阻止推送，
+日志保存在 `DerivedData/Validation/`。检查使用当前工作区、当前 Xcode 和下述模拟器选择，
+推送前应先提交修改并检出要推送的版本。它不安装或切换工具链，也不替代 CI 的多版本验证。
 
 脚本默认选择唯一可用的 `iPhone 18 Pro`。用 `NEOBILI_SIMULATOR_ID` 指定 UDID，或用
 `NEOBILI_SIMULATOR_NAME` 与 `NEOBILI_SIMULATOR_RUNTIME`（例如 `iOS-27-0`）指定机型和系统。
@@ -74,8 +94,10 @@ CI 固定选择 iOS 26.5 runtime 的 iPhone，记录选中的设备；缺少工�
 
 ## 真机与签名
 
-Agent 仅在用户当次明确要求后操作真机，且先说明具体需要验收的行为。
-手机的硬件播放、功耗、热状态及系统集成可作为专项理由，日常回归不需要真机。
+日常回归默认使用 Simulator。用户已授权每次完成代码改动和相关验证后，使用 Apple Development
+证书构建 Debug、安装到其已配对的 iPhone 并启动，无需重复确认；部署前说明本次更新内容。
+设备未连接、锁定或存在多个候选时报告阻碍，不擅自卸载应用或清除数据。
+真机专项测试仍需明确授权，手机的硬件播放、功耗、热状态及系统集成可作为专项理由。
 
 授权后可选择 `NeoBili-Device` scheme 和指定手机执行专项。4K 需要账号具备相应权限，
 不要把无权限跳过当作成功。普通 Debug 部署使用 `bash scripts/deploy-device.sh Debug`，

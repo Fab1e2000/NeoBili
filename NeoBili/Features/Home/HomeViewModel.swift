@@ -218,8 +218,26 @@ final class HomeViewModel {
         videos.contains { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos) }
     }
 
-    private var freshIndex = 0
-    private let fetchRecommendations: (Int) async throws -> [VideoSummary]
+    @ObservationIgnored private var refreshConfig: AppRecommendationRefreshConfig?
+    @ObservationIgnored private var lastFeedRefresh: TimeInterval?
+    @ObservationIgnored private var lastAutomaticAttempt: TimeInterval?
+    @ObservationIgnored private let uptime: () -> TimeInterval
+
+    /// 只在返回前台/首页/内容页时检查，不用后台定时器消费推荐。
+    /// 返回 true 即认领这次刷新；并发事件和失败后的短时间重复事件不会再发请求。
+    func claimAutomaticRefresh(_ trigger: AppRecommendationRefreshConfig.Trigger) -> Bool {
+        guard defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true,
+              !isLoading, pendingRefresh == nil, !videos.isEmpty,
+              let interval = refreshConfig?.interval(for: trigger), let lastFeedRefresh else { return false }
+        let now = uptime()
+        guard now - lastFeedRefresh >= interval,
+              lastAutomaticAttempt.map({ now - $0 >= 60 }) ?? true else { return false }
+        lastAutomaticAttempt = now
+        return true
+    }
+
+    private var nextRequest: RecommendationRequest?
+    private let fetchRecommendations: (RecommendationRequest) async throws -> RecommendationBatch
     /// 刷新拿到的新批次先寄存在这里，等界面把旧卡片淡尽再合并进列表。
     /// 数据一到就换列表的话，用户会看到旧卡片在半透明状态下突然变成新卡片。
     private var pendingRefresh: [VideoSummary]?
@@ -241,8 +259,10 @@ final class HomeViewModel {
          currentAccount: @escaping () async -> HomeFeedAccount = HomeFeedAccount.current,
          currentSessionID: @escaping () -> UUID = { DeviceIdentity.shared.loginSessionID },
          feedbackClient: APIClient = .shared,
-         fetchRecommendations: @escaping (Int) async throws -> [VideoSummary] = BiliAPI.recommendFeed) {
+         uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         fetchRecommendations: @escaping (RecommendationRequest) async throws -> RecommendationBatch = BiliAPI.recommendFeed) {
         self.defaults = defaults
+        self.uptime = uptime
         self.reportUninterested = { options, reason, session in
             if let reportUninterested { try await reportUninterested(options, reason) }
             else {
@@ -289,7 +309,7 @@ final class HomeViewModel {
     /// 会取消进行中的加载并立刻开始。
     func refresh(staged: Bool = false, userInitiated: Bool = false) async {
         if userInitiated, isLoading { return }
-        // 刷新从 idx=0 / pull=true 开始；分页游标只在当前推荐会话内递增。
+        // 刷新从 idx=0 / pull=true 开始；网页页码和 App 服务端游标分别管理。
         stageNextRefresh = staged
         await startLoad(reason: .refresh, replacingActiveLoad: true)
     }
@@ -357,20 +377,33 @@ final class HomeViewModel {
             }
         }
 
-        if reason == .refresh {
-            freshIndex = 0
+        if reason != .loadMore {
+            let usesApp = defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
+            nextRequest = RecommendationRequest(source: usesApp ? .app : .web)
+            if !usesApp { refreshConfig = nil; lastFeedRefresh = nil }
             pendingRefresh = nil
         }
+        guard let request = nextRequest else { return }
         do {
             if reason != .loadMore {
                 let account = await currentAccount()
                 guard activeLoadID == loadID else { return }
                 try Task.checkCancellation()
+                if loadedAccount != account { refreshConfig = nil; lastFeedRefresh = nil }
                 loadedAccount = account
             }
             try Task.checkCancellation()
-            let newBatch = try await fetchNextBatch()
+            let response = try await fetchRecommendations(request)
             guard activeLoadID == loadID, !Task.isCancelled else { return }
+            // 即使这一页全被过滤或去重，仍以原始响应推进；过期请求不能写回游标。
+            nextRequest = response.nextRequest
+            if request.source == .app {
+                if reason != .loadMore || response.refreshConfig != nil {
+                    refreshConfig = response.refreshConfig
+                }
+                if reason != .loadMore { lastFeedRefresh = uptime() }
+            }
+            let newBatch = response.videos
             guard !newBatch.isEmpty else { return }
 
             switch reason {
@@ -388,15 +421,6 @@ final class HomeViewModel {
             // 与 PiliPlus 一致：已有推荐时刷新失败也保留旧内容，不把页面替换成错误页。
             errorMessage = error.localizedDescription
         }
-    }
-
-    /// 与 PiliPlus 一致，失败保留原列表，不用热门榜替代个性化推荐。
-    private func fetchNextBatch() async throws -> [VideoSummary] {
-        let requestIndex = freshIndex
-        let batch = try await fetchRecommendations(requestIndex)
-        try Task.checkCancellation()
-        if !batch.isEmpty { freshIndex = requestIndex == Int.max ? 1 : requestIndex + 1 }
-        return batch
     }
 
     /// 复刻 PiliPlus 的保留刷新：新内容放在上面，旧内容接在提示卡之后。

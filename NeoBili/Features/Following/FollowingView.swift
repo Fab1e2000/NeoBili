@@ -21,7 +21,6 @@ struct FollowingView: View {
     @Namespace private var dynamicTransition
 
     // 设置
-    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = CardAnimationSettings.defaultValue
@@ -74,10 +73,11 @@ struct FollowingView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(uiColor: .systemGroupedBackground))
             // 固定标题栏：与直播页一样，标题和头像条一起常驻顶部栏，动态从下面滑过。
-            // 随内容滚动：两者是动态列表的第一行（见 `list`）。未登录时没有列表，页头仍放在顶部栏。
+            // 关注页始终固定并保留切边背景，不消费全局标题栏偏好。
             .safeAreaBar(edge: .top, spacing: 0) {
-                if pinsTitleBar || !account.isLoggedIn { headerBlock }
+                headerBlock
             }
+            .scrollEdgeEffectStyle(.hard, for: .top)
             .navigationTitle("关注")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: FollowingRoute.self) { route in
@@ -136,7 +136,7 @@ struct FollowingView: View {
         }
     }
 
-    /// 标题与头像条是一个整体：固定时一起常驻顶部，随内容滚动时一起滚走。
+    /// 标题与头像条一起常驻顶部。
     private var headerBlock: some View {
         VStack(spacing: 0) {
             PageHeader(title: String(localized: "关注"))
@@ -176,7 +176,6 @@ struct FollowingView: View {
     private var list: some View {
         ScrollView {
             VStack(spacing: 0) {
-                if !pinsTitleBar { headerBlock.staysInPlaceWhenPulled() }
                 LazyVStack(spacing: 0) {
                     feedContent
                 }
@@ -202,7 +201,6 @@ struct FollowingView: View {
             }
         }
         .scrollPosition($listPosition)
-        .tracksPageHeaderPull()
         .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 1 } action: { _, away in
             isAwayFromTop = away
         }

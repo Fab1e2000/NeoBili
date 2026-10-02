@@ -3,10 +3,43 @@ import UIKit
 import XCTest
 @testable import NeoBili
 
-/// Uses the system fullScreenCover/zoom on the connected iPhone. The colored
+/// Uses the system fullScreenCover/zoom in the test host. The colored
 /// fixture isolates transition geometry without fetching or playing a video.
 @MainActor
 final class MiniPlayerTransitionTests: XCTestCase {
+    func testGreenBoundsPreservesGeometryDuringCrossFade() {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 100, height: 120), format: format)
+        let page = CGRect(x: 10, y: 50, width: 60, height: 40)
+        for opacity: CGFloat in [0, 0.25, 0.5, 1] {
+            let image = renderer.image { context in
+                UIColor.white.setFill()
+                context.cgContext.fill(CGRect(x: 0, y: 0, width: 100, height: 120))
+                UIColor.red.setFill()
+                context.cgContext.fill(CGRect(x: 5, y: 5, width: 40, height: 25))
+                UIColor.blue.setFill()
+                context.cgContext.fill(CGRect(x: 10, y: 95, width: 60, height: 20))
+                UIColor.lightGray.setFill()
+                context.cgContext.fill(CGRect(x: 80, y: 40, width: 10, height: 60))
+                if opacity > 0 {
+                    UIColor.green.withAlphaComponent(opacity).setFill()
+                    context.cgContext.fill(page)
+                    // A saturated edge must not become the whole measured page
+                    // when the rest of the native transition has faded to pale green.
+                    UIColor.green.setFill()
+                    context.cgContext.fill(CGRect(x: page.minX, y: page.minY, width: 2, height: page.height))
+                }
+            }
+            if opacity == 0 {
+                XCTAssertNil(greenBounds(in: image), "Ignore the card, mini window and neutral background")
+            } else {
+                XCTAssertEqual(greenBounds(in: image), CGRect(x: 40, y: 200, width: 240, height: 160),
+                               "Preserve the full page geometry at opacity \(opacity)")
+            }
+        }
+    }
+
     func testNativeDismissalShrinksTowardTheActualMiniWindow() async throws {
         var scene: UIWindowScene?
         for _ in 0..<100 {
@@ -108,7 +141,7 @@ final class MiniPlayerTransitionTests: XCTestCase {
         return pixels.withUnsafeMutableBytes { buffer -> CGRect? in
             guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
                                           bitsPerComponent: 8, bytesPerRow: width * 4,
-                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
             let bytes = buffer.bindMemory(to: UInt8.self)
@@ -116,7 +149,13 @@ final class MiniPlayerTransitionTests: XCTestCase {
             for y in 0..<height {
                 for x in 0..<width {
                     let index = (y * width + x) * 4
-                    if bytes[index + 1] > 160 && bytes[index] < 100 && bytes[index + 2] < 100 {
+                    let red = Int(bytes[index])
+                    let green = Int(bytes[index + 1])
+                    let blue = Int(bytes[index + 2])
+                    // Native cross-fades blend the fixture with the background.
+                    // Detect green dominance so pale interiors and saturated edges
+                    // contribute to the same bounds, excluding neutral/red/blue areas.
+                    if green > 160 && green - red > 20 && green - blue > 20 {
                         minX = min(minX, x); maxX = max(maxX, x)
                         minY = min(minY, y); maxY = max(maxY, y)
                     }

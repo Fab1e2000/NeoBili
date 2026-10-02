@@ -39,4 +39,7 @@
 主题、字号、语言由 `AppTheme`、`AppTextSize`、`AppLanguage` 管理。语言在启动时确定，
 修改后重新打开生效；新增界面文字同步维护 String Catalog。
 标签顺序、隐藏与启动页由 `MainTabSettings` 约束，标题栏由 `TitleBarSettings` 统一消费。
+标题栏的三个选项使用 `neobili.titleBarStyle`；无新值时回退旧的 `neobili.homePinnedTitleBar`，
+旧 false 对应随内容滚动、旧 true 对应固定渐变。推荐、搜索、资料库通过 `TitleBarPreference`
+读取偏好；关注与直播始终固定切边。切边使用系统 `.hard`，渐变与滚动模式使用 `.soft`。
 播放器手势和控件位置保留各自合法范围及恢复默认逻辑，避免在调用点重复定义常量。

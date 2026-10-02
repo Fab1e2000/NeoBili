@@ -108,7 +108,7 @@ enum BiliPassport {
 
     // MARK: - App 端扫码登录
 
-    /// App（HD 版）扫码登录，用来换取 `access_key`。
+    /// App（普通 Android）扫码登录，用来换取 `access_key`。
     ///
     /// 为什么不直接用上面的网页扫码：网页登录只下发 Cookie，而「点踩」这类接口
     /// 只存在于 app.bilibili.com 上，认的是 `access_key`（见 `APIClient.postApp`）。
@@ -116,7 +116,7 @@ enum BiliPassport {
     /// Cookie，一次扫码就能把两种凭据都拿齐，所以它是网页扫码的超集。
     ///
     /// 用户体验上没有区别，仍然是拿 B 站 App 扫一张二维码；手机上的确认页会
-    /// 显示成「HD 端登录」。
+    /// 显示服务端提供的 Android 登录确认页。
     struct AppQRCodeInfo: Decodable, Sendable {
         let url: String
         let authCode: String
@@ -128,11 +128,10 @@ enum BiliPassport {
     }
 
     static func generateAppQRCode() async throws -> AppQRCodeInfo {
-        let params = AppSigner.signed([
-            "local_id": "0",
-            "platform": "android",
-            "mobi_app": "android_hd"
-        ])
+        let params = AppSigner.signed(
+            AppClientIdentity.parameters.merging(["local_id": "0"]) { _, value in value },
+            purpose: .passport
+        )
         return try await postSigned(path: "x/passport-tv-login/qrcode/auth_code", params: params)
     }
 
@@ -141,8 +140,11 @@ enum BiliPassport {
     /// 和网页那条链路不同，这里的业务状态码在**顶层** `code` 上，凭据也在
     /// JSON body 里而不是 Set-Cookie 头里：
     /// 86039 未确认、86038 已过期、0 已确认。
-    static func pollAppQRCode(_ authCode: String) async throws -> QRCodePollOutcome {
-        let params = AppSigner.signed(["auth_code": authCode, "local_id": "0"])
+    static func pollAppQRCode(_ authCode: String, fallbackCookies: LoginCookies? = nil) async throws -> QRCodePollOutcome {
+        let params = AppSigner.signed(
+            AppClientIdentity.parameters.merging(["auth_code": authCode, "local_id": "0"]) { _, value in value },
+            purpose: .passport
+        )
         guard let url = URL(string: baseURL.appendingPathComponent("x/passport-tv-login/qrcode/poll").absoluteString) else {
             throw PassportError.invalidResponse
         }
@@ -157,7 +159,7 @@ enum BiliPassport {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
         }
-        return try appPollOutcome(fromPayload: data)
+        return try appPollOutcome(fromPayload: data, fallbackCookies: fallbackCookies)
     }
 
     private struct AppPollEnvelope: Decodable {
@@ -166,10 +168,12 @@ enum BiliPassport {
         let data: AppPollData?
 
         struct AppPollData: Decodable {
+            let mid: Int?
             let accessToken: String?
             let cookieInfo: CookieInfo?
 
             enum CodingKeys: String, CodingKey {
+                case mid
                 case accessToken = "access_token"
                 case cookieInfo = "cookie_info"
             }
@@ -186,7 +190,7 @@ enum BiliPassport {
     }
 
     /// 解析 App 扫码轮询的响应体。单独拆出来是为了能脱离网络直接测。
-    static func appPollOutcome(fromPayload payload: Data) throws -> QRCodePollOutcome {
+    static func appPollOutcome(fromPayload payload: Data, fallbackCookies: LoginCookies? = nil) throws -> QRCodePollOutcome {
         guard let envelope = try? JSONDecoder().decode(AppPollEnvelope.self, from: payload) else {
             throw PassportError.invalidResponse
         }
@@ -197,6 +201,11 @@ enum BiliPassport {
         case 86038:
             return .expired
         case 0:
+            // Cookie 换凭据时响应可能只有 token；只复用已确认属于同一账号的 Cookie。
+            if let fallbackCookies, envelope.data?.mid == Int(fallbackCookies.dedeUserID),
+               let token = envelope.data?.accessToken, !token.isEmpty {
+                return .confirmed(fallbackCookies, accessKey: token)
+            }
             var values: [String: String] = [:]
             for cookie in envelope.data?.cookieInfo?.cookies ?? [] {
                 values[cookie.name] = cookie.value
@@ -208,6 +217,9 @@ enum BiliPassport {
                 throw PassportError.missingCookies
             }
             let cookies = LoginCookies(sessdata: sessdata, biliJct: biliJct, dedeUserID: dedeUserID)
+            if let fallbackCookies, cookies.dedeUserID != fallbackCookies.dedeUserID {
+                throw PassportError.invalidResponse
+            }
             return .confirmed(cookies, accessKey: envelope.data?.accessToken)
         case let code:
             throw PassportError.rejected("\(envelope.message ?? String(localized: "登录失败")) (code \(code))")
@@ -217,9 +229,9 @@ enum BiliPassport {
     // MARK: - 用 Cookie 换 App 凭据
 
     /// 网页登录（账号密码、网页扫码兜底）只有 Cookie，没有 `access_key`，App 推荐就只能按访客推。
-    /// PiliPlus 的每种登录方式都会拿到 App 凭据；这里用已登录的 Cookie 替自己确认一张 App（HD）
+    /// 用已登录的 Cookie 替自己确认一张普通 Android App
     /// 登录二维码，再像扫码一样轮询出 `access_key`（PiliPlus 把这个确认接口标为「cookie转access_key」）。
-    /// 效果等同于用 B 站 App 扫码确认，账号的登录设备里会多一条 HD 端记录。
+    /// 效果等同于用 B 站 App 扫码确认，账号的登录设备里会多一条 Android 端记录。
     static func exchangeAccessKey(cookies: LoginCookies) async throws -> String {
         let info = try await generateAppQRCode()
         var request = try makeRequest(path: "x/passport-tv-login/h5/qrcode/confirm")
@@ -237,7 +249,7 @@ enum BiliPassport {
         // 确认后服务端偶尔要一小会儿才把状态改成已确认。
         for attempt in 0..<4 {
             if attempt > 0 { try await Task.sleep(for: .milliseconds(500)) }
-            if case .confirmed(_, let accessKey?) = try await pollAppQRCode(info.authCode), !accessKey.isEmpty {
+            if case .confirmed(_, let accessKey?) = try await pollAppQRCode(info.authCode, fallbackCookies: cookies), !accessKey.isEmpty {
                 return accessKey
             }
         }

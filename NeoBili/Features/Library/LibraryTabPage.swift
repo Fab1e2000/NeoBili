@@ -5,7 +5,8 @@ import SwiftUI
 /// 视频由根视图统一呈现。
 struct LibraryTabPage: View {
     let tab: MainTab
-    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    @TitleBarPreference private var titleBarStyle
+    private var pinsTitleBar: Bool { titleBarStyle.isPinned }
 
     var body: some View {
         NavigationStack {
@@ -19,6 +20,7 @@ struct LibraryTabPage: View {
                             .padding(.horizontal, 20)
                     }
                 }
+                .scrollEdgeEffectStyle(titleBarStyle.scrollEdgeStyle, for: .top)
                 .environment(\.scrollingPageHeader, pinsTitleBar ? nil : ScrollingPageHeader(title: tab.pageTitle))
                 .onAppear { OrientationController.enterPortrait() }
         }

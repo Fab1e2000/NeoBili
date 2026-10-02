@@ -9,16 +9,19 @@ actor PerformanceFeedSource {
     private var replayPages: [String: [VideoSummary]]?
     private let url = URL.documentsDirectory.appending(path: "Performance/feed-fixture.json")
 
-    func fetch(_ index: Int) async throws -> [VideoSummary] {
+    func fetch(_ request: RecommendationRequest) async throws -> RecommendationBatch {
+        let index = request.pageIndex
         if ProcessInfo.processInfo.arguments.contains("--feed-replay") {
             if replayPages == nil {
                 replayPages = try JSONDecoder().decode([String: [VideoSummary]].self, from: Data(contentsOf: url))
             }
             // A fixed delay keeps pagination timing comparable between renderers.
             try await Task.sleep(for: .milliseconds(150))
-            return replayPages?[String(index)] ?? []
+            let videos = replayPages?[String(index)] ?? []
+            return RecommendationBatch(videos: videos, nextRequest: videos.isEmpty ? nil : request.next())
         }
-        let videos = try await BiliAPI.recommendFeed(freshIndex: index)
+        let batch = try await BiliAPI.recommendFeed(request: request)
+        let videos = batch.videos
         if ProcessInfo.processInfo.arguments.contains("--feed-record") {
             if index == 0 { recordedPages = [:] }
             recordedPages[String(index)] = videos.map(Self.metadata)
@@ -26,7 +29,7 @@ actor PerformanceFeedSource {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
         }
-        return videos
+        return batch
     }
 
     private static func metadata(_ video: VideoSummary) -> [String: Any] {

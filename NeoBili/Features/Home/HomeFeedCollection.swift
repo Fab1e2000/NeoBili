@@ -22,6 +22,7 @@ struct HomeFeedCollection: UIViewRepresentable {
     var onOpenMine: () -> Void = {}
     /// 标题栏固定在外层时，列表里不再插入页头行。
     var pinsTitleBar = TitleBarSettings.defaultValue
+    var hardTitleBarEdge = false
     /// 列表忽略安全区铺满全屏，状态栏（+ 固定标题栏）和标签栏的高度由外层量好传入。
     var safeInsets = EdgeInsets()
     /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身不透明，顶部模糊不受影响。
@@ -88,8 +89,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         coordinator.apply(rows)
     }
 
-    /// 固定标题栏时交给系统默认效果（与其它主页面一致：不画分界线，内容滑入时柔和模糊）。
-    private var topEdgeStyle: UIScrollEdgeEffect.Style { pinsTitleBar ? .automatic : .soft }
+    private var topEdgeStyle: UIScrollEdgeEffect.Style { pinsTitleBar && hardTitleBarEdge ? .hard : .soft }
 
     /// 列表内的页头自带上下留白，紧贴状态栏下方，与其它页面的页头位置一致；
     /// 固定标题栏时卡片紧贴栏下，补回网格留白。

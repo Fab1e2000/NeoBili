@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct HomeView: View {
+    let isSelected: Bool
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
@@ -9,7 +11,8 @@ struct HomeView: View {
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    @TitleBarPreference private var titleBarStyle
+    private var pinsTitleBar: Bool { titleBarStyle.isPinned }
     @AppStorage(RecommendationFilter.appRecommendKey) private var usesAppRecommendation = true
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
@@ -28,6 +31,10 @@ struct HomeView: View {
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
 
+    init(isSelected: Bool = true) {
+        self.isSelected = isSelected
+    }
+
     private var animatesExit: Bool {
         !reduceMotion && animations.isEnabled(phase: .exit)
     }
@@ -44,6 +51,7 @@ struct HomeView: View {
                         .padding(.horizontal, 20)
                 }
             }
+            .scrollEdgeEffectStyle(titleBarStyle.scrollEdgeStyle, for: .top)
             .background(Color(uiColor: .systemGroupedBackground))
             .task { await viewModel.loadInitial() }
             // 登录/退出/拿到 App 凭据后服务端会切到个性化/通用推流，
@@ -59,6 +67,22 @@ struct HomeView: View {
             .onAppear {
                 // Returning to this tab always restores the app's portrait lock.
                 OrientationController.enterPortrait()
+                requestAutomaticRefresh(.appear)
+            }
+            .onChange(of: isSelected) { _, selected in
+                if selected { requestAutomaticRefresh(.appear) }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { requestAutomaticRefresh(.active) }
+            }
+            .onChange(of: nowPlaying.isExpanded) { old, expanded in
+                if old, !expanded { requestAutomaticRefresh(.behavior) }
+            }
+            .onChange(of: nowPlaying.isServiceSheetPresented) { old, presented in
+                if old, !presented { requestAutomaticRefresh(.behavior) }
+            }
+            .onChange(of: viewModel.sheet) { old, sheet in
+                if old != nil, sheet == nil { requestAutomaticRefresh(.behavior) }
             }
             .onTabReselected(.home, perform: scrollToTopOrRefresh)
             .sheet(item: $viewModel.sheet) { sheet in
@@ -107,6 +131,7 @@ struct HomeView: View {
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
                 onOpenMine: { openMine?(()) },
                 pinsTitleBar: pinsTitleBar,
+                hardTitleBarEdge: titleBarStyle == .pinnedHard,
                 safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity,
                 // 补位整段 0.3 秒，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。
@@ -140,6 +165,15 @@ struct HomeView: View {
         } else {
             startRefresh()
         }
+    }
+
+    private func requestAutomaticRefresh(_ trigger: AppRecommendationRefreshConfig.Trigger) {
+        guard isSelected, scenePhase == .active,
+              !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented,
+              viewModel.sheet == nil, viewModel.pendingBlock == nil, viewModel.reportingIDs.isEmpty,
+              !feedController.isInteracting, shortcutTask == nil, !isRefreshing,
+              viewModel.claimAutomaticRefresh(trigger) else { return }
+        startRefresh(scrollToTop: true)
     }
 
     private func startRefresh(scrollToTop: Bool = false) {

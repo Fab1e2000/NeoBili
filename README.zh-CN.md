@@ -141,6 +141,11 @@ zsh offline-harness/run.sh
 | [第三方声明](THIRD_PARTY_NOTICES.md) | 依赖与参考项目的许可信息 |
 | [免责声明](DISCLAIMER.zh-CN.md) | 与哔哩哔哩的关系、内容与数据、使用者责任 |
 
+## 参与贡献
+
+欢迎通过 [Issues](https://github.com/Fab1e2000/NeoBili/issues)反馈问题和提出建议。
+普通 PR 的目标分支请选择 `develop`；流程和验证要求见[贡献指南](CONTRIBUTING.md#贡献指南)。
+
 ## 已知限制
 
 - 哔哩哔哩没有公开或保证这些接口，服务端变更可能导致部分功能失效，需等待 NeoBili 更新

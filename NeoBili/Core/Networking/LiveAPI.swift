@@ -104,16 +104,14 @@ enum LiveAPI {
     }
 
     private static func appBrowsingParams(page: Int, accessKey: String?) -> [String: String] {
-        // 字段来自 PiliPlus http/live.dart:202–230；HD 版本与 statistics 则对应
-        // common/constants.dart:16–19，保持本项目已有 App 身份配置一致。
-        var params = [
-            "actionKey": "appkey", "channel": "master",
-            "build": "2001100", "version": "2.0.1", "mobi_app": "android_hd", "platform": "android",
+        // 与推荐、反馈共用普通 Android 手机身份。
+        var params = AppClientIdentity.parameters.merging([
+            "actionKey": "appkey", "version": AppClientIdentity.version,
             "page": String(max(1, page)), "c_locale": "zh_CN", "s_locale": "zh_CN",
             "https_url_req": "1", "fnval": "912", "disable_rcmd": "0",
-            "device": "android", "device_name": "android", "device_type": "0", "network": "wifi", "scale": "2",
-            "statistics": #"{"appId":5,"platform":3,"version":"2.0.1","abtest":""}"#
-        ]
+            "device_name": "android", "device_type": "0", "network": "wifi", "scale": "2",
+            "statistics": AppClientIdentity.statistics
+        ]) { _, value in value }
         if let accessKey, !accessKey.isEmpty { params["access_key"] = accessKey }
         return params
     }

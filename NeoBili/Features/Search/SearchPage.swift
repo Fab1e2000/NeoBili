@@ -7,7 +7,8 @@ struct SearchPage: View {
     @Environment(\.appThemeColor) private var themeColor
     let onSubmit: (String?) -> Void
     @State private var history = SearchHistory.shared
-    @AppStorage(TitleBarSettings.storageKey) private var pinsTitleBar = TitleBarSettings.defaultValue
+    @TitleBarPreference private var titleBarStyle
+    private var pinsTitleBar: Bool { titleBarStyle.isPinned }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// 标题栏随内容滚动时，热搜页上滑后收起标题，只留搜索框。
     @State private var isHeaderCollapsed = false
@@ -101,6 +102,7 @@ struct SearchPage: View {
             }
             .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: displaysHeader)
         }
+        .scrollEdgeEffectStyle(titleBarStyle.scrollEdgeStyle, for: .top)
         .task { await viewModel.loadHotSearches() }
         .onDisappear { isFocused = false }
         .toolbar(.hidden, for: .navigationBar)
