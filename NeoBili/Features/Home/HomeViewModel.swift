@@ -218,25 +218,17 @@ final class HomeViewModel {
         videos.contains { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos) }
     }
 
-    @ObservationIgnored private var refreshConfig: AppRecommendationRefreshConfig?
-    @ObservationIgnored private var lastFeedRefresh: TimeInterval?
-    @ObservationIgnored private var lastAutomaticAttempt: TimeInterval?
-    @ObservationIgnored private let uptime: () -> TimeInterval
 
-    /// 只在返回前台/首页/内容页时检查，不用后台定时器消费推荐。
-    /// 返回 true 即认领这次刷新；并发事件和失败后的短时间重复事件不会再发请求。
+    /// 自动刷新明确关闭，服务端返回的间隔不会改变这个策略。
     func claimAutomaticRefresh(_ trigger: AppRecommendationRefreshConfig.Trigger) -> Bool {
-        guard defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true,
-              !isLoading, pendingRefresh == nil, !videos.isEmpty,
-              let interval = refreshConfig?.interval(for: trigger), let lastFeedRefresh else { return false }
-        let now = uptime()
-        guard now - lastFeedRefresh >= interval,
-              lastAutomaticAttempt.map({ now - $0 >= 60 }) ?? true else { return false }
-        lastAutomaticAttempt = now
-        return true
+        // auto_refresh_state=4: returning to the app or home never consumes another batch.
+        false
     }
 
     private var nextRequest: RecommendationRequest?
+    private var appRefreshCursor = 0
+    private var cursorSession: UUID?
+    private var cursorSource: RecommendationRequest.Source?
     private let fetchRecommendations: (RecommendationRequest) async throws -> RecommendationBatch
     /// 刷新拿到的新批次先寄存在这里，等界面把旧卡片淡尽再合并进列表。
     /// 数据一到就换列表的话，用户会看到旧卡片在半透明状态下突然变成新卡片。
@@ -259,10 +251,8 @@ final class HomeViewModel {
          currentAccount: @escaping () async -> HomeFeedAccount = HomeFeedAccount.current,
          currentSessionID: @escaping () -> UUID = { DeviceIdentity.shared.loginSessionID },
          feedbackClient: APIClient = .shared,
-         uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          fetchRecommendations: @escaping (RecommendationRequest) async throws -> RecommendationBatch = BiliAPI.recommendFeed) {
         self.defaults = defaults
-        self.uptime = uptime
         self.reportUninterested = { options, reason, session in
             if let reportUninterested { try await reportUninterested(options, reason) }
             else {
@@ -309,7 +299,7 @@ final class HomeViewModel {
     /// 会取消进行中的加载并立刻开始。
     func refresh(staged: Bool = false, userInitiated: Bool = false) async {
         if userInitiated, isLoading { return }
-        // 刷新从 idx=0 / pull=true 开始；网页页码和 App 服务端游标分别管理。
+        // App 刷新保留自己最近成功响应的游标；网页刷新仍从第一页开始。
         stageNextRefresh = staged
         await startLoad(reason: .refresh, replacingActiveLoad: true)
     }
@@ -377,31 +367,38 @@ final class HomeViewModel {
             }
         }
 
-        if reason != .loadMore {
-            let usesApp = defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
-            nextRequest = RecommendationRequest(source: usesApp ? .app : .web)
-            if !usesApp { refreshConfig = nil; lastFeedRefresh = nil }
-            pendingRefresh = nil
-        }
-        guard let request = nextRequest else { return }
         do {
-            if reason != .loadMore {
-                let account = await currentAccount()
-                guard activeLoadID == loadID else { return }
-                try Task.checkCancellation()
-                if loadedAccount != account { refreshConfig = nil; lastFeedRefresh = nil }
-                loadedAccount = account
+            let account = await currentAccount()
+            let session = currentSessionID()
+            guard activeLoadID == loadID else { return }
+            try Task.checkCancellation()
+            let usesApp = defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
+            let source: RecommendationRequest.Source = usesApp ? .app : .web
+            if loadedAccount != account || cursorSession != session || cursorSource != source {
+                appRefreshCursor = 0
+                nextRequest = nil
+            }
+            loadedAccount = account
+            cursorSession = session
+            cursorSource = source
+            let request: RecommendationRequest
+            if reason == .loadMore {
+                guard let nextRequest else { return }
+                request = nextRequest
+            } else {
+                pendingRefresh = nil
+                request = RecommendationRequest(source: source,
+                    appCursor: reason == .refresh && usesApp ? appRefreshCursor : 0,
+                    isRefresh: reason == .refresh)
             }
             try Task.checkCancellation()
             let response = try await fetchRecommendations(request)
-            guard activeLoadID == loadID, !Task.isCancelled else { return }
+            guard activeLoadID == loadID, !Task.isCancelled, currentSessionID() == session else { return }
             // 即使这一页全被过滤或去重，仍以原始响应推进；过期请求不能写回游标。
             nextRequest = response.nextRequest
             if request.source == .app {
-                if reason != .loadMore || response.refreshConfig != nil {
-                    refreshConfig = response.refreshConfig
-                }
-                if reason != .loadMore { lastFeedRefresh = uptime() }
+                if let cursor = response.appCursor, cursor > 0 { appRefreshCursor = cursor }
+
             }
             let newBatch = response.videos
             guard !newBatch.isEmpty else { return }

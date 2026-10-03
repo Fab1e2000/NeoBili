@@ -6,21 +6,21 @@ import XCTest
 /// 签名一旦算错，服务端只会回一句「API 校验密匙错误」，从网络日志上看不出是
 /// 哪一步偏了，所以这里用固定时间戳把整条算式钉死。
 final class VideoInteractionTests: XCTestCase {
-    func testAndroidPassportSignatureUsesLoginKey() {
+    func testIPhonePassportSignatureUsesLoginKey() {
         let signed = AppSigner.signed(["auth_code": "abc", "local_id": "0"], purpose: .passport,
                                       timestamp: 1_700_000_000)
-        XCTAssertEqual(signed["appkey"], "783bbb7264451d82")
-        XCTAssertEqual(signed["sign"], "d6cd65288033c0af568597eb8dbf063b")
+        XCTAssertEqual(signed["appkey"], "27eb53fc9058f8c3")
+        XCTAssertEqual(signed["sign"], "e42136be757f3273645368087dac2509")
     }
 
-    func testAndroidTokenOnlyExchangeRequiresMatchingAccount() throws {
-        let payload = Data(#"{"code":0,"data":{"mid":42,"access_token":"android-token"}}"#.utf8)
+    func testIPhoneTokenOnlyExchangeRequiresMatchingAccount() throws {
+        let payload = Data(#"{"code":0,"data":{"mid":42,"access_token":"ios-token"}}"#.utf8)
         let cookies = BiliPassport.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42")
         guard case .confirmed(let confirmed, let key) = try BiliPassport.appPollOutcome(
             fromPayload: payload, fallbackCookies: cookies
         ) else { return XCTFail("Expected confirmed") }
         XCTAssertEqual(confirmed, cookies)
-        XCTAssertEqual(key, "android-token")
+        XCTAssertEqual(key, "ios-token")
         XCTAssertThrowsError(try BiliPassport.appPollOutcome(fromPayload: payload))
         XCTAssertThrowsError(try BiliPassport.appPollOutcome(fromPayload: payload,
             fallbackCookies: .init(sessdata: "s", biliJct: "j", dedeUserID: "99")))
@@ -34,9 +34,9 @@ final class VideoInteractionTests: XCTestCase {
             timestamp: 1_700_000_000
         )
 
-        XCTAssertEqual(signed["appkey"], "1d8b6e7d45233436")
+        XCTAssertEqual(signed["appkey"], "27eb53fc9058f8c3")
         XCTAssertEqual(signed["ts"], "1700000000")
-        XCTAssertEqual(signed["sign"], "898910e8655a1b96ea1d1b0430455779")
+        XCTAssertEqual(signed["sign"], "e42136be757f3273645368087dac2509")
     }
 
     /// 参与签名的串必须按参数名排序，而且要用 `encodeURIComponent` 的转义规则
@@ -53,9 +53,9 @@ final class VideoInteractionTests: XCTestCase {
         let query = AppSigner.queryString(from: signed.filter { $0.key != "sign" })
         XCTAssertEqual(
             query,
-            "access_key=key%2Fwith%2Bspecial%20chars&aid=114514&appkey=1d8b6e7d45233436&dislike=1&ts=1700000000"
+            "access_key=key%2Fwith%2Bspecial%20chars&aid=114514&appkey=27eb53fc9058f8c3&dislike=1&ts=1700000000"
         )
-        XCTAssertEqual(signed["sign"], "147bb39b37caf50a9d7d24e7d8fb735e")
+        XCTAssertEqual(signed["sign"], "60c5326a47692ba1b6af46ec9d6fdf75")
     }
 
     /// 重复签名不该把上一次的 sign 也算进去。
@@ -65,11 +65,19 @@ final class VideoInteractionTests: XCTestCase {
         XCTAssertEqual(once["sign"], twice["sign"])
     }
 
+    func testIPhoneSignatureKeepsExplicitEmptyValues() {
+        let signed = AppSigner.signed(["open_event": "", "splash_id": ""], timestamp: 1_700_000_000)
+        XCTAssertEqual(AppSigner.queryString(from: ["empty": "", "value": "a b"]), "empty=&value=a%20b")
+        XCTAssertEqual(signed["sign"], "9913b9701975cfd73d0e1b70431e4f8c")
+        XCTAssertEqual(AppSigner.signed(["open_event": "", "splash_id": ""], purpose: .passport,
+                                       timestamp: 1_700_000_000), signed)
+    }
+
     // MARK: - App 扫码轮询
 
     func testAppQRPollExtractsCookiesAndAccessKey() throws {
         let payload = Data(#"""
-        {"code":0,"message":"0","data":{"mid":1,"access_token":"tv-token","refresh_token":"r",
+        {"code":0,"message":"0","data":{"mid":10000,"access_token":"tv-token","refresh_token":"r",
         "expires_in":1,"cookie_info":{"cookies":[
         {"name":"SESSDATA","value":"sess%2Cdata"},
         {"name":"bili_jct","value":"csrf"},
@@ -83,6 +91,23 @@ final class VideoInteractionTests: XCTestCase {
         XCTAssertEqual(cookies.biliJct, "csrf")
         XCTAssertEqual(cookies.dedeUserID, "10000")
         XCTAssertEqual(accessKey, "tv-token")
+    }
+
+    func testCookieExchangeConfirmationUsesPassportAndUnchangedCurrentCredentials() throws {
+        let request = try BiliPassport.makeAppConfirmationRequest(authCode: "fixture-auth", cookies: .init(sessdata: "sess%2Cdata", biliJct: "csrf+value", dedeUserID: "42"))
+        XCTAssertEqual(request.url?.host, "passport.bilibili.com")
+        XCTAssertEqual(request.url?.scheme, "https")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), "SESSDATA=sess%2Cdata; bili_jct=csrf+value; DedeUserID=42")
+        XCTAssertFalse(request.httpShouldHandleCookies)
+        let body = try XCTUnwrap(String(data: XCTUnwrap(request.httpBody), encoding: .utf8))
+        var components = URLComponents(); components.percentEncodedQuery = body
+        let form = Dictionary(uniqueKeysWithValues: components.queryItems!.map { ($0.name, $0.value!) })
+        XCTAssertEqual(form["csrf"], "csrf+value")
+        XCTAssertEqual(form["auth_code"], "fixture-auth")
+        XCTAssertEqual(form["scanning_type"], "3")
+        let mismatch = Data(#"{"code":0,"data":{"mid":43,"access_token":"fixture","cookie_info":{"cookies":[{"name":"SESSDATA","value":"s"},{"name":"bili_jct","value":"j"},{"name":"DedeUserID","value":"42"}]}}}"#.utf8)
+        XCTAssertThrowsError(try BiliPassport.appPollOutcome(fromPayload: mismatch))
     }
 
     func testAppQRPollMapsPendingAndExpired() throws {

@@ -8,8 +8,7 @@ struct MineView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
 
     private enum LoginSheet: String, Identifiable {
-        case qr
-        case password
+        case sms
 
         var id: String { rawValue }
     }
@@ -62,8 +61,7 @@ struct MineView: View {
         .sheet(item: $loginSheet) { sheet in
             switch sheet {
             // sheet 有自己的 UIHostingController，文字档位要在根部重新注入。
-            case .qr: QRLoginSheet().appTextSize()
-            case .password: PasswordLoginSheet().appTextSize()
+            case .sms: SMSLoginSheet().appTextSize()
             }
         }
     }
@@ -84,12 +82,8 @@ struct MineView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            HStack(spacing: 12) {
-                Button("扫码登录") { loginSheet = .qr }
-                    .buttonStyle(.borderedProminent)
-                Button("账号密码登录") { loginSheet = .password }
-                    .buttonStyle(.bordered)
-            }
+            Button("短信验证码登录") { loginSheet = .sms }
+                .buttonStyle(.borderedProminent)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -23,7 +23,7 @@ enum BiliAPIError: Error, LocalizedError {
         case .decoding: return String(localized: "数据解析失败")
 #endif
         case .riskControlled: return String(localized: "请求被 B 站风控拦截，请稍后重试")
-        case .missingAccessKey: return String(localized: "该操作需要 App 端登录凭据，请退出后用扫码方式重新登录")
+        case .missingAccessKey: return String(localized: "App 授权未完成，请到「设置 → 推荐流」使用验证码授权")
         }
     }
 
@@ -276,14 +276,16 @@ struct APIClient {
     }
 
     /// App GET 接口，照 PiliPlus 的账号拦截器：有 access_key 就带上，没有就按访客请求；
-    /// 整组参数用 HD 密钥签名。`headers` 是接口自带的请求头，可以覆盖账号相关的通用头
+    /// 整组参数用 iOS 密钥签名。`headers` 是接口自带的请求头，可以覆盖账号相关的通用头
     /// （首页推荐补充 buvid、会话与追踪标识）。
     func getApp<T: Decodable>(path: String, params: [String: String],
                               headers: [String: String] = [:], retries: Int = 2,
-                              expectedSessionID: UUID? = nil) async throws -> T {
+                              expectedSessionID: UUID? = nil, requiresAccountCredential: Bool = false) async throws -> T {
         var query = params
         let account = try await appAccount(expectedSessionID: expectedSessionID)
-        if let key = account.accessKey { query["access_key"] = key }
+        let key = account.accessKey.flatMap { $0.isEmpty ? nil : $0 }
+        if requiresAccountCredential, account.mid != nil, key == nil { throw BiliAPIError.missingAccessKey }
+        if let key { query["access_key"] = key }
         guard var components = URLComponents(url: Self.appBaseURL.appendingPathComponent(path),
                                              resolvingAgainstBaseURL: false) else { throw BiliAPIError.invalidURL }
         components.percentEncodedQuery = AppSigner.queryString(from: AppSigner.signed(query))
@@ -300,23 +302,62 @@ struct APIClient {
         return try await perform(request, retries: retries)
     }
 
+    /// Unary App gRPC uses the same account/device as recommendation and watch feedback.
+    /// Credentials are read only after checking the entry's login session.
+    func appGRPC(path: String, payload: Data, expectedSessionID: UUID,
+                 headers: [String: String]) async throws -> Data {
+        let account = try await appAccount(expectedSessionID: expectedSessionID)
+        if account.mid != nil && account.accessKey?.isEmpty != false { throw BiliAPIError.missingAccessKey }
+        guard let url = URL(string: "https://grpc.biliapi.net/" + path) else { throw BiliAPIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.httpShouldHandleCookies = false
+        request.httpBody = AppProto.frame(payload)
+        request.setValue("application/grpc", forHTTPHeaderField: "Content-Type")
+        request.setValue("trailers", forHTTPHeaderField: "te")
+        request.setValue("15S", forHTTPHeaderField: "grpc-timeout")
+        request.setValue("gzip", forHTTPHeaderField: "grpc-accept-encoding")
+        request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
+        for (name, value) in BiliHeaders.appAccountHeaders(mid: account.mid).merging(headers, uniquingKeysWith: { _, new in new }) {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        if let key = account.accessKey, !key.isEmpty { request.setValue("identify_v1 " + key, forHTTPHeaderField: "authorization") }
+        let metadata = AppProto.string(1, account.accessKey) + AppProto.string(2, AppClientIdentity.mobiApp)
+            + AppProto.string(3, "phone") + AppProto.integer(4, Int(AppClientIdentity.build) ?? 0)
+            + AppProto.string(5, "pink_overseas") + AppProto.string(6, headers["buvid"])
+            + AppProto.string(7, "ios")
+        request.setValue(metadata.base64EncodedString(), forHTTPHeaderField: "x-bili-metadata-bin")
+        // View and RelatesFeed are read-only; never retry a behavioral write here.
+        let (body, response) = try await data(for: request, retries: 2)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw BiliAPIError.httpStatus((response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        if let status = http.value(forHTTPHeaderField: "grpc-status"), status != "0" {
+            throw BiliAPIError.apiError(code: Int(status) ?? -1, message: "App 请求失败")
+        }
+        _ = try await appAccount(expectedSessionID: expectedSessionID)
+        return try AppProto.unframe(body)
+    }
+
     /// APP 端接口（app.bilibili.com）。
     ///
     /// 和网页端是完全两套认证：这里不发 Cookie，改用 `access_key` 表明身份，
     /// 再用 appkey/appsec 给整组参数签名（见 `AppSigner`）。UA 也必须换成
-    /// BiliDroid 那串，否则请求会被当成非法客户端。
+    /// 与 AppClientIdentity 配套的 iPhone 身份。
     ///
     /// 「点踩」等 App 写接口要求具备 App 登录凭据。
     func postApp(
         path: String,
         form: [String: String] = [:],
-        expectedSessionID: UUID? = nil
+        expectedSessionID: UUID? = nil,
+        usesAPIHost: Bool = false, headers: [String: String] = [:]
     ) async throws {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
         guard let accessKey = account.accessKey, !accessKey.isEmpty else {
             throw BiliAPIError.missingAccessKey
         }
-        guard let url = URL(string: Self.appBaseURL.appendingPathComponent(path).absoluteString) else {
+        guard let url = URL(string: (usesAPIHost ? Self.baseURL : Self.appBaseURL).appendingPathComponent(path).absoluteString) else {
             throw BiliAPIError.invalidURL
         }
 
@@ -330,6 +371,8 @@ struct APIClient {
         request.httpShouldHandleCookies = false
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
+        for (name, value) in BiliHeaders.appAccountHeaders(mid: account.mid) { request.setValue(value, forHTTPHeaderField: name) }
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         // 签名串和请求体必须逐字节一致，所以两边共用同一个拼接函数。
         request.httpBody = AppSigner.queryString(from: signed).data(using: .utf8)
 
@@ -358,11 +401,18 @@ struct APIClient {
         var attempt = 0
         while true {
             try Task.checkCancellation()
+            let diagnosticID = await RecommendationDiagnostics.shared.begin(request, attempt: attempt)
             do {
-                return try await session.data(for: request)
+                let result = try await session.data(for: request)
+                await RecommendationDiagnostics.shared.finish(diagnosticID, data: result.0, response: result.1)
+                return result
             } catch let error as URLError where attempt < retries && Self.isRetryable(error) {
+                await RecommendationDiagnostics.shared.fail(diagnosticID, error: error)
                 attempt += 1
                 try await Task.sleep(for: .milliseconds(500 * attempt))
+            } catch {
+                await RecommendationDiagnostics.shared.fail(diagnosticID, error: error)
+                throw error
             }
         }
     }

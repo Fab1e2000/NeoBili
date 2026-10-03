@@ -7,7 +7,10 @@ struct AppRecommendationPage: Decodable {
     /// 原始响应中最后一个有效 idx，包括之后不展示的卡片。
     let nextCursor: Int?
     let refreshConfig: AppRecommendationRefreshConfig?
+    let bannerHash: String?
     private enum Keys: String, CodingKey { case items, idx, config }
+
+    private enum BannerKeys: String, CodingKey { case hash; case bannerItem = "banner_item" }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: Keys.self)
@@ -15,12 +18,17 @@ struct AppRecommendationPage: Decodable {
         var items = try container.nestedUnkeyedContainer(forKey: .items)
         var result: [AppRecommendationCard] = []
         var cursor: Int?
+        var hash: String?
         while !items.isAtEnd {
             let decoder = try items.superDecoder()
             if let fields = try? decoder.container(keyedBy: Keys.self),
                let idx = fields.integer(.idx), idx > 0 { cursor = idx }
+            if hash == nil, let banner = try? decoder.container(keyedBy: BannerKeys.self), banner.contains(.bannerItem) {
+                hash = banner.text(.hash)
+            }
             if let card = try? AppRecommendationCard(from: decoder) { result.append(card) }
         }
+        bannerHash = hash
         cards = result
         nextCursor = cursor
     }
@@ -29,7 +37,7 @@ struct AppRecommendationPage: Decodable {
         let next = nextCursor.flatMap { cursor in
             cursor != request.appCursor ? request.next(appCursor: cursor) : nil
         }
-        return RecommendationBatch(videos: videos(filter: filter), nextRequest: next, refreshConfig: refreshConfig)
+        return RecommendationBatch(videos: videos(filter: filter), nextRequest: next, refreshConfig: refreshConfig, appCursor: nextCursor)
     }
 
     var videos: [VideoSummary] { videos(filter: .none) }
@@ -44,31 +52,43 @@ struct AppRecommendationPage: Decodable {
         .map(\.video)
     }
 
-    /// 游标和刷新标记属于分页协议；客户端参数与登录、反馈共用 Android 手机身份。
-    static func parameters(cursor: Int, pull: Bool) -> [String: String] {
-        AppClientIdentity.parameters.merging([
-            "c_locale": "zh_CN", "s_locale": "zh_CN", "column": "2",
-            "disable_rcmd": "0", "flush": "8", "fnval": "976", "fnver": "0", "force_host": "2",
-            "fourk": "1", "guidance": "1", "https_url_req": "1", "idx": String(cursor),
-            "network": "wifi", "player_net": "1", "pull": pull ? "true" : "false",
+    /// 游标和刷新标记属于分页协议；客户端参数与登录、反馈共用 iPhone 身份。
+    static func parameters(for request: RecommendationRequest, display: AppRecommendationDisplay? = nil, openEvent: String = "", bannerHash: String = "") -> [String: String] {
+        let pull = request.pageIndex == 0
+        // 官方 iPhone 抓包：首次 0、刷新 6、翻页 8；pull 使用数字布尔值。
+        // 固定项采用用户确认的策略；启动、横幅与游标按自身状态生成。
+        var params = AppClientIdentity.parameters.merging([
+            "actionKey": "appkey", "device_name": AppClientIdentity.deviceName, "c_locale": "zh-Hans_CN", "s_locale": "zh-Hans_CN", "column": "4",
+            "disable_rcmd": "0", "flush": pull ? (request.isLayoutChange ? "2" : (request.isRefresh ? "6" : "0")) : "8",
+            "fnval": "84948", "fnver": "0", "force_host": "0",
+            "fourk": "1", "guidance": "1", "https_url_req": "0", "idx": String(request.appCursor),
+            "pull": pull ? "1" : "0",
             "qn": "32", "recsys_mode": "0", "splash_id": "", "voice_balance": "0",
-            "statistics": AppClientIdentity.statistics
+            "statistics": AppClientIdentity.statistics,
+            "auto_refresh_state": "4", "login_event": "0", "open_event": openEvent,
+            "inline_sound": "1", "inline_sound_cold_state": "4", "autoplay_card": "4",
+            "video_mode": "1", "inline_danmu": "2", "client_attr": "1", "qn_policy": "1",
+            "player_net": "1", "soft_fnval": "2", "teenagers_age": "16",
+            "banner_hash": bannerHash, "splash_ids": "", "splash_creative_id": ""
         ]) { _, value in value }
+        if let display { params["player_extra_content"] = display.playerExtraContent }
+        return params
     }
 
     /// 本次启动固定的会话标识，代替 PiliPlus 写死的 `11111111`。
-    private static let sessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
+    static let sessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
 
     static let userAgent = AppClientIdentity.userAgent
 
     /// 与签名和请求参数使用同一客户端；mid、aurora 由 APIClient 补齐。
-    static func headers(buvid: String) -> [String: String] {
+    static func headers(buvid: String, sessionID: String = sessionID) -> [String: String] {
         ["User-Agent": userAgent,
          "buvid": buvid,
          "session_id": sessionID,
          "env": "prod",
          "app-key": AppClientIdentity.mobiApp,
-         "x-bili-trace-id": traceID()]
+         "x-bili-trace-id": traceID(),
+         "x-bili-locale-bin": AppRecommendationLocale.header]
     }
 
     /// 每次请求一个新的追踪号，格式与官方相同：32 位十六进制:16 位十六进制:0:0。
@@ -129,6 +149,7 @@ struct AppRecommendationCard: Decodable {
         case upID = "up_id", upName = "up_name", upFace = "up_face", descButton = "desc_button", roomID = "room_id"
         case views = "cover_left_text_1", danmaku = "cover_left_text_2"
         case rcmdReason = "rcmd_reason", threePoint = "three_point_v2"
+        case trackID = "track_id", reportFlowData = "report_flow_data"
     }
 
     /// 能当视频打开的卡片。`inline_av_v2` 是官方 App 里自动播放的大卡片，内容同样是普通视频。
@@ -180,6 +201,7 @@ struct AppRecommendationCard: Decodable {
                 owner: owner, stat: stat,
                 dimension: try? c.decodeIfPresent(VideoDimension.self, forKey: .dimension)
             )
+            video.playbackEntry = .recommendation(trackID: c.text(.trackID), reportFlowData: c.text(.reportFlowData))
             video.recommendationFeedback = Self.feedbackOptions(c, goto: goto, param: param)
             video.recommendationBadge = badge
         case "live":

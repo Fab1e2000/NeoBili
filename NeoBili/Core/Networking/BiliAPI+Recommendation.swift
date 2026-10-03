@@ -6,6 +6,10 @@ struct RecommendationRequest: Equatable, Sendable {
     let source: Source
     var pageIndex = 0
     var appCursor = 0
+    /// 首批加载与刷新分开；翻页仍由 pageIndex 和服务端游标决定。
+    var isRefresh = false
+    /// Only used by an actual layout-triggered request; NeoBili currently keeps a fixed two-column layout.
+    var isLayoutChange = false
 
     func next(appCursor: Int = 0) -> Self {
         Self(source: source, pageIndex: pageIndex == Int.max ? 1 : pageIndex + 1, appCursor: appCursor)
@@ -17,12 +21,14 @@ struct RecommendationBatch {
     /// 缺失、重复游标或空页停止翻页，用户仍可刷新。不能回退到本地页码充当 App 游标。
     let nextRequest: RecommendationRequest?
     let refreshConfig: AppRecommendationRefreshConfig?
+    let appCursor: Int?
 
     init(videos: [VideoSummary], nextRequest: RecommendationRequest?,
-         refreshConfig: AppRecommendationRefreshConfig? = nil) {
+         refreshConfig: AppRecommendationRefreshConfig? = nil, appCursor: Int? = nil) {
         self.videos = videos
         self.nextRequest = nextRequest
         self.refreshConfig = refreshConfig
+        self.appCursor = appCursor ?? nextRequest?.appCursor
     }
 }
 
@@ -47,12 +53,26 @@ extension BiliAPI {
     }
 
     static func appRecommendFeed(request: RecommendationRequest) async throws -> RecommendationBatch {
+        let account = try await APIClient.shared.appAccount(expectedSessionID: nil)
+        if account.mid != nil, account.accessKey?.isEmpty != false { throw BiliAPIError.missingAccessKey }
+        try Task.checkCancellation()
+        let headers = try await DeviceIdentity.shared.appRequestHeaders(expectedSessionID: account.sessionID)
+        let context = AppRecommendationSession.shared.takeRequest(accountSession: account.sessionID)
         let page: AppRecommendationPage = try await APIClient.shared.getApp(
             path: "x/v2/feed/index",
-            params: AppRecommendationPage.parameters(cursor: request.appCursor, pull: request.pageIndex == 0),
-            headers: AppRecommendationPage.headers(buvid: await DeviceIdentity.shared.appBuvid())
+            params: AppRecommendationPage.parameters(for: request, display: await AppRecommendationDisplay.current(),
+                openEvent: context.openEvent, bannerHash: context.bannerHash),
+            headers: headers, expectedSessionID: account.sessionID, requiresAccountCredential: true
         )
-        return page.batch(for: request, filter: .current())
+        AppRecommendationSession.shared.recordBanner(page.bannerHash, context: context)
+        let batch = page.batch(for: request, filter: .current())
+        let videos = batch.videos.map { video in
+            var copy = video
+            copy.playbackEntry.loginSessionID = account.sessionID
+            return copy
+        }
+        return RecommendationBatch(videos: videos, nextRequest: batch.nextRequest,
+            refreshConfig: batch.refreshConfig, appCursor: batch.appCursor)
     }
 
     /// 「不感兴趣」：`reason` 是用户在卡片原因里选的一项，「我不想看」或「反馈」。

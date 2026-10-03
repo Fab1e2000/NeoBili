@@ -106,7 +106,7 @@ struct HistoryView: View {
                     cid: summary.cid > 0 ? summary.cid : nil,
                     cover: summary.pic,
                     title: summary.title,
-                    artist: summary.owner.name
+                    artist: summary.owner.name, aid: summary.aid, playbackEntry: .history
                 ),
                 from: "history-\(summary.bvid)"
             )

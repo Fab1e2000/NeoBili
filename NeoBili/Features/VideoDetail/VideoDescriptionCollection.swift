@@ -36,6 +36,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
     let components: [VideoDescriptionComponent]
     let scrollState: VideoDescriptionScrollState
     let onSelect: (VideoSummary) -> Void
+    var onReachEnd: () -> Void = {}
     let consume: (CGFloat) -> CGFloat
     let end: () -> Void
     let canConsume: (CGFloat) -> Bool
@@ -72,6 +73,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         let c = context.coordinator
         c.environment = context.environment
         c.onSelect = onSelect
+        c.onReachEnd = onReachEnd
         c.collapse.consume = consume
         c.collapse.end = end
         c.collapse.canConsume = canConsume
@@ -149,6 +151,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         var scrollState: VideoDescriptionScrollState?
         var initialized = false
         var onSelect: ((VideoSummary) -> Void)?
+        var onReachEnd: (() -> Void)?
         let collapse = PausedVideoCollapseScroll.Observer()
         var prefetch: [String: Task<Void, Never>] = [:]
         var preparations: [ObjectIdentifier: Task<Void, Never>] = [:]
@@ -215,6 +218,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         }
         func collectionView(_ view: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt path: IndexPath) {
             guard path.section == 1, path.item < videos.count else { return }
+            if path.item >= videos.count - 3 { onReachEnd?() }
             let video = videos[path.item]
             cell.accessibilityIdentifier = "related.\(video.bvid)"
             let key = ObjectIdentifier(cell)
@@ -392,6 +396,7 @@ struct VideoDescriptionContent: View {
         }] : [])
         VideoDescriptionCollection(videos: videos, components: rows,
                                    scrollState: store.descriptionScroll, onSelect: store.openRelated,
+                                   onReachEnd: { Task { await store.detailViewModel?.loadMoreRelated() } },
                                    consume: consume, end: end, canConsume: canConsume, canContinue: canContinue)
             // SwiftUI 会把 UIKit 列表摆在安全区内，顶部栏下面就只剩页面底色；铺进去之后内容才能
             // 从选择器下滑过，由系统给出与评论页一致的顶部模糊。被覆盖的高度由 UIKit 按安全区

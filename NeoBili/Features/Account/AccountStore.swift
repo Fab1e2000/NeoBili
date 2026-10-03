@@ -19,17 +19,19 @@ struct AccountSessionClient {
     /// 用当前 Cookie 换一份 App 凭据并保存。
     var exchangeAppCredential: @MainActor () async throws -> Void = {}
 
+    var saveAppAuthorization: @MainActor (String, Int) async throws -> Void = { _, _ in throw BiliAPIError.missingAccessKey }
+
     static var live: AccountSessionClient { AccountSessionClient(
         credentials: { await DeviceIdentity.shared.accountSnapshot() },
         save: { await DeviceIdentity.shared.saveLogin($0, accessKey: $1) },
         clear: { await DeviceIdentity.shared.clearLoginCookies() },
         profile: { try await BiliAPI.myProfile() },
         exchangeAppCredential: {
-            guard let cookies = await DeviceIdentity.shared.loginCookies() else {
-                throw BiliPassport.PassportError.missingCookies
-            }
-            let key = try await BiliPassport.exchangeAccessKey(cookies: cookies)
-            guard await DeviceIdentity.shared.setAccessKey(key, forAccount: cookies.dedeUserID) else {
+            throw BiliPassport.PassportError.rejected(String(localized: "请使用短信验证码重新授权"))
+        },
+        saveAppAuthorization: { key, mid in
+            let session = DeviceIdentity.shared.loginSessionID
+            guard await DeviceIdentity.shared.setAccessKey(key, forAccount: String(mid), expectedSessionID: session) else {
                 throw CancellationError()
             }
         }
@@ -58,6 +60,7 @@ final class AccountStore {
     /// 有没有 App 登录凭据（access_key）。App 推荐按账号个性化、点踩和不感兴趣都要靠它。
     private(set) var hasAppCredential = false
     private(set) var isExchangingAppCredential = false
+    private(set) var appCredentialError: String?
     private(set) var isRestoringSession = true
     private(set) var isRefreshingProfile = false
     private(set) var sessionError: String?
@@ -109,12 +112,7 @@ final class AccountStore {
             profile = cached
         }
         await refreshProfile()
-        if sessionID == session, isLoggedIn, snapshot.needsAppCredentialMigration, !hasAppCredential {
-            Task { [weak self] in
-                guard let self, self.sessionID == session else { return }
-                await self.ensureAppCredential()
-            }
-        }
+
     }
 
     func retrySessionIfNeeded() async {
@@ -171,8 +169,6 @@ final class AccountStore {
         await refreshProfile()
         guard sessionID == session else { return }
         isRestoringSession = false
-        // 账号密码登录和网页扫码只拿到 Cookie：登录时顺带换一份 App 凭据，不拖慢登录本身。
-        if !hasAppCredential { Task { await ensureAppCredential() } }
     }
 
     /// 只有 Cookie 时换一份 App 凭据。返回失败原因；成功或已有凭据时返回 nil。
@@ -181,6 +177,7 @@ final class AccountStore {
         guard isLoggedIn, !hasAppCredential, !isExchangingAppCredential else { return nil }
         let session = sessionID
         isExchangingAppCredential = true
+        appCredentialError = nil
         defer { if sessionID == session { isExchangingAppCredential = false } }
         do {
             try await client.exchangeAppCredential()
@@ -189,8 +186,24 @@ final class AccountStore {
             return nil
         } catch {
             guard sessionID == session, !(error is CancellationError) else { return nil }
-            return BiliPassport.failureText(for: error)
+            let message = BiliPassport.failureText(for: error)
+            appCredentialError = message
+            return message
         }
+    }
+
+    /// 补授权只保存同账号的 App token，不清 Cookie，也不切换账号。
+    func completeAppAuthorization(_ cookies: BiliPassport.LoginCookies, accessKey: String?,
+                                  expectedSessionID: UUID) async throws {
+        guard sessionID == expectedSessionID, isLoggedIn,
+              let mid = accountID, Int(cookies.dedeUserID) == mid else {
+            throw BiliPassport.PassportError.rejected(String(localized: "请使用当前账号的手机号授权"))
+        }
+        guard let accessKey, !accessKey.isEmpty else { throw BiliAPIError.missingAccessKey }
+        try await client.saveAppAuthorization(accessKey, mid)
+        guard sessionID == expectedSessionID else { throw CancellationError() }
+        hasAppCredential = true
+        appCredentialError = nil
     }
 
     func logout() async {
@@ -206,6 +219,7 @@ final class AccountStore {
         isLoggedIn = false
         accountID = nil
         hasAppCredential = false
+        appCredentialError = nil
         isExchangingAppCredential = false
         profile = nil
         sessionError = nil

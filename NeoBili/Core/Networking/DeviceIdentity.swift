@@ -33,6 +33,7 @@ actor DeviceIdentity {
     private var cachedAccessKey: String?
     private var needsAppCredentialMigration = false
     private var fetchTask: Task<Void, Never>?
+    private var appSessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
     private nonisolated let credentialSessionID = Mutex(UUID())
 
     /// 播放器在创建时同步绑定会话，不能等异步任务调度后才读取账号。
@@ -71,7 +72,7 @@ actor DeviceIdentity {
         cachedSessdata = credentials.read(Self.sessdataKeychainKey)
         cachedBiliJct = credentials.read(Self.biliJctKeychainKey)
         cachedDedeUserID = credentials.read(Self.dedeUserIDKeychainKey)
-        // 未标记的旧凭据来自 HD；保留 Cookie，由 AccountStore 换取 Android 凭据。
+        // 不同 scope 的旧凭据来自 Android/HD；保留 Cookie，由 AccountStore 换取 iOS 凭据。
         if credentials.read(Self.accessKeyClientKey) == AppClientIdentity.credentialScope {
             cachedAccessKey = credentials.read(Self.accessKeyKeychainKey)
         } else {
@@ -101,8 +102,8 @@ actor DeviceIdentity {
         cachedBiliJct
     }
 
-    /// APP 端接口（app.bilibili.com）的凭据。只有扫码登录能拿到它，
-    /// 网页密码登录只有 Cookie，所以这里可能为 nil。
+    /// APP 端接口（app.bilibili.com）的凭据。短信 App 登录可同时获取它，
+    /// 旧 Cookie-only 会话可能为 nil。
     var accessKey: String? {
         cachedAccessKey
     }
@@ -129,6 +130,9 @@ actor DeviceIdentity {
 
     /// PiliPlus 的 App buvid 与网页 buvid3 分开持久化，不随刷新重建。
     func appBuvid() -> String {
+        #if DEBUG
+        if !AppNetwork.isRegression, let override = defaults.string(forKey: RecommendationExperiment.buvidKey), !override.isEmpty { return override }
+        #endif
         let key = "neobili.appBuvid"
         if let saved = defaults.string(forKey: key), !saved.isEmpty { return saved }
         let digest = Insecure.MD5.hash(data: Data(UUID().uuidString.utf8))
@@ -137,6 +141,12 @@ actor DeviceIdentity {
         let value = "XY\(chars[2])\(chars[12])\(chars[22])\(digest)"
         defaults.set(value, forKey: key)
         return value
+    }
+
+    /// 推荐和观看反馈共享本次启动/登录会话，换号（包括同账号重登）时更新。
+    func appRequestHeaders(expectedSessionID: UUID) throws -> [String: String] {
+        guard expectedSessionID == loginSessionID else { throw CancellationError() }
+        return AppRecommendationPage.headers(buvid: appBuvid(), sessionID: appSessionID)
     }
 
     /// App 启动时就把设备标识取回来，之后的接口请求不必再等它。
@@ -162,10 +172,11 @@ actor DeviceIdentity {
         return parts.joined(separator: "; ")
     }
 
-    /// 扫码或密码登录成功后写入凭据。SESSDATA 的值本来就是 URL 转义过的
+    /// 登录成功后写入凭据。SESSDATA 的值本来就是 URL 转义过的
     ///（含 %2C 等），原样存、原样发即可，不要再做一次编解码。
     func setLoginCookies(sessdata: String, biliJct: String, dedeUserID: String) {
         credentialSessionID.withLock { $0 = UUID() }
+        appSessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
         cachedSessdata = sessdata
         cachedBiliJct = biliJct
         cachedDedeUserID = dedeUserID
@@ -174,7 +185,7 @@ actor DeviceIdentity {
         credentials.write(dedeUserID, Self.dedeUserIDKeychainKey)
     }
 
-    /// 扫码登录额外带回来的 APP 端凭据。密码登录没有这个值，传 nil 即可。
+    /// App 登录返回的凭据；旧 Cookie-only 会话可缺少此值。
     func setAccessKey(_ accessKey: String?) {
         cachedAccessKey = accessKey
         needsAppCredentialMigration = false
@@ -184,8 +195,9 @@ actor DeviceIdentity {
     }
 
     /// 换取到的 App 凭据只在仍是同一账号时保存，换取途中退出或换号就丢弃。
-    func setAccessKey(_ accessKey: String, forAccount dedeUserID: String) -> Bool {
-        guard cachedSessdata != nil, cachedDedeUserID == dedeUserID else { return false }
+    func setAccessKey(_ accessKey: String, forAccount dedeUserID: String, expectedSessionID: UUID? = nil) -> Bool {
+        guard cachedSessdata != nil, cachedDedeUserID == dedeUserID,
+              expectedSessionID == nil || expectedSessionID == loginSessionID else { return false }
         setAccessKey(accessKey)
         return true
     }
@@ -193,6 +205,7 @@ actor DeviceIdentity {
     /// 退出登录或凭据失效时清除。
     func clearLoginCookies() {
         credentialSessionID.withLock { $0 = UUID() }
+        appSessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
         cachedSessdata = nil
         cachedBiliJct = nil
         cachedDedeUserID = nil

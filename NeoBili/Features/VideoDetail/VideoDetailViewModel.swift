@@ -4,8 +4,18 @@ import Foundation
 @Observable
 final class VideoDetailViewModel {
     let bvid: String
+    let appPlaybackSession = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    private let sourceEntry: PlaybackEntry
+    private let entryAid: Int
+    private var relatedPagination: Data?
+    private var relatedLoaded = false
+    private let relatedPageLoader: (@MainActor (Data?) async throws -> AppRelatedPage)?
+    private(set) var canLoadMoreRelated = false
     private let likeStore: VideoLikeStore
     private let sessionID: UUID
+    private let appAccountSessionID: UUID
+    private let identity: DeviceIdentity
+    private let relatedClient: APIClient
     private let fetchDetail: @MainActor (String) async throws -> VideoDetail
     private let fetchRelation: @MainActor (Int, String) async throws -> VideoRelation
     private let sendLike: @MainActor (Int, Bool) async throws -> Void
@@ -58,19 +68,27 @@ final class VideoDetailViewModel {
         return likeStore.isLiked(aid: detail.aid, serverValue: relation?.isLiked ?? false)
     }
 
-    init(bvid: String, likeStore: VideoLikeStore = .shared,
+    init(bvid: String, aid: Int = 0, playbackEntry: PlaybackEntry = .other, likeStore: VideoLikeStore = .shared,
+         identity: DeviceIdentity = .shared, relatedClient: APIClient = .shared,
          fetchDetail: @escaping @MainActor (String) async throws -> VideoDetail = {
              try await VideoPreparationCache.shared.detail(for: $0)
          },
          fetchRelation: @escaping @MainActor (Int, String) async throws -> VideoRelation = {
              try await BiliAPI.videoRelation(aid: $0, bvid: $1)
          },
+         relatedPageLoader: (@MainActor (Data?) async throws -> AppRelatedPage)? = nil,
          sendLike: @escaping @MainActor (Int, Bool) async throws -> Void = {
              try await BiliAPI.likeVideo(aid: $0, like: $1)
          }) {
         self.bvid = bvid
+        self.entryAid = aid
+        self.sourceEntry = playbackEntry
+        self.relatedPageLoader = relatedPageLoader
         self.likeStore = likeStore
         self.sessionID = likeStore.sessionID
+        self.identity = identity
+        self.relatedClient = relatedClient
+        self.appAccountSessionID = identity.loginSessionID
         self.fetchDetail = fetchDetail
         self.fetchRelation = fetchRelation
         self.sendLike = sendLike
@@ -94,12 +112,32 @@ final class VideoDetailViewModel {
         }
     }
 
-    func loadRelated() async {
-        guard related.isEmpty, !isLoadingRelated else { return }
+    func loadRelated() async { await fetchRelatedPage(loadMore: false) }
+
+    func loadMoreRelated() async { await fetchRelatedPage(loadMore: true) }
+
+    private func fetchRelatedPage(loadMore: Bool) async {
+        guard !isLoadingRelated, likeStore.sessionID == sessionID,
+              loadMore ? canLoadMoreRelated : !relatedLoaded else { return }
         isLoadingRelated = true
-        // 相关视频加载失败只是少一块内容，不该让整个视频页显示成错误页。
-        related = (try? await BiliAPI.relatedVideos(bvid: bvid)) ?? []
-        isLoadingRelated = false
+        defer { isLoadingRelated = false }
+        let previous = loadMore ? relatedPagination : nil
+        do {
+            let page: AppRelatedPage
+            if let relatedPageLoader { page = try await relatedPageLoader(previous) }
+            else { page = try await BiliAPI.appRelatedPage(bvid: bvid, aid: detail?.aid ?? entryAid,
+                entry: sourceEntry, playbackSession: appPlaybackSession,
+                expectedSessionID: appAccountSessionID, pagination: previous, client: relatedClient, identity: identity) }
+            guard !Task.isCancelled, likeStore.sessionID == sessionID else { return }
+            var seen = Set(loadMore ? related.map(\.bvid) : [])
+            let unique = page.videos.filter { seen.insert($0.bvid).inserted }
+            related = loadMore ? related + unique : unique
+            relatedLoaded = true
+            relatedPagination = page.pagination
+            canLoadMoreRelated = page.canLoadMore && page.pagination != nil && page.pagination != previous
+        } catch {
+            // Do not substitute web cards without their App tracking receipt.
+        }
     }
 
     /// 标签、互动状态、UP 主名片。

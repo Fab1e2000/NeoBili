@@ -84,6 +84,36 @@ Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用�
 脚本把日志、环境信息、`.xcresult` 和摘要写入 `DerivedData/Validation/` 的独立运行目录。
 交付说明必须区分失败、跳过、未执行及通过；未跑专项时不宣称专项通过。不要将运行流水写回规范文档。
 
+## 官方推荐请求对比
+
+先录官方 App 的操作样本，按操作分别保存 `.flows`；原始抓包包含凭据，留在仓库外。
+分组边界必须由实际手机操作确认，不能仅按 flush 或时间给旧样本补标签。
+建议最少四组，固定同一账号，其余条件每次只改一项：
+
+1. `cold`：彻底关闭官方 App 后打开首页，记录首次请求；随后下拉两次并翻两页，分别保存为 `pull`、`page`。
+2. `watch_return`：打开一条视频，真实播放约 20 秒后返回首页再下拉；与直接返回/下拉比较。
+3. `settings`：切换首页自动播放/静音/弹幕设置（以官方实际提供为准），每次切换后下拉；记录每个设置值，随后恢复。
+4. `warm_network`：后台/前台一次并下拉；再切换 Wi-Fi/蜂窝并下拉。分别标记 warm、wifi、cellular。
+
+不要求退出正常账号。`login_event` 的登录生命周期、广告与 ticket 过期可能仍无法在这四组中
+确认；需要发生对应真实事件再补样本，不把缺失证据当成常量。地区头需要跨网络对比及字段格式
+研究，屏幕尺寸/方向可补横竖屏样本。抓包用于校验已实现的真实观看上报；新增协议以明确用户授权为前提。验证时区分累计观看
+时间和播放位置、播放 session 和 App 请求头会话；不得复制官方 token、ticket 或会话。设备编号默认使用自身编号；经设备所有者明确授权的本地 Debug 对照实验可通过启动环境注入官方编号，保存在独立实验设置中，可恢复自身编号，禁止硬编码或进入分发构建。
+移动心跳成功仅代表接口接受，兴趣是否更新必须用真实播放后刷新进行验收。
+
+```sh
+python3 scripts/analyze-feed-capture.py --group cold=/private/cold.flows \
+  --group pull=/private/pull.flows --group page=/private/page.flows \
+  --output DerivedData/Validation/feed-differences.json
+python3 -m unittest discover -s offline-harness/src -p 'test_feed_capture.py'
+```
+
+工具需要现有 `mitmdump`，只重放 `/x/v2/feed/index`，不联网请求。输出协议白名单字段，
+账号、设备、票据、广告及未知字段只输出本次分析内的相同/不同编号和长度；不会输出 token、
+Cookie 或原始值的持久化哈希。原始重放错误输出不转发。相同编号不能跨分析运行比较。
+按操作看差异后，再区分固定版本配置、设置状态、账号设备、会话、网络及服务端动态值。
+样本不变只是观察结果；只有明确协议/功能证据支持的固定配置才写死。
+
 ## CI
 
 每次 push/PR 在 Xcode 26.2、26.6 编译模拟器目标；26.6 单独执行离线与确定性模拟器回归。

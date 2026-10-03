@@ -32,11 +32,15 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/UI/AppLanguage.swift" \
    "$APP/Core/Extensions/Int+BiliFormatting.swift" \
    "$APP/Core/Networking/AppNetwork.swift" \
+   "$APP/Core/Networking/RecommendationDiagnostics.swift" \
    "$APP/Core/Networking/APIClient.swift" \
    "$APP/Core/Networking/BiliAPI.swift" \
    "$APP/Core/Networking/BiliAPI+Recommendation.swift" \
    "$APP/Core/Networking/BiliAPI+VideoActions.swift" \
+   "$APP/Core/Networking/AppRecommendationSession.swift" \
    "$APP/Core/Networking/AppRecommendationPage.swift" \
+   "$APP/Core/Networking/AppRelatedPage.swift" \
+   "$APP/Core/Networking/AppRecommendationDisplay.swift" \
    "$APP/Core/Networking/WebRecommendationPage.swift" \
    "$APP/Core/Networking/BiliPassport.swift" \
    "$APP/Core/Networking/WBISigner.swift" \

@@ -26,7 +26,7 @@ struct SearchResultsView: View {
                                     bvid: item.bvid,
                                     cover: item.pic,
                                     title: item.plainTitle,
-                                    artist: item.author
+                                    artist: item.author, playbackEntry: .search
                                 ),
                                 from: item.bvid
                             )
