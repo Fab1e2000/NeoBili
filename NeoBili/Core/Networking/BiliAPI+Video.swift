@@ -8,18 +8,27 @@ extension BiliAPI {
         )
     }
 
-    /// 官方「相关视频」推流，只跟当前这个视频有关。
-    ///
-    /// 这和首页的推荐流是两个完全不同的接口：首页用的是 `top/feed/rcmd`，
-    /// 按用户整体兴趣出内容；这里用的是 `archive/related`，由 B 站根据当前稿件
-    /// 算出关联稿件。返回的卡片结构和推荐流一致，而且自带 `cid`，
-    /// 所以点进去时可以和推荐页一样并行加载详情与播放地址。
+    /// Official iPhone ViewUnite cards include the tracking used by subsequent watch feedback.
+    static func appRelatedPage(bvid: String, aid: Int = 0, entry: PlaybackEntry = .other,
+                               playbackSession: String, expectedSessionID: UUID,
+                               pagination: Data? = nil, client: APIClient = .shared,
+                               identity: DeviceIdentity = .shared) async throws -> AppRelatedPage {
+        let headers = try await identity.appRequestHeaders(expectedSessionID: expectedSessionID)
+        let request = pagination.map {
+            AppRelatedPage.moreRequest(bvid: bvid, aid: aid, entry: entry, playbackSession: playbackSession,
+                                       accountSession: expectedSessionID, pagination: $0)
+        } ?? AppRelatedPage.viewRequest(bvid: bvid, aid: aid, entry: entry,
+                                       playbackSession: playbackSession, accountSession: expectedSessionID)
+        let method = pagination == nil ? "View" : "RelatesFeed"
+        let payload = try await client.appGRPC(path: "bilibili.app.viewunite.v1.View/" + method,
+                                              payload: request, expectedSessionID: expectedSessionID, headers: headers)
+        return try AppRelatedPage(payload: payload, isView: pagination == nil, accountSession: expectedSessionID)
+    }
+
     static func relatedVideos(bvid: String) async throws -> [VideoSummary] {
-        let items: [RelatedVideoItem] = try await APIClient.shared.get(
-            path: "x/web-interface/archive/related",
-            params: ["bvid": bvid]
-        )
-        return items.compactMap(\.asVideoSummary)
+        let login = await DeviceIdentity.shared.loginSessionID
+        return try await appRelatedPage(bvid: bvid, playbackSession: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
+                                        expectedSessionID: login).videos
     }
 
     // MARK: - 视频页附加信息

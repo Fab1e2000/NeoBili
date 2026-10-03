@@ -14,10 +14,15 @@ struct PlaybackWatchProgress {
     private var lastReportedSecond: Int?
     private var segmentHasProgress = false
     private var isCompleted = false
+    private(set) var watchedTime: TimeInterval = 0
+    private(set) var maximumPosition: TimeInterval = 0
+    private(set) var miniPlayerTime: TimeInterval = 0
+    private(set) var pausedTime: TimeInterval = 0
+    private var pauseStarted: TimeInterval?
 
     /// First heartbeat after five real seconds, then every fifteen seconds.
     /// Explicit pause/exit may flush a shorter, actually watched segment.
-    mutating func observe(position: TimeInterval, at time: TimeInterval, isActive: Bool) -> Double? {
+    mutating func observe(position: TimeInterval, at time: TimeInterval, isActive: Bool, isMiniPlayer: Bool = false) -> Double? {
         guard !isCompleted, isActive, position.isFinite, position >= 0, time.isFinite else {
             sample = nil
             return nil
@@ -32,11 +37,36 @@ struct PlaybackWatchProgress {
         // The bound permits playback from 0.5x through 4x without counting seeks.
         guard elapsed > 0, elapsed <= 3, advanced > 0,
               advanced <= elapsed * 4 + 0.25 else { return nil }
+        setPaused(false, at: time)
+        watchedTime += elapsed
+        if isMiniPlayer { miniPlayerTime += elapsed }
+        maximumPosition = max(maximumPosition, position)
         lastWatchedPosition = position
         segmentHasProgress = true
         watchedSinceReport += elapsed
         let interval: TimeInterval = lastReportedSecond == nil ? 5 : 15
         return watchedSinceReport >= interval ? checkpoint() : nil
+    }
+
+    mutating func setPaused(_ paused: Bool, at time: TimeInterval) {
+        guard time.isFinite else { return }
+        if paused {
+            guard watchedTime > 0 else { return }
+            if pauseStarted == nil { pauseStarted = time }
+        } else if let start = pauseStarted {
+            pausedTime += max(0, time - start)
+            pauseStarted = nil
+        }
+    }
+
+    func report(position: Double, duration: Double, startTimestamp: Int,
+                sourceFields: [String: String], at time: TimeInterval) -> PlaybackWatchReport {
+        let pause = pausedTime + (pauseStarted.map { max(0, time - $0) } ?? 0)
+        var report = PlaybackWatchReport(position: position, watchedTime: watchedTime,
+            pausedTime: pause, maximumPosition: maximumPosition, duration: duration,
+            startTimestamp: startTimestamp, sourceFields: sourceFields)
+        report.miniPlayerTime = miniPlayerTime
+        return report
     }
 
     /// Pause/buffering breaks the timing baseline. Seeking or replacing a source
@@ -115,6 +145,71 @@ final class PlaybackWatchProgressSender {
     }
 
     func enqueue(_ position: Double?) {
+        guard let position else { return }
+        pending = position
+        guard task == nil else { return }
+        task = Task {
+            while let position = pending {
+                pending = nil
+                await report(position)
+            }
+            task = nil
+        }
+    }
+}
+
+/// 移动心跳的观看秒数与历史进度分开；不能把续播/拖动位置当成观看时长。
+struct PlaybackWatchReport: Sendable {
+    let position: Double
+    let watchedTime: Double
+    let pausedTime: Double
+    let maximumPosition: Double
+    let duration: Double
+    let startTimestamp: Int
+    let sourceFields: [String: String]
+    var playbackSession: String = ""
+    var aid: Int = 0
+    var miniPlayerTime: Double = 0
+
+}
+
+@MainActor
+final class PlaybackWatchReportSender {
+    private struct Key: Hashable {
+        let loginSessionID: UUID
+        let bvid: String
+        let cid: Int
+    }
+
+    private final class WeakReference {
+        weak var value: PlaybackWatchReportSender?
+        init(_ value: PlaybackWatchReportSender) { self.value = value }
+    }
+
+    private static var sharedSenders: [Key: WeakReference] = [:]
+
+    /// Reopening the same part must join its old writer while the last request
+    /// is still in flight. Otherwise that request can overwrite newer history.
+    /// Only live reporters use this registry; injected test reporters stay local.
+    static func shared(loginSessionID: UUID, bvid: String, cid: Int,
+                       report: @escaping @Sendable (PlaybackWatchReport) async -> Void) -> PlaybackWatchReportSender {
+        sharedSenders = sharedSenders.filter { $0.value.value != nil }
+        let key = Key(loginSessionID: loginSessionID, bvid: bvid, cid: cid)
+        if let existing = sharedSenders[key]?.value { return existing }
+        let sender = PlaybackWatchReportSender(report: report)
+        sharedSenders[key] = WeakReference(sender)
+        return sender
+    }
+
+    private let report: @Sendable (PlaybackWatchReport) async -> Void
+    private var pending: PlaybackWatchReport?
+    private var task: Task<Void, Never>?
+
+    init(report: @escaping @Sendable (PlaybackWatchReport) async -> Void) {
+        self.report = report
+    }
+
+    func enqueue(_ position: PlaybackWatchReport?) {
         guard let position else { return }
         pending = position
         guard task == nil else { return }

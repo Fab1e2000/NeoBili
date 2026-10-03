@@ -61,7 +61,7 @@ struct HomeFeedCellView: View {
             case nil:
                 nowPlaying.open(
                     VideoDetailRoute(bvid: video.bvid, cid: video.cid > 0 ? video.cid : nil, cover: video.pic,
-                                     title: video.title, artist: video.owner.name),
+                                     title: video.title, artist: video.owner.name, aid: video.aid, playbackEntry: video.playbackEntry),
                     from: video.bvid
                 )
             }

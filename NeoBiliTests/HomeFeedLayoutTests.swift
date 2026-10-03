@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class HomeFeedLayoutTests: XCTestCase {
-    func testRefreshRestartsCursorAndPaginationContinuesWithinSession() async {
+    func testRefreshRestartsPageIndexAndPaginationContinuesWithinSession() async {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         defaults.set(1234, forKey: "neobili.recommendFreshIndex")
         var requested: [Int] = []
@@ -19,7 +19,7 @@ final class HomeFeedLayoutTests: XCTestCase {
         XCTAssertEqual(requested, [0, 1, 0, 1])
     }
 
-    func testFailedRefreshKeepsContentAndRetriesRecommendationFromZero() async {
+    func testFailedRefreshKeepsContentAndRetriesRecommendationFirstBatch() async {
         var requested: [Int] = []
         let model = HomeViewModel(fetchRecommendations: { request in
             let index = request.pageIndex
@@ -72,6 +72,8 @@ final class HomeFeedLayoutTests: XCTestCase {
         await model.loadReplacementPage() // No cursor: no extra request.
         XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 1745482992, 1745482980, 1745482970])
         XCTAssertEqual(requested.map(\.pageIndex), [0, 1, 1, 2, 3])
+        XCTAssertEqual(requested.map { AppRecommendationPage.parameters(for: $0)["flush"] }, ["0", "8", "8", "8", "8"])
+        XCTAssertEqual(requested[1], requested[2], "Retry preserves the complete request")
         XCTAssertEqual(model.videos.map(\.aid), [1, 2])
         XCTAssertNil(model.errorMessage)
     }
@@ -101,6 +103,7 @@ final class HomeFeedLayoutTests: XCTestCase {
         XCTAssertEqual(requested.map(\.source), [.app, .app, .web, .web, .app, .app, .app])
         XCTAssertEqual(requested.map(\.pageIndex), [0, 1, 0, 1, 0, 1, 0])
         XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 0, 0, 0, 1745482992, 0])
+        XCTAssertEqual(requested.map(\.isRefresh), [false, false, true, false, true, false, true])
     }
 
     func testLateCancelledPageCannotOverwriteRefreshedCursor() async {
@@ -126,7 +129,7 @@ final class HomeFeedLayoutTests: XCTestCase {
             nextRequest: RecommendationRequest(source: .app, pageIndex: 2, appCursor: 999)))
         await oldPage.value
         await model.loadReplacementPage()
-        XCTAssertEqual(requested.map(\.appCursor), [0, 111, 0, 222])
+        XCTAssertEqual(requested.map(\.appCursor), [0, 111, 111, 222])
         XCTAssertFalse(model.videos.contains { $0.aid == 99 })
         XCTAssertNil(model.errorMessage)
     }

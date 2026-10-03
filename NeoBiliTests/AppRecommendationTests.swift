@@ -2,6 +2,17 @@ import XCTest
 @testable import NeoBili
 
 final class AppRecommendationTests: XCTestCase {
+    func testCardRetainsOnlyItsOwnServerTrackingFields() throws {
+        var tracked = card
+        tracked["track_id"] = "fixture-track"
+        tracked["report_flow_data"] = "fixture-flow"
+        let video = try XCTUnwrap(decode([tracked]).videos.first)
+        XCTAssertEqual(video.playbackEntry.source, .recommendation)
+        XCTAssertEqual(video.playbackEntry.parameters()["track_id"], "fixture-track")
+        XCTAssertEqual(video.playbackEntry.parameters()["report_flow_data"], "fixture-flow")
+        XCTAssertNil(try decode([card]).videos.first?.playbackEntry.parameters()["track_id"])
+    }
+
     func testAppCardPreservesVideoIdentityAndPlaybackFields() throws {
         let page = try decode([card])
         let video = try XCTUnwrap(page.videos.first)
@@ -136,15 +147,15 @@ final class AppRecommendationTests: XCTestCase {
 
     func testAppRecommendationUsesSigningClientInHeaders() {
         let headers = AppRecommendationPage.headers(buvid: "b")
-        XCTAssertEqual(headers["app-key"], "android")
-        XCTAssertTrue(headers["User-Agent"]?.contains("mobi_app/android") == true)
+        XCTAssertEqual(headers["app-key"], "iphone")
+        XCTAssertTrue(headers["User-Agent"]?.contains("mobi_app/iphone") == true)
         XCTAssertNil(headers["bili-http-engine"])
     }
 
     func testAuroraEIDMatchesPiliPlus() {
         XCTAssertEqual(BiliHeaders.auroraEID(mid: 1), "UA")
         XCTAssertNil(BiliHeaders.appAccountHeaders(mid: nil)["x-bili-mid"])
-        XCTAssertEqual(BiliHeaders.appAccountHeaders(mid: 42)["app-key"], "android")
+        XCTAssertEqual(BiliHeaders.appAccountHeaders(mid: 42)["app-key"], "iphone")
     }
 
     func testStringIDsAndProvidedBVIDAreSupported() throws {
@@ -158,16 +169,53 @@ final class AppRecommendationTests: XCTestCase {
     }
 
     func testAppParametersPreserveExistingCursor() {
-        let params = AppRecommendationPage.parameters(cursor: 123, pull: false)
+        let params = AppRecommendationPage.parameters(for: RecommendationRequest(source: .app, pageIndex: 1, appCursor: 123))
         XCTAssertEqual(params["idx"], "123")
-        XCTAssertEqual(params["mobi_app"], "android")
-        XCTAssertEqual(params["platform"], "android")
+        XCTAssertEqual(params["mobi_app"], "iphone")
+        XCTAssertEqual(params["platform"], "ios")
         XCTAssertNil(AppRecommendationPage.headers(buvid: "b")["fp_local"])
         XCTAssertEqual(AppRecommendationPage.traceID().split(separator: ":").map(\.count), [32, 16, 1, 1])
         XCTAssertNil(params["fresh_idx"])
-        XCTAssertEqual(AppRecommendationPage.parameters(cursor: 0, pull: true)["pull"], "true")
+        XCTAssertEqual(params["pull"], "0")
+        XCTAssertEqual(params["flush"], "8")
         XCTAssertEqual(AppRecommendationPage.count("1.2亿"), 120_000_000)
         XCTAssertNil(AppRecommendationPage.bvid(aid: -1))
+    }
+
+    func testInitialRefreshAndPaginationParametersUseCapturedProtocolWithoutChangingIdentity() {
+        let initial = RecommendationRequest(source: .app)
+        let refresh = RecommendationRequest(source: .app, isRefresh: true)
+        let requests = [initial, refresh, refresh.next(appCursor: 456)]
+        let params = requests.map { AppRecommendationPage.parameters(for: $0) }
+        XCTAssertEqual(params.map { $0["flush"] }, ["0", "6", "8"])
+        XCTAssertEqual(params.map { $0["pull"] }, ["1", "1", "0"])
+        XCTAssertEqual(params.map { $0["idx"] }, ["0", "0", "456"])
+        for value in params {
+            for (key, identity) in AppClientIdentity.parameters { XCTAssertEqual(value[key], identity) }
+            XCTAssertEqual(value["actionKey"], "appkey")
+            XCTAssertEqual(value["c_locale"], "zh-Hans_CN")
+            XCTAssertEqual(value["s_locale"], "zh-Hans_CN")
+            XCTAssertEqual(value["fnval"], "84948", "Recommendation comparison policy, separate from playback capabilities")
+            XCTAssertEqual(value["device_name"], AppClientIdentity.deviceName)
+            for field in ["player_extra_content", "ad_extra", "access_key", "network", "widgets"] {
+                XCTAssertNil(value[field], "Do not fabricate or copy dynamic state: \(field)")
+            }
+        }
+    }
+
+    func testPlayerExtraContentUsesActualPixelsAndIsOrientationIndependent() throws {
+        let portrait = try XCTUnwrap(AppRecommendationDisplay(width: 1206, height: 2622))
+        let landscape = try XCTUnwrap(AppRecommendationDisplay(width: 2622, height: 1206))
+        XCTAssertEqual(portrait.playerExtraContent, #"{"short_edge":"1206","long_edge":"2622"}"#)
+        XCTAssertEqual(landscape.playerExtraContent, portrait.playerExtraContent)
+        let small = try XCTUnwrap(AppRecommendationDisplay(width: 750, height: 1334))
+        let params = AppRecommendationPage.parameters(for: .init(source: .app), display: small)
+        XCTAssertEqual(params["player_extra_content"], #"{"short_edge":"750","long_edge":"1334"}"#)
+        for size in [0.0, -1, Double.infinity, Double.nan, Double(Int.max)] {
+            XCTAssertNil(AppRecommendationDisplay(width: size, height: 100))
+        }
+        XCTAssertEqual(AppRecommendationPlaybackCapabilities.fnval & 16384, 0, "HDR Vivid is unverified")
+        XCTAssertEqual(AppRecommendationPlaybackCapabilities.fnval & 65536, 0, "Do not claim unknown private bits")
     }
 
     func testCursorIsReadBeforeCardValidationAndLocalFiltering() throws {

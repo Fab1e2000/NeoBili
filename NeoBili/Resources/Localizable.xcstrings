@@ -5557,6 +5557,326 @@
           }
         }
       }
+    },
+    "App 授权未完成，请到「设置 → 推荐流」扫码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App authorization is incomplete. Scan to authorize in Settings → Recommendations."
+          }
+        }
+      }
+    },
+    "请使用当前账号扫码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan with your currently signed-in account."
+          }
+        }
+      }
+    },
+    "扫码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan to authorize"
+          }
+        }
+      }
+    },
+    "App 扫码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App authorization"
+          }
+        }
+      }
+    },
+    "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。点「获取」会用当前登录状态向 B 站确认一次 App 端登录，账号的登录设备里会多一条记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This account has no App credential. App recommendations pause until authorization succeeds. Get confirms an App login with your current session and adds a login record to your account."
+          }
+        }
+      }
+    },
+    "推荐实验日志": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recommendation experiment logs"
+          }
+        }
+      }
+    },
+    "记录推荐与观看日志": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record recommendation and viewing logs"
+          }
+        }
+      }
+    },
+    "设备名牌": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device identity"
+          }
+        }
+      }
+    },
+    "NeoBili 自身编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "NeoBili identity"
+          }
+        }
+      }
+    },
+    "官方编号（本地测试）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Official identity (local test)"
+          }
+        }
+      }
+    },
+    "恢复 NeoBili 自身编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore NeoBili identity"
+          }
+        }
+      }
+    },
+    "准备导出日志": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prepare log export"
+          }
+        }
+      }
+    },
+    "分享日志文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share log file"
+          }
+        }
+      }
+    },
+    "日志导出失败，请重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not export logs. Please try again."
+          }
+        }
+      }
+    },
+    "日志含观看内容和操作时间，仅分享给你信任的人。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logs include viewed content and activity times. Share only with people you trust."
+          }
+        }
+      }
+    },
+    "日志保存在手机上，最多约 8 MB。记录请求参数、返回的视频及观看上报结果，隐藏登录凭据和设备编号。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logs remain on this phone, using up to about 8 MB. They record request parameters, recommended videos and viewing reports, omitting credentials and device identifiers."
+          }
+        }
+      }
+    },
+    "短信验证码登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS sign-in"
+          }
+        }
+      }
+    },
+    "国家或地区": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Country or region"
+          }
+        }
+      }
+    },
+    "手机号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phone number"
+          }
+        }
+      }
+    },
+    "短信验证码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS code"
+          }
+        }
+      }
+    },
+    "获取验证码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send code"
+          }
+        }
+      }
+    },
+    "%lld 秒后重新获取": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resend in %lld seconds"
+          }
+        }
+      }
+    },
+    "正在处理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processing"
+          }
+        }
+      }
+    },
+    "验证码已发送，请在五分钟内填写。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code sent. Enter it within five minutes."
+          }
+        }
+      }
+    },
+    "请使用当前账号绑定的手机号完成验证。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify using the phone number linked to your current account."
+          }
+        }
+      }
+    },
+    "验证码已过期，请重新获取": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code expired. Request a new code."
+          }
+        }
+      }
+    },
+    "验证码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify by SMS"
+          }
+        }
+      }
+    },
+    "请使用短信验证码重新授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify again using an SMS code"
+          }
+        }
+      }
+    },
+    "请使用当前账号的手机号授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify using the phone number linked to your current account"
+          }
+        }
+      }
+    },
+    "安全验证页面无法加载，请关闭后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to load verification. Close it and try again."
+          }
+        }
+      }
+    },
+    "登录需要额外验证，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Additional verification required. Try again."
+          }
+        }
+      }
+    },
+    "App 授权未完成，请到「设置 → 推荐流」使用验证码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App authorization is incomplete. Verify by SMS in Settings → Recommendations."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

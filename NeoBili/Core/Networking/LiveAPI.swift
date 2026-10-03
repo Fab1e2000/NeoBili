@@ -104,12 +104,12 @@ enum LiveAPI {
     }
 
     private static func appBrowsingParams(page: Int, accessKey: String?) -> [String: String] {
-        // 与推荐、反馈共用普通 Android 手机身份。
+        // 与推荐、反馈共用iPhone 身份。
         var params = AppClientIdentity.parameters.merging([
             "actionKey": "appkey", "version": AppClientIdentity.version,
-            "page": String(max(1, page)), "c_locale": "zh_CN", "s_locale": "zh_CN",
-            "https_url_req": "1", "fnval": "912", "disable_rcmd": "0",
-            "device_name": "android", "device_type": "0", "network": "wifi", "scale": "2",
+            "page": String(max(1, page)), "c_locale": "zh-Hans_CN", "s_locale": "zh-Hans_CN",
+            "https_url_req": "1", "fnval": String(AppRecommendationPlaybackCapabilities.fnval), "disable_rcmd": "0",
+            "device_name": AppClientIdentity.deviceName, "device_type": "0",
             "statistics": AppClientIdentity.statistics
         ]) { _, value in value }
         if let accessKey, !accessKey.isEmpty { params["access_key"] = accessKey }

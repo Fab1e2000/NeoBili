@@ -116,6 +116,26 @@ struct NetworkLoadingRegression {
                "Write uses the validated atomic Cookie snapshot")
         expect(!NetworkFixture.requests[0].httpShouldHandleCookies, "Write cannot merge shared Cookie jar")
 
+        NetworkFixture.reset()
+        let missing = APIClient(session: session, appAuthentication: {
+            DeviceIdentity.AppRequestAccount(accessKey: nil, mid: 42, sessionID: id)
+        })
+        do {
+            let _: BiliEmptyData = try await missing.getApp(path: "x/v2/feed/index", params: [:], requiresAccountCredential: true)
+            preconditionFailure("Logged-in feed must not silently request without a token")
+        } catch BiliAPIError.missingAccessKey {}
+        expect(NetworkFixture.requests.isEmpty, "Missing App credential stops authenticated feed before HTTP")
+        let guest = APIClient(session: session, appAuthentication: {
+            DeviceIdentity.AppRequestAccount(accessKey: nil, mid: nil, sessionID: id)
+        })
+        let _: BiliEmptyData = try await guest.getApp(path: "x/v2/feed/index", params: [:], requiresAccountCredential: true)
+        expect(NetworkFixture.requests.count == 1, "Explicit guest feed remains available")
+        NetworkFixture.reset()
+        let _: BiliEmptyData = try await client.getApp(path: "x/v2/feed/index", params: [:], requiresAccountCredential: true)
+        let feed = NetworkFixture.requests[0]
+        let feedParams = URLComponents(url: feed.url!, resolvingAgainstBaseURL: false)!.queryItems!
+        expect(feedParams.contains { $0.name == "access_key" && $0.value == "fixture" }, "Authenticated feed signs and transmits its own App token")
+
         NetworkFixture.reset(error: URLError(.timedOut))
         do { try await client.post(path: "fixture", expectedSessionID: id) }
         catch let error as URLError { expect(error.code == .timedOut, "Write returns transport failure") }
@@ -216,6 +236,7 @@ struct NetworkLoadingRegression {
             NetworkFixture.reset()
             var currentSession = UUID()
             let newSession = UUID()
+            var changeOnClick = false
             let credentials = Gate<DeviceIdentity.AppRequestAccount>()
             let transport = session()
             defer { transport.invalidateAndCancel() }
@@ -227,11 +248,12 @@ struct NetworkLoadingRegression {
                     let clickedSession = currentSession
                     // Deterministically place the account change immediately
                     // after the click snapshot and before any reporter runs.
-                    currentSession = newSession
+                    if changeOnClick { currentSession = newSession }
                     return clickedSession
                 }, feedbackClient: client,
                 fetchRecommendations: { request in RecommendationBatch(videos: [video(1)], nextRequest: request.next(appCursor: 1)) })
             await model.loadInitial()
+            changeOnClick = true
             let click = Task {
                 switch action {
                 case 0: return await model.markUninterested(model.videos[0], reason: reason)
@@ -271,9 +293,9 @@ struct NetworkLoadingRegression {
                 let params = Dictionary(uniqueKeysWithValues: URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
                     .queryItems!.map { ($0.name, $0.value ?? "") })
                 expect(params["appkey"] == AppSigner.appKey, "Feedback uses the login signing identity")
-                expect(params["mobi_app"] == "android" && params["build"] == "8430300"
-                       && params["platform"] == "android", "Feedback parameters identify Android phone")
-                expect(request.value(forHTTPHeaderField: "app-key") == "android"
+                expect(params["mobi_app"] == "iphone" && params["build"] == "91300100"
+                       && params["platform"] == "ios", "Feedback parameters identify iPhone")
+                expect(request.value(forHTTPHeaderField: "app-key") == "iphone"
                        && request.value(forHTTPHeaderField: "User-Agent") == AppClientIdentity.userAgent,
                        "Feedback headers match parameters and signature")
                 expect(params["sign"] == AppSigner.signed(params, timestamp: Int(params["ts"]!)!)["sign"],

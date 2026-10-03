@@ -37,97 +37,23 @@ final class HomeAutoRefreshTests: XCTestCase {
         }
     }
 
-    func testDeadlineUsesLastRefreshNotPaginationAndEventsCoalesce() async throws {
-        var now: TimeInterval = 100
-        let policy = try config(#"{"auto_refresh_time_by_active":1200,"auto_refresh_time_by_appear":1800,"auto_refresh_time_by_behavior":1800}"#)
-        let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!, uptime: { now }, fetchRecommendations: { request in
-            RecommendationBatch(videos: [self.video], nextRequest: request.next(appCursor: 42), refreshConfig: policy)
-        })
-        XCTAssertFalse(model.claimAutomaticRefresh(.active))
-        await model.loadInitial()
-        now = 1200
-        await model.loadReplacementPage()
-        now = 1299
-        XCTAssertFalse(model.claimAutomaticRefresh(.active))
-        now = 1300
-        XCTAssertFalse(model.claimAutomaticRefresh(.appear))
-        XCTAssertTrue(model.claimAutomaticRefresh(.active))
-        XCTAssertFalse(model.claimAutomaticRefresh(.active))
-        await model.refresh()
-        now = 2499
-        XCTAssertFalse(model.claimAutomaticRefresh(.active))
-        now = 3100
-        XCTAssertTrue(model.claimAutomaticRefresh(.behavior))
-        XCTAssertFalse(model.claimAutomaticRefresh(.appear))
-    }
-
-    func testFailedAutomaticRefreshKeepsContentAndRateLimitsRetry() async throws {
-        var now: TimeInterval = 0
+    func testReturningNeverClaimsAutomaticRefreshEvenWithServerPolicy() async throws {
         var calls = 0
-        let policy = try config(#"{"auto_refresh_time":10}"#)
-        let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!, uptime: { now }, fetchRecommendations: { request in
+        let policy = try config(#"{"auto_refresh_time":1}"#)
+        let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!, fetchRecommendations: { request in
             calls += 1
-            if calls > 1 { throw URLError(.timedOut) }
             return RecommendationBatch(videos: [self.video], nextRequest: request.next(appCursor: 42), refreshConfig: policy)
         })
         await model.loadInitial()
-        now = 10
-        XCTAssertTrue(model.claimAutomaticRefresh(.appear))
-        await model.refresh()
-        XCTAssertEqual(model.videos.count, 1)
-        XCTAssertNotNil(model.errorMessage)
-        now = 69
-        XCTAssertFalse(model.claimAutomaticRefresh(.active))
-        now = 70
-        XCTAssertTrue(model.claimAutomaticRefresh(.active))
-    }
-
-    func testStagedRefreshWebSourceAndMissingConfigPreventAutomaticRefresh() async throws {
-        var now: TimeInterval = 0
-        let defaults = UserDefaults(suiteName: UUID().uuidString)!
-        var policy: AppRecommendationRefreshConfig? = try config(#"{"auto_refresh_time":10}"#)
-        let model = HomeViewModel(defaults: defaults, uptime: { now }, fetchRecommendations: { request in
-            RecommendationBatch(videos: [self.video], nextRequest: request.next(appCursor: 42), refreshConfig: policy)
-        })
-        await model.loadInitial()
-        await model.refresh(staged: true)
-        now = 100
-        XCTAssertFalse(model.claimAutomaticRefresh(.appear))
-        model.commitStagedRefresh()
-        defaults.set(false, forKey: RecommendationFilter.appRecommendKey)
-        XCTAssertFalse(model.claimAutomaticRefresh(.appear))
-        await model.refresh()
-        defaults.set(true, forKey: RecommendationFilter.appRecommendKey)
-        policy = nil
-        await model.refresh()
-        now = 10000
-        XCTAssertFalse(model.claimAutomaticRefresh(.active))
-    }
-
-    func testLateCanceledResponseCannotReplaceNewRefreshConfiguration() async throws {
-        var now: TimeInterval = 0
-        var calls = 0
-        var pending: CheckedContinuation<RecommendationBatch, Never>?
-        let suspended = expectation(description: "Old request suspended")
-        let enabled = try config(#"{"auto_refresh_time":10}"#)
-        let disabled = try config(#"{"auto_refresh_time":0}"#)
-        let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!, uptime: { now }, fetchRecommendations: { request in
-            calls += 1
-            if calls == 2 {
-                return await withCheckedContinuation { pending = $0; suspended.fulfill() }
+        for _ in 0..<5 {
+            for trigger in [AppRecommendationRefreshConfig.Trigger.active, .appear, .behavior] {
+                XCTAssertFalse(model.claimAutomaticRefresh(trigger))
             }
-            return RecommendationBatch(videos: [self.video], nextRequest: request.next(appCursor: 42),
-                                       refreshConfig: calls == 1 ? enabled : disabled)
-        })
-        await model.loadInitial()
-        let old = Task { await model.loadReplacementPage() }
-        await fulfillment(of: [suspended], timeout: 2)
-        now = 100
-        XCTAssertFalse(model.claimAutomaticRefresh(.active), "Loading cannot trigger automatic refresh")
-        await model.refresh()
-        pending?.resume(returning: RecommendationBatch(videos: [video], nextRequest: nil, refreshConfig: enabled))
-        await old.value
-        now = 1000
-        XCTAssertFalse(model.claimAutomaticRefresh(.active))
+        }
+        XCTAssertEqual(calls, 1)
+        await model.refresh(userInitiated: true)
+        XCTAssertEqual(calls, 2, "Manual refresh remains available")
+        await model.loadReplacementPage()
+        XCTAssertEqual(calls, 3, "Pagination remains available")
     }
 }

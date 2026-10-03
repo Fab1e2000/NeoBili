@@ -34,6 +34,7 @@ struct VideoSummary: Decodable, Identifiable, Hashable, VideoDimensionProviding 
 
     /// App 推荐卡片的「不感兴趣」选项，反馈时原样带回卡片的 goto 和 param。
     var recommendationFeedback: RecommendationFeedbackOptions? = nil
+    var playbackEntry: PlaybackEntry = .other
     /// 来自网页推荐：没有原因可选，「不感兴趣」和 PiliPlus 一样只能点踩。
     var isWebRecommendation = false
     /// 推荐卡上 UP 主名字前的小标签，如「已关注」「4万点赞」，和 PiliPlus 一样。
@@ -219,5 +220,35 @@ struct MemberCard: Decodable, Hashable, Sendable {
     enum CodingKeys: String, CodingKey {
         case follower
         case archiveCount = "archive_count"
+    }
+}
+
+/// 来源由实际入口指定。未知入口不伪装成推荐点击；追踪值只来自当前卡片。
+struct PlaybackEntry: Hashable, Sendable {
+    enum Source: Sendable { case recommendation, related, history, search, other }
+    let source: Source
+    var trackID: String? = nil
+    var reportFlowData: String? = nil
+    var loginSessionID: UUID? = nil
+    static let other = Self(source: .other)
+    static let history = Self(source: .history)
+    static let search = Self(source: .search)
+    static let related = Self(source: .related)
+    static func recommendation(trackID: String?, reportFlowData: String?) -> Self {
+        Self(source: .recommendation, trackID: trackID, reportFlowData: reportFlowData)
+    }
+    func parameters(for sessionID: UUID? = nil) -> [String: String] {
+        var result: [String: String] = [:]
+        switch source {
+        case .recommendation: result["from"] = "7"; result["from_spmid"] = "tm.recommend.0.0"
+        case .related: result["from"] = "2"; result["from_spmid"] = "united.player-video-detail.relatedvideo.0"
+        case .history: result["from"] = "64"; result["from_spmid"] = "main.my-history.0.0"
+        case .search: result["from"] = "3"; result["from_spmid"] = "search.search-result.0.0"
+        case .other: break
+        }
+        let permitsTracking = loginSessionID == nil || loginSessionID == sessionID
+        if permitsTracking, let trackID, !trackID.isEmpty { result["track_id"] = trackID }
+        if permitsTracking, let reportFlowData, !reportFlowData.isEmpty { result["report_flow_data"] = reportFlowData }
+        return result
     }
 }

@@ -1,16 +1,39 @@
 import CryptoKit
 import Foundation
+import Darwin
 
-/// 普通 Android 手机客户端身份，登录、推荐、直播和反馈共用。
+/// 与实测官方 iPhone 9.13.0 请求配套的身份；所有 App 通道共用。
+/// build 是协议兼容版本，不是 NeoBili 自己的发布版本。
 enum AppClientIdentity {
-    static let mobiApp = "android"
-    static let build = "8430300"
-    static let version = "8.43.0"
-    static let credentialScope = "android-phone-v1"
-    static let statistics = #"{"appId":1,"platform":3,"version":"8.43.0","abtest":""}"#
-    static let userAgent = "Mozilla/5.0 BiliDroid/8.43.0 (bbcallen@gmail.com) os/android model/android mobi_app/android build/8430300 channel/master innerVer/8430300 osVer/15 network/2"
-    static let parameters = ["mobi_app": mobiApp, "build": build, "platform": "android",
-                             "device": "phone", "channel": "master"]
+    static let mobiApp = "iphone"
+    static let build = "91300100"
+    static let version = "9.13.0"
+    static let credentialScope = "ios-27eb53fc-v1"
+    static let statistics = #"{"appId":1,"version":"9.13.0","abtest":"","platform":1}"#
+    static let parameters = ["mobi_app": mobiApp, "build": build, "platform": "ios", "device": "phone"]
+
+    static var deviceName: String {
+        let identifier = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? systemValue("hw.machine")
+        // 未登记机型保留真实硬件标识，不冒充抓包手机。
+        return ["iPhone18,3": "iPhone 17", "iPhone18,1": "iPhone 17 Pro",
+                "iPhone18,2": "iPhone 17 Pro Max", "iPhone17,3": "iPhone 16",
+                "iPhone17,4": "iPhone 16 Plus", "iPhone17,1": "iPhone 16 Pro",
+                "iPhone17,2": "iPhone 16 Pro Max"][identifier] ?? identifier
+    }
+
+    static var userAgent: String {
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        let osVersion = "\(os.majorVersion).\(os.minorVersion)" + (os.patchVersion > 0 ? ".\(os.patchVersion)" : "")
+        return "bili-universal/\(build) CFNetwork/1.0 Darwin/\(systemValue("kern.osrelease")) os/ios model/\(deviceName) mobi_app/iphone build/\(build) osVer/\(osVersion) channel/pink_overseas"
+    }
+
+    private static func systemValue(_ name: String) -> String {
+        var size = 0
+        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return "unknown" }
+        var bytes = [CChar](repeating: 0, count: size)
+        guard sysctlbyname(name, &bytes, &size, nil, 0) == 0 else { return "unknown" }
+        return String(cString: bytes)
+    }
 }
 
 /// B 站 APP 端接口（app.bilibili.com、passport-tv-login）的参数签名。
@@ -22,10 +45,10 @@ enum AppClientIdentity {
 /// 末尾接上 appsec → 取 MD5 作为 `sign`。服务端用同样的步骤复算，对不上就返回
 /// 「API 校验密匙错误」。
 enum AppSigner {
-    /// 普通 Android 登录取得的 token 可配合业务签名使用，不兼容旧 HD token。
-    /// https://github.com/pskdje/bilibili-API-collect/blob/main/docs/login/login_action/QR.md
-    static let appKey = "1d8b6e7d45233436"
-    static let passportAppKey = "783bbb7264451d82"
+    /// iOS 登录与业务使用同一组密钥，不能发送 Android/HD token。
+    /// 公共协议资料：docs/login/login_action/QR.md；与官方抓包签名在内存中复算一致。
+    static let appKey = "27eb53fc9058f8c3"
+    static let passportAppKey = appKey
     enum Purpose { case app, passport }
 
     /// 返回补齐了 `appkey`、`ts`、`sign` 的参数表。
@@ -38,9 +61,7 @@ enum AppSigner {
     ) -> [String: String] {
         var signedParams = params
         signedParams["appkey"] = purpose == .passport ? passportAppKey : appKey
-        let appSecret = purpose == .passport
-            ? "2653583c8873dea268ab9386918b1d65"
-            : "560c52ccd288fed045859ed18bffd973"
+        let appSecret = "c2ed53a74eeefe3cf99fbd01d8c9c375"
         signedParams["ts"] = String(timestamp)
         signedParams["sign"] = nil
 
@@ -60,8 +81,8 @@ enum AppSigner {
             .sorted { $0.key < $1.key }
             .map { key, value in
                 let encodedKey = percentEncoded(key)
-                // 空值只写键名，不写等号——这是服务端计算签名时的写法。
-                return value.isEmpty ? encodedKey : "\(encodedKey)=\(percentEncoded(value))"
+                // 官方 iPhone 签名保留空值的等号；签名与传输共用同一份字节。
+                return "\(encodedKey)=\(percentEncoded(value))"
             }
             .joined(separator: "&")
     }

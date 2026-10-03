@@ -3,6 +3,8 @@ import SwiftUI
 /// 首页和搜索页都使用同一种视频路由，避免不同入口给详情页带入不同的导航样式。
 struct VideoDetailRoute: Hashable {
     let bvid: String
+    var aid: Int?
+    var playbackEntry: PlaybackEntry
     /// 推荐列表的卡片本身就带着 cid，可以不等详情接口返回就开始取播放地址，
     /// 详情和播放地址两个请求因此变成并行。搜索结果没有这个值，仍然先取详情。
     var cid: Int?
@@ -17,9 +19,12 @@ struct VideoDetailRoute: Hashable {
         cid: Int? = nil,
         cover: String? = nil,
         title: String? = nil,
-        artist: String? = nil
+        artist: String? = nil,
+        aid: Int? = nil, playbackEntry: PlaybackEntry = .other
     ) {
         self.bvid = bvid
+        self.aid = aid
+        self.playbackEntry = playbackEntry
         self.cid = cid
         self.cover = cover
         self.title = title

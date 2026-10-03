@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct NeoBiliApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
@@ -23,6 +24,7 @@ struct NeoBiliApp: App {
         // 设备标识和 WBI 签名密钥是每个接口都要用的前置条件。
         // 启动时先在后台取好，第一批推荐和第一个视频就不用排在它们后面。
         if !isTestHost {
+            RecommendationExperiment.configure(environment: ProcessInfo.processInfo.environment)
             DeviceIdentity.shared.warmUp()
             WBISigner.shared.warmUp()
         }
@@ -45,6 +47,10 @@ struct NeoBiliApp: App {
                 Color.clear
             } else {
                 RootView()
+                    .onChange(of: scenePhase) { _, phase in
+                        if phase == .background { AppRecommendationSession.shared.didEnterBackground() }
+                        else if phase == .active { AppRecommendationSession.shared.didBecomeActive() }
+                    }
             }
         }
     }

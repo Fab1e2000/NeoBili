@@ -199,6 +199,18 @@ final class PlayerPlaybackTests: XCTestCase {
 
     /// mpv/FFmpeg 什么编码都能解，这里的偏好只是"同画质下优先选兼容性、
     /// 硬解效率更好的编码"，不是能不能播的问题。
+    func testDeclaredFeedAudioCapabilityUsesDolbyExtensionTrack() throws {
+        let video = makeDashStream(codecs: "av01.0.08M.08", bandwidth: 3_000_000)
+        let audio = DashStream(id: 30250, baseUrl: "https://cdn.example/dolby.m4s", backupUrl: nil,
+                               bandwidth: 384_000, mimeType: "audio/mp4", codecs: "ec-3",
+                               width: nil, height: nil, frameRate: nil)
+        let dash = DashPayload(duration: 60, video: [video], audio: [], dolby: .init(audio: [audio]))
+        XCTAssertEqual(dash.allAudio, [audio])
+        XCTAssertEqual(PlaybackSourceBuilder.bestAudioStream(dash.allAudio, preferredQuality: 30250), audio)
+        XCTAssertEqual(PlaybackSourceBuilder.bestVideoStream([video], preferredQuality: 64), video)
+        XCTAssertEqual(AppRecommendationPlaybackCapabilities.fnval & 256, 256)
+    }
+
     func testSameQualityPrefersAVCInsteadOfBandwidth() {
         let streams = [
             makeDashStream(codecs: "hev1.1.6.L120.90", bandwidth: 4_000_000),

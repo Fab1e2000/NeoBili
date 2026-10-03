@@ -5,6 +5,7 @@ import SwiftUI
 /// 同一台设备上登录时，先「保存二维码」，再在哔哩哔哩 App 的「扫一扫 → 相册」
 /// 里选这张图完成确认。
 struct QRLoginSheet: View {
+    var appAuthorizationOnly = false
     @Environment(AccountStore.self) private var account
     @Environment(\.dismiss) private var dismiss
 
@@ -47,7 +48,7 @@ struct QRLoginSheet: View {
             .padding(.horizontal, 24)
             .frame(maxWidth: .infinity)
             .background(Color(uiColor: .systemBackground))
-            .navigationTitle("扫码登录")
+            .navigationTitle(appAuthorizationOnly ? String(localized: "App 扫码授权") : String(localized: "扫码登录"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -152,7 +153,7 @@ struct QRLoginSheet: View {
 
     /// 二维码取自哪条链路。两条都是「拿 B 站 App 扫一扫」，界面完全一样。
     private enum Channel {
-        /// App（HD 版）链路。除 Cookie 外还会带回 `access_key`，
+        /// App（iPhone）链路。除 Cookie 外还会带回 `access_key`，
         /// 点踩这类只存在于 App 端的接口需要它。优先用这条。
         case app(authCode: String)
         /// 网页链路。只有 Cookie。App 链路请求不通时的兜底，
@@ -163,6 +164,7 @@ struct QRLoginSheet: View {
     private func runLoginLoop() async {
         phase = .generating
         qrImage = nil
+        let authorizationSessionID = account.sessionID
         do {
             let (channel, codeContent) = try await makeQRCode()
             guard !Task.isCancelled else { return }
@@ -195,8 +197,12 @@ struct QRLoginSheet: View {
                     phase = .expired
                     return
                 case .confirmed(let cookies, let accessKey):
+                    if appAuthorizationOnly {
+                        try await account.completeAppAuthorization(cookies, accessKey: accessKey, expectedSessionID: authorizationSessionID)
+                    } else {
+                        await account.completeLogin(cookies, accessKey: accessKey)
+                    }
                     phase = .succeeded
-                    await account.completeLogin(cookies, accessKey: accessKey)
                     try? await Task.sleep(for: .seconds(0.8))
                     dismiss()
                     return
@@ -217,6 +223,7 @@ struct QRLoginSheet: View {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            if appAuthorizationOnly { throw error }
             // App 链路自己出问题时（签名被服务端改动、接口下线等）不该让用户
             // 完全登录不了，退回网页扫码；代价只是拿不到 access_key。
             let info = try await BiliPassport.generateQRCode()

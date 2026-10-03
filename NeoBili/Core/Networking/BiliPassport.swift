@@ -108,7 +108,7 @@ enum BiliPassport {
 
     // MARK: - App 端扫码登录
 
-    /// App（普通 Android）扫码登录，用来换取 `access_key`。
+    /// App（iPhone）扫码登录，用来换取 `access_key`。
     ///
     /// 为什么不直接用上面的网页扫码：网页登录只下发 Cookie，而「点踩」这类接口
     /// 只存在于 app.bilibili.com 上，认的是 `access_key`（见 `APIClient.postApp`）。
@@ -116,7 +116,7 @@ enum BiliPassport {
     /// Cookie，一次扫码就能把两种凭据都拿齐，所以它是网页扫码的超集。
     ///
     /// 用户体验上没有区别，仍然是拿 B 站 App 扫一张二维码；手机上的确认页会
-    /// 显示服务端提供的 Android 登录确认页。
+    /// 显示服务端提供的 iPhone 登录确认页。
     struct AppQRCodeInfo: Decodable, Sendable {
         let url: String
         let authCode: String
@@ -217,6 +217,9 @@ enum BiliPassport {
                 throw PassportError.missingCookies
             }
             let cookies = LoginCookies(sessdata: sessdata, biliJct: biliJct, dedeUserID: dedeUserID)
+            if let mid = envelope.data?.mid, mid != Int(cookies.dedeUserID) {
+                throw PassportError.invalidResponse
+            }
             if let fallbackCookies, cookies.dedeUserID != fallbackCookies.dedeUserID {
                 throw PassportError.invalidResponse
             }
@@ -229,18 +232,12 @@ enum BiliPassport {
     // MARK: - 用 Cookie 换 App 凭据
 
     /// 网页登录（账号密码、网页扫码兜底）只有 Cookie，没有 `access_key`，App 推荐就只能按访客推。
-    /// 用已登录的 Cookie 替自己确认一张普通 Android App
+    /// 用已登录的 Cookie 替自己确认一张iPhone App
     /// 登录二维码，再像扫码一样轮询出 `access_key`（PiliPlus 把这个确认接口标为「cookie转access_key」）。
-    /// 效果等同于用 B 站 App 扫码确认，账号的登录设备里会多一条 Android 端记录。
+    /// 旧链路仅保留用于原有回归；生产入口已改为 SMSPassport，不保证设备列表新增条目。
     static func exchangeAccessKey(cookies: LoginCookies) async throws -> String {
         let info = try await generateAppQRCode()
-        var request = try makeRequest(path: "x/passport-tv-login/h5/qrcode/confirm")
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue("SESSDATA=\(cookies.sessdata); bili_jct=\(cookies.biliJct); DedeUserID=\(cookies.dedeUserID)",
-                         forHTTPHeaderField: "Cookie")
-        request.httpBody = formEncoded(["auth_code": info.authCode, "csrf": cookies.biliJct, "scanning_type": "3"])
-            .data(using: .utf8)
+        let request = try makeAppConfirmationRequest(authCode: info.authCode, cookies: cookies)
         let (envelope, response) = try await sendEnvelope(request)
         guard (200...299).contains(response.statusCode) else { throw PassportError.invalidResponse }
         guard envelope.code == 0 else {
@@ -254,6 +251,19 @@ enum BiliPassport {
             }
         }
         throw PassportError.rejected(String(localized: "未能获取 App 登录凭据"))
+    }
+
+    /// 测试验证原样 Cookie/CSRF 与 passport 域名；不借共享 Cookie 罐补凭据。
+    static func makeAppConfirmationRequest(authCode: String, cookies: LoginCookies) throws -> URLRequest {
+        var request = try makeRequest(path: "x/passport-tv-login/h5/qrcode/confirm")
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("SESSDATA=\(cookies.sessdata); bili_jct=\(cookies.biliJct); DedeUserID=\(cookies.dedeUserID)",
+                         forHTTPHeaderField: "Cookie")
+        request.httpBody = formEncoded(["auth_code": authCode, "csrf": cookies.biliJct, "scanning_type": "3"])
+            .data(using: .utf8)
+        request.httpShouldHandleCookies = false
+        return request
     }
 
     /// App 端接口统一走 POST + 签名后的表单体。

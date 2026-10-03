@@ -169,7 +169,7 @@ final class NowPlayingStore {
                 cid: video.cid,
                 cover: video.pic,
                 title: video.title,
-                artist: video.owner.name
+                artist: video.owner.name, aid: video.aid, playbackEntry: video.playbackEntry.source == .other ? .related : video.playbackEntry
             )
         )
     }
@@ -350,7 +350,7 @@ final class NowPlayingStore {
         commentsScroll = ScrollPosition(edge: .top)
         commentsViewModel = nil
 
-        let viewModel = VideoDetailViewModel(bvid: newRoute.bvid)
+        let viewModel = VideoDetailViewModel(bvid: newRoute.bvid, aid: newRoute.aid ?? 0, playbackEntry: newRoute.playbackEntry)
         detailViewModel = viewModel
 
         loadTasks = [
@@ -379,7 +379,10 @@ final class NowPlayingStore {
     private func startPlayerIfPossible() {
         guard hasRequestedPlayback, let route, let cid = activeCid else { return }
         // 已经在放这一个了就不要重建，否则会打断正在进行的播放。
-        if let player, player.bvid == route.bvid, player.cid == cid { return }
+        if let player, player.bvid == route.bvid, player.cid == cid {
+            player.updateWatchAid(route.aid ?? detailViewModel?.detail?.aid ?? 0)
+            return
+        }
 
         playerLoadTask?.cancel()
         playerLoadTask = nil
@@ -387,6 +390,8 @@ final class NowPlayingStore {
         let newPlayer = PlayerViewModel(
             bvid: route.bvid,
             cid: cid,
+            aid: route.aid ?? detailViewModel?.detail?.aid ?? 0, playbackEntry: route.playbackEntry,
+            playbackSession: detailViewModel?.appPlaybackSession,
             configuration: playbackConfiguration
         )
         newPlayer.session.surfacePresentation = isMiniPlayerPresented && !isVideoPageDismissalInProgress ? .mini : .page

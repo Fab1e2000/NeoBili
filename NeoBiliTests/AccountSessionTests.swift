@@ -3,7 +3,7 @@ import XCTest
 
 final class AccountSessionTests: XCTestCase {
     @MainActor
-    func testLegacyHDTokenIsExcludedAndAndroidTokenSurvivesRelaunch() async {
+    func testLegacyHDTokenIsExcludedAndIPhoneTokenSurvivesRelaunch() async {
         let suite = "neobili.migration.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -22,11 +22,11 @@ final class AccountSessionTests: XCTestCase {
         XCTAssertFalse(snapshot.hasAppCredential)
         let request = await old.appAccount()
         XCTAssertNil(request.accessKey)
-        let saved = await old.setAccessKey("android-token", forAccount: "42")
+        let saved = await old.setAccessKey("ios-token", forAccount: "42")
         XCTAssertTrue(saved)
         let restored = identity()
         let current = await restored.appAccount()
-        XCTAssertEqual(current.accessKey, "android-token")
+        XCTAssertEqual(current.accessKey, "ios-token")
         let migrated = await restored.accountSnapshot()
         XCTAssertFalse(migrated.needsAppCredentialMigration)
         await restored.clearLoginCookies()
@@ -40,6 +40,40 @@ final class AccountSessionTests: XCTestCase {
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         return DeviceIdentity(defaults: defaults, credentials: .memory(),
                               allowsNetwork: false, purgeCookies: {})
+    }
+
+    func testAndroidCredentialIsPreservedButExcludedUntilIPhoneExchangeSucceeds() async {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let storage = CredentialStorage.memory()
+        storage.write("s", "neobili.sessdata")
+        storage.write("j", "neobili.bili_jct")
+        storage.write("42", "neobili.dedeuserid")
+        storage.write("old-android-token", "neobili.access_key")
+        storage.write("android-phone-v1", "neobili.access_key.client")
+        let identity = DeviceIdentity(defaults: defaults, credentials: storage, allowsNetwork: false, purgeCookies: {})
+        let snapshot = await identity.accountSnapshot()
+        XCTAssertTrue(snapshot.hasCredentials)
+        XCTAssertTrue(snapshot.needsAppCredentialMigration)
+        let account = await identity.appAccount()
+        XCTAssertNil(account.accessKey)
+        XCTAssertEqual(storage.read("neobili.access_key"), "old-android-token", "Failed migration must not delete old credentials")
+        let session = identity.loginSessionID
+        let saved = await identity.setAccessKey("new-ios-token", forAccount: "42", expectedSessionID: session)
+        XCTAssertTrue(saved)
+        XCTAssertEqual(storage.read("neobili.access_key.client"), "ios-27eb53fc-v1")
+        XCTAssertEqual(storage.read("neobili.sessdata"), "s")
+    }
+
+    func testLateCredentialExchangeCannotOverwriteReloginToSameAccount() async {
+        let identity = isolatedIdentity()
+        await identity.setLoginCookies(sessdata: "old", biliJct: "j", dedeUserID: "42")
+        let oldSession = identity.loginSessionID
+        await identity.setLoginCookies(sessdata: "new", biliJct: "j2", dedeUserID: "42")
+        await identity.setAccessKey("new-token")
+        let saved = await identity.setAccessKey("late-token", forAccount: "42", expectedSessionID: oldSession)
+        XCTAssertFalse(saved)
+        let account = await identity.appAccount()
+        XCTAssertEqual(account.accessKey, "new-token")
     }
 
     // MARK: - 登录 Cookie 拼接

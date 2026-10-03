@@ -5,6 +5,7 @@ struct RecommendationSettingsView: View {
     @Environment(AccountStore.self) private var account
     /// 设置页盖在主界面之上，全局提示条看不到，失败原因直接写在分组说明里。
     @State private var credentialError: String?
+    @State private var showsAppAuthorization = false
     @AppStorage(RecommendationFilter.appRecommendKey) private var usesAppRecommendation = true
     @AppStorage(RecommendationFilter.keepLastDataKey) private var keepsLastData = true
     @AppStorage(RecommendationFilter.lastSeenTipKey) private var showsLastSeenTip = true
@@ -17,6 +18,9 @@ struct RecommendationSettingsView: View {
 
     var body: some View {
         Form {
+            #if DEBUG
+            Section { NavigationLink("推荐实验日志") { RecommendationDiagnosticsView() } }
+            #endif
             Section {
                 Toggle("首页使用 App 端推荐", isOn: $usesAppRecommendation)
                 if account.isLoggedIn { appCredentialRow }
@@ -57,6 +61,9 @@ struct RecommendationSettingsView: View {
             .autocorrectionDisabled()
         }
         .settingsPage("推荐流")
+        .sheet(isPresented: $showsAppAuthorization) {
+            SMSLoginSheet(appAuthorizationOnly: true)
+        }
     }
 
     /// App 推荐要有 App 登录凭据才会按账号个性化；只有 Cookie 时可以在这里换一份。
@@ -69,11 +76,10 @@ struct RecommendationSettingsView: View {
                 if account.isExchangingAppCredential {
                     ProgressView()
                 } else {
-                    Button("获取") {
-                        Task {
-                            credentialError = await account.ensureAppCredential()
-                        }
+                    VStack(alignment: .trailing, spacing: 8) {
+                        Button("验证码授权") { showsAppAuthorization = true }
                     }
+                    .buttonStyle(.borderless)
                 }
             }
         }
@@ -82,8 +88,8 @@ struct RecommendationSettingsView: View {
     private var appCredentialFooter: String {
         let base = String(localized: "关闭后改用网页端推荐。若网页端推荐不太符合预期，可切换回 App 端推荐。")
         guard account.isLoggedIn, !account.hasAppCredential else { return base }
-        let hint = base + String(localized: "当前账号还没有 App 登录凭据，App 端推荐不会按你的账号个性化。点「获取」会用当前登录状态向 B 站确认一次 App 端登录，账号的登录设备里会多一条记录。")
-        guard let credentialError else { return hint }
+        let hint = base + String(localized: "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。请使用当前账号的短信验证码重新授权。")
+        guard let credentialError = credentialError ?? account.appCredentialError else { return hint }
         return hint + "\n" + String(localized: "获取失败：\(credentialError)")
     }
 
