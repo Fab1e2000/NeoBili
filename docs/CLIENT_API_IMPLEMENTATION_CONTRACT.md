@@ -80,6 +80,9 @@
 | CRASH-01 | Laser 五端点 + BLog/UPOS + KSCrash 路径 | [Crash/KSCrash 提交路径与 Laser 回执端点](CLIENT_NETWORK_PROTOCOLS.md#crashkscrash-提交路径与-laser-回执端点task-18-补) |
 | SETTINGS-UP-01 | `PlayURL/PlayConfEdit` + `Distribution/SetUserPreference` | [设置配置同步、上传与缓存](CLIENT_NETWORK_PROTOCOLS.md#设置配置同步上传与缓存) |
 | PGC-01 | `pgc/view/v2/app/season` + VIP/商城/支付请求族 | [漫画/商城/支付/游戏/创作请求族入口](CLIENT_NETWORK_PROTOCOLS.md#漫画商城支付游戏创作请求族入口) |
+| DANMAKU-01 | `DM/DmSegMobile` + `/x/v2/dm/list/seg.so` | [弹幕请求族与传输分支](CLIENT_NETWORK_PROTOCOLS.md#弹幕请求族与传输分支task-29-补) |
+| DYN-02 | `bilibili.main.dynamic.feed.v1.Feed/CreateDyn` | [动态综合页请求](CLIENT_NETWORK_PROTOCOLS.md#动态综合页请求) |
+| CMT-03 | `/bilibili.main.community.reply.v1.Reply/ShareReplyMaterial` | [评论失败恢复与分享链](CLIENT_NETWORK_PROTOCOLS.md#评论失败恢复与分享链task-29-补) |
 
 ## 一、首页与推荐链
 
@@ -453,7 +456,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| 1) 端点/服务方法 | `requestForItems`（0x1161ecea4）**硬编码**两个 CFString：`batchReport` 与 `scheduleReport` 走 `https://dataflow.biliapi.com/log/pbmobile/unrealtime?ios`，其他 report 对象走 realtime CFString（0x11d3dac90 / 0x11d3dacb0）；选择规则就是 `batchReport||scheduleReport→unrealtime`，**没有服务端配置下发**（推翻“由远端配置决定”的猜想）。发送由 `reportItems`（0x1161f2280）决定走 `client.taskWithRequest` 或 `httpService.startRequest`，由 `delegate.switchReportSchemes` 选择。 |
+| 1) 端点/服务方法 | `requestForItems`（0x1161ecea4）**硬编码**两个 CFString：`batchReport` 与 `scheduleReport` 走 `https://dataflow.biliapi.com/log/pbmobile/unrealtime?ios`，其他 report 对象走 realtime CFString（0x11d3dac90 / 0x11d3dacb0）；选择规则就是 `batchReport\|\|scheduleReport→unrealtime`，**没有服务端配置下发**（推翻“由远端配置决定”的猜想）。发送由 `reportItems`（0x1161f2280）决定走 `client.taskWithRequest` 或 `httpService.startRequest`，由 `delegate.switchReportSchemes` 选择。 |
 | 2) 触发时机 | `BFCNeuron.trackEvent:trackPolicy:`（0x1161e9da8）先处理 logId 并询问 delegate 是否采集该 logId/eventId，被接纳时记录时间、把 blockOperation 放入 trackQueue；真正的公共信息与 Protobuf 构造发生在 block 0x1161ea030 内。调度：`runWithConfiguration`（0x1161e9848）把 timer 加入主 RunLoop 的 CommonModes，首次 fireDate 为当前时间 +1 秒，并注册 `UIApplicationDidEnterBackgroundNotification`；`reportByTimer`（0x1161ebdec）先暂停 timer 到 distantFuture，再按 common/schedule 计数触发，完成 block 把 fireDate 设为现在 +timeInterval（**完成后再安排，不是固定每 3 秒发一次**）；进入后台会创建 UIKit background task 并以最大计数请求排空上报。 |
 | 3) 请求头 | `Content-Type=application/octet-stream`；启用 gzip 时 `Content-Encoding=gzip`（由 `delegate.gzipEnableForNeuron` 决定）；`Neuron-Events` 为 `items.count` 十进制字符串。最后可由 `requestInjector` 再改写。 |
 | 4) 参数及来源 | 构造发生在 block 内：`preferences.sn` 加一，读 appInfo、appRuntimeInfo、`delegate.mid`，填入 AppEvent（**不是全部在业务调用入口提前快照**）。extendedFields 可变复制后加入 `event_policy`（trackPolicy 十进制字符串），设置 `pageType` 与 `snGenTime`。`enable_public_parameters` 开启时 extra 中加 `polaris_action_id` 与 `start_session_id`。字段描述符（0x116202cd0–0x11620303c，32 字节字段项，68 项）：AppInfo(15) 1:appId,2:platform,3:buvid,4:chid,5:brand,6:deviceId,7:model,8:osver,9:fts,10:buvidShared,11:uid,12:apiLevel,13:abi,14:bilifp,15:sessionId；AppRuntimeInfo(9) 1:network,2:oid,3:longitude,4:latitude,5:version,6:versionCode,7:logver,8:abtest,9:ffVersion；AppEvent(18) 1:eventId,2:appInfo,3:runtimeInfo,4:mid,5:ctime,6:logId,7:retrySendCount,8:sn,9:eventCategory,10:appPageViewInfo,11:appClickInfo,12:appExposureInfo,13:extendedFields,14:pageType,15:snGenTime,16:uploadTime,17:appPlayerInfo,18:extra；AppPageViewInfo(5) 1:eventIdFrom,4:loadType,5:duration,6:pvstart,7:pvend；AppExposureInfo(1) 1:contentInfosArray（重复子消息）；AppExposureContentInfo(2) 1:eventId,2:extendedFields；AppClickInfo(0) 空声明；AppPlayerInfo(18) 1:playFromSpmid,2:seasonId,3:type,4:subType,5:epId,6:progress,7:avid,8:cid,9:networkType,10:danmaku,11:status,12:playMethod,13:playType,14:playerSessionId,15:speed,16:playerClarity,17:isAutoplay,18:videoFormat。原始分类值：Other=0、Pageview=1、Click=2、Exposure=3、System=4、Tracker=5、Custom=7、Compatible=8、Player=9。InfoApp 来源（Swift 入口 0x1049774a0）：appId 从注入 ProductID 转十进制整数，platform 按 `UIDevice.bfc_isIPad` 取 2/1，buvid 与 deviceId 都调 `BFCBuvid.buvid`，model/osver 取 `bfc_platformString`/`bfc_systemVersion`，fts 取 `BFCNeuron.shared.firstTrackTime`，sessionId 取注入设备服务的 sessionId；RuntimeInfo.version/versionCode 取 mainBundle 的 CFBundleShortVersionString/CFBundleVersion（转换失败用空字符串），logver 取注入服务 version。 |
@@ -470,7 +473,7 @@
 | 1) 端点/服务方法 | `sendReport`（0x1141c6a04）POST 到 `data.bilibili.com/log/mobile?ios`；`bili_debug_mode` 为真选 HTTP，否则 HTTPS。 |
 | 2) 触发时机 | 入队入口 `+[BFCTracker trackCustomEvent:params:isRealTime:type:name:]`（0x115fd2cb4，调用点 0x115fd2e30）→ `-[BFCReportApiHandler trackCustomEvent:params:isRealTime:]`（0x1141c632c）；注意该选择子在镜像内的实现体只是 `ret`，真正编码/入队链在 `BFCReportHandlerV2`。再次触发有两条独立路径，均已闭合：(1) 新事件入队路径 `-[BFCReportBaseV2 addReportWithItem:]` 的 block_1（0x1141c66f0）在 count>=20 时立即 `trySendReport`，count<20 时新建 `BFCReportSchedulerV2`、`addObject:` 存入 self+0x10 数组并组 3 秒 `dispatch_after`；(2) 成功回执路径 `-[BFCReportBaseV2 reportSuccessWithCode:]` 的 block_1（0x1141c6fac）做同一套安排。延迟块本体 0x1141c6940 先取捕获的 scheduler 发 `canceled`，非 0 就跳过，否则对 self 调 `trySendReport`，最后 `removeObject:` 移除该 scheduler。**`setCanceled:` 会被镜像主动置位**：共享 stub `_objc_msgSend$setCanceled:`（0x11754e3c0）的两个调用点就在这两个 block 里（0x1141c6808、0x1141c7124），均以 `mov w2,#1` 遍历 scheduler 数组置 1，因此“3 秒延迟块首的 canceled 门禁”是有效门禁。 |
 | 3) 请求头 | `Content-Encoding` 为 gzip、`Content-Length` 为压缩后 NSData 字节数；随后可经 `requestInjector` 修改请求，**注入器具体头未逐项核对**（见第 9 项）。 |
-| 4) 参数及来源 | `trackCustomEvent`（0x1141c7f70）要求参数键能以 integerValue 转换并往返成同样字符串，随后按数值比较器排序，将对应值转为有序数组。`isRealTime` 选择 `ReportRealV2` 或 `ReportDelayV2`；`ReportItemV2` 初始化记录日期字符串和 Unix 毫秒。`encodedParas`（0x1141c83c8）拒绝空 taskId/空 params，值 description 中的 `|` 替换为空格再 URL 编码，最终各列用 `|` 连接；公共部分分 `staticPublicPars`（进程 once）与 `publicPars`（每次计算），分别含设备/首次跟踪/渠道信息及账号、版本、网络状态等。队列：`ReportBaseV2` 的请求/保存队列并发数均为 1，对象自带串行 dispatch queue；入队先计算并保存编码字符串，再异步分配到 sendingReports 或 cachedReports。默认一批上限 30 条，单条分流门槛 1024 个 NSString 字符，保存有效期 604800 秒，默认延迟值 600 秒；DelayV2 大于等于门槛的项改入 LargeV2，Large/Real 批量上限为 1、Real 延迟值为 0；Delay 的 `reportDelayTime` 有 requestInjector 时也返回 0，因此默认 600 不能直接当运行时发送间隔；Delay/Large 的发送判断包含 Wi-Fi 条件。 |
+| 4) 参数及来源 | `trackCustomEvent`（0x1141c7f70）要求参数键能以 integerValue 转换并往返成同样字符串，随后按数值比较器排序，将对应值转为有序数组。`isRealTime` 选择 `ReportRealV2` 或 `ReportDelayV2`；`ReportItemV2` 初始化记录日期字符串和 Unix 毫秒。`encodedParas`（0x1141c83c8）拒绝空 taskId/空 params，值 description 中的 `\|` 替换为空格再 URL 编码，最终各列用 `\|` 连接；公共部分分 `staticPublicPars`（进程 once）与 `publicPars`（每次计算），分别含设备/首次跟踪/渠道信息及账号、版本、网络状态等。队列：`ReportBaseV2` 的请求/保存队列并发数均为 1，对象自带串行 dispatch queue；入队先计算并保存编码字符串，再异步分配到 sendingReports 或 cachedReports。默认一批上限 30 条，单条分流门槛 1024 个 NSString 字符，保存有效期 604800 秒，默认延迟值 600 秒；DelayV2 大于等于门槛的项改入 LargeV2，Large/Real 批量上限为 1、Real 延迟值为 0；Delay 的 `reportDelayTime` 有 requestInjector 时也返回 0，因此默认 600 不能直接当运行时发送间隔；Delay/Large 的发送判断包含 Wi-Fi 条件。 |
 | 5) 签名与编码规则 | `sendReport` 去掉每项前 14 字符的保存日期前缀，以控制字符格式串组合为文本（每条后加字节 0x03）、UTF-8 编码并 gzip。无独立签名步骤记录。 |
 | 6) 响应结构 | 完成回调 0x1141c6e2c 按 HTTP 状态处理，**没有解析响应业务正文**；状态 200 进入成功，无响应或其他状态进入失败。成功异步清空 sendingReports，再从 cachedReports 补下一批并安排下一次检查；失败把发送项追加回 cachedReports 后重新取一批，没有在此失败块中直接安排重发定时器。保存/加载：把 sendingReports 与 cachedReports 拼接为数组后串行原子写文件；加载时读取数组，用前 14 字符 `yyyyMMddHHmmss` 解析日期并过滤过期项，再分配发送和缓存数组；路径位于 `Documents/reportv2` 下的 `delayv2`/`largev2`/`realv2`。保存的是已编码事件字符串。 |
 | 7) 与 NeoBili 当前实现的差异 | NeoBili 的点击队列是自身设计（100 条/24 小时、按 mid/accountEpoch 隔离、只保留已知连接前失败），没有旧 V2 的 20 条立即发送/3 秒延迟节奏，也不解析 HTTP 200 之外的语义；见 review R12 与 R17。不能把旧包“3 秒后必发”套到 NeoBili 观看报告发送器。 |
@@ -880,6 +883,48 @@
 | 7) 与 NeoBili 当前实现的差异 | 本轮未做差异判定（主文档该模块「现版」列为未做）。 |
 | 8) 证据等级与版本 | 8.89 静态（上列全部地址）；主文档「会员/番剧/漫画/商城/支付/游戏/创作请求族入口」；`DerivedData/Validation/team-c11/findings.md`（即 task-16）、`team-c4/findings.md`（入口级）；本日 Lead 复核补证：`optionForEpisodeRequest:` 0x1121d8d50–0x1121d91f0 与 payment 容器 0x1121e09d4–0x1121e0ae4、商城常量 0x103336e94/0x103337144/0x1033e7f84（均为 8.89 静态）。 |
 | 9) 残余不确定项 | ① ~~`optionForEpisodeRequest:` 逐槽~~ **已闭合**（键集见第 4 项）；② ~~Payment container 子类映射~~ **已闭合**（见第 6 项）；③ 各 Mall Api 子类 `requestApiConfig` 的具体 path **部分闭合**：显式常量已取到 `https://mall.bilibili.com/mall-c`（0x103336e94、0x103337144）与 `https://mall.bilibili.com/mall-ugc`（0x1033e7f84）、`https://mall.bilibili.com/community-hub`（0x1033e8294），其余子类函数体内无字面量；**已改为按字符串表穷举收口**：`mall.bilibili.com` 相关字符串共 **48 条**（主文档章内已按「API 基址 / 具体 API 路径 / H5 页面」三类分列，含 `/mall-c-search`、`/mall-dayu`、`/mall-marketing-c`、`/mall-up-search`、`/magic-c-search`、`/mall-c-community`、`/mall-c/cart/na/sku/new`、`/mall-ugc/picture/upload`、`/mall-gateway%@` 等，均带字符串偏移）——**注意**：符号索引给出的 `requestApiConfig` 地址多为 Swift 桥接 thunk（例 0x1033373ec 实为 `LynxRoute copyWithZone:`+AnyHashable 桥），下一步须按真正实现入口重取（`$PY query_index.py '*Mall*Api*' 40` 后逐个核函数序言与 `super`/基类调用），或按运行时 `apiUrl` 覆盖点反查；④ `quick.pay.do` 回执状态枚举属 `SKVObject` 动态键（需 pay.bilibili.com 抓包）；⑤ AB 实验命中值为运行期/服务端事实。 |
+
+### DANMAKU-01 弹幕段请求与弹幕互动（gRPC/API 双传输）
+
+| 字段 | 内容 |
+| --- | --- |
+| 1) 端点/服务方法 | 段请求入口 `+[BFCDanmakuRequest requestDanamkuListWithCID:AID:segmentIndex:tracker:completeHandler:errorHandler:]` 0x114fc04d8，按实验键 **`grpc-danmaku`**（CFString 0x11d3987b0）二选一：① gRPC `BAPICommunityServiceDmV1DM dmSegMobileWithRequest:handler:` 0x114fc788c（`/bilibili.main.community.dm.v1.DM/DmSegMobile`，Req/Reply descriptor 0x114fc8e18/0x114fc8e84）；② REST `/x/v2/dm/list/seg.so` 与 `https://api.bilibili.com/x/v1/dm/list.so?oid=%lld`（`requestDanamkuListByAPI:` 0x114fc0920）。同族 `transPlatform:` 0x114fc01bc 及 post/post2/command/recall/delete。 |
+| 2) 触发时机 | 播放器按分片（segmentIndex）拉取弹幕；发送/撤回/删除由用户动作触发。 |
+| 3) 请求头 | gRPC 路走 Moss 公共层；REST 路走传统 HTTP 公共层，两者头不同源。 |
+| 4) 参数及来源 | 段请求参数为 CID/AID/segmentIndex（播放器传入）；`transPlatform:` 决定平台串；其余互动请求字段见各自 builder。 |
+| 5) 签名与编码规则 | gRPC 为 protobuf + Moss metadata；REST 路走公共层签名与 query 编码（`oid` 为 long long）。 |
+| 6) 响应结构 | gRPC `DmSegMobileReply`（descriptor 0x114fc8e84）；REST 返回 XML（`list.so` 族为历史格式）。**两条路的响应体形态不同，不可互替解析。** |
+| 7) 与 NeoBili 当前实现的差异 | 本轮未做差异判定（NeoBili 弹幕实现需另行核对）。 |
+| 8) 证据等级与版本 | 8.89 静态（上列全部地址）；主文档「弹幕请求族与传输分支（task-29 补）」；`DerivedData/Validation/team-c25/findings.md`。 |
+| 9) 残余不确定项 | ① `grpc-danmaku` 实验的线上命中值（运行期/抓包，决定实际走哪条路）；② 互动族（post/recall/delete）各请求的完整字段表未逐项展开（下一步 `$PY query_index.py '*BFCComment*' '*Danmaku*Post*' 30` 逐个反汇编 builder）；③ 弹幕池/去重等客户端行为属运行期。 |
+
+### DYN-02 动态发布 CreateDyn（Moss gRPC）
+
+| 字段 | 内容 |
+| --- | --- |
+| 1) 端点/服务方法 | `+[BAPIDynamicInterfaceFeedV1Feed createDynWithRequest:handler:]` 0x11463b104 → 实例 0x11463b078 → `BFCMossServiceWrapper handleRpcRequestWithRequest:responseClass:service:serviceName:handler:`；服务 `bilibili.main.dynamic.feed.v1.Feed`（CFString 0x11d29ab70/0x11d29ab90）+ 方法 **`CreateDyn`**（serviceName CFString 0x11d360bf0），host `grpc.biliapi.net`（0x11463ae38），responseClass `BAPIDynamicCommonCreateResp`（classref 槽 0x11f7eb010）。 |
+| 2) 触发时机 | 编辑器发布链：`-[BBMFPublishInfoViewModel dispatchPublishInfo:]` 0x10e943094 → `warpWithModel:` 0x10e9769d8 → `constructCreateModelWithType:` 0x10e976a30 → construct* 族 → `createDynWithRequest:`；另有两条静态生产者：`+[BBEduGuideDynamicApi shareDynamic:]` block 0x10f5564d0（教育分享）与 `+[BBMallShareHelper silentPostBiliDynamic:trackChannel:]` 0x113859c88（商城静默发动态）。 |
+| 3) 请求头 | Moss/gRPC 公共层（含 `x-bili-metadata-bin`）。 |
+| 4) 参数及来源 | `CreateDynReq` 字段表（GPB fields 0x1207c5078）：1 meta、2 content、3 scene、4 picsArray(repeated)、5 repostSrc、6 video、7 sketchType、8 sketch、9 program、10 dynTag、11 attachCard、12 option；descriptor 0x11463f814。`constructMeta` 0x10e97711c 实写 setDynType/From/FromSpmid/DynId/RevsId/Rid/RepostMode/AppMeta/Loc+Lat+Lng（经 `hasLocationAuthorization` 门禁）；`warpWithModel` 另写 setRepostSrc/UploadId/Topic/Sketch(+Type)/Program/Option/ExtraInfo/DynTag/AttachCard/AdcmId。 |
+| 5) 签名与编码规则 | protobuf + Moss metadata 由公共层注入。 |
+| 6) 响应结构 | `BAPIDynamicCommonCreateResp`（classref 槽 0x11f7eb010）；具体回执字段未逐项展开。 |
+| 7) 与 NeoBili 当前实现的差异 | NeoBili 用网页 HTTP 发布接口而非 CreateDyn RPC；本轮未新增差异判定。 |
+| 8) 证据等级与版本 | 8.89 静态（上列全部地址）；主文档「动态综合页请求」章；`DerivedData/Validation/team-c22/findings.md`（task-26）。 |
+| 9) 残余不确定项 | ① `BAPIDynamicCommonCreateResp` 回执字段表未展开（下一步 `inspect_data.py <其 fields 地址>`）；② constructCard/constructTag/constructTopic 等各子构造的键集未逐项展开；③ 发布成功后的本地回执与刷新链属 UI 行为（部分可静态）。 |
+
+### CMT-03 评论分享（ShareReplyMaterial）
+
+| 字段 | 内容 |
+| --- | --- |
+| 1) 端点/服务方法 | `-[BAPIMainCommunityReplyV1Reply shareReplyMaterialWithRequest:handler:]` 0x114179a44，serviceName **`ShareReplyMaterial`**（CFString 0x11d348110）⇒ `/bilibili.main.community.reply.v1.Reply/ShareReplyMaterial`。 |
+| 2) 触发时机 | `+[BFCCommentShareService shareWithRpid:oid:type:needTranslate:spmid:fromSpmid:imageWidth:]` 0x114039524 → 0x114039ca8 → 0x11403b04c → 0x11403b854 → `_launchShareComponentWithModel:image:` 0x11403bd98（分享面板拉起前取素材）。 |
+| 3) 请求头 | Moss/gRPC 公共层。 |
+| 4) 参数及来源 | Req descriptor 0x11417e4dc（**4 字段**，fields 0x1207b7a50）；入参来自评论项（rpid/oid/type）与分享面板选项（needTranslate/spmid/fromSpmid/imageWidth）。 |
+| 5) 签名与编码规则 | protobuf + Moss metadata。 |
+| 6) 响应结构 | 回执返回分享素材（图片/文案），由 `_launchShareComponentWithModel:image:` 消费；具体字段名见第 4 项 fields（待逐项命名）。 |
+| 7) 与 NeoBili 当前实现的差异 | 本轮未做差异判定。 |
+| 8) 证据等级与版本 | 8.89 静态（上列全部地址）；主文档「评论失败恢复与分享链（task-29 补）」；`DerivedData/Validation/team-c25/findings.md`。 |
+| 9) 残余不确定项 | ① Req 4 个字段名与回执字段名未逐项命名（下一步 `$PY inspect_data.py 0x1207b7a50`）；② 分享面板落地后的第三方回调（微信 `onResp:`）静态未定位；③ 分享失败分支属运行期。 |
 
 ## 表 ① 静态不可判项
 
