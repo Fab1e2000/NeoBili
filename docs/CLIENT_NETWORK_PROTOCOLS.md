@@ -36,6 +36,10 @@ BilibiliVideoTools 动态库，不能保证包与官方分发版本完全一致�
 用户已授权基于既有本人账号及设备资料做少量本地脚本请求；第三方处理的App仍
 不执行，手机采集仍关闭，也不扩大到曝光、观看或互动。本轮独占实验资料在忽略目录
 `DerivedData/Validation/recommendation-network-s1/`，S1串行执行，S2离线复核。
+相关佐证材料另有：`DerivedData/Validation/capture-resume/`（既有官方 9.13 采集的离线
+protobuf/HTTP 解析，证据版本仍为 9.13 抓包）与 `DerivedData/Validation/local-behavior-experiment/`
+（NeoBili Debug 客户端本地对照实验，证据版本为本地实测）；材料索引见
+`DerivedData/Validation/team-c10/findings.md`。
 本轮限定三次feed/index GET：正确签名且不带ticket、仅改变sign的负控制、恢复正确
 sign并加入捕获ticket；设置最少15秒间隔，固定同一个ts与既有业务参数/游标。
 读取本身可能推进推荐状态，因此列表差异不是单参数推荐因果证明。
@@ -104,25 +108,25 @@ array header0x120273b30的count184位于0x120273b40，不把header计作provider
 | --- | --- | --- | --- | --- | --- | --- |
 | 传统 HTTP 公共层 | BFCApiRequest / BFCApiSignHelper | baseParams 各键来源已闭合（platform/device/build/mobi_app/appkey/actionKey/c_locale=clientLocale/s_locale=sysLocale，非 nil 门禁）；参数与头合并顺序、默认回调队列 | 构造/缓存、operation 取消与结束回调局部 | 未做 | 未做 | 配置更新、缓存调用方、gateway 错误加工与外部全局取消/重试 |
 | Ktor 公共层 | KtorClientObjc / HttpClientOpt / CommonParamsPlugin | 桥接选项、公共参数、签名编码及拦截器开关；Locale 值经 BFCApiConst.clientLocale/sysLocale（非 nil 门禁） | Root factory/ticker 安装、双 transport 选择与门控；Locale hook/独立缓存与编码；MD5 局部；原生 HttpSign listener 在 requestType==2 时整体跳过（0x1000aaea4），门控用 dd.http_sign_buvid 与 Ktor 开关不同源；Enable GInterceptor 键槽 0x120c5e410 0 写（真实读 5 处；扫描计数 7 含 2 处 ADRP 基址被中间 ldr 覆盖的误报） | 合成签名边界算术 | 未做 | Swift 侧无业务 enable writer（GInterceptor 键槽 0x120c5e410 0 写、`bfc_http_disable_ktor` 仅 1 处读取）、body 分支、18 成员集合成员身份（getter 已枚举 18 个，需回溯 sub_10B93C044 栈槽）、native HttpSign 适配器是否存在 |
-| Moss/gRPC 公共层 | BFCMossConstWrapper / RestConstWrapper、DeepBlue interceptor | 身份/会话、native metadata与Locale map采用范围 | ticket、native unary/回退及gateway覆盖次序；GrpcEngine binary Locale局部 | 未做 | 未做 | 其他platform/stream Locale采用、压缩与完整重试/流生命周期 |
+| Moss/gRPC 公共层 | BFCMossConstWrapper / RestConstWrapper、DeepBlue interceptor | 身份/会话、native metadata与Locale map采用范围 | ticket、native unary/回退及gateway覆盖次序；GrpcEngine binary Locale局部 | 未做 | 局部可判（9.13 线级）：`x-bili-metadata-bin` 为 7 字段 protobuf（全方法同形状，field 4 varint = App build，可自证 91300100/91300300）；`:path` 已确认 `bilibili.app.playurl.v1.PlayURL/PlayConf`、`playerunite.v1.Player/PlayViewUnite` 等 100+ 方法 | 其他platform/stream Locale采用、压缩与完整重试/流生命周期 |
 | HTTP 跟踪 BUVID | BFCBuvid | 36 字符格式；取值链 prefs→Keychain(service=trackId,key=buvid)→IDFA→IDFV | 初始化与持久化已解码；Keychain 命中回写 prefs | 假数据及现有样本形状 | 未验证首次生成 | 117 个直接调用点已登记（classref∩stub 交集，仅静态直接调用、间接派发未计）；重装后 Keychain 实测与 9.13 来源 |
-| 指纹登记 | BFCDeviceIosDeviceInfo / BFCDeviceToken | 54 字段号 1..54 全列（含 2 个 repeated：BFCMotion 三轴浮点 / BFCDeviceBiometry 类型串）；`-[BFCDeviceToken generateInfo]` 0x115fd5b54 的 54 个 setter 中 51 个可映射来源（身份账号 9／设备系统 22／常量 6／时钟 4／越狱环境 4／repeated 2）；下游消费者之一已定位（ticket_context_fingerprint_enable 命中时 GetTicket 签名加 fingerprintMaterialBin，0x1000968d8/0x1000968f4） | 请求构造已闭：POST `https://app.bilibili.com/x/resource/fingerprint`（0x115fd815c），priority=0/method=1/signType=0 全常量（0x115fd8220），content=hex(AES-128-ECB+PKCS7，随机 16 字节 key 值域 1..127)、key=hex(RSA-PKCS1v1.5，内置 BFCDevice.pem 2048 公钥)，RSA 实现 0x115fd8400；回执门禁=error nil＋HTTP 200＋data dict＋`bili_deviceId`，**不校验 code、失败不调用 completion**（0x115fd82d0→0x115fd83e0）；保存点 `BFCDevicePreferences.setServerBuvid` 0x115fd74a4 + Keychain(service 3, key `serverBUVID`，主队列 block 0x115fd74d4)，仅值变化写、内存 expiry=发起时刻+86400 | AES/RSA/校验和通过 | 未做 | isVpn 连 stub 都不存在；**ip/userAgent 已证不回填登记 payload**：`classRef_BFCDeviceIosDeviceInfo` 0x11f7f02b8 全镜像仅 1 处引用（0x115fd5b98，∈ generateInfo 后接 `_objc_opt_new`），阳性对照 classRef_BFCDeviceToken 33 处；`setIp:` 9 处/`setUserAgent:` 29 处调用点接收者抽样全为 BFCAppEnvironmentIP/BFCNetSniffer/IJK*/MQPWebService 等非登记类；剩余=54 项运行期实际取值与三项是否缺省于 wire（需真机断点 0x115fd72e4 或 9.13 抓包）、版本兼容 |
+| 指纹登记 | BFCDeviceIosDeviceInfo / BFCDeviceToken | 54 字段号 1..54 全列（含 2 个 repeated：BFCMotion 三轴浮点 / BFCDeviceBiometry 类型串）；`-[BFCDeviceToken generateInfo]` 0x115fd5b54 的 54 个 setter 中 51 个可映射来源（身份账号 9／设备系统 22／常量 6／时钟 4／越狱环境 4／repeated 2）；下游消费者之一已定位（ticket_context_fingerprint_enable 命中时 GetTicket 签名加 fingerprintMaterialBin，0x1000968d8/0x1000968f4） | 请求构造已闭：POST `https://app.bilibili.com/x/resource/fingerprint`（0x115fd815c），priority=0/method=1/signType=0 全常量（0x115fd8220），content=hex(AES-128-ECB+PKCS7，随机 16 字节 key 值域 1..127)、key=hex(RSA-PKCS1v1.5，内置 BFCDevice.pem 2048 公钥)，RSA 实现 0x115fd8400；回执门禁=error nil＋HTTP 200＋data dict＋`bili_deviceId`，**不校验 code、失败不调用 completion**（0x115fd82d0→0x115fd83e0）；保存点 `BFCDevicePreferences.setServerBuvid` 0x115fd74a4 + Keychain(service 3, key `serverBUVID`，主队列 block 0x115fd74d4)，仅值变化写、内存 expiry=发起时刻+86400 | AES/RSA/校验和通过 | 局部可判（9.13 线级）：仍 POST `/x/resource/fingerprint`、`text/plain`、body 双键 `key`(256 hex)+`content`(992–1088 hex)；54 项取值解密不可判 | isVpn 连 stub 都不存在；**ip/userAgent 已证不回填登记 payload**：`classRef_BFCDeviceIosDeviceInfo` 0x11f7f02b8 全镜像仅 1 处引用（0x115fd5b98，∈ generateInfo 后接 `_objc_opt_new`），阳性对照 classRef_BFCDeviceToken 33 处；`setIp:` 9 处/`setUserAgent:` 29 处调用点接收者抽样全为 BFCAppEnvironmentIP/BFCNetSniffer/IJK*/MQPWebService 等非登记类；剩余=54 项运行期实际取值与三项是否缺省于 wire（需真机断点 0x115fd72e4 或 9.13 抓包）、版本兼容 |
 | 访客与登录资料 | BFCAccountGuest / BFCAccountGolangApi / GuestInfo | 访客五项、登录字段与 UI 会话；guestId 偏好唯一写入者（`saveGuestIdWithData:` block 0x11605a474） | 访客登记已闭：POST `https://passport.bilibili.com/x/passport-user/guest/reg`（仅 guestId 为 0/-2 触发），body {device_info, dt=base64(RSA(公钥).encrypt(key))} + sdk_ver=0.1.15，apiKeySecretType=1/ignoreCodeNonZero=1，回执信封 JSON{code,message,data}，失败回调 (error,-2) 不保存；账号校验回执字段 data[mid]/expires_in/refresh，code 61000 仅在 mid 相同时 logoutWithApi（0x116052750/0x116052948）；SMS 复用与通知局部 | CBC/会话边界假数据通过 | 未做 | 访客 RSA 公钥接口的具体 path/字段（下一步 `disassemble.py 0x116047568 0x116047584` 及其 block）、账号通知注册块逐个行为（70/25/6/7 个注册点已枚举）、间接重置与资料默认值 |
-| ticket | BFCTicket / HTTP 与 Moss 拦截器 | 头、RPC PB、签名拼接及配置；9 键运行时配置读取器 0x10009ae38 及默认值（ticket_enable preset1、ttl 阈值 1800、ttlOverwrite 0、maxJitter 1、get_max_tries 4、baseDelay 1、maxDelay 15） | 系统 module/Gripper 注册触发、刷新退避、回执保存；Ktor 注册；enable=ticket_enable 实验命中→TicketInternal+0x10（唯一构造点 BFCTicket.init）；get_max_tries 只存储不消费；registry append-only 机制已证（具体序=运行期 DI 注册序，静态未知；334 项组件表在本镜像零引用，不可用作次序依据） | 假数据原语/拼接通过 | 未做 | gateway 跨模块相对次序不可静态定序（最小原因=组件由运行期元数据/witness 装配，镜像无静态顺序表；模块内次序、贡献集、621 注册点→237 模块 register 函数映射已闭合）、实际配置命中值、跨账号 ticket 复用（需 9.13 抓包）；**响应侧已闭**：GetTicketResponse ticket/createdAt/ttl/context，ttlOverwrite 非零替换，expiry=回调时刻+ttl；`x-ticket-status` 仅精确 `1` 触发更新，失败只清 inProgress 保留旧票据，TicketPrefs 两属性独立写；单例缓存 0x12027d090 全镜像仅 4 处载入、无写点 ⇒ 静态无登录/登出 reset 路径 |
+| ticket | BFCTicket / HTTP 与 Moss 拦截器 | 头、RPC PB、签名拼接及配置；9 键运行时配置读取器 0x10009ae38 及默认值（ticket_enable preset1、ttl 阈值 1800、ttlOverwrite 0、maxJitter 1、get_max_tries 4、baseDelay 1、maxDelay 15） | 系统 module/Gripper 注册触发、刷新退避、回执保存；Ktor 注册；enable=ticket_enable 实验命中→TicketInternal+0x10（唯一构造点 BFCTicket.init）；get_max_tries 只存储不消费；registry append-only 机制已证（具体序=运行期 DI 注册序，静态未知；334 项组件表在本镜像零引用，不可用作次序依据） | 假数据原语/拼接通过 | 局部可判（9.13 线级）：ticket 头 1439(Neuron 日志)/1234(gRPC)/924(api.bilibili.com)/727(app.bilibili.com) 条，`cm`/`data` 为 0；`GetTicket` 仅 3 次；`x-ticket-status` 仅 webview 22 次 | gateway 跨模块相对次序不可静态定序（最小原因=组件由运行期元数据/witness 装配，镜像无静态顺序表；模块内次序、贡献集、621 注册点→237 模块 register 函数映射已闭合）、实际配置命中值、跨账号 ticket 复用（需 9.13 抓包）；**响应侧已闭**：GetTicketResponse ticket/createdAt/ttl/context，ttlOverwrite 非零替换，expiry=回调时刻+ttl；`x-ticket-status` 仅精确 `1` 触发更新，失败只清 inProgress 保留旧票据，TicketPrefs 两属性独立写；单例缓存 0x12027d090 全镜像仅 4 处载入、无写点 ⇒ 静态无登录/登出 reset 路径 |
 | 会话与生命周期 | DeviceService/KntrSessionIdProvider、BFCActiveReport | 来源分流、Kotlin 会话、native trace、StartTrace、活动记录；时间辅助取值/错误路径/持久化 | DI/lazy 复用、prewarm 刷新、任务注册派发、活动保存及早期回放局部；时间辅助 flag 单进程语义与 suite 落盘已闭合 | 会话/trace 算术假数据通过 | 仅已有抓包观察 | 实际 flag/OS 回调、登录切换、下游去重与现版验证 |
-| 业务日志公共层 | BFCTracker / 旧 V2 / BFCNeuron | 文本结构及 Neuron 68 项描述符 | 两类发送/回执局部；Neuron 入队编码；旧 V2 再次触发（入队≥20 立即、<20 与成功回执各 3 秒 dispatch_after，块首 canceled 门禁）；Neuron 无静态重试上限（retrySendCount 仅 +1） | Neuron 假数据分帧/校验 | 未做 | 注册、调度配置、Neuron 缓存清理触发时机/mainDelayAB、旧 V2 业务 producer 其余字段 |
-| 首页/相关推荐及曝光点击 | feed/index、feed/index/interest、Pegasus、View/RelatesFeed 候选 | 请求、事件扩展与阈值、批次编号、缓存/兴趣marker；T10/18/19/33/34/35/37选择编码局部 | show/click/duration、页面/后台结算、refresh/cache恢复、兴趣启动事务/guide、second门禁/回执/所有权、编号/dislike局部；**响应侧已补**：feed/index 键序 /data/config→/data/interest_choose→/data/items，completion 形参 (items,config,interestChoose,flag)，config 缺失/错型走 Mikoto `list.pgs.tech.error.config`(policy=100,rate=0) 非终止分支，响应侧无 offset 游标写回；Swift 侧"+1"为 stdlib sort 归并 run 记账（`_minimumMergeRunLength` 0x107c2b8b0），不写卡片字段，真实 1-based 序号在 sub_101A3E5A4 的 witness 表 +0x40 调用（0x101a3e9b0） | 现有协议分析 | 跨版本样本；三次GET结构成功，验签/个性化未证 | witness+0x40 requirement 的实际字段（间接派发；下一步 `disassemble 0x101a40040 0x101a40180`）、兴趣重编号下标范围（`0x101a53fd0–0x101a55004`）、去重池/账号归属、accepted事务完成、其他兴趣UI；缓存写后端 expirationTime=0 归尾部 FallbackCache 章节 |
+| 业务日志公共层 | BFCTracker / 旧 V2 / BFCNeuron | 文本结构及 Neuron 68 项描述符 | 两类发送/回执局部；Neuron 入队编码；旧 V2 再次触发（入队≥20 立即、<20 与成功回执各 3 秒 dispatch_after，块首 canceled 门禁）；Neuron 无静态重试上限（retrySendCount 仅 +1） | Neuron 假数据分帧/校验 | 局部可判（9.13 线级）：`/log/pbmobile/realtime` 与 `/log/pbmobile/unrealtime` 并存（944/700 条），host `dataflow.biliapi.com`，全 gzip，带 `is-kmp-neuron: 1` | 注册、调度配置、Neuron 缓存清理触发时机/mainDelayAB、旧 V2 业务 producer 其余字段 |
+| 首页/相关推荐及曝光点击 | feed/index、feed/index/interest、Pegasus、View/RelatesFeed 候选 | 请求、事件扩展与阈值、批次编号、缓存/兴趣marker；T10/18/19/33/34/35/37选择编码局部 | show/click/duration、页面/后台结算、refresh/cache恢复、兴趣启动事务/guide、second门禁/回执/所有权、编号/dislike局部；**响应侧已补**：feed/index 键序 /data/config→/data/interest_choose→/data/items，completion 形参 (items,config,interestChoose,flag)，config 缺失/错型走 Mikoto `list.pgs.tech.error.config`(policy=100,rate=0) 非终止分支，响应侧无 offset 游标写回；Swift 侧"+1"为 stdlib sort 归并 run 记账（`_minimumMergeRunLength` 0x107c2b8b0），不写卡片字段，真实 1-based 序号在 sub_101A3E5A4 的 witness 表 +0x40 调用（0x101a3e9b0） | 现有协议分析 | 局部可判（9.13 线级）：两套 feed/index 参数模板 + 18 个 HD2 扩展键取值域 + `fnval` 双取值 + `open_event` 三态；曝光/时长事件 1269 show / 2194 duration、`event_policy=1` 恒定；三次本地 GET 结构成功 | witness+0x40 requirement 的实际字段（间接派发；下一步 `disassemble 0x101a40040 0x101a40180`）、兴趣重编号下标范围（`0x101a53fd0–0x101a55004`）、去重池/账号归属、accepted事务完成、其他兴趣UI；缓存写后端 expirationTime=0 归尾部 FallbackCache 章节；1800s banner_hash 阈值不可判（≥1800s 8/8 空但 <60s 桶亦 77/163 空，无可分离信号）、去重池 reset 触发不可判（同槽位 exact-dup 仅 11 组）、`banner_hash` 与 `splash_creative_id` 同源；验签/个性化未证 |
 | 视频详情/播放/心跳/弹幕 | ResolverUGCHelper、HeartBeatServiceV2/AtomicHeartbeat；BFCNeuronPlayerEvent=ObjC 协议（0x11d88fec0） | 播放 PB、能力参数、历史/心跳/Atomic及内联事件字段局部；PlayerEvent 具体类 `_TtC6Neuron11PlayerEvent` 无 ObjC alloc 构造点 | 计时/会话迁移、UGC/OGV/内联资料构造及replay、心跳缓存重试、Atomic注册/timer/delegate、Moss状态及诊断probe/队列；会话ID文本格式、Atomic 墙钟与公共校时分离已闭合；心跳文件缓存删除只在 `-[BBPlayerHeartBeatReportManager syncFileCache]` 0x114887b6c 三条分支（tag `main.player.core`）；Atomic 注入上传链 0x1001298ec→sub_100129684（customEvent `p_event_count`/setLogId `006638`/setExtendedFields/trackEvent:trackPolicy: 0），注册侧 witness 0x104976c18 返回 BFCNeuron.shared；点名的四个 bloc 均不构造 PlayerEvent（两个单条 ret） | 能力/会话/画质/时钟假数据局部 | 仅已有抓包局部 | 其他详情/UI 源、解析选择、弹幕、诊断OS实效、统一接口余项；注入 tracker 实例子类（真机断点读 x19）；Atomic 上传的最终覆盖范围 |
 | 搜索/历史/稍后再看 | SearchResultVM/ApiV2、CloudSyncHelper/Service、旧Phone/BBList WatchLater | HTTP/gRPC 综合搜索日期/游标、历史校验、WatchLater旧add/del/list、新single/bulk add与v2列表/删除字段 | 查询会话/实现once选择/取消边界；历史写入；WatchLater回执/展示、行点击/选择、Rx/appearance/刷新/游标、reducer与缓存注入/文件IO/失效局部 | 未做 | 未做 | 搜索筛选UI/旧回执归属/其他回退；历史：sourceType 写入者、extendFields 冲突优先级、补同步/存储；WatchLater 完整账号生命周期与资源来源、缓存并发与取消实效 |
 | 动态/关注/用户空间 | DFSumViewController / Dynamic RPC | DynAllReply 0x116213364 顶层 7 项（dynamicList/upList/topicList/unfollow/regionRcmd/config/sortConfig）；DynamicList 0x116213514 游标四元组（listArray/updateNum/historyOffset/updateBaseline/hasMore）；CardVideoDynList 0x116213148 同构；DynVideoReply 0x1162130dc 4 项；PersonalReply 各 8 项（新增 readOffset/relation/additionUp/title/titleSub，选中 UP 回调未消费） | 刷新/排序/自动补页、账号 baseline 与缓存读取局部；辅助请求族：dynVideoUpdOffsetWithRequest 0x11620d05c（业务点 BBTLUPerUpdateItemVC.updateReadOffset: @0x10e8a92f4）、dynDetailsWithRequest 0x11620ce54（业务点 BBDFCardSectionController.loadFoldData: @0x10e8021b8）；**过期回执已闭**：KntrCacheResult 子类 Success/Miss/Expired/VersionMismatch/Corrupted（0x11d99aa80/a9f0/a960/ab10/a8d0），读回调 0x101363d94 只在 Success 用新值、其余落旧缓存 0x101364210 | 时区算术假数据通过 | 未做 | 发布请求完整 endpoint/字段表（入口 `BMFPublishCreateDynamicRequestWarpper` 0x10e9769d8 已定位；下一步从 constructMeta 0x10e97711c 起展开）、dynAdditionCommonFollow 0x11620d160 / dynThumb 0x11620d264 经 **stub+selref 双向核查为静态无业务生产者**（共享 stub 0x1172d8940/0x1172d9040 除 IMP 内尾调 0x11620d1b0/0x11620d2b4 外零业务调用；selref 0x11f6610f8 的 3 处命中经反汇编全为 Kotlin/Native 原子计数假阳性、0x11f6612b8 零命中；阳性对照 0x10136b49c 的 dynAll selref+msgSend 形态）。注意：**对 stub 单独跑 find_callers 零命中不构成否定**，必须叠加 selref 扫描；FallbackCache DI 链为 Kotlin/Native 单例 switch，不可静态判（需真机断点 0x1089bef90 或沙盒 dump CacheMetadata） |
-| 互动/评论/收藏/分享 | CommentMossAPI / PosterApi / Broadcast与键盘VM | 主列表/详情/折叠/补取/广播PB、发布、赞踩/删除/置顶、收藏入口 | 列表分页/会话、广播插入/room、发布验证码/草稿/局部插入与操作确认；评论草稿 DI 唯一构造点 0x100e2b04c（链 0x100e2b894→0x100e2b304→thunk 0x100e2b238）；BFCCommentShouldRefreshList 零静态观察者（4 个 post 点 0x113f83ab0/df4/4188/4cc8）；kBBPlayerUnloginLike 键 CFString 0x11d113140 零代码引用、写调用 0x104a8cee8（字面量 0x104a8cec4）+ synchronize 0x104a8cf30 | 未做 | 未做 | 通知消费者运行期动态拼名注册不可静态排除、评论草稿容器注册调用未证、错误恢复、收藏余项/分享 |
+| 互动/评论/收藏/分享 | CommentMossAPI / PosterApi / Broadcast与键盘VM | 主列表/详情/折叠/补取/广播PB、发布、赞踩/删除/置顶、收藏入口 | 列表分页/会话、广播插入/room、发布验证码/草稿/局部插入与操作确认；评论草稿 DI 唯一构造点 0x100e2b04c（链 0x100e2b894→0x100e2b304→thunk 0x100e2b238）；BFCCommentShouldRefreshList 零静态观察者（4 个 post 点 0x113f83ab0/df4/4188/4cc8）；kBBPlayerUnloginLike 键 CFString 0x11d113140 零代码引用、写调用 0x104a8cee8（字面量 0x104a8cec4）+ synchronize 0x104a8cf30；task-21 字段级：评论分页 wire 仅 `Pagination{1:pageSize,2:next}` 与 `PaginationReply{1:next,2:prev}`（无独立 pn/ps，prev 复用 next 字段），子回复 builder 不赋 cursor；广播插入不触碰分页/会话、去重靠 rpid+对象身份；草稿 DI 惰性槽 0x1182951d8 零静态引用；验证码已展示时新回调排队派发（非丢弃） | 未做 | 未做 | 通知消费者运行期动态拼名注册不可静态排除、评论草稿容器注册调用未证、错误恢复、收藏余项/分享 |
 | 直播 | ProcessScheduler / BaseHTTPClient / OnlineConfig / WatchDurationReporter；BBLiveSocketReconnectScheduler 0x10edac53c | 播放/房间、保护头、mapper；观看26项body/签名来源；network 取值为 wifi/mobile/空（Reachability.currentStatus==1/2/其他） | 双请求/cancel/scatter、验证码续发；观看开始/退出/timer、失败重发/补交及播放器触发局部；重连调度闭合（断线≥默认60s 才补拉、间隔=socketRefreshDuration 兜底 5s、liveStatus 变化回调；构造点 NewRoomBaseVC 0x10ed19f08 非单例）；账号清理闭合（`_dropAllLocalWatchTime` 唯一调用点 0x10f0eee9c，样本内无登出清理入口） | delay/签名枚举边界假数据 | 未做 | 房间 socket 传输实体不在主二进制（需真机抓包 host/port 与帧）、入房权限消费者、配置存储、观看并发与现版验证 |
-| 消息/推送 | BBCPushCenter / BFCPushService / ActivityTokenMonitor；BBLinkConnectManager 0x10e5f3368 | APNs12、ActivityKit7、点击/角标、收包/路由/growth字段；type5 restricted-mode 枚举（0=青少年、1=课堂、其他透传） | 调度事件、权限/账号、token重试、静默/点击路由与本地通知局部；默认 host 无静态覆盖入口（无 setApiHost: 调用桩）；样本 PlugIns 为 0 且无扩展符号，通知扩展路不存在；IM 未读链入口局部闭合（同步失败分支 0x10e5f3358、已读回执键 maxSeqno+locSeqno 0x10e5f3d48→0x10e5f3dd8、未读五组映射 0x10e62c154、角标消费 BBLinkBadgeValueManager 0x10e5e5184 为 IM 内部存储非系统 icon badge） | 未做 | 未做 | 全局事件排序（运行期 runnable 调度）、Blink IM 引擎本体不在主二进制（需真机抓包长连接 host/port 与 sync/auth 帧） |
-| 设置/远程配置/实验 | 设置页/InlinePreferences/Device与MidConfig | 自动刷新/声音/弹幕/均衡/自动播放/布局/模式/HDR/画质/禁个性化来源 | 设置写入/默认、请求缓存/覆盖、生命周期刷新；翻译UI编辑/退出提交/current与SYSTEM区别/KVO；Phone模式PB/通知/退出重置、Story手动模式/gesture/画质控件与解析回执、引导路由/曝光/timer及HD2 follow/idx局部 | 未做 | 仅已有抓包观察 | Story 画质列表 present 安装方/trial 生命周期/CURRENT quality 更新、upload持久与账号余边、Phone模式实例/本地恢复、SYSTEM外部reset、HD2 设置路由映射**已闭合**（setParams: 0x10c91bec4 从 LynxRoute 读 vmType/vcTitle/pvEventId；工厂 0x10c927038 的跳表 0x118e385f8 解码 13 项 vmType：0 Main/1 Safe/2 Cache/3 Play/4 Push/5 Other/6 AboutBili/7 PicQuality/8 PicWatermark/9 PrivacyRights/10 Play(entrance 键 0x11d0f8610)/11 PersonalizedRcmd/12 Dark，子页 push 块 0x10c91b314 复制 LynxRoute+pushViewController）；`startUniversalConfigSync` 0x114fa9348 入口**无登录门禁**（直接 syncDiffToRemote: 0x114fa9388）；feedsetting transfer 注册内容不可判、其他参数/实验 |
-| 会员/番剧/漫画/商城/支付/游戏/创作 | PGC 详情 base `BBPgcPhoneBangumiUniversalApi` option 0x1121d91f0（GET `https://api.bilibili.com/pgc/view/v2/app/season` 0x11d290df0）；eps tab 0x1121ec94c；播放入口 `BBResolverPGCHelper` 0x114a1d45c→`/pgc/player/api/playurl`；追番 5 入口（0x1120d2a7c/0x112402074/0x10e7b68ec/0x10de7428c/0x1042b8730→`/pgc/app/follow/add`）；下单 `BBPgcPhoneStore` 0x112132dc8；VIP `BFCVipUserFaceApi` 0x114662488→`/pgc/vipinfo/get`、`/x/vip/privilege/remind`、`/x/vip/v1/order/status`；漫画 `BBComicRequest` 0x10ec79c58→manga twirp；商城 `BBMallBaseApi requestUrlWithConfigUrl:` 0x11381580c（默认 host `https://mall.bilibili.com/mall-c`，HK 域替换 .dreamcast.hk）；支付 `BBPhoneMineWalleBpBalancePayApi` apiPath 0x10f4da154→`client.quick.pay.do`；游戏 `BBGameCenterReporter` 0x113ebf24c→`app.biligame.com/small_game_list_*`；创作 `BBUperSeason*`→`member.bilibili.com /x2/creative/app/season/*`；GripperWrapper startup 0x100027dc0 / GripperBridgeModule 12 个生命周期回调 | VIP三个position、响应模型及点击参数；`/data`→`BBPgcPhoneModelBangumiSeasonM2` | PGC base发送/类注入/Gripper；HD续播RPC、toast/TopBar/UserCenter列表回执及账户通知；素材上报/失败队列、动态module/真实按钮/appearance/严格曝光scheduler局部 | 未做 | 未做 | 动态路由目标、其他素材入口/账号队列reset；各请求族的具体 params 字典只闭到构造入口层、逐参数来源未穷尽（下一步对各自 requestUrl/setter 跑 find_callers）；其他子模块请求族及 SDK 边界 |
+| 消息/推送 | BBCPushCenter / BFCPushService / ActivityTokenMonitor；BBLinkConnectManager 0x10e5f3368 | APNs12、ActivityKit7、点击/角标、收包/路由/growth字段；type5 restricted-mode 枚举（0=青少年、1=课堂、其他透传） | 调度事件、权限/账号、token重试、静默/点击路由与本地通知局部；默认 host 无静态覆盖入口（无 setApiHost: 调用桩）；样本 PlugIns 为 0 且无扩展符号，通知扩展路不存在；IM 未读链入口局部闭合（同步失败分支 0x10e5f3358、已读回执键 maxSeqno+locSeqno 0x10e5f3d48→0x10e5f3dd8、未读五组映射 0x10e62c154、角标消费 BBLinkBadgeValueManager 0x10e5e5184 为 IM 内部存储非系统 icon badge）；task-18 字段级：`fetchRemoteRelations`=`/bilibili.im.interface.v1.ImInterface/SyncRelation`（Req 1 字段/Rsp 5，只消费 `serverRelationOplogSeqno`）、未读五组=`/bilibili.im.gateway.interface.v1.ImGatewayApi/GetTotalUnread`（Req 3/Rsp 6，`msgFeedUnread` 为 bytes blob 按 8 键解析）、已读回执 `ackSeqno=maxSeqno 非 nil 时直传否则 locSeqno`（**不是拼接**，0x10e43e42c）、角标 style==1 用 totalUnreadCount/==2 用常量槽/==0 不设；9.13 线级 `/x/push/report` 86 次 | 未做 | 未做 | 全局事件排序（运行期 runnable 调度）、Blink IM 引擎本体不在主二进制（需真机抓包长连接 host/port 与 sync/auth 帧） |
+| 设置/远程配置/实验 | 设置页/InlinePreferences/Device与MidConfig | 自动刷新/声音/弹幕/均衡/自动播放/布局/模式/HDR/画质/禁个性化来源 | 设置写入/默认、请求缓存/覆盖、生命周期刷新；翻译UI编辑/退出提交/current与SYSTEM区别/KVO；Phone模式PB/通知/退出重置、Story手动模式/gesture/画质控件与解析回执、引导路由/曝光/timer及HD2 follow/idx局部；task-21 字段级：上传链 `syncDiffToRemote:` 为 debounce（delay=[ivar+0x30] 秒）→脏检查→枚举 syncDiff 覆盖写 reqDict（无冲突解决分支）→PlayConf edit / SetUserPreference 两路，semaphore 同步 20s 超时；成功清 diff 写盘 type 100/101，失败 triggerRetryLater；全程无登录门禁 | 未做 | 仅已有抓包观察 | Story 画质列表 present 安装方/trial 生命周期/CURRENT quality 更新、upload持久与账号余边、Phone模式实例/本地恢复、SYSTEM外部reset、HD2 设置路由映射**已闭合**（setParams: 0x10c91bec4 从 LynxRoute 读 vmType/vcTitle/pvEventId；工厂 0x10c927038 的跳表 0x118e385f8 解码 13 项 vmType：0 Main/1 Safe/2 Cache/3 Play/4 Push/5 Other/6 AboutBili/7 PicQuality/8 PicWatermark/9 PrivacyRights/10 Play(entrance 键 0x11d0f8610)/11 PersonalizedRcmd/12 Dark，子页 push 块 0x10c91b314 复制 LynxRoute+pushViewController）；`startUniversalConfigSync` 0x114fa9348 入口**无登录门禁**（直接 syncDiffToRemote: 0x114fa9388）；feedsetting transfer 注册内容不可判、其他参数/实验 |
+| 会员/番剧/漫画/商城/支付/游戏/创作 | PGC 详情 base `BBPgcPhoneBangumiUniversalApi` option 0x1121d91f0（GET `https://api.bilibili.com/pgc/view/v2/app/season` 0x11d290df0）；eps tab 0x1121ec94c；播放入口 `BBResolverPGCHelper` 0x114a1d45c→`/pgc/player/api/playurl`；追番 5 入口（0x1120d2a7c/0x112402074/0x10e7b68ec/0x10de7428c/0x1042b8730→`/pgc/app/follow/add`）；下单 `BBPgcPhoneStore` 0x112132dc8；VIP `BFCVipUserFaceApi` 0x114662488→`/pgc/vipinfo/get`、`/x/vip/privilege/remind`、`/x/vip/v1/order/status`；漫画 `BBComicRequest` 0x10ec79c58→manga twirp；商城 `BBMallBaseApi requestUrlWithConfigUrl:` 0x11381580c（默认 host `https://mall.bilibili.com/mall-c`，HK 域替换 .dreamcast.hk）；支付 `BBPhoneMineWalleBpBalancePayApi` apiPath 0x10f4da154→`client.quick.pay.do`；游戏 `BBGameCenterReporter` 0x113ebf24c→`app.biligame.com/small_game_list_*`；创作 `BBUperSeason*`→`member.bilibili.com /x2/creative/app/season/*`；GripperWrapper startup 0x100027dc0 / GripperBridgeModule 12 个生命周期回调 | VIP三个position、响应模型及点击参数；`/data`→`BBPgcPhoneModelBangumiSeasonM2` | PGC base发送/类注入/Gripper；HD续播RPC、toast/TopBar/UserCenter列表回执及账户通知；素材上报/失败队列、动态module/真实按钮/appearance/严格曝光scheduler局部 | 未做 | 未做 | 动态路由目标、其他素材入口/账号队列reset；**PGC/商城/支付已到参数与字段级**：PGC 详情 10 键参数逐项来源已闭合（season_id/from_av/trackid←入参，track_path←requestFrom，from_spmid←缺省 'default-value'，spmid←常量 `pgc.pgc-video-detail.0.0`，pgc_play_abtest←BFCABTestConfig，is_show_all_series←MemexABTest `ogv_player_detail_all_series_abtest`，ugc_ogv_unity_exp←hitSeasonDetailCommonUI，adExtra→`ad_extra`，referSeasonId→头 `bili-referer`），响应 mapper 0x1121db1b4 七条改名映射 + container 0x1121db2a8 三十三键 + payment 子模型 15 字段；商城 configUrl 唯一来源 `[self requestApiConfig]['apiUrl']`（makeOptions 0x113813630，stub 0x1174f2460 唯一调用点 0x113813714），`BBMallRequestModel` 全 8 ivar；支付 `client.quick.pay.do` 请求体单键 `pay_order_no`（由 BBHD2PhoneStore 下单/充值回执回填）。剩余：optionForEpisodeRequest 逐槽（`disassemble 0x1121d8d50 0x1121d91f0`）、Payment container 子类映射、各 Mall Api 子类 path、quick.pay.do 回执状态枚举（SKVObject 动态键，需 pay.bilibili.com 抓包）、AB 实验运行期取值；**漫画/游戏/创作也已到键级**（task-19）：漫画 BBComicRequest 全族走 BFCApiOptions POST（GetComic 四键、CreatePayAndConsumeOrder 六键+trackInfo 等）；**游戏修正**——`app.biligame.com/small_game_list_*` 不是 JSON API 而是 H5 spm 注册表条目（spm 555.138–140.0.0），原生曝光走 BBTrack `001556`；创作 `BBUperSeasonListApi` GET `x2/creative/app/seasons` 五键（pn/ps/order/sort/source） |
 | 广告 | UGC播放器AdManager / BBAdReport / UIReport / BCMReport；cm候选 | dm/ad四项、ad_extra字段/类型及AES包装、conversion/fee/Monitor POST、MMA宏GET、BCM source/覆盖顺序、AdTrack/AdAlarm分类及采样 | aid匹配/cancel/回执、双16秒等待、独立缓存/批量重传、Once、App前后台/callup成功标记及回调门禁、Kotlin→epoch Mikoto/账号DI局部；BCM Monitor 类对象在本镜像内无构造点（零引用，含阳性对照），retryFailures 唯一出口全在 retryFailedEvents 的 ui/feeAd/feeMMA 分支 | 假数据采样/参数合并边界 | 仅已有抓包局部 | 实际触发/UI验证、展示/点击/归因边界、其他callup入口；`BBAdPlayerAdDetailModel` 为纯 Swift 类、字段未解码（下一步沿 _$classData 0x11ed0be58 解 swift5_fieldmd）；**响应侧已闭**：`BBAdPlayerAdModel` mapper 0x1133f4284（mixList←ads、foreverFloatList←permanent_floating、activities 原名，三数组元素均 `BBAdPlayerAdDetailModel`），IconModel 字段 ad_cb/creative_id/extra/src_id/ad_info/source_id，InfoModel 字段 extra/ad_cb/creative_id，顶层无 code/message（业务码在公共层、dm/ad 无独立错误分支与缓存写入），展示分派族 `BBAdPlayerAdPanelHelper` 0x1133e7b54 及 7 个子分支（含 _detailIsH5WithData: 0x1133e8054/_realUrlWithData: 0x1133e8114） |
-| 性能/崩溃/诊断 | BFCTrackerCrash / Analytics / 日志上传候选 | Crash字段/Tech→Mikoto、LogService JSON/双本地出口 | AB门禁/两秒启动缓存重放/本地完成及删缓存、DI/backend配置snapshot、BLog文件队列、Laser附件/上传/回执及UPOS阶段/取消/过期局部；Laser pre-upload 内置 endpoint 已定位（CFString 0x11d2c42d0 = https://member.bilibili.com/preupload） | 未做 | 未做 | 其他业务可达性；UPOS 取消后的 Laser completion 链**已闭合**（Base error closure 0x114aa8d48 对 -999 同样计重试并 dispatch_after 重入；isStop/checkError 门禁 0x114aa8a0c/0x114aa8a18→0x114aa8c5c 静默吞掉取消后的重试；只有重试预算耗尽才走 failureWithError: 0x114aa93a8→notifyTask 0x114a9ba44→block 0x114a9bc38 调 task.completionHandler，semaphore signal 0x114a923e8 只在预算耗尽后发生）；Laser 任务过期/外部 clear **已闭合**（"过期"=附件日期窗：`+[BFCLaser shared]` 0x114a89a84 尾部 `setUploadLogsPassedDay:` w2=2 @0x114a89bfc，配置键 `laser.passed_day` 0x11776fa70 覆盖，getter stub 0x11772c100 全部 6 个消费点只在 uploadAllLogs 0x114a8a464/0x114a8a8d4；Moss 下发任务无 TTL 分支，didReceivedTask 0x114a8af24 仅去重；BFCLaserPreferences 无逐 key 删除者） |
-| 第三方 SDK/CDN/网页 | 依赖清单（app 包 Frameworks/ 仅 BGM.framework、BilibiliVideoTools.dylib、libswift_Concurrency）；AlipaySDK/WXApi/TCLoginViewKit 等静态链入主程序 | 各 SDK 独立传输 host 清单（mpaas/银联/三大运营商/腾讯地图/Bugly/易盾/蚂蚁真实人/阿里ASR/分享）；图片 CDN 走主程序图片管线（BFCImageUrlOptions 等） | 网页容器 BFCWKWebViewV2 commonInit 0x115dd9f70（delegateInternal 双 delegate、独立 userContentController、addRequestProtocol/addUserScript/addScriptMessageHandler/setCustomUserAgent 0x115dda86c）、JSBridgeSystem 0x1000fc154、BFCVipJSBExport domain 0x1044072c8、Trizoa_WKWebViewWrapper 0x111bcaa34、KUserAgentModule 0x100204c7c | 未做 | 未做 | SDK 是否共享主程序 session/Cookie 属运行期（需真机抓包各 host）、`<dynamic>` host 38 条静态不可列全；**来源标注**：URL→符号映射来自 analysis/network-reference-candidates.json 的 ADRP+ADD 候选引用，依赖清单来自 app 包只读枚举，均不提升主程序覆盖等级 |
+| 性能/崩溃/诊断 | BFCTrackerCrash / Analytics / 日志上传候选 | Crash字段/Tech→Mikoto、LogService JSON/双本地出口 | AB门禁/两秒启动缓存重放/本地完成及删缓存、DI/backend配置snapshot、BLog文件队列、Laser附件/上传/回执及UPOS阶段/取消/过期局部；Laser pre-upload 内置 endpoint 已定位（CFString 0x11d2c42d0 = https://member.bilibili.com/preupload）；task-18 字段级：Laser 五端点齐全（`/laser`、`/laser2`、`/laser/cmd/report`、`/laser/silence`、`api.bilibili.com/x/feedback/uploadFile`），`reportFeedback:` 请求体 8 键 + 条件 `task_type`；KSCrash 自身发送器无调用方、`sink` 未设 ⇒ 报告不经 KSCrash HTTP 发送，实际走 `onReportIssue:`→Analytics→Mikoto/Neuron 或 LogService（两者均无 HTTP 回执）；LogService JSON options8、false 出口未读 ddError、配置不回写 `LogSystem.byte+0x10` | 未做 | 未做 | 其他业务可达性；UPOS 取消后的 Laser completion 链**已闭合**（Base error closure 0x114aa8d48 对 -999 同样计重试并 dispatch_after 重入；isStop/checkError 门禁 0x114aa8a0c/0x114aa8a18→0x114aa8c5c 静默吞掉取消后的重试；只有重试预算耗尽才走 failureWithError: 0x114aa93a8→notifyTask 0x114a9ba44→block 0x114a9bc38 调 task.completionHandler，semaphore signal 0x114a923e8 只在预算耗尽后发生）；Laser 任务过期/外部 clear **已闭合**（"过期"=附件日期窗：`+[BFCLaser shared]` 0x114a89a84 尾部 `setUploadLogsPassedDay:` w2=2 @0x114a89bfc，配置键 `laser.passed_day` 0x11776fa70 覆盖，getter stub 0x11772c100 全部 6 个消费点只在 uploadAllLogs 0x114a8a464/0x114a8a8d4；Moss 下发任务无 TTL 分支，didReceivedTask 0x114a8af24 仅去重；BFCLaserPreferences 无逐 key 删除者） |
+| 第三方 SDK/CDN/网页 | 依赖清单（app 包 Frameworks/ 仅 BGM.framework、BilibiliVideoTools.dylib、libswift_Concurrency）；AlipaySDK/WXApi/TCLoginViewKit 等静态链入主程序 | 各 SDK 独立传输 host 清单（mpaas/银联/三大运营商/腾讯地图/Bugly/易盾/蚂蚁真实人/阿里ASR/分享）；图片 CDN 走主程序图片管线（BFCImageUrlOptions 等） | 网页容器 BFCWKWebViewV2 commonInit 0x115dd9f70（delegateInternal 双 delegate、独立 userContentController、addRequestProtocol/addUserScript/addScriptMessageHandler/setCustomUserAgent 0x115dda86c）、JSBridgeSystem 0x1000fc154、BFCVipJSBExport domain 0x1044072c8、Trizoa_WKWebViewWrapper 0x111bcaa34、KUserAgentModule 0x100204c7c；task-20：支付/分享主路径是 App 间跳转（AlipaySDK 读 `ali_launch_scheme` 选 scheme；WXApi `transformToUrl`），进程内不发支付 HTTP；CDN 后缀由 NSString 分类拼接（host 正则 `i[0-2].hdslb.com`）；JSB 域全清单（global/net/auth/pay/share/ability/secure/storage/ui/offline + globalVip/unitedvideo），**net 域 `signForQueryItems:appKey:` 即主程序同款 appsign**、`cookieStringForHost:` 把登录 Cookie 暴露给 H5；addRequestProtocol 仅作用于顶层 loadRequest；UA 按远端白名单做 iPad→iPhone 替换 | 未做 | 未做 | SDK 是否共享主程序 session/Cookie 属运行期（需真机抓包各 host）、`<dynamic>` host 38 条静态不可列全；**来源标注**：URL→符号映射来自 analysis/network-reference-candidates.json 的 ADRP+ADD 候选引用，依赖清单来自 app 包只读枚举，均不提升主程序覆盖等级 |
 
 ## 传统 HTTP 参数与请求构造
 
@@ -562,6 +566,22 @@ business metadata（bili-status-code/grpc-status-details-bin及配置门控）�
 native初始回执0x115e09bcc将metadata合入共享byref字典，close0x115e09fc8再把
 trailing metadata后合入（0x115e0a5a4），随后canonicalGatewayResponse
 （0x115e0a5e4）；相同精确键由trailing覆盖initial，未证明大小写归一化。下一步 = disassemble.py 0x115e09fc8 0x115e0a600 复核 close→trailing 合并与 canonicalGatewayResponse 后的键序；wire 大小写归一化属 gRPC core/prebuilt，需抓包核对。
+【9.13 抓包观测（线级，team-c12；build 91300100；证据 DerivedData/Validation/team-c12/
+metadata-bin.jsonl、header-names.jsonl、auth-planes.jsonl）】wire 上 gRPC 请求（`grpc.biliapi.net`，
+HTTP/2，1,248 条）的 `:path` 形如 `/bilibili.app.playurl.v1.PlayURL/PlayConf`、`/bilibili.app.playerunite.v1.Player/PlayViewUnite`、
+`/bilibili.app.viewunite.v1.View/View` 等；**每个请求上的自定义头都只有一个值，不存在同名头并存**
+（全语料重复头只有 webview 的 `cookie`）；头名大小写由 transport 决定：HTTP/2 一律小写
+（`session_id`/`buvid`/`guestid`/`app-key`/`env`），HTTP/1.1 出现混合大小写
+（`Session_ID`/`Buvid`/`GuestId`/`APP-KEY`/`ENV`，80 条，78 条为 `/x/vip/ads/material/report`），
+故"同一 key 的大小写变体"在现版 wire 上**不会与另一变体同时出现**。身份材料按通道分流：
+`authorization` 只随 Moss/gRPC（1,248 条）出现且这些请求无 query `access_key`，HTTP 侧反之。
+`x-bili-metadata-bin` 在全部 gRPC 请求上存在，base64 解码后为 7 字段 protobuf
+（field 1 220B、field 2 6/8B ASCII、field 3 5B、**field 4 varint = App build**、field 5 13B、
+field 6 36B、field 7 3B），**形状在所有方法上一致**（缺 field 1 时解码总长 80B），
+即它不是方法级 metadata；同族头的形状见 `metadata-bin-deep.jsonl`
+（`x-bili-device-bin` 16 字段、`x-bili-network-bin` f1/f5 内嵌 f2=9900 与 epoch 毫秒、
+`x-bili-locale-bin` 两段嵌套 {1:2B,2:4B,3:2B}+f4/f5/f8、`x-bili-restriction-bin` f7=16）。
+重复头合并与 reserved header 的大小写归一化属 gRPC core，本次样本只能证明"发出去的是什么"。
 普通terminal及流控分支的downstream didClose调用（0x115e0a57c/0x115e0a2fc）
 在此gateway处理之前，不能将同步调用顺序等同业务异步completion完成顺序。
 Ticket所用MossServiceRealImpl wrapper0x100151a60创建的是plain
@@ -953,6 +973,17 @@ ttlOverwrite 非零时替换 ttl（没有限定必须为正），createdAt 未�
 这些局部路径均使用TicketPrefs全局singleton槽0x12027d090和固定suite，没有按UID/
 access-token选命名空间，也没有成功保存前的account-generation检查；只能证明这里
 共享一份本地缓存（TicketPrefs 单例槽 0x12027d090），外部登录/登出是否另行 reset：**已收齐该槽的全部代码引用（8.89 静态）**——`find_pointer_refs.py 0x12027d090` 只命中 4 处，且都是载入（无 STR/无 objc_storeStrong 写点）：0x100096208 ∈ `-[BFCTicket init]`、0x100096764 ∈ `+[TicketPrefs shared]`、0x10009943c ∈ sub_10009937C（startup，`ldr x0,[x8,#0x90]` 后 `expireAtInS`）、0x100099c10 ∈ sub_100099978（成功保存腿）。ticket 模块之外无任何代码触碰该单例，也没有把它置 nil/替换的指令，因此**静态上不存在登录/登出对该缓存的 reset 路径**；剩余只能由运行期证据判定的是"跨账号复用同一份 ticket 缓存"（下一步 = 9.13 抓包核对跨账号 ticket 复用）。
+【9.13 抓包观测（线级，team-c12；build 91300100；证据 DerivedData/Validation/team-c12/
+auth-planes.jsonl、engine-headers.jsonl、endpoint-inventory.json）】ticket 头的**出现面**已可判：
+`x-bili-ticket` 在 `dataflow.biliapi.com`（Neuron 日志通道）1,439 条、`grpc.biliapi.net` 1,234 条、
+`api.bilibili.com` 924 条、`app.bilibili.com` 727 条、`passport.bilibili.com` 258 条均出现，
+而在 `cm.bilibili.com`（广告）与 `data.bilibili.com`（旧 V2 日志）为 **0**——即"并非全部请求都带
+ticket"在现版成立，覆盖面与拦截器注册范围同形。`x-ticket-status` **响应头只在 webview 请求
+见到 22 次且取值恒为 `1`**（`/x/click-interface/web/heartbeat` 20、`/x/web-dynamic/v1/detail` 1、
+`/x/v2/reply/reply` 1），官方 App 原生请求 0 次。全语料 `POST /bilibili.api.ticket.v1.Ticket/GetTicket`
+仅 **3** 次，且无"失败后连续多次 GetTicket"样本，故 `get_max_tries` 是否被消费仍不可判（弱否定）。
+`magent` 头给出的现版版本串为 `…9.13.0_91300100`（海外 `…6.6.0_91300300`）。
+"跨账号复用同一份缓存"需换号前后对照，本次样本不含。
 
 TicketMoss（0x1000982b0）按 `min(failureCount×baseDelay,maxDelay)` 安排下一次请求，
 值小于 1 时立即安排且无 jitter，否则再加 [0,maxJitter] 的浮点均匀样本。乘法与失败
@@ -1650,6 +1681,18 @@ PegasusConfig.isFeedReqSuccessOnce 为假时加 DeviceInfo。明文是 idfa 单�
 （0x10df06d08）调用 CCCrypt 的 op=0、algorithm=0、options=3、keyLength=16、IV=nil，
 即 AES-128-ECB + PKCS#7，key 来自调用处的包内常量。本文不记录该常量，也不能据此
 推断现版新安装登记仍相同。
+【9.13 抓包观测（线级，team-c12；build 91300100；证据 DerivedData/Validation/team-c12/
+probe-fingerprint.jsonl、endpoint-params.jsonl、probe.jsonl）】现版仍是
+`POST https://app.bilibili.com/x/resource/fingerprint`（28 条：mainland 21 / overseas 7），
+`Content-Type: text/plain`，query 14–15 键，**body 为 JSON 且顶层恰为 `key` 与 `content` 两键**：
+`key` 长度恒 **256**（=128 字节 hex，与 RSA-2048 密文一致）、`content` 长度
+**992/1024/1056/1088**（=496/512/528/544 字节 hex，与 54 字段 protobuf 的 AES 密文体量一致），
+两值字符集**全为小写 hex**。这支持"9.13 仍在用同一端点、同一 `hex(AES)`+`hex(RSA)` 形状"，
+但不给出 54 项实际取值、也不能证明 AES 模式/PEM 与 8.89 逐字节相同（需解密或真机 dump）。
+同批还观测到访客登记 `POST https://passport.bilibili.com/x/passport-user/guest/reg`（3 条，
+`application/x-www-form-urlencoded`），body 键为 `device_info`(长 384) + `dt`(长 172) +
+`actionKey/appkey/build/c_locale/device/disable_rcmd/mobi_app/platform/s_locale/sdk_ver(长 6)/sign(长 32)/statistics/teenagers_age/ts`，
+与静态的"两业务键 + 公共参数"一致。
 
 helper 单例初始化（0x10df579ec）设 isColdLaunch、isFirstRefresh、willFisrtLoad 为真，
 读取 Documents/chooseInterest.plist 到 firstRequestInfo，随后删除该文件。
@@ -1673,6 +1716,33 @@ Swift注册前台通知到0x101a35b18，对timeIntervalSinceNow取fabs，abs严�
 清理，类型 mask 含义未解码（下一步 `$PY disassemble.py 0x101a35b18 0x101a35d00` 读该处 mask 立即数）：若该 mask 来自 observer 注册入参则属运行期取值、静态不可定；
 下一步 `$PY disassemble.py 0x101a35b18 0x101a35d00` 读该处 mask 立即数与注册 selector。
 两种实现及各自缓存时机需保留区别。
+
+【9.13 抓包观测（DerivedData/Validation/capture-resume/session-background.json、
+session-restart.json；官方样本 build 91300300）】后台约 45 秒与 95 秒后返回前台各触发一次
+feed/index，两次均 `open_event=hot`、`flush=6`、`pull=1`；冷启动首请求为 `open_event=cold`、
+`flush=0`、`pull=1`，随后一次普通刷新为 `open_event` 空、`flush=6`。即"返回前台触发请求且
+标记为 hot"已由样本支持；样本后台时长均远小于 1800 秒且未含 `banner_hash` 取值，上述清空
+边界与注册时机静态残余保留。这些是本次样本取值，不是协议只允许这些组合。
+
+【9.13 抓包观测（线级，team-c12；本机 `work/bili-capture/` 32 组 .flows，官方 App
+9.13.0/build 91300100，268 条 feed/index；证据 DerivedData/Validation/team-c12/wire-feed.jsonl、
+feed-template.jsonl）】`banner_hash` 在 feed/index 上**始终出现**（可为空串，从不缺键）；
+完整参数模板内（n=236）：`open_event=cold` → banner_hash 42/42 为空、`hot` → 13 空 17 非空、
+`open_event` 空（普通刷新）→ 73 空 91 非空。返回间隔 ≥1800 秒的 8 次请求 banner_hash **8/8 全空**，
+其中 `open_event=hot` 3 次（间隔 2441s/5449s/72658s，末次即
+`round2/idle_after_exposure_area_cancelled.flows`）；但 <60s 短间隔桶同样 77/163 为空，
+**空值不是 1800 秒阈值的可分离信号**——本次样本既不能确认也不能否证"1800 秒才清"，
+上述静态清空边界（0x101a35ca8/0x101a35cb4 的 fabs>1800）仍保留为残余。新增耦合观测：
+`banner_hash` 与 `splash_creative_id` 同空 128 次、同非空 76 次、仅 splash 空 32 次
+（无"仅 banner 空"），二者基本同源（服务端 config）；同一 build 的 `/x/v2/splash/list`
+其 `open_event` 取值域为 `cold/cycle/background`，与 feed/index 的 `cold/hot/空` **不同域**。
+另：feed/index 现版有**两套参数模板**——47/48 键完整模板（含 open_event/banner_hash/
+login_event/inline_*/client_attr/qn_policy/player_net/soft_fnval/autoplay_card/auto_refresh_state/
+video_mode/teenagers_age/splash_ids/splash_creative_id/ad_extra/network）与 28/29 键精简模板
+（以上 18 键全部不出现）；`ad_extra` 与 `network` 同现同缺，`access_key` 与登录态同现同缺；
+观测取值域 `flush∈{0,1,2,5,6,8,14}`、`fnval∈{84948,2448}`、`column∈{2,3,4}`、
+`login_event∈{0,2}`（海外组另见 1）、`inline_sound∈{1,2,3}`、`autoplay_card∈{4,10}`、
+`force_host∈{0,2}`、`https_url_req∈{0,1}`、`auto_refresh_state∈{1,3,4}`。均为该样本取值，非协议常量。
 
 Swift首页caid又是另一条首次上传链：Marker0x101a3515c检查
 hasUploadedCaidSinceInstallation=false才global queue调用BBDeviceInfo.mergeCAIDParams
@@ -1810,6 +1880,26 @@ contexts，仍受前述最小时长门槛。因而已有duration在实际离开�
 context，不是暂停后累计；show identifier 全局去重池是否重置未解码（0x101b60644 起的结算/移出池写者；若为进程内单例池则
 属运行期状态）；下一步 `$PY disassemble.py 0x101b60644 0x101b60f00` 反汇编结算/移出池写者
 并回溯池 reset 调用方。
+【9.13 抓包观测（DerivedData/Validation/capture-resume/full-exposure-events.json、
+full-click-events.json、revisit-events.json、revisit-finish-events.json）】手动刷新与跨时间
+重访会话中，`tm.recommend.feed-card.duration.show`（policy=1 通道）与
+`tm.recommend.feed-card.0.show` 均对新一批卡片重新上报；duration 事件样本 extraKeys 含
+position/card_start_time/card_end_time/tm_card_play_state/event_policy/track_id/card_goto/
+card_type 等，与上文两段 DateUnix×1000 字段一致。这只证明事件跨刷新/跨会话重复出现，与
+"普通离开不清池"的静态结论相容，不构成去重池被 reset 或其生命周期的证明；池语义残余保留。
+
+【9.13 抓包观测（线级，team-c12；build 91300100；证据 DerivedData/Validation/team-c12/
+neuron-events.jsonl，RDIO + protobuf 解码，含 gzip）】全语料 `tm.recommend.feed-card.0.show`
+1,269 条、`tm.recommend.feed-card.duration.show` 2,194 条。按 (param, track_id) 统计：
+`round2/watch_events_official.flows` 的 712 条 show 只对应 561 个不同 identifier，123 个重复
+（最多 6 次），其中 **39 个跨 feed 刷新重复、84 个在同一刷新间隔内重复**；但把
+`position`/`is_background`/`event_policy`/`card_material_id`/`tm_card_play_state` 一并计入键后，
+全语料只剩 **11 组** exact-dup（4 组跨刷新，占比约 0.9%）——即**去重键不止 identifier，
+至少还含生命周期态与槽位**；`is_background` 取值 `{2,1,3}` 分别为 1076/141/52（同一 track_id
+常以不同 is_background 各上报一次）；`event_policy` 在全部 show 与 duration 上恒为 `1`，
+`tm.recommend.0.0.pv` 恒为 `0`。这既证明"同 identifier 可跨刷新/同批次重复上报"，
+也把"池 reset"进一步收窄为"池按 identifier+槽位+生命周期态去重"；**reset 触发本身仍不可判**，
+上文 0x103eba88c 移除 context 与 0x101b60e7c 结算写者仍未逐指令闭合。
 raw7则走0x101b60494的条件检查，不能把显示事件本身等同于已产生曝光记录。
 apply completion0x101a44530另发布feedDataChanged raw24，包含账号empty Diff应用。
 RealExposure订阅该事件，经0x101b6070c排main.async再进入0x101b60900；它忽略
@@ -4128,6 +4218,12 @@ resolverForUgcPlayUrlWithAid:cid:protocol:deviceType:qn:completeBlock:）、0x11
 playView → 0x114a5c180（UGCHelper resolverV2With:localResponseModel:completeBlock:）、
 0x114a36740（Cheese）、0x114a127d8（PGC）与 0x114a2984c（PIP URL）、0x1139277d0/0x113941af4（MALL）；
 playConf → `-[BBCDeviceConfig requestRemotePlayConfig]`（0x114faa458，即「PlayURL 旧操作配置」链）。
+上传请求类已定（team-c11）：PlayConf edit 走
+`[BAPIAppPlayurlV1PlayURL playConfEditWithRequest:handler:]`（stub 0x117481ee0，
+调用点 0x114faa680，syncEditToRemote: 0x114faa5c4 内 semaphore 等待），请求体
+SKVObject setPlayConfArray:（0x114faa11c）；Universal 走
+`[BAPIAppDistributionDistribution setUserPreferenceWithRequest:handler:]`
+（stub 0x117657fa0，调用点 0x114faa8a0）。
 
 两个请求描述符已逐项提取（0x114fadd00、0x114fae2a4）：
 
@@ -5199,6 +5295,20 @@ sessionId独立updateSession保存；checkSessionIsExpired（0x113f18e9c）仅�
 非nil且与输入不相等才true，旧nil返回false。
 isFirstPageReached对prevOffset=nil或空都true；isLastPageReached只比较nextOffset
 与空字符串，next=nil经Objective-C返回false。这里没有超时时间运算，不能称为TTL过期。
+分页wire字段（GPB表32B/项解码）：请求`BAPIPaginationPagination`（descriptor
+0x116450f8c，fields 0x120880020）仅1:pageSize、2:next两字段，客户端nextOffset或
+prevOffset序列化时都进单个`next`字符串，没有独立pn/ps；回执`BAPIPaginationPaginationReply`
+（0x116450ff8，fields 0x120880078）仅1:next、2:prev，updatePagination按此写回两offset。
+对照组`BAPIPaginationFeedPagination`（0x116451064，fields 0x1208800b8：pageSize/
+offset/isRefresh）与`FeedPaginationReply`（0x1164510d0，fields 0x120880118：
+nextOffset/prevOffset/lastReadOffset）不属于评论链；评论链无lastReadOffset。
+子回复DetailListReq的builder 0x113f1c60c反汇编复核只赋oid/type/root/rpid/mode/
+pagination/scene/needSubjectTitle/extra/adExtra，cursor字段不赋；BAPIMainCommunityReplyV1Reply
+服务面（0x114178e14–0x1141793b4）只有mainList/detailList/dialogList/previewList/
+searchItem*方法，二进制内未见REST `x/v2/reply/reply` 子回复路径。广播插入链
+（0x113f56080→0x113f5650c→ReplyInfoReq）不读不写BFCCommentPagination的next/prev，
+也不更新sessionId，去重靠rpid与current/preInsertCard比较加waitingRequest/shouldInsert
+门，插入条目不参与后续nextOffset分页计算。
 首屏成功callback（0x113f77838）先updateSession(response.sessionId)、
 updatePagination(response.paginationReply)，重建sortModel为响应mode/modeText，
 清isLoading/error，再_processLoadData并complete(true)。失败callback
@@ -5395,8 +5505,19 @@ allHeaderFields 取 x-bili-gaia-vvoucher。code=-352 且 voucher.length>0 才隐
 原 failure。验证码 completion（0x11407cfe4）仅 success 原始 bool 非零且 token
 length>0 时，以捕获的原 dictionary/success/failure/customResponse 重新调用统一
 发送，并传新 captchaToken；不满足条件调用原 failure。重发会再次生成当前
-scm_action_id，不直接复用先前 BFCApiOptions。此局部没有次数上限或延迟回退；
-仍需核对 captcha service 的内部限制、成功回执到列表更新、草稿持久化及 UI 提交入口。
+scm_action_id，不直接复用先前 BFCApiOptions。此局部没有次数上限或延迟回退。
+captcha service 侧限制已核：onVoucherWithTag:voucherInfo:completionBlock:
+（0x114583440）生成 `OnVoucher-%@` 事件名与 `BFCRiskControl-<UUIDString>` uuid，
+track type=1/result=1 后调 showCaptcha（VC 传 nil、useCustomAlert=1）。
+showCaptchaWithCaptchaInfo:uuid:tag:viewController:useCustomAlert:completionBlock:
+（0x114584374）先 saveCallBackInfoWithTag:uuid:block:（0x114584538）再查
+commonCaptchaIsShowing：已在展示时只 track type=2/result=1 并 return，新回调已入
+callBackInfos，由当前展示中的验证码完成时 callBackAllBlocksWithSuccess:token:error:
+（0x1145849fc）统一派发（排队而非丢弃）。成功派发条件为 success 且 token 非空才
+setToken: 并回调，随后 isShowing=false；token 存 commonCaptchaResultToken，过期时间
+= now + tokenEffectiveTimeInterval（0x1145849d0），tokenIsExpired（0x1145847d0）
+为 now>=expireTime 比较。service 内部没有重试次数上限或退避字段，客户端此链路的
+限制仅单实例展示互斥、token 有效期与每次重新生成的 UUID。
 分析未打开真实挑战 URL、申请验证码或发布评论。
 
 ### 普通评论键盘的另一条模型路径
@@ -5502,10 +5623,12 @@ swift_beginAccess(provider+0x10，对应`$__lazy_storage_$_instance` 0x1182951d8
 _$GripperDraftServiceProviderDependencyProvider（allocObject 0x40，weak component存+0x30）
 →witness形态thunk 0x100e2b238（无BL调用者，仅0x202eb9a8/0x21b4bac0数据槽引用）→
 0x100e2b04c。同区DraftFilter/DataTransfer两个provider的0x100e2b258/0x100e2b2b4同构对照成立。
-因此"唯一conformance + 唯一构造点"成立；provider 实例注册进
+因此"唯一conformance + 唯一构造点"成立；`$PY find_pointer_refs.py 0x1182951d8`
+已执行，结果为空——`$__lazy_storage_$_instance` 槽全二进制零静态指针引用，唯一
+访问路径仍是 0x100e2b04c 惰性初始化体（同区 DraftFilter/DataTransfer provider
+0x100e2b258/0x100e2b2b4 为同构阳性对照）。provider 实例注册进
 ServiceLocator/Inject 容器发生在 DI 运行期（间接派发、无静态引用），静态不可定；
-下一步真机 LLDB 断点 0x100e2b04c 观察注册顺序，或
-`$PY find_pointer_refs.py 0x1182951d8` 扫惰性存储槽引用。
+下一步真机 LLDB 断点 0x100e2b04c 观察注册顺序。
 
 该Impl异步磁盘分支将文件名组成`comment-<传入key>.archive`，保存0x100e31ac4、
 读取0x100e3227c都没有把oid加入文件名。路径helper0x100e33978调用
@@ -6382,7 +6505,9 @@ didSyncReceiveMessages:hintMessages:notifications:messageRange:continued:（0x10
 connectManager:didReceiveUpdateSessions:（selref 0x11f7cd950）。
 已读回执 updateRemoteAck:completion: 0x10e5f3d48 读 item.maxSeqno/locSeqno
 （0x10e5f3d88–0x10e5f3da4）交 synchronizeHandler.updateAckWithItem:completion:
-（0x10e5f3dd8）：去重/推进游标的键是 maxSeqno+locSeqno，不是推送 task_id。
+（0x10e5f3dd8→BBIMSynchronizeHandler 0x10e4ccb98）：请求侧 ackSeqno 的取值优先级是
+item.maxSeqno 非 nil 时直传，否则退 item.locSeqno.unsignedLongLongValue（0x10e43e42c），
+不是把两个字段拼接，也不是推送 task_id；字段级见下节。
 未读映射 `+[BBLinkGetUnreadModel unreadModelWithMossRsp:]` 0x10e62c304 tail 到
 initWithTotalRsp: 0x10e62c154：totalUnreadNew.unreadCount→totalUnreadCount、
 unreadType→totalUnreadStyle、msgFeedUnread→msgFeedWithMossRsp:、sessionUnread→
@@ -6400,6 +6525,98 @@ setApplicationIconBadgeNumber（后者仅 BBCPushCenter 一条，见上文）。
 静态边界：Blink 引擎本体（连接、心跳、sync RPC 传输）不在主二进制——
 BBIMConnectionProtocol/Observer 仅存协议对象（0x11ea46bb8/0x11ea47020），无实现类符号；
 引擎传输与重连参数静态不可判，需真机抓包 IM 长连接 host/port 与 sync/auth 帧取证。
+
+### IM 未读/同步的字段级链（task-18 补）
+
+同步请求（fetchRemoteRelations 实际是 RPC `SyncRelation`）：checkRefreshInfos 0x10e5f3530
+在 authority.login 非 0 时 BL 到共享 stub 0x10f84cf4c（site 0x10e5f3584）=
+`-[BBIMSynchronizeHandler fetchRemoteRelations]` 0x10e4c92e8；另一调用方是
+refetchRemoteRelations 0x10e4c92c0（先把 relationSequenceNumber 置 0，0x10e4c92d0/0x10e4c92e4），
+find_callers 0x10f84cf4c 的全部命中就这两处。链：inner_fetchRemoteRelationWithQueue:completion:
+0x10e4c93ec 读 relationSequenceNumber（0x10e4c9434）→
+inner_fetchRelationsWithSequenceNumber:queue:completion: 0x10e4c9578（日志 CFString
+0x11d1bc3f0 `Prepare to synchronize relation with sequence number: %llu.`，category BBLink，
+源文件 BBIMSynchronizeHandler+BBIMGroupPrivate.m 第 41 行）→ async block 0x10e4c9650 组
+`BAPIImInterfaceV1ReqRelationSync` 并 setClientRelationOplogSeqno:（0x10e4c9684）→
+`[BAPIImInterfaceV1ImInterface syncRelationWithRequest:handler:]`（stub 0x10f88b3bc）。
+回执 block 0x10e4c9704 形参 (response,error)：error.bapi_status 非 nil 时用 domain/code/message
+重造 NSError（0x10e4c9754–0x10e4c9820）否则原样；完成 block 0x10e4c9500 取
+`[response serverRelationOplogSeqno]`（0x10e4c9534）写 setRelationSequenceNumber:（0x10e4c9540）。
+包装 block 0x10e4c93a8 先对 self+0x20 发 _respondDelegatesDidSyncrhronizeGroupsReponses:
+（透传整个 response）再回调 completion。RPC 全名（本轮闭合）：service 由
+`-[BAPIImInterfaceV1ImInterface initWithHost:callOptions:]` 0x1162072c0 建
+（createMossServiceWithHost: packageName `bilibili.im.interface.v1` serviceName `ImInterface`），
+`+defaultService` 0x1162074b8 host=grpc.biliapi.net、isRest=0；instance 0x116207708 把 request、
+RspRelationSync class、service、serviceName CFString `SyncRelation` 交
+`+[BFCMossServiceWrapper handleRpcRequestWithRequest:responseClass:service:serviceName:handler:]`
+⇒ `/bilibili.im.interface.v1.ImInterface/SyncRelation`。请求描述符
+`+[BAPIImInterfaceV1ReqRelationSync descriptor]` 0x116209ce0：1 字段 clientRelationOplogSeqno
+（fields 0x120852b50）；回执 `+[BAPIImInterfaceV1RspRelationSync descriptor]` 0x116209d4c：
+5 字段 full(bool)/relationLogsArray/friendListArray/serverRelationOplogSeqno(uint64)/
+groupListArray（fields 0x120852b70），应用层只消费 serverRelationOplogSeqno。
+
+未读五组（RPC `GetTotalUnread`）：`+[BBLinkNetCenter
+fetchTotalUnreadWithUnreadType:dustbin:unfollow:handler:]` 0x10e655084 先被
+`[BBIMHelper isSessionRefactorOn]` 门禁（真则不发，0x10e6550bc），再组
+`BAPIImGatewayInterfaceV1GetTotalUnreadReq` 的 unreadType/showDustbin/showUnfollowList
+（0x10e6550c8–0x10e6550f0）→ `[BAPIImGatewayInterfaceV1ImGatewayApi
+getTotalUnreadWithRequest:handler:]`（stub 0x10f850dc4）；instance 0x10e66a23c responseClass=
+`BAPIImGatewayInterfaceV1GetTotalUnreadRsp`、serviceName `GetTotalUnread`，service 0x10e669bec
+package `bilibili.im.gateway.interface.v1`、service `ImGatewayApi`
+⇒ `/bilibili.im.gateway.interface.v1.ImGatewayApi/GetTotalUnread`。完成 block 0x10e655174 调
+`[BBLinkGetUnreadModel unreadModelWithMossRsp:]`，且 error 非 0 时把模型置 nil
+（0x10e6551b4 csel）。Req 3 字段 unreadType/showUnfollowList/showDustbin（descriptor 0x10e66c9a4，
+fields 0x12061eaa0）；Rsp 6 字段 sessionUnread/msgFeedUnread/sysMsgInterfaceLastMsg/
+customUnread/totalUnread/totalUnreadNew（descriptor 0x10e66ca10，fields 0x12061eb00）。
+映射 `-[BBLinkGetUnreadModel initWithTotalRsp:]` 0x10e62c154：totalUnreadNew.unreadCount→
+setTotalUnreadCount:（sxtw，0x10e62c1b0–0x10e62c1bc）、totalUnreadNew.unreadType→
+setTotalUnreadStyle:（0x10e62c1dc–0x10e62c1e8；totalUnreadNew 缺失时消息返回 0，无 nil 分支）、
+msgFeedUnread→`+[BBLinkUnreadFeedModel msgFeedWithMossRsp:]` 0x10e62b958、
+sessionUnread→`+[BBLinkUnreadSingleModel singleWithMossRsp:]` 0x10e62bb4c、
+sysMsgInterfaceLastMsg→`+[BBLinkUnreadUpHelperModel sysLastMsgWithMossRsp:]` 0x10e62c058；
+customUnread/totalUnread 在本模型无 ivar，不消费。msgFeedUnread 的 MsgFeedUnreadRsp 只有 1 个
+bytes 字段 unread（descriptor 0x11620af80），`-initWithFeedRsp:` 0x10e62b71c 交
+parseGPBDataToDictionary 后按字符串键 at/like/reply/sys_msg/sys_msg_style/recv_like/recv_reply/
+new_follow 取 integerValue（8 个计数器，缺键为 0）。sessionUnread 的 SessionUnread descriptor
+0x10e66ca7c 有 13 字段（多 customUnread/systemUnread/strangerUnread/strangerPushMsg/accountUnread），
+而 `-initWithSingleRsp:` 0x10e62ba24 只取 10 项（含 strangerUnread/strangerPushMsg；只有
+strangerPushMsg 按对象直传，其余 sxtw），customUnread/systemUnread/accountUnread 不消费。
+sysMsgInterfaceLastMsg 的 Rsp descriptor 0x11620afec 4 字段 unread/title/time/id_p，
+`-initWithSysLastMsgRsp:` 0x10e62bc38 组 {id,time,title,unread} 四键字典→setMsgDictionary:，
+title.length 非 0 才 modelWithDictionary: 建 BBLinkUpHelperNewestMessage→setAnchorMsg:
+（0x10e62bfc0 段）。未读请求的两个业务生产者（find_callers 0x10f84d078 全部命中）：
+`-[BBIMSessionManager queryCombineSessionUnread:dustbin:unfollow:completion:]` 0x10e4c3cbc 与
+`-[BBLinkBadgeValueNodeManager queryTotalMsgUnread:completion:]` 0x10e63f984（要求
+BBLinkAuthority.login 非 0；unreadType 取 BBIMHelper.enablebadgeNodeAppendFilter ?
+foldUnfollowedSessionConfig : sessionPreference.foldUnfollowedSession，dustbin=0，
+unfollow=!enablebadgeNodeAppendFilter，0x10e63fa94/0x10e63faa4）。角标语义在该链 block
+0x10e63fb00：totalUnreadStyle==0 不设置、==1 用 totalUnreadCount、==2 用常量槽 0x118e40740
+（chained-fixup 未解码），setCount: 到 rootMessageNode ⇒ 只有 totalUnreadNew 组驱动 root
+badge node。
+
+已读回执：`-[BBIMSynchronizeHandler updateAckWithItem:completion:]` 0x10e4ccb98（日志 CFString
+0x11d1bc4b0 `prepare to update message record`，BBIMSynchronizeHandler.m 第 67 行）以
+objc_msgSend$async: 把 block 0x10e4ccc80 派发到 self；block 先 [item type]（getter stub
+0x10f88ed54=`type`）==3 且 isKindOfClass:BBLinkServiceSession 时走 BBIMServiceNetCenter
+customerUpdateAckWithAckSeqo:shopId:shopFatherId:completion:（取 kf_ackSeqno 与
+kf_talkerInfo.shopId/shopFatherId），否则 BAPIImInterfaceV1ReqUpdateAck requestWithSession:item
+后 updateAckWithRequest:handler:。`+requestWithSession:` 0x10e43e42c：sessionType=
+[item type]==1?1:2、talkerId=[item contactID].unsignedLongLongValue、ackSeqno=maxSeqno 非 nil
+时直传，否则 locSeqno.unsignedLongLongValue。ReqUpdateAck descriptor 0x11620a114 3 字段
+talkerId/sessionType/ackSeqno（fields 0x120853130）；instance 0x116207d20 serviceName `UpdateAck`、
+responseClass=`BAPIImInterfaceV1DummyRsp` ⇒ 回执无业务字段、客户端不消费。ReqSyncAck/RspSyncAck
+（0x116209db8/0x116209e24）属另一条 syncAckWithRequest:handler: 0x116207898，业务调用方本轮未定位。
+
+推送到达后的字段映射：`_respondBadgeValueWithType:notification:` 0x10e645fc0 不读 notification
+字段，只 copy 后经 hasDelegateThatRespondsToSelector:
+notificationManager:didReceiveBadgeValueWithType:notifcation: 门禁转发 (self,type,notification)；
+真正做映射的是 `_respondUpHelperNewestMsgToNotificationCenter:` 0x10e6460fc：
+notification.subtitle→title（0x10e646168）、notification.unreadCount→unreadCount（0x10e64617c）、
+notification.timestamp→timestamp（0x10e646188），经
+didUpdateAnchorMessagesWithTitle:unreadCount:timestamp:（selref 0x11f6ba998）转发给
+BBLinkBadgeValueManager 0x10e5e5184。静态边界与上节一致：Blink 引擎本体（连接/心跳/sync 传输）
+不在主二进制；isSessionRefactorOn 与 style==2 常量取值属运行期。证据
+DerivedData/Validation/team-c13/findings.md。
 
 ### 本地通知与 category
 
@@ -6524,6 +6741,60 @@ getPendingCrashReportInfo0x10514a7a8读取报告JSON encode，nil/空编码直�
 静态不可穷尽/不可定项；下一步 query_index.py '*KSCrash*' 30 圈定缓存链，find_callers.py
 0x10514f538 核对删除链；Log独立出口已闭合至C 0x116486584，业务初始化可达性由实验门禁
 0x10513abdc运行期决定。
+
+### Crash/KSCrash 提交路径与 Laser 回执端点（task-18 补）
+
+KSCrash 类本体在主二进制内。自身发送器 `-[KSCrash sendAllReportsWithCompletion:]` 0x105174854 →
+`-[KSCrash sendReports:onCompletion:]` 0x105174c7c 需要 `-[KSCrash sink]` 0x105175b50：sink 为 nil
+时建 KSError（描述串 CFString 0x11d0e4b70 = `No sink set. Crash reports not sent.`，
+0x105174d64–0x105174d98），非 nil 才 `[sink filterReports:onCompletion:]`（0x105174d30）。
+本样本内该发送器没有调用方：`query_index '*objc_msgSend$sendAllReportsWithCompletion*'` 零命中；
+阳性对照 `'*objc_msgSend$allReportID*'` 有 j_ stub 0x10f83ab90 与规范 stub 0x1171da660，且应用侧
+唯一消费者是 `-[BFCTrackerHandler loadPendingCrashReportID]` 0x10514aaf8；setSink: 的 stub
+0x11762d1c0 唯一调用点 0x1148dcaa0 属 ConnectionManagerGetProtocolInfo，与 KSCrash 无关。
+即 8.89 样本里崩溃报告不由 KSCrash 自身 HTTP 发送器发出，实际提交仍是 onReportIssue:
+0x105142ee0 组字段（Lag 5/generic 5/其他 4 字段）→ Analytics callback 0x10513ad00 →
+trackLog(`app_reboot_track`)/trackTech(`public.crash.crash-report-scene.track`,rate100)
+（0x10513ad44/0x10513ad74）→ Mikoto/Neuron（LOG-01 通道）或 LogService，两条都无 HTTP 回执。
+本地缓存/删除维持既有：loadPendingCrashReportID 0x10514aaf8、getPendingCrashReportInfo
+0x10514a7a8（空编码即删 0x10514a9f4）、reportType1 成功 deleteCrashDataWithReportID
+0x10514f538、removeItemAtPath:error: 0x1051759b4（不检查返回）。措辞保留：chained-fixup/
+运行期拼 selector 不能静态排除 sink 被设置。
+
+Laser 五个 wrapper 端点与四个 Api 入口一一对应（本轮闭合 UP-01/UP-03 残余）：
+`+[BFCLaserConstWrapper silenceURL]` 0x104e30f70 = `https://app.bilibili.com/x/resource/laser/silence`、
+laserURL 0x104e31070 = `…/laser`、laser2URL 0x104e31174 = `…/laser2`、reportCommandURL
+0x104e31278 = `…/laser/cmd/report`、uploadURL 0x104e3137c =
+`https://api.bilibili.com/x/feedback/uploadFile`（源文件
+`srcs/base/BFC/Fawkes/BFCLaser/LaserConstWrapper.swift`）。调用侧：
+reportFawkesCMDTaskByBroadcast: 0x114a888d8 用 reportCmdUrl（0x114a88990）、
+reportFawkesTaskByBroadcast: 0x114a88cb8 用 laserUrl（0x114a88d70）、
+reportFawkesTaskByPush: 0x114a89080 用 silenceUrl（0x114a89138）、reportFeedback: 0x114a89448
+用 laser2Url（0x114a89548，经 `+[BFCLaserConst laser2Url]` 0x114a8dc20）。reportFeedback: 的请求体
+8 键 + 条件 task_type（dictionaryWithObjects:forKeys:count:8，0x114a89690）：app_key←fawkesKey、
+buvid←`+[BFCBuvid buvid]`、status←@(status).stringValue、url/raw_upos_uri/md5/error_msg/task_id
+分别取形参（nil→空串），task_type 非 nil 才 setObject:forKeyedSubscript:（0x114a896f0）；
+setRequestMethod:1（0x114a89580），回执经 apiModelDescription→modelWith:/data（0x114a89740）后
+requestWithOptions:（0x114a897a4），重试参数 3/3 见既有条目。即 BLog/日志附件链的提交 =
+UPOS（UP-01/02）上传 + 本段 laser2 回执，两层判定；BLog 队列产物（`Documents/BLog` 日文件，
+BLogAttachment.localPaths 0x104953c98→0x104955284，先 flush BLogger）经 provider
+（0x12028f0c0，witness 0x1049514a0/0x1049514d8）→ TaskOperation.uploadAfterPackup 0x114a91348
+打包后进入该链。
+
+LogService 双出口的字段级补充：logEvent 实现 0x104953a00→0x1049536b4 以 type/event_details
+包装原 dictionary，NSJSONSerialization options=8（0x104953868）后 UTF-8，失败不写；false 出口到
+C 0x11539bba4→BFCLogEngine 0x120db2368，engine init 0x11539bfb8 注册 DDFileLogger，写入点是
+seekToEndOfFile + writeData:ddError: 0x1153bdfa0，**未读 ddError**；true 出口 BLogger
+virtual+80=0x1050a1bf8 在 mLogger=nil 时直接返回，DefaultImpl log 0x1050a26b0 level4 选
+BLog.error 0x1164801c8→core global 0x1210df460，无 HTTP ACK。远程配置 updater 只写
+bfclog.blog_enable/bfclog.is_use_oslog，不写已构造 LogSystem.byte+0x10（该 byte 只在构造时从
+standard defaults 读一次，0x1049525e4/0x104952610），同进程内新开关不即时生效。
+
+不可判（明写）：KSCrash 报告 writer 的完整字段集属第三方运行期（需真机触发一次可控崩溃后读沙盒
+报告 JSON，或断点 0x105142ee0 dump dictionary）；sink 是否可运行期设置需断点 0x105175b50 观察；
+Neuron/LogService 是否被服务端收取需 9.13 抓包按事件名过滤；BLog daily/quota 旧 job 筛选仍分散在
+多个 helper（下一步 `disassemble.py 0x116481bfc 0x116483000`）。证据
+DerivedData/Validation/team-c13/findings.md。
 
 ### Laser 附件任务的日期窗、过期与外部清理（task-13 补）
 
@@ -11235,6 +11506,29 @@ PGC 付费下单：`+[BBPgcPhoneStore requestWithSeasonModel:sceneMode:extraPara
 completeBlock:error:]`0x112132dc8 → `/pgc/pay/api/season/order/create`（候选引用
 0x112132e50）。
 
+PGC 详情 params 字段级（0x1121d8964，证据 team-c11）：params 共 10 键
+（dictionaryWithObjects:forKeys:count:10，0x1121d8bb8）——`season_id`（入参
+longLong→stringValue，0x1121d8a8c）、`track_path`（requestFrom，缺省 `''`）、
+`from_spmid`（缺省 `default-value`）、`spmid`（常量 `pgc.pgc-video-detail.0.0`，
+0x11d288ef0）、`from_av`（缺省 `''`）、`autoplay`（缺省 `'0'`）、`trackid`
+（缺省 `''`）、`pgc_play_abtest`（BFCABTestConfig
+getValueByName:'pgc_play_abtest'，0x1121d8a10）、`is_show_all_series`
+（BFCMemexABTest hitExperimentalGroupForKey:
+'ogv_player_detail_all_series_abtest'→'1'/'0'，0x1121d8a68）、
+`ugc_ogv_unity_exp`（BBPgcBaseHelpTools.shared hitSeasonDetailCommonUI→'1'/'0'，
+0x1121d8b94）；adExtra 非空追加 `ad_extra` 键（0x1121d8c08）。referSeasonId ivar
+（0x11f86f9fc）非 nil 时追加请求头 `bili-referer:
+bilibili://bangumi/season/%lld#recommend`（0x1121d8c68–0x1121d8cb8）。
+响应侧 SeasonM2 mapper 0x1121db1b4：newest_ep←new_ep、season_type←type、
+season_status←status、total_ep←total、limitPlay←limit、roomInfo←room_info、
+ipPhoneInfoList←earphone_conf.sp_phones；container 泛型 0x1121db2a8 覆盖
+stat/rights/publish/rating/user_status/payment/up_info/episodes/seasons（递归
+SeasonM2）/section/modules/reserve/dialog 等 33 键；payment 子模型
+BBPgcPhoneBangumiPayment 字段 price/vip_promotion/vip_first_promotion/
+quality_guide/vip_badge_info/vip_pay_link/pay_type/pay_tip/dialog/
+dialog_type_map/coupon_info/report_type/vip_report/report/order_report_params
+（0x1121e0948–0x1121e0cc4）。
+
 ### 会员状态读取与权益提示
 
 `+[BFCVipUserFaceApi requestWithMid:isSync:completeHandler:errorHandler:]`
@@ -11256,13 +11550,39 @@ getComicWithComicId:andEpid:isInstallBiliComic:trackId:completion:error:]`
 `pay.v1.Pay/GetBCoinLevel|CreatePayAndConsumeOrder|GetOrderState|GetExchangeConfig`、
 `column.v1.ColumnPay/BuyComic`。
 
+漫画传输与字段（team-c14，反汇编 0x10ec79804–0x10ec7addc）：公共层
+`+[BBComicRequest requestWithUrl:andParams:completion:error:]` 0x10ec79804 构造 BFCApiOptions
+（setParams: + **setRequestMethod: 2（POST）**，0x10ec798a0–0x10ec798a8），响应按
+`modelWith:'data' mappingClass:<classref 0x11f7b5c38> isArray:0` 映射后交 BFCApiRequest
+initWithOptions:→requestAsync（0x10ec79964）；requestRaw 变体 0x10ec799ac 唯一差异映射根 `'/'`（整包）。
+mappingClass 具体类静态不可判：槽 0x11f7b5c38 为 chained-fixup，静态 qword=0，加载期才绑定
+（取证：lldb 断 `+[BFCApiModelDescription modelWith:mappingClass:isArray:]`）。GetComic 请求键：
+`comic_id`/`ep_id`（numberWithInteger→`%@` 字符串化，0x10ec79c9c–0x10ec79d64）、
+`is_install_bilicomic`（numberWithBool→stringValue，0x10ec79d68–0x10ec79d98）、
+`track_id`（nil 取常量 ''，csel 0x10ec79dab–0x10ec79db8），4 键字典 0x10ec79dd0。
+其余：CreatePayAndConsumeOrder（0x10ec7a438，URL 常量 0x11d1e1a10）键 `pay_amount`/`start_ord`/
+`with_ord_scope`（常量 '1'）/`business_type`/`limit`/`comic_id`，并把入参 trackInfo 字典合并进 params
+（0x10ec7a6b0–0x10ec7a6ec）；GetOrderState（0x10ec7a76c，0x11d1e1a50）键 `order_id`/`order_ctime`；
+BuyComic（0x10ec7a8d8，0x11d1e1a70）键 `pay_amount`/`comic_id`/`ep_id` + otherParams 合并；
+GetExchangeConfig 带 `source`='1'（0x10ec7ab44）；ReportRestoreScene（0x10ec7abf8，
+`community.v1.Pink/ReportRestoreScene` 0x11d1e1ab0）键 `idfa`/`scene`/`comic_id`/`ep_id`/
+`is_install_bilicomic`/`uri`。错误分支在 BFCApiRequest 公共层（已闭合），本类无独立错误枚举。
+
 商城 base 构造 `-[BBMallBaseApi requestUrlWithConfigUrl:]`0x11381580c（反汇编
 0x1138157c0–0x113815980）：config url 非空直接采用并按 isHKDomain 把
 `.bilibili.com`→`.dreamcast.hk`（CFString 0x11d104930/0x11d30b650，
 0x113815848–0x113815874）；为空则拼 requestUrlPath +（requestHost 或默认
-CFString 0x11d0e1290 = `https://mall.bilibili.com/mall-c`）。请求模型
-BBMallRequestModel 字段 url/query/body/extraHTTPHeader/method/needAntiInterceptor
-（0x103a0228c–0x103a0297c）。Api 族（requestApiConfig 指向 mall-c 前缀）：购物车
+CFString 0x11d0e1290 = `https://mall.bilibili.com/mall-c`）。configUrl 来源已闭合
+（team-c11）：唯一调用方 `-[BBMallBaseApi makeOptions]`0x113813630
+（stub 0x1174f2460 仅 0x113813714 一处调用），值 =
+`[[self requestApiConfig] copy]['apiUrl']`（0x1138136d0–0x113813714）→
+setBaseUrl:；makeOptions 另装配 requestMethod/timeoutInterval/headers/
+params(requestQueryWithValidate)/modelDescriptions/handlerTokenFailureShowLogin
+（0x113813744–0x11381389c）及 setSignType:/setIgnoreCache:/setCacheValidLife:/
+setIgnoreCodeNonZero:。请求模型 BBMallRequestModel 完整 ivar 族
+url/query/body/extraHTTPHeader/method/needAntiInterceptor/needGzip/
+pinnedCertificateHash（ivar 0x120435ad0–0x120435b08，getter/setter
+0x103a0228c–0x103a02c84，指定初始化器 0x103a02f78）。Api 族（requestApiConfig 指向 mall-c 前缀）：购物车
 BBMallCartAddApi 0x1136ea5f8/BBMallCartApi 0x1136eaabc/BBMallCartCheckApi
 0x1136eb330，订单 BBMallOrderUserStatusApi 0x1136f09f4，评论 BBMallCommentApi
 0x113816320，收藏 BBMallFavoriteGoodsApi 0x1128fce54，IP 订阅 BBMallIPSubscribeApi
@@ -11272,21 +11592,58 @@ onRegisterRouters 0x1031e6d4c。
 
 支付：B 币余额快付 `-[BBPhoneMineWalleBpBalancePayApi apiPath]`0x10f4da154（pad 侧
 BBHD2PhoneMineWalleBpBalancePayApi 0x10ca31228）→
-`https://pay.bilibili.com/api/client.quick.pay.do`；网页容器 JS bridge 充值
+`https://pay.bilibili.com/api/client.quick.pay.do`（字段级 team-c11：params 单键
+`pay_order_no` ← ivar _pay_order_no 0x11f8535ec，nil 则 `''`，0x10f4da184–
+0x10f4da1c4；响应 mappedClass=SKVObject、defaultResultKey=nil，0x10f4da20c/
+0x10f4da218。pay_order_no 写入方为 BBHD2PhoneStore 下单/充值回执块：
+addBpPayment 0x10c9ff010/0x10c9ff340、addBpRecharge 0x10c9ffc28、
+checkRecharge 0x10ca00914、checkCharge 回执 0x10c9fe638，即先下单拿
+pay_order 再回填发快付；回执内状态枚举属 SKVObject 动态键，静态不可判，
+需抓包 pay.bilibili.com 响应）；网页容器 JS bridge 充值
 `-[BWAJSEventPayHandler doRequestRechargeWithParams:payRawStr:callback:]_block`
 引 pay.bilibili.com `/payplatform/fund/out/recharge/req`（0x11302b280 候选引用）；
 番剧承包 bangumi.bilibili.com `/sponsor/api/v2/pay/order/create|success`、
 `/pay/api/season/pay_by_ticket`。
 
-游戏：`+[BBGameCenterReporter dataDictionary]`0x113ebf24c 邻域引
-`https://app.biligame.com/small_game_list_recent`（另有 attention/like）；小游戏 H5
-族集中在 line3-h5-mobile-api.biligame.com `/game/center/h5/...`。
+游戏（字段级 team-c14）：`+[BBGameCenterReporter dataDictionary]`0x113ebf24c 是
+**H5 页面 spm 注册表**（反汇编 0x113ebf24c–0x113ec1300），每条目 3 键 `url`/`spmId`/`pageCode`
+（如 `https://app.biligame.com/home`↔`555.0.0.0`↔`home`，共 40+ 条）；
+**`small_game_list_recent|attention|like` 即注册表内 H5 页面条目（spm 555.138–140.0.0，
+0x113ec1180–0x113ec1270），不是 JSON API**；路由形式另有
+`bilibili://game_center/small_game_list_*` 与 `%@/small_game_list?typeName=home&name=%@`（0x11804d6f0）。
+原生曝光/点击走 BBTrack：`createExposureReport:params:` 0x113eb8778 装配
+BBGameCenterReportData（`sourcefrom`←入参/查表、`versionGameCenter`←常量 '1.7.0'、
+`screenResolution`←`+[BBGameCenterReporter screenResolution]`、`browser`←'native'、
+`url`/`spmId`/`page`←`+[BBGameCenterReportData dataWithType:params:]`0x113eb79f0 按 params['id'] 查表、
+`referUrl`/`spmIdFrom`/`bgamefrom`/`fromgame`/`module`←''、`sessionId`←0x113eb85a4、`extra`←入参），
+消费端 0x113eb89f4 → `yy_modelToJSONObject` →
+`trackCoustomEvent:'001556' params:<json> uploadType:'0'|'1'`（0x113eb8f68–0x113eb8fb8）；
+事件 params 键 `index`/`sub_index`/`value`/`module`/`isCommunity`/`sourceGameCenter`（0x113eb8bc0–0x113eb8eb4）。
+小游戏 H5 原生 API（line3-h5-mobile-api.biligame.com）入口已定位：
+`/game/center/h5/small/game/mini_game_exit_popup`←`-[BWAManager fetchGameQuitAlertServerDataIfNeeded:]`
+（ref 0x112fd81fc）、`/small/game/advertising_position`←`BWAJSEventAdHandler loadRewardedVideoAdWithParams:`、
+`/user/smallgame/iaa_ad_style_exp`←`queryHitSidebar`、`/small/game/setting` 与
+`/small/game/relation/chain/list`←`BWAJSEventAuthorizationHandler getRelationWith:callback:` block1/2、
+`/disaster/game/center/h5/detail/gameinfo/v2/2/`（line3-statics-…biligame.net）←
+`BBGameCenterDetailBaseBottomView bookResultWithGameId:type:`。
 
-创作（UP 主）：`+[BBUperSeasonURLString addEpisode]` 等族 → member.bilibili.com
-`/x2/creative/app/season/...`（section/episodes/add、edit、switch、sort/*），
-domain 提供者 `+[BBUperSeasonHttpClient HTTPDomain]`；creative-tool 族
-（`/x/creative-tool/...`，ai-creation/story-video/asr/rubick-interface，
-member.bilibili.com）与文章创作 `/x/article/creative/...`（api.bilibili.com）。
+创作（UP 主，字段级 team-c14）：`+[BBUperSeasonURLString addEpisode|modifyOrder|modifySeason|
+sortConfig|sortSwitch|sortSubmit]` 0x1004b6ef0–0x1004b6fcc（Swift 内联常量）→ member.bilibili.com
+`/x2/creative/app/season/section/episodes/add`、`/season/section/edit`、`/season/switch`、
+`/season/sort/config`、`/season/sort/switch`、`/season/sort/submit`；
+domain `+[BBUperSeasonHttpClient HTTPDomain]`0x1004b7014 = `https://member.bilibili.com/`。
+列表 `-[BBUperSeasonListApi requestUrl]`0x1004a5f18 = `x2/creative/app/seasons`、
+requestMethod 0x1004a5f10 = GET；params 0x1004a5f44（sub_1004A5F50）5 键均由 ivar 转字符串：
+`pn`/`ps`（Int）、`order`/`sort`/`source`（String）；modelDescriptions 0x1004a6158 →
+Swift 模型 **SeasonData**（字段清单需 swift5_fieldmd 解码，静态未展开）。
+`requestSortSwitchWithSortMode:` 0x1004b7bf8 参数键 `sort_mode`（小串 0x1004b8534，POST）；
+`requestSortSubmitWithSeasonIds:` 0x1004b7ebc 参数键 `season_ids`（小串 0x1004b8694–0x1004b86b0，
+Int 数组），响应映射根 `/data`、isOptional（0x1004b8024–0x1004b8060）。
+`requestAsyncWithPath:params:postParams:modelClass:completionHandler:` 0x1004b76b8 把 postParams
+JSONSerialization→setHTTPBody:（0x1004b7254/0x1004b7318）后走主程序共享传输（sub_10003D5DC/
+sub_10002E94C），NSError→Swift Error 透传（0x1004b706c）。creative-tool 族
+（`/x/creative-tool/...`，ai-creation/story-video/asr/rubick-interface，member.bilibili.com）
+与文章创作 `/x/article/creative/...`（api.bilibili.com）仍为入口级。
 
 ### Ktor 开关的重复读取、client once 与已创建 task
 
@@ -11790,6 +12147,22 @@ openmobile.qq.com、open.weixin.qq.com、long.open.weixin.qq.com）。这些 SDK
 类未检出引用 BFCApiOptions/Ktor（未做穷尽审计）；是否共享主程序 URLSession/Cookie
 属运行期行为，静态不可判，需真机抓包。BCM 的初始化与传输见广告章节既有闭合。
 
+字段/流程级增量（证据：DerivedData/Validation/team-c15/findings.md；以下符号均来自主程序
+symbols/query_index，不涉及随包 Frameworks）：payOrder 主路径为 App 间跳转——
+`+[AlipaySDK payWithType:orderStr:schemeStr:universalLink:dynamicLaunch:callback:]`
+0x1147653e4 → `callAlipayWithOrderStr:dynamicLaunch:withBlock:`0x114765b64 读
+NSUserDefaults `ali_launch_scheme`（0x114765bd0）选启动方式（scheme 表
+`alipaymatrixbwf0cml3`/`aliminipayauth`/`alipayhkmatrixbwf0cml3`/`alipayhk`，
+areaType 分支 0x114765c1c），进程内不发支付 HTTP；微信 sendReq:isAutoResend:forceScheme:
+completion: 0x116277d24（SDK v2.0.4，0x116277e18）校验 appID/universal link 后
+transformToUrl 生成跳转 URL（0x116278a18），同为跳转传输。进程内直连 host
+（mpaas/Bugly/易盾等）与主程序 session 的共享关系不可判，需真机抓包看各 host 由哪条
+会话发起。WXApi 调用方阳性对照（stub 0x10f86fbd0）：BBUperKingBattleVM
+openWXMiniProgram:path: 0x10d611118、BBAdCommonJSBridge callupWxMini: 0x10ea77e30、
+BBAdHotSpotResolverImp callupWXMini: 0x10ea7fd3c、BBAdStoryActionService
+callupWXMiniWithModel: 0x10eae98cc、BBLiveShoppingScheduler genericAction...
+0x10efaf460。
+
 ### CDN
 
 图片 CDN：hdslb.com 族（i0.hdslb.com 341 条、s1.hdslb.com、dl.hdslb.com）以 URL
@@ -11799,6 +12172,17 @@ openmobile.qq.com、open.weixin.qq.com、long.open.weixin.qq.com）。这些 SDK
 注入 imageDownloader/fileDownloader）。播放 CDN（upos/core.bilivideo.com）由既有
 UPOS/Laser 章节闭合。host inventory 中 `<dynamic>` 38 条为运行期拼 host，静态不可
 列全。
+
+URL 构造入口（team-c15）：hdslb 裁剪参数是 NSString 分类层字符串拼接——
+`-[NSString bbhd2following_imageURLWithStandardSize:needClip:]`0x10e80b594
+（含 isLongPic: 变体 0x10e80b59c；同类 bbmyfollowing_imageURLWithSize: 0x10ea48b64）
+仅对正则 `i[0-2].hdslb.com`（0x10e80b73c）命中的 URL 注入模板
+`%@...@%.0fw_%.0fh_1e.webp`/`..._1e_1c.webp`/`..._1e_1s`/`..._1e_1c_1s` 及区域裁剪
+`...@%.0fw_%.0fh_1e_%.0f-%.0f-%.0f-%.0fa.webp`（0x10e80b638–0x10e80b6b0），旧路径
+改写正则 `_[0-9]+x[0-9]+\.`0x10e80b760、`/[0-9]+_[0-9]+/`0x10e80b778；.gif 跳过 webp。
+即裁剪参数是 URL 字段，构造与下载管线解耦；解码分派按扩展 png/jpeg/jpg/gif/webp/
+apng/svga（`-[BFCAVAImageView isBFCImageSupportExtension:]`0x114645b6c，
+0x114645b98–0x114645c90）。
 
 ### 网页容器
 
@@ -11817,3 +12201,52 @@ decidePolicyForNavigation* 0x103546914/0x10354691c）；支付充值经 BWAJSEve
 `-[HiloWebView setCustomUserAgent:]`0x102bfa1a4。UA 注入：Kotlin 侧
 KUserAgentModule.userAgent 0x100204c7c；Gripper 侧 HttpUserAgentModule/
 UserAgentModuleImp 元数据访问器 0x1000b8418/0x1000e7d5c。
+
+字段/流程级增量（证据：DerivedData/Validation/team-c15/findings.md）：JS bridge 域及
+域字符串（反汇编直接读出）——global（BFCGlobalJSBridgeExport domain 0x115deea58：
+import: 0x115deea64、getAllSupport: 0x115deee5c、getContainerInfo: 0x115def54c、
+closeBrowser: 0x115deff64）、net（BFCNetJSBridgeExport domain 0x115df039c：request:/
+requestV2: 0x115df03a8/0x115df3dcc、requestWithSign:V2 0x115df1a5c/0x115df58f0、
+uploadImage:V2 0x115df2ba0/0x115df7ab4、getCsrf: 0x115df8c54、
+signForQueryItems:appKey: 0x115df9b3c、cookieStringForHost: 0x115df9cc4、
+sendRequest:oriUrlString:completionHandler: 0x115df9f38）、auth（0x115dead1c：
+getUserInfo:/getUserVipInfo:/refreshUserInfo:/login: 0x115debf0c/ios_purchaseLogin:
+0x115ded0f8/exchangeTicket: 0x115dee154）、pay（BFCPayJSBridge domain 0x1146d12c4）、
+share（0x115dd3244：setShareContent: 0x115dd3250、showShareWindow: 0x115dd3874、
+shareQuickWord: 0x115dd4ec4、shareToTarget: 0x115dd60e8、launchMiniProgram: 0x115dd6bb4、
+sharePlacard: 0x115dd7648）、ability（0x115ddc4ec）、secure（0x115dfb0b0：sendSms:
+0x115dfb0bc）、storage（0x115dfb91c：getItem:/setItem:/removeItem:/clear: 与 space 命名
+空间族 getItemInSpace: 0x115dfcc48–listSpaceKeys: 0x115dfe804）、ui（0x115dff1d0：
+setTitle: 0x115dff1dc、hide/showNavigation:、setStatusBarVisibility: 0x115dffb84、
+setStatusBarMode: 0x115e013d0、observeThemeChange: 0x115e01224 等）、offline
+（0x115dcd074）、VIP 域字符串 'globalVip'（0x1044072c8 立即数解码）、
+WebViewJSBUIExport 域 'ui'（0x104bb47cc）、BBLegacyUnitedvideoJSBridgeDefine 域
+'unitedvideo'（0x103ebc344）。注册中枢 `-[BFCJSBridgeHandler setBridge:domain:]`
+0x104e65474；分发入口 BFCWebScriptMessageHandlerInternal
+userContentController:didReceiveScriptMessage: 0x115dd9934。
+
+**net 域签名与 Cookie（关键结论）**：`signForQueryItems:appKey:`0x115df9b3c 按 appKey
+映射 appSecret、passportKey 映射 passportSecret（0x115df9b78–0x115df9bf0），query items
+排序后 '&' 连接尾接 secret，`bfc_md5String`0x115df9c58 → 主程序同款 appsign
+（md5(sorted_query+appsec)）；`cookieStringForHost:`0x115df9cc4 读 currentSSO（0x115df9d08）
+→cookieInfo→domains（hasSuffix 匹配）拼 `%@=%@; `（0x115df9e14）。即 H5 经 net 域由
+原生代发携带主程序签名与 bilibili 登录 Cookie 的请求（是否同 URLSession 实例仍不可判）。
+
+**请求拦截协议作用范围**：addRequestProtocol: 0x115dda06c 仅写入 _requestProtocols；
+唯一消费点是 BFCWKWebViewV2 loadRequest: 0x115dda3bc（getter 0x1174f0180 调用方仅
+add/remove/loadRequest 三处），对每个注册 NSURLProtocol 调
+webView:canonicalRequestForRequest: 0x115dda424 改写顶层请求，再过 internalReqDelegate
+webViewInternal:canLoadRequest: 0x115dda4bc——即作用于主框架 loadRequest 的请求改写，
+非全局子资源拦截。业务注册方仅 BFCWebViewControllerProfessional webViewDidLoad
+（0x115dba728/0x115dba768）与 BBLiveBaseWebViewController webView（0x111e51850，
+注册前 setProvider:）；协议类名待符号级确认（残余）。
+
+**UA 来源**：`+[BFCApiUserAgent userAgentString]`0x11609d6c0 拼 `%@/%@` +
+`CFNetwork/%@`（com.apple.CFNetwork）+ `Darwin/%@` + `os/ios`/`model/%@`/`mobi_app/%@`/
+`build/%@`（0x11609d734–0x11609d93c）；Moss 侧 BFCMossUserAgent 0x115e0bfb0 另含
+`osVer/%@`/`network/%ld`。WebView 内 UA 改写：BBHD2PhoneWebViewController
+modifyCustomUserAgent 0x10ca70e88 按远端配置
+`webview.modify_custom_useragent_url_whitelist`（0x10ca7104c）白名单命中后
+evaluateJavaScript 'navigator.userAgent'（0x10ca70fd4）取基 UA 并做 iPad→iPhone 替换
+（0x10ca71114/0x10ca7111c）后 setCustomUserAgent:；直播 openDialogWebView 族
+（0x10dfc1304/0x10e0280f4/0x10e101d14/0x10e13b74c）各自设置。
