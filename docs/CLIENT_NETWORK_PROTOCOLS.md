@@ -2103,8 +2103,8 @@ neuron-events.jsonl，RDIO + protobuf 解码，含 gzip）】全语料 `tm.recom
 `position`/`is_background`/`event_policy`/`card_material_id`/`tm_card_play_state` 一并计入键后，
 全语料只剩 **11 组** exact-dup（4 组跨刷新，占比约 0.9%）——即**去重键不止 identifier，
 至少还含生命周期态与槽位**；`is_background` 取值 `{2,1,3}` 分别为 1076/141/52（同一 track_id
-常以不同 is_background 各上报一次）；`event_policy` 在全部 show 与 duration 上恒为 `1`，
-`tm.recommend.0.0.pv` 恒为 `0`。这既证明"同 identifier 可跨刷新/同批次重复上报"，
+常以不同 is_background 各上报一次）；`event_policy` 在**本次 9.13 线级样本**的全部 show 与 duration 上恒为 `1`，
+`tm.recommend.0.0.pv` 亦恒为 `0`（均为该批样本取值，不等于协议常量）。这既证明"同 identifier 可跨刷新/同批次重复上报"，
 也把"池 reset"进一步收窄为"池按 identifier+槽位+生命周期态去重"；**reset 触发本身仍不可判**，
 上文 0x103eba88c 移除 context 与 0x101b60e7c 结算写者仍未逐指令闭合。
 raw7则走0x101b60494的条件检查，不能把显示事件本身等同于已产生曝光记录。
@@ -10485,7 +10485,7 @@ LanguageSettingsPage（0x10afc1d6c）。content TypeInfo0x11bbdf3d0/body0x10afc2
 DaggerSingletonC.BRouterCImpl.SwitchingProvider TypeInfo0x11bd18c90/body0x10b901e5c
 读取raw ID（0x10b901ed0），table0x118652dd4 index33→0x10b902240，创建
 Root_BRouterModule provider TypeInfo0x11bd1cfc0（0x10b90229c/0x10b9022d8），用
-public key collectRoutes.7d76c4b2c1249142c1ac7c62036ddf0f981fa491
+public key collectRoutes.7d76c4b2c1249142c1ac7c62036ddf0f981fa491（该 40 位 hex 是 Kotlin/Native binding 的签名/键散列，**不是凭据**；team-c30 复核点名要求加注）
 （0x11cc67c80/0x10b903bac）注册binding（0x10b903b58/0x10b903ba8）。provider body
 0x10b94be58 alloc实际Lambda TypeInfo0x11bbdf270（0x10b94bed4），resolve captured
 provider并保存context.+0x10（0x10b94bf5c/0x10b94bf64）。Lambda init0x10afc1e84
