@@ -4313,7 +4313,7 @@ BFCNeuronModule._$GripperRunnableTaskProviderNeuronModule，conformance witness
 实际每种启动是否发该trigger仍是独立门禁。InfoApp.sessionId getter0x11455131c
 是ivar+0x40，setter0x114551324做nonatomic copy；初始化0x104977e34保存注入值快照，
 异步Neuron事件读取该ivar。当前有界selector扫描未找到另一Neuron写者，但直接ivar
-写入和外部账号/设备通知未穷尽（有界 selector 扫描的静态盲区，账号切换属运行期；下一步 `find_data_refs_root.py 0x114551324`），不能推出它永不更新。
+写入与外部账号/设备通知**已穷举（team-c40 取证）**：唯一静态写点是 init 快照 0x104977e34（selRef `setSessionId:` 0x11f733b28 的 13 个引用点逐一核对，其余 12 点均为请求模型的 setFrom:/setFromSpmid: 等；setter 0x114551324 的 18 个 stub 调用方亦无一指向 `BFCNeuronInfoApp`）⇒ 静态无账号/设备切换改写路径。不可判：DeviceService 侧源值是否随登录刷新（运行期在 0x114551324 断点观察切号）。
 另一个startup session有独立来源：StartTraceServiceImp.startSessionId0x105037bbc
 调用AppStateManager.getStartToken0x105038814。constructor0x105037d98把
 UUID.uuidString经Swift String.hashValue取低32位、零扩展，以%lx格式保存RAM token；
@@ -4399,7 +4399,7 @@ JSON options=0，再 UTF-8 转字符串，非法输入或序列化失败退空�
 全部字段直接认定为每种业务请求都会发送。实际 playurl/PlayerArgs 的注入、解码能力
 函数和响应选择**已更正（task-38）**：原下一步地址 0x103c6e0d0 **无任何 fnval 分支**（该处是 interest builder，参数 cny_active/ab_test_vars/caid）；真实 fnval 点=getter stub 0x117310720 的调用方（resolver helper 族 0x114a5c0a4/0x114a2a928/0x113941a18）与 init stub 0x117392f20 的唯一调用方 0x112118a38（BBPgcOfflineCacheDownloadTimerInternal startKmpDownload:）。同版本执行与服务端接受属运行期；假布尔能力的 2,048 个 fnval
 组合及 196 个 qn/登录/配置边界已通过分支实现与位公式的离线等价检查；
-系统解码能力探测与服务端接受未验证（运行期能力/服务端行为，静态不可定；下一步 `query_index.py '*fnval*' 20` 后反汇编能力探测分支）。
+系统解码能力探测**已否证（team-c40 取证，强否定）**：`getPlayerArgs` 实现 0x101655b10 内 fnval/softFnval/fnver/qn 全部经 KV 字典查值 + 整型解析后直接存 ivar（store 0x101655ec8 等），**无任何能力探测分支**；阳性对照 `+[BBRTCVideoDecoderFactoryH264 hevcHardwareDecode]` 0x1158e45d0 是真探测函数，但 callers=[]、指针引用=[]（原始字节扫描仅 LINKEDIT 2 处）⇒ 在本切片不可达。服务端是否接受属运行期。
 
 ## UGC 播放地址请求入口
 
@@ -7396,7 +7396,7 @@ first helper0x10110dd80给start_key空String（0x10110ddd4–0x10110ddd8），
 因此该包装没有订阅dispose→request.cancel桥；不等于整个页面绝无外层cancel，
 也不据create返回断言已订阅。相邻另一包装0x103714ee4确创建dispose closure
 0x1037151a4并调用request.cancel（0x1037151ac），不能把它的取消语义套用到当前
-列表所选0x103714bd0。actual page effect subscription及账号/游标归属仍待证。下一步 = disassemble.py 0x103714930 0x1037151a4 核对 subscription 注册，并 disassemble.py 0x1037151a4 0x1037151b4 核对 request.cancel 分支（0x1037151ac）。
+列表所选0x103714bd0。actual page effect subscription **已核对（team-c40 取证）**：两块请求同构——0x103714d54 `setCompletionHandler:`→0x103714dc4 `setErrorHandler:`→0x103714de0 `requestAsync`（第二块 0x103714fb8/0x103715028/0x103715044），区域 0x103714930–0x1037151a4 内 `cancel` 命中 0，0x103714bd0 无 cancel 桥 ⇒ **即发即弃**；账号/游标归属仍需运行期。
 clear builder0x1011092c4设置POST
 https://api.bilibili.com/x/v2/history/toview/clear（0x1011092ec），clean_type
 为输入Bool bit1+1的decimalString，即false1/true2（0x101109454–0x101109478）。
@@ -7945,7 +7945,7 @@ raw w5=0注册DiagnoserService。factory0x100142e84创建provider；getter
 （0x10013e264/0x10013e2bc），后续复用。constructor0x10013ec9c初始化间隔10秒、
 lastDate none、in-flight=false和URL缓存nil，队列com.diagnoser.network.queue。
 因此lastDate及上述URL缓存随该provider实例复用，不是每次diagnosis重建；
-unregister0x10013e4a4只走同type移除，已读body无直接状态reset，未证明logout触发。下一步 = find_callers.py 0x10013e4a4 收 unregister 调用方，并 query_index.py '*Diagnosis*' 30 定位该 provider 的注册/销毁路径。
+unregister0x10013e4a4只走同type移除，已读body无直接状态reset，**静态无法证明 logout 触发（team-c40 取证）**：find_callers 0x10013e4a4=[]，全二进制原始 BL 扫描 0 调用点、指针引用=[]（仅 LINKEDIT 2 处）；Diagnosis 侧无 `removeDiagnosis*`/`unregisterDiagnosis*` 符号，`addDiagnosisHandler`（0x11486a3cc）只做 addObject:，销毁仅经 dealloc。需运行期 backtrace 断点确认是否经 Swift 闭包/见证表间接调用。
 accepted probe置in-flight=true（0x10013fc7c）并取retriveDNSAddress
 （0x10013fe68）。正式probe创建dispatch
 group和初值5的semaphore（0x10013fd00/0x10013fd08），DNS结果join后写dns_info；
