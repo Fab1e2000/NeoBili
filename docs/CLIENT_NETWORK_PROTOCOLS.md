@@ -2989,7 +2989,7 @@ action type1（0x1041143dc）及update type2/triggerImmediately0
 （0x104114460），并观察BFCAppPreferences.shared的disablePersonalizedRcmd
 keypath0x1183cc3d8。publisher0x105011644/raw options5后经过Bool处理链
 0x1050fc84c/0x1050d0154，再sink0x104114c30→0x10411498c；这些框架operator
-语义尚未独立命名（下一步 `disassemble 0x1167d3520 0x1167d3600` 复核 setter 命名）。preference callback忽略incoming Bool，weakself存在才调用
+**Combine operator 已命名（team-c39 取证）**：0x1050fc84c = `drop(_:)`（Publishers.Drop，SkipCount/SkipCountSink 元数据 0x1050fc894→0x1050fc8e0）、0x1050d0154 = `removeDuplicates()/distinctUntilChanged`（DistinctUntilChanged nominal，链 0x1050d01f8→sub_1050D02B0）；setter 真实入口 0x1167d34cc（0x1167d3520 只是其中段），**其 ObjC selector 名静态不可命名**（无符号，find_pointer_refs/find_callers 均空）。preference callback忽略incoming Bool，weakself存在才调用
 reloadIfNeed0x104114738/raw4；account update0x104114934走raw2。两者没有写
 该偏好。layout helper0x1040be894比较weak mainVC与router.navigationController
 topVC（NSObject equality0x1040be970），相等才立即0x104114a80 reload，不相等
@@ -3250,7 +3250,7 @@ autoPlayNext且有下一项就取下一项，否则匹配项，存willLocateItem
 （0x10410b958–0x10410b964）。因此不能把通用false分支当作此调用链的过期响应门禁。
 tag/listener更新0x10410a2c4→0x104115f64复用lazy loader，写tag+28，
 containsObject后才addListener（0x10411a290–0x10411a2c8）；本函数不取消在途请求、
-清requesting、清其他listener或递增generation。其上游UI callback身份未定位（下一步 `find_callers.py 0x10411a290` 枚举装配点）。
+清requesting、清其他listener或递增generation —— **三者均已否证（team-c39 取证）**：0x10411a290 只是 sub_10411A278 内的 selref 载入指令（非函数），其装配点是该 helper 的 4 个调用方（0x104115fd0 `updateSeriesLoaderWithTag:listener:`、0x1041160c0/0x1041160f4 BBStoryRouterParams、0x1041195c4 `STLoader addListener:`）；`updateSeriesLoaderWithTag` 全函数内无清 requesting、无对其他 listener 的 removeObject:/removeAllObjects（remove 只在配对移除方法 0x1041195e4–0x104119638）、无递增 generation 指令；阳性对照：find_callers 对 0x10411a278 与 stub 0x1175a8cc0 各回 4 点。
 实际consumer STSeriesBloc.didLoadCompleteWithResponse:type
 0x104108340→0x1041078e8：items nil立即返回，非nil空数组仍走adapter及
 didLoadedData=true；merge helper0x104107ae0只接受count>0。mode1/2先清
@@ -3300,7 +3300,7 @@ STBloc.trackBloc getter0x1043272dc携带STTrackBloc metadata accessor
 不用调用入口的card对象。公开字段包括faid（status helper0x1040a975c，0x1041ee1b0），
 该helper初次取BFCIDFA.idfaString（0x1040a97a0）、nil为空，缓存到status的
 idfaString lazy槽（0x1040a97cc/0x1040a97d8），以后重用（0x1040a9778/0x1040a9788）；
-已存在setter0x1040a980c/0x1040a9854可改该槽，调用方仍待核，未读取实际IDFA。下一步 = query_index.py '*objc_msgSend$setIdfaString*' 10 取 setter stub 0x1175a8cc0 后跑 find_callers.py 0x1175a8cc0，并 disassemble.py 0x1040a97cc 0x1040a9854 核对该 lazy 槽写入。其余
+已存在 setter 0x1040a980c/0x1040a9854 可改该槽。**调用方已核查（team-c39 取证）**：stub 0x1175a8cc0 的真实调用点只有 **2 处**（0x1132e09fc ∈ BBPhoneMPStoryFeedVC `_transformParamsFromItem:…`、0x113318cf8 ∈ BBPhoneMPStorySeriesVC 同名方法），receiver 均为 `[meta tracker]`（上报 tracker 元对象）**而非 STStatus**；STStatus 只作读源（getter 0x1132e09c4 取 `context.status`）。STStatus 自有 setter 0x1040a980c 与 reset 0x1040a97cc 的 find_callers 均为空 ⇒ **静态无法证明实际 IDFA 的写入/读取来源**；需运行期断点 0x1040a980c/0x1040a97cc、读点 0x1132e09c4、写点 0x1132e09fc/0x113318cf8。其余
 r_id=item.rid十进制（0x1041ee1e0/0x1041ee1fc）、is_full_screen=status.isLandscape
 String1/0（0x1041ee26c/0x1041ee284）、position=CURRENT common.index+1十进制
 （0x1041ee2fc/0x1041ee308/0x1041ee328）、story_gesture=上述gesture单字符
