@@ -146,7 +146,7 @@ final class AppRecommendationTests: XCTestCase {
     }
 
     func testAppRecommendationUsesSigningClientInHeaders() {
-        let headers = AppRecommendationPage.headers(buvid: "b")
+        let headers = AppDeviceProtocol.headers(buvid: "b")
         XCTAssertEqual(headers["app-key"], "iphone")
         XCTAssertTrue(headers["User-Agent"]?.contains("mobi_app/iphone") == true)
         XCTAssertNil(headers["bili-http-engine"])
@@ -169,12 +169,12 @@ final class AppRecommendationTests: XCTestCase {
     }
 
     func testAppParametersPreserveExistingCursor() {
-        let params = AppRecommendationPage.parameters(for: RecommendationRequest(source: .app, pageIndex: 1, appCursor: 123))
+        let params = AppRecommendationProtocol.parameters(for: RecommendationRequest(source: .app, pageIndex: 1, appCursor: 123))
         XCTAssertEqual(params["idx"], "123")
         XCTAssertEqual(params["mobi_app"], "iphone")
         XCTAssertEqual(params["platform"], "ios")
-        XCTAssertNil(AppRecommendationPage.headers(buvid: "b")["fp_local"])
-        XCTAssertEqual(AppRecommendationPage.traceID().split(separator: ":").map(\.count), [32, 16, 1, 1])
+        XCTAssertNil(AppDeviceProtocol.headers(buvid: "b")["fp_local"])
+        XCTAssertEqual(AppDeviceProtocol.traceID().split(separator: ":").map(\.count), [32, 16, 1, 1])
         XCTAssertNil(params["fresh_idx"])
         XCTAssertEqual(params["pull"], "0")
         XCTAssertEqual(params["flush"], "8")
@@ -186,7 +186,7 @@ final class AppRecommendationTests: XCTestCase {
         let initial = RecommendationRequest(source: .app)
         let refresh = RecommendationRequest(source: .app, isRefresh: true)
         let requests = [initial, refresh, refresh.next(appCursor: 456)]
-        let params = requests.map { AppRecommendationPage.parameters(for: $0) }
+        let params = requests.map { AppRecommendationProtocol.parameters(for: $0) }
         XCTAssertEqual(params.map { $0["flush"] }, ["0", "6", "8"])
         XCTAssertEqual(params.map { $0["pull"] }, ["1", "1", "0"])
         XCTAssertEqual(params.map { $0["idx"] }, ["0", "0", "456"])
@@ -209,7 +209,7 @@ final class AppRecommendationTests: XCTestCase {
         XCTAssertEqual(portrait.playerExtraContent, #"{"short_edge":"1206","long_edge":"2622"}"#)
         XCTAssertEqual(landscape.playerExtraContent, portrait.playerExtraContent)
         let small = try XCTUnwrap(AppRecommendationDisplay(width: 750, height: 1334))
-        let params = AppRecommendationPage.parameters(for: .init(source: .app), display: small)
+        let params = AppRecommendationProtocol.parameters(for: .init(source: .app), display: small)
         XCTAssertEqual(params["player_extra_content"], #"{"short_edge":"750","long_edge":"1334"}"#)
         for size in [0.0, -1, Double.infinity, Double.nan, Double(Int.max)] {
             XCTAssertNil(AppRecommendationDisplay(width: size, height: 100))

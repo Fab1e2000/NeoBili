@@ -391,7 +391,6 @@ final class NowPlayingStore {
             bvid: route.bvid,
             cid: cid,
             aid: route.aid ?? detailViewModel?.detail?.aid ?? 0, playbackEntry: route.playbackEntry,
-            playbackSession: detailViewModel?.appPlaybackSession,
             configuration: playbackConfiguration
         )
         newPlayer.session.surfacePresentation = isMiniPlayerPresented && !isVideoPageDismissalInProgress ? .mini : .page

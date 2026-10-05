@@ -29,7 +29,8 @@ actor RecommendationDiagnostics {
     private static let paths: Set<String> = [
         "/x/v2/feed/index", "/x/web-interface/wbi/index/top/feed/rcmd",
         "/bilibili.app.viewunite.v1.View/View", "/bilibili.app.viewunite.v1.View/RelatesFeed",
-        "/x/report/heartbeat/mobile", "/x/v2/history/report", "/x/click-interface/web/heartbeat"
+        "/x/report/heartbeat/mobile", "/x/v2/history/report", "/x/click-interface/web/heartbeat",
+        "/log/pbmobile/unrealtime"
     ]
     private static let parameters: Set<String> = [
         "flush", "pull", "idx", "build", "mobi_app", "platform", "device", "lang", "locale",
@@ -55,11 +56,11 @@ actor RecommendationDiagnostics {
     }
     func begin(_ request: URLRequest, attempt: Int) -> String? {
         guard enabled(), let url = request.url, Self.paths.contains(url.path),
-              url.host == "app.bilibili.com" || url.host == "api.bilibili.com" || url.host == "grpc.biliapi.net" else { return nil }
+              url.host == "app.bilibili.com" || url.host == "api.bilibili.com" || url.host == "grpc.biliapi.net" || url.host == "dataflow.biliapi.com" else { return nil }
         let id = UUID().uuidString
         var fields: [String: String] = [:]
         var items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        if request.value(forHTTPHeaderField: "Content-Type") != "application/grpc", let body = request.httpBody, let text = String(data: body, encoding: .utf8) {
+        if request.value(forHTTPHeaderField: "Content-Type") == "application/x-www-form-urlencoded", let body = request.httpBody, let text = String(data: body, encoding: .utf8) {
             items += URLComponents(string: "https://local.invalid/?" + text)?.queryItems ?? []
         }
         for item in items where Self.parameters.contains(item.name) {

@@ -53,6 +53,7 @@ extension BiliAPI {
     }
 
     static func appRecommendFeed(request: RecommendationRequest) async throws -> RecommendationBatch {
+        Task { await RecommendationClickReporter.shared.flush() }
         let account = try await APIClient.shared.appAccount(expectedSessionID: nil)
         if account.mid != nil, account.accessKey?.isEmpty != false { throw BiliAPIError.missingAccessKey }
         try Task.checkCancellation()
@@ -60,7 +61,7 @@ extension BiliAPI {
         let context = AppRecommendationSession.shared.takeRequest(accountSession: account.sessionID)
         let page: AppRecommendationPage = try await APIClient.shared.getApp(
             path: "x/v2/feed/index",
-            params: AppRecommendationPage.parameters(for: request, display: await AppRecommendationDisplay.current(),
+            params: AppRecommendationProtocol.parameters(for: request, display: await AppRecommendationDisplay.current(),
                 openEvent: context.openEvent, bannerHash: context.bannerHash),
             headers: headers, expectedSessionID: account.sessionID, requiresAccountCredential: true
         )

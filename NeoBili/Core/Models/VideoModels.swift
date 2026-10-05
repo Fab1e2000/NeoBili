@@ -35,6 +35,8 @@ struct VideoSummary: Decodable, Identifiable, Hashable, VideoDimensionProviding 
     /// App 推荐卡片的「不感兴趣」选项，反馈时原样带回卡片的 goto 和 param。
     var recommendationFeedback: RecommendationFeedbackOptions? = nil
     var playbackEntry: PlaybackEntry = .other
+    /// Original feed fields for an actual card click, never reconstructed from playback.
+    var recommendationClickFields: [String: String]? = nil
     /// 来自网页推荐：没有原因可选，「不感兴趣」和 PiliPlus 一样只能点踩。
     var isWebRecommendation = false
     /// 推荐卡上 UP 主名字前的小标签，如「已关注」「4万点赞」，和 PiliPlus 一样。

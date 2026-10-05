@@ -52,51 +52,6 @@ struct AppRecommendationPage: Decodable {
         .map(\.video)
     }
 
-    /// 游标和刷新标记属于分页协议；客户端参数与登录、反馈共用 iPhone 身份。
-    static func parameters(for request: RecommendationRequest, display: AppRecommendationDisplay? = nil, openEvent: String = "", bannerHash: String = "") -> [String: String] {
-        let pull = request.pageIndex == 0
-        // 官方 iPhone 抓包：首次 0、刷新 6、翻页 8；pull 使用数字布尔值。
-        // 固定项采用用户确认的策略；启动、横幅与游标按自身状态生成。
-        var params = AppClientIdentity.parameters.merging([
-            "actionKey": "appkey", "device_name": AppClientIdentity.deviceName, "c_locale": "zh-Hans_CN", "s_locale": "zh-Hans_CN", "column": "4",
-            "disable_rcmd": "0", "flush": pull ? (request.isLayoutChange ? "2" : (request.isRefresh ? "6" : "0")) : "8",
-            "fnval": "84948", "fnver": "0", "force_host": "0",
-            "fourk": "1", "guidance": "1", "https_url_req": "0", "idx": String(request.appCursor),
-            "pull": pull ? "1" : "0",
-            "qn": "32", "recsys_mode": "0", "splash_id": "", "voice_balance": "0",
-            "statistics": AppClientIdentity.statistics,
-            "auto_refresh_state": "4", "login_event": "0", "open_event": openEvent,
-            "inline_sound": "1", "inline_sound_cold_state": "4", "autoplay_card": "4",
-            "video_mode": "1", "inline_danmu": "2", "client_attr": "1", "qn_policy": "1",
-            "player_net": "1", "soft_fnval": "2", "teenagers_age": "16",
-            "banner_hash": bannerHash, "splash_ids": "", "splash_creative_id": ""
-        ]) { _, value in value }
-        if let display { params["player_extra_content"] = display.playerExtraContent }
-        return params
-    }
-
-    /// 本次启动固定的会话标识，代替 PiliPlus 写死的 `11111111`。
-    static let sessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
-
-    static let userAgent = AppClientIdentity.userAgent
-
-    /// 与签名和请求参数使用同一客户端；mid、aurora 由 APIClient 补齐。
-    static func headers(buvid: String, sessionID: String = sessionID) -> [String: String] {
-        ["User-Agent": userAgent,
-         "buvid": buvid,
-         "session_id": sessionID,
-         "env": "prod",
-         "app-key": AppClientIdentity.mobiApp,
-         "x-bili-trace-id": traceID(),
-         "x-bili-locale-bin": AppRecommendationLocale.header]
-    }
-
-    /// 每次请求一个新的追踪号，格式与官方相同：32 位十六进制:16 位十六进制:0:0。
-    static func traceID() -> String {
-        func hex(_ count: Int) -> String { (0..<count).map { _ in String(Int.random(in: 0..<16), radix: 16) }.joined() }
-        return "\(hex(32)):\(hex(16)):0:0"
-    }
-
     /// 与 PiliPlus `NumUtils.parseNum` 相同：取第一个数字，带「千/万/亿」时换算。
     static func count(_ text: String?) -> Int {
         guard let text, text != "-" else { return 0 }
@@ -149,7 +104,8 @@ struct AppRecommendationCard: Decodable {
         case upID = "up_id", upName = "up_name", upFace = "up_face", descButton = "desc_button", roomID = "room_id"
         case views = "cover_left_text_1", danmaku = "cover_left_text_2"
         case rcmdReason = "rcmd_reason", threePoint = "three_point_v2"
-        case trackID = "track_id", reportFlowData = "report_flow_data"
+        case trackID = "track_id", reportFlowData = "report_flow_data", cardType = "card_type", goto
+        case tid, rid, style, cardMaterialID = "card_material_id", cardRelID = "card_rel_id", dalaoFeature = "dalao_feature"
     }
 
     /// 能当视频打开的卡片。`inline_av_v2` 是官方 App 里自动播放的大卡片，内容同样是普通视频。
@@ -202,6 +158,17 @@ struct AppRecommendationCard: Decodable {
                 dimension: try? c.decodeIfPresent(VideoDimension.self, forKey: .dimension)
             )
             video.playbackEntry = .recommendation(trackID: c.text(.trackID), reportFlowData: c.text(.reportFlowData))
+            var click = ["param": String(param), "title": title, "up_id": String(owner.mid)]
+            for (key, field): (String, Key) in [("card_type", .cardType), ("goto", .goto),
+                ("rcmd_reason", .rcmdReason), ("style", .style), ("card_material_id", .cardMaterialID),
+                ("card_rel_id", .cardRelID), ("dalao_feature", .dalaoFeature)] {
+                if let value = c.text(field) { click[key] = value }
+            }
+            for (key, field): (String, Key) in [("tid", .tid), ("rid", .rid)] {
+                if let value = args.integer(field) { click[key] = String(value) }
+            }
+            click["goto"] = click["goto"] ?? goto
+            video.recommendationClickFields = click
             video.recommendationFeedback = Self.feedbackOptions(c, goto: goto, param: param)
             video.recommendationBadge = badge
         case "live":

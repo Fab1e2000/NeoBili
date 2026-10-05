@@ -82,7 +82,7 @@ enum SMSPassport {
         request.timeoutInterval = 20
         request.httpShouldHandleCookies = false
         for (key, value) in context.headers { request.setValue(value, forHTTPHeaderField: key) }
-        request.setValue(AppRecommendationPage.traceID(), forHTTPHeaderField: "x-bili-trace-id")
+        request.setValue(AppDeviceProtocol.traceID(), forHTTPHeaderField: "x-bili-trace-id")
         request.setValue(context.buvid, forHTTPHeaderField: "buvid")
         request.setValue(AppClientIdentity.userAgent, forHTTPHeaderField: "User-Agent")
     }

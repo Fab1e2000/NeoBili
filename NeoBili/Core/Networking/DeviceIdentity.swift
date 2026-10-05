@@ -24,6 +24,7 @@ actor DeviceIdentity {
     private static let dedeUserIDKeychainKey = "neobili.dedeuserid"
     private static let accessKeyKeychainKey = "neobili.access_key"
     private static let accessKeyClientKey = "neobili.access_key.client"
+    private static let telemetryEpochKey = "neobili.telemetry.loginEpoch"
 
     private var cachedBuvid3: String?
     private var cachedBuvid4: String?
@@ -34,6 +35,8 @@ actor DeviceIdentity {
     private var needsAppCredentialMigration = false
     private var fetchTask: Task<Void, Never>?
     private var appSessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
+    /// Independent process-start identifier; ordinary background/foreground keeps it.
+    private let appStartSessionID: String
     private nonisolated let credentialSessionID = Mutex(UUID())
 
     /// 播放器在创建时同步绑定会话，不能等异步任务调度后才读取账号。
@@ -63,10 +66,16 @@ actor DeviceIdentity {
          credentials: CredentialStorage = AppNetwork.isRegression ? .memory() : .keychain,
          allowsNetwork: Bool = !AppNetwork.isRegression,
          purgeCookies: @escaping @Sendable () -> Void = { DeviceIdentity.purgeSharedCookieJar() }) {
+        var startSession = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
+        while startSession == appSessionID { startSession = String(format: "%08x", UInt32.random(in: 0...UInt32.max)) }
+        appStartSessionID = startSession
         self.defaults = defaults
         self.credentials = credentials
         self.allowsNetwork = allowsNetwork
         self.purgeCookies = purgeCookies
+        if credentials.read(Self.telemetryEpochKey) == nil {
+            credentials.write(UUID().uuidString, Self.telemetryEpochKey)
+        }
         cachedBuvid3 = defaults.string(forKey: buvid3Key)
         cachedBuvid4 = defaults.string(forKey: buvid4Key)
         cachedSessdata = credentials.read(Self.sessdataKeychainKey)
@@ -115,11 +124,7 @@ actor DeviceIdentity {
     }
 
     /// App 接口的身份：access_key 与登录账号的 mid，在同一次 actor 调用里读出。
-    struct AppRequestAccount: Sendable {
-        let accessKey: String?
-        let mid: Int?
-        let sessionID: UUID
-    }
+    typealias AppRequestAccount = AppAccountSnapshot
 
     func appAccount() -> AppRequestAccount {
         let key = cachedAccessKey.flatMap { $0.isEmpty ? nil : $0 }
@@ -146,7 +151,16 @@ actor DeviceIdentity {
     /// 推荐和观看反馈共享本次启动/登录会话，换号（包括同账号重登）时更新。
     func appRequestHeaders(expectedSessionID: UUID) throws -> [String: String] {
         guard expectedSessionID == loginSessionID else { throw CancellationError() }
-        return AppRecommendationPage.headers(buvid: appBuvid(), sessionID: appSessionID)
+        return AppDeviceProtocol.headers(buvid: appBuvid(), sessionID: appSessionID)
+    }
+
+    func appDeviceSnapshot(expectedSessionID: UUID) throws -> AppDeviceSnapshot {
+        guard expectedSessionID == loginSessionID else { throw CancellationError() }
+        return .init(buvid: appBuvid(), requestSession: appSessionID,
+                     startSession: appStartSessionID, mid: appAccount().mid,
+                     accountEpoch: credentials.read(Self.telemetryEpochKey) ?? "",
+                     model: AppClientIdentity.deviceName, version: AppClientIdentity.version,
+                     build: AppClientIdentity.build)
     }
 
     /// App 启动时就把设备标识取回来，之后的接口请求不必再等它。
@@ -176,6 +190,7 @@ actor DeviceIdentity {
     ///（含 %2C 等），原样存、原样发即可，不要再做一次编解码。
     func setLoginCookies(sessdata: String, biliJct: String, dedeUserID: String) {
         credentialSessionID.withLock { $0 = UUID() }
+        credentials.write(UUID().uuidString, Self.telemetryEpochKey)
         appSessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
         cachedSessdata = sessdata
         cachedBiliJct = biliJct
@@ -205,6 +220,7 @@ actor DeviceIdentity {
     /// 退出登录或凭据失效时清除。
     func clearLoginCookies() {
         credentialSessionID.withLock { $0 = UUID() }
+        credentials.write(UUID().uuidString, Self.telemetryEpochKey)
         appSessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
         cachedSessdata = nil
         cachedBiliJct = nil
@@ -278,31 +294,5 @@ actor DeviceIdentity {
             // Guest browsing still works without a device id, just with a higher
             // chance of being rate-limited. Nothing to recover here.
         }
-    }
-}
-
-enum BiliHeaders {
-    static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
-    static let referer = "https://www.bilibili.com"
-
-    /// APP 端接口只认 BiliDroid 的 UA。带着浏览器 UA 去请求 app.bilibili.com
-    /// 会被当成非法客户端，即使签名正确也拿不到数据。
-    static let appUserAgent = AppClientIdentity.userAgent
-
-    /// PiliPlus 账号拦截器给 App 请求补的头；登录后再带上 mid 和由它算出的 aurora eid。
-    static func appAccountHeaders(mid: Int?) -> [String: String] {
-        var headers = ["env": "prod", "app-key": AppClientIdentity.mobiApp, "x-bili-aurora-zone": "sh001"]
-        if let mid, mid > 0 {
-            headers["x-bili-mid"] = String(mid)
-            headers["x-bili-aurora-eid"] = auroraEID(mid: mid)
-        }
-        return headers
-    }
-
-    /// 与 PiliPlus IdUtils.genAuroraEid 相同：mid 的十进制字节逐位异或固定密钥，再做无填充 base64。
-    static func auroraEID(mid: Int) -> String {
-        let key = Array("ad1va46a7lza".utf8)
-        let bytes = Array(String(mid).utf8).enumerated().map { $0.element ^ key[$0.offset % key.count] }
-        return Data(bytes).base64EncodedString().replacingOccurrences(of: "=", with: "")
     }
 }

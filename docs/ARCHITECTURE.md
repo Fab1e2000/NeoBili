@@ -26,8 +26,12 @@ NeoBili 是 SwiftUI / Swift 6 的 iOS 26+ 客户端，播放内核为 MPVKit。
 
 ## 网络与账号
 
-主要接口经过 `APIClient` 组装 UA、Referer、显式 Cookie 与业务信封；登录、直播和图片
-各有独立入口，默认 HTTP 传输统一使用 `AppNetwork.session`。WBI 与 App 签名各自维护。
+主要接口经过 `APIClient` 校验调用时的账号会话、处理业务信封及选择重试策略；网页请求的
+UA、Referer 与显式 Cookie 仍由它组装。App GET、表单、只读 gRPC 和已实现的点击日志请求，
+由可注入的 `AppRequestEncoding` 编码，默认实现为 `AppRequestEncoder`。编码器只接收
+`AppRequest` 和已校验的 `AppRequestContext`，不读取凭据存储或发起网络请求。
+`HTTPTransport` 发送已编码请求并记录脱敏诊断；重试复用同一份请求，写操作使用零重试。
+登录、直播和图片各有独立入口，默认 HTTP 传输使用 `AppNetwork.session`。WBI 与 App 签名各自维护。
 非零业务码先于成功数据解码，列表用宽松解码避免单条异常拖垮整页。
 推荐、直播与「不感兴趣」及撤销共用实测 iPhone 9.13.0 协议身份：
 `build=91300100`、`mobi_app=iphone`、`platform=ios`，客户端参数集中在 `AppClientIdentity`。
@@ -42,13 +46,19 @@ App 响应必须同时包含账号一致的 token 和 Cookie；status 非零不�
 安全页面桥接仅接收 passport HTTPS 主框架消息，不把手机号、验证码或完整验证 URL 写入诊断日志。
 旧扫码/密码协议代码保留用于原有回归，没有生产入口，也不再自动通过扫码链路换取 token。
 凭据以 iOS scope 隔离，旧 Android/HD token 保存在原存储但不参与 iOS 请求；缺少 iOS token 时使用当前账号手机号补授权，失败保留原 Cookie。保存前核对账号与登录会话，防止迟到结果覆盖新会话。
-官方 fingerprint 是带加密 key/content 的 POST，其请求体、guest/reg 加密 device_info、登录 device_meta/dt、bili_local_id 和票据内部签名仍未解清，暂不捏造；完整设备指纹、访客登记、票据获取及续期尚未实现。没有自己的真实 fingerprint 响应时不发送 device_id。
+官方 fingerprint 是带加密 key/content 的 POST；分析包中的标识及加密依据见
+[待确认参数](../NOTSURE.md)。生产尚未接入 fingerprint、guest/reg、device_meta/dt、
+bili_local_id 及票据内部签名生成，完整设备指纹、访客登记、票据获取及续期仍未实现。
+没有自己的真实 fingerprint 响应时不发送 device_id。
 用户已报告当前短信测试版登录成功且设备管理出现“哔哩哔哩”条目；其他账号与风控分支尚未验收，设备登记和推荐变化分别记录。
 已网页登录但缺少 iOS token 时，App 推荐在发请求前提示授权，不再静默发无 token 的请求；
 明确未登录的访客仍可请求。`x-bili-mid` 不能替代 access_key，也不代表 App 认证成功。
 
 `DeviceIdentity` actor 管设备标识、凭据快照及登录会话版本；生产凭据存 Keychain，
 测试可注入内存存储、独立 defaults 并关闭设备标识联网补取。
+`AppAccountSnapshot` 是独立账号值类型；`AppDeviceSnapshot` 保存事件发生时的设备、
+账号代际与会话事实，不依赖具体点击模型，也不保存 token/Cookie/ticket。
+`AppDeviceProtocol` 和 `AppDeviceLocale` 编码设备头、追踪号及地区消息，与推荐响应模型分开。
 `AccountStore` 区分本地有凭据与服务端已确认登录；暂时网络失败不等同于凭据失效。
 
 写操作不自动重试，包括形式为 GET 的推荐反馈。观看上报、推荐反馈和播放准备绑定
@@ -66,8 +76,10 @@ App 响应必须同时包含账号一致的 token 和 Cookie；status 非零不�
 
 本地续播与服务端观看记录分离。`PlaybackWatchProgress` 只认可首帧后、播放中且非缓冲
 的连续推进；拖动目标和未播放的续播位置不能作为观看证据。首次累计真实观看 5 秒、
-随后每 15 秒发心跳，暂停/退出补已确认进度。完成标记要求片尾真实推进。
-同账号会话、视频和分 P 共用串行发送队列，慢请求合并待发快照。
+随后每 15 秒同步历史，暂停/退出补已确认进度。移动观看心跳独立：确认真实推进后发送
+全零开始记录，停止或实际播完发送累计结束记录；暂停、后台返回和换源不额外发送移动心跳。
+完成标记要求片尾真实推进。同账号会话、视频和分 P 共用串行发送队列，只合并同一播放
+会话的相邻历史快照，保留开始/结束边界，快速退出不会吞掉开始记录。
 有 App 凭据且已知 aid 时发送 `/x/report/heartbeat/mobile` 并独立同步
 `/x/v2/history/report`，不再同时发送网页心跳；仅 Cookie 或尚无 aid 时保留网页历史同步。
 移动心跳的 watched/actual 时间来自真实推进的单调时钟累计，当前位置和最大已观看位置
@@ -79,11 +91,27 @@ App 推荐卡片的 track_id/report_flow_data 原样保留，只有实际点卡�
 相关视频保留既有映射，其他未确认入口不猜值。换登录会话后丢弃旧卡片的追踪值。
 相关视频使用官方 iPhone 的 gRPC `ViewUnite/View`，到达列表末尾时以响应中的不透明游标请求
 `RelatesFeed`，不退回缺少追踪信息的网页相关接口。返回的 `track_id`、`report_flow_data`
-随真实点击进入播放，上报绑定返回卡片时的登录会话。视频页请求与观看心跳共用本次进入的
-播放 session；换账号后丢弃迟到页面及旧追踪信息。历史同步补充实际时长、当前设备时间和
+随真实点击进入播放，上报绑定返回卡片时的登录会话。视频页请求使用独立的 32 位页面
+session，与观看心跳的播放 session 分开；暂停续播保留播放会话，重新进入或播完重播重建。
+换账号后丢弃迟到页面及旧追踪信息。历史同步补充实际时长、当前设备时间和
 已确认的普通 UGC 参数。未确认的播放模式、网络分类及广告身份参数保持待验证。
+`AppWatchProtocol` 将已测量的观看事实编码为移动心跳及历史表单；`BiliAPI+History`
+负责选择通道、开始/结束/检查点顺序和独立历史同步，播放器只负责真实观看与生命周期。
 
-当前不发送尚未解码的二进制 click/ios 或曝光遥测，不因卡片解析/预载而模拟点击。
+首页 App 视频卡的实际 Button 点击发送 `tm.recommend.main-card.0.click`，将服务端原始
+param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 RecordIO + gzip 上传到
+`dataflow.biliapi.com/log/pbmobile/unrealtime?ios`。网页卡、其他入口、卡片解析和预载不发送该事件。
+`RecommendationClickReporter` 在事件创建时保存账号、设备、8 位请求会话和独立的 8 位
+启动会话快照；后台返回保留编号，进程重启新建。队列最多 100 条/24 小时，仅确定连接未建立
+的失败保留补发；超时或业务拒绝不重试，以免重复计算点击。重启补发保留原事件快照，上传头
+使用当前会话。不同账号及旧登录代际的记录丢弃，登录代际在本地持久化、不发送到服务器；
+同账号重登后再重启也不能补发旧记录。这是账号切换尚未采样时的隔离策略。
+队列不保存 token/Cookie/ticket，Regression 使用内存队列及隔离网络。
+`RecommendationClick` 保留原来的可持久化事件结构，`AppBehaviorEncoder` 独立负责
+事件 Protobuf、RecordIO 和 gzip 编码，队列继续负责身份隔离、持久化和补发。
+日志设备指纹已核对与 fingerprint 返回的 bili_deviceId 相同；自身申请的加密生成仍未实现，
+该字段及其他未知基础字段继续缺省。国际版样本不改变 NeoBili 的中国版身份。当前不发送尚未
+解码的 click/ios、广告 PlayPause 或曝光遥测，不能据此宣称完整复刻官方日志或推荐效果已验证。
 
 ## 列表、图片与取消
 
@@ -100,7 +128,8 @@ App 推荐卡片的 track_id/report_flow_data 原样保留，只有实际点卡�
 换账号或同账号重登清零。失败不推进游标，刷新失败仍保留原分页请求；缺失或重复的
 App 游标停止翻页，仍可手动刷新。过滤后为空的批次也会推进有效游标。
 
-推荐参数采用 NOTSURE.md 已确定的处理策略。首批、手动刷新、翻页使用
+推荐参数集中在 `AppRecommendationProtocol`，采用 NOTSURE.md 已确定的处理策略；
+`AppRecommendationPage` 仅解析响应、卡片与游标，不再负责请求或公共设备头。首批、手动刷新、翻页使用
 `flush=0/6/8`、`pull=1/1/0`；布局触发支持 `flush=2`，当前首页固定双列，没有布局切换入口。
 `column=4` 为官方双列模式编号。`auto_refresh_state=4` 与关闭本地自动刷新一致；
 登录事件固定为 0，声音、自动播放等状态采用已决定的固定值，不声称字段全部语义已经解清。
@@ -141,6 +170,22 @@ locale 包只编码已确认的 1/2/4 字段，未知的 5/8 不猜补。网络�
 实际更新次数、帧率、耗时必须运行测量，不从代码结构推断。
 
 ## 扩展与测试边界
+
+逆向成果按下列边界接入，页面与播放器不直接拼服务器协议字段：
+
+| 新确认的规则 | 接入位置 | 保留的职责边界 |
+| --- | --- | --- |
+| 客户端版本、公共身份及 App 签名 | `AppClientIdentity`、`AppSigner` | 客户端配置与签名算法分开，凭据 scope 与真实登录方式配套 |
+| 设备登记结果及更新条件 | `DeviceIdentity`、`AppDeviceSnapshot`、`AppDeviceProtocol` | actor 保存自身资料/服务器响应及生命周期，协议层编码快照，不借页面或日志队列保存身份 |
+| 首页参数和启动/横幅状态 | `AppRecommendationProtocol`、`AppRecommendationSession` | 参数编码与状态所有权分开，响应模型只负责解码 |
+| 新请求的格式、头、认证方式及加密 | `AppRequest`、`AppRequestEncoding`、对应领域 API | 显式定义凭据要求；`APIClient` 在调用可替换编码器前执行会话及凭据检查 |
+| 点击/曝光等日志字段和包装 | `AppBehaviorEncoder`、`AppProto` | 编码与事件采集/可见时段/队列补发分开；新事件仍需自己的真实触发依据 |
+| 观看心跳或历史字段 | `AppWatchProtocol` | 消费真实播放事实，保持播放器计时与发送队列独立 |
+
+`AppProto` 是请求、响应和日志共用的有界 Protobuf/gRPC 编解码器。新增登记或票据协议应
+同时明确认证、响应和重试语义；不能把写请求接到当前会重试的只读 gRPC 方法。
+当前解耦覆盖上述 App 业务路径，SMSPassport、WBI、直播及图片仍保留其独立入口。
+编码器替换不放开新上报，也不证明分析包规则与当前官方版本兼容。
 
 新增领域接口放入 `BiliAPI+领域`，列表模型放入 `Core/Models`，页面状态由对应 feature
 持有；设置接线见 [设置开发](SETTINGS.md)。界面字面量使用本地化资源，动态传递文字使用

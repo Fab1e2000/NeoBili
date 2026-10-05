@@ -34,12 +34,21 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Networking/AppNetwork.swift" \
    "$APP/Core/Networking/RecommendationDiagnostics.swift" \
    "$APP/Core/Networking/APIClient.swift" \
+   "$APP/Core/Networking/HTTPTransport.swift" \
+   "$APP/Core/Networking/AppRequestEncoding.swift" \
+   "$APP/Core/Networking/AppClientIdentity.swift" \
+   "$APP/Core/Networking/AppProto.swift" \
+   "$APP/Core/Networking/BiliHeaders.swift" \
+   "$APP/Core/Networking/AppDeviceProtocol.swift" \
+   "$APP/Core/Networking/AppRecommendationProtocol.swift" \
+   "$APP/Core/Networking/AppBehaviorEncoder.swift" \
    "$APP/Core/Networking/BiliAPI.swift" \
    "$APP/Core/Networking/BiliAPI+Recommendation.swift" \
    "$APP/Core/Networking/BiliAPI+VideoActions.swift" \
    "$APP/Core/Networking/AppRecommendationSession.swift" \
    "$APP/Core/Networking/AppRecommendationPage.swift" \
    "$APP/Core/Networking/AppRelatedPage.swift" \
+   "$APP/Core/Networking/RecommendationClick.swift" \
    "$APP/Core/Networking/AppRecommendationDisplay.swift" \
    "$APP/Core/Networking/WebRecommendationPage.swift" \
    "$APP/Core/Networking/BiliPassport.swift" \

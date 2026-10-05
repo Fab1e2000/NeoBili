@@ -160,6 +160,31 @@ final class RecommendationAlignmentTests: XCTestCase {
         XCTAssertEqual(AlignmentProtocol.requests.withLock { $0.map { $0.url!.path } },
                        ["/x/click-interface/web/heartbeat"])
     }
+
+    func testZeroStartAndHistoryCheckpointHaveSeparateTransports() async throws {
+        let identity = DeviceIdentity(defaults: defaults(), credentials: .memory(), allowsNetwork: false, purgeCookies: {})
+        await identity.saveLogin(.init(sessdata: "fixture", biliJct: "csrf", dedeUserID: "42"), accessKey: "own-token")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AlignmentProtocol.self]
+        let transport = URLSession(configuration: configuration)
+        defer { transport.invalidateAndCancel() }
+        let client = APIClient(session: transport, appAuthentication: { await identity.appAccount() })
+        AlignmentProtocol.requests.withLock { $0 = [] }
+        AlignmentProtocol.rejectHeartbeat.withLock { $0 = false }
+        var report = PlaybackWatchReport(position: 0, watchedTime: 0, pausedTime: 0,
+            maximumPosition: 0, duration: 300, startTimestamp: 100, sourceFields: [:],
+            playbackSession: "own-playback", delivery: .start)
+        try await BiliAPI.reportAppWatch(bvid: "BVFixture", aid: 1, cid: 2, report: report,
+            expectedSessionID: identity.loginSessionID, client: client, identity: identity)
+        XCTAssertEqual(AlignmentProtocol.requests.withLock { $0.map { $0.url!.path } }, ["/x/report/heartbeat/mobile"])
+        report = PlaybackWatchReport(position: 15, watchedTime: 15, pausedTime: 0,
+            maximumPosition: 15, duration: 300, startTimestamp: 100, sourceFields: [:],
+            playbackSession: "own-playback", delivery: .checkpoint)
+        try await BiliAPI.reportAppWatch(bvid: "BVFixture", aid: 1, cid: 2, report: report,
+            expectedSessionID: identity.loginSessionID, client: client, identity: identity)
+        XCTAssertEqual(AlignmentProtocol.requests.withLock { $0.map { $0.url!.path } },
+            ["/x/report/heartbeat/mobile", "/x/v2/history/report"])
+    }
 }
 
 private final class AlignmentProtocol: URLProtocol, @unchecked Sendable {

@@ -39,19 +39,19 @@ final class RecommendationPolicyTests: XCTestCase {
                      "fnver":"0", "force_host":"0", "https_url_req":"0", "qn":"32", "voice_balance":"0",
                      "disable_rcmd":"0", "recsys_mode":"0", "fourk":"1", "column":"4"]
         for request in [RecommendationRequest(source: .app), .init(source: .app, isRefresh: true), .init(source: .app, pageIndex: 2, appCursor: 123)] {
-            let params = AppRecommendationPage.parameters(for: request, openEvent: "hot", bannerHash: "own-banner")
+            let params = AppRecommendationProtocol.parameters(for: request, openEvent: "hot", bannerHash: "own-banner")
             for (key, value) in fixed { XCTAssertEqual(params[key], value, key) }
             XCTAssertEqual(params["open_event"], "hot")
             XCTAssertEqual(params["banner_hash"], "own-banner")
             for key in ["splash_id", "splash_ids", "splash_creative_id"] { XCTAssertEqual(params[key], "") }
             for key in ["ad_extra", "widgets", "network", "access_key"] { XCTAssertNil(params[key]) }
         }
-        XCTAssertEqual(AppRecommendationPage.parameters(for: .init(source: .app, isLayoutChange: true))["flush"], "2")
+        XCTAssertEqual(AppRecommendationProtocol.parameters(for: .init(source: .app, isLayoutChange: true))["flush"], "2")
         XCTAssertEqual(PlaybackEntry.history.parameters()["from"], "64")
         XCTAssertEqual(PlaybackEntry.search.parameters()["from"], "3")
     }
     func testChinaLocaleContainsOnlyKnownFields() throws {
-        let data = try XCTUnwrap(Data(base64Encoded: AppRecommendationLocale.header))
+        let data = try XCTUnwrap(Data(base64Encoded: AppDeviceLocale.header))
         let locale = Data([10,2]) + Data("zh".utf8) + Data([18,4]) + Data("Hans".utf8) + Data([26,2]) + Data("CN".utf8)
         let expected = Data([10,14]) + locale + Data([18,14]) + locale + Data([34,13]) + Data("Asia/Shanghai".utf8)
         XCTAssertEqual(data, expected)

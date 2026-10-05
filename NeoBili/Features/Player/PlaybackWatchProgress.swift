@@ -14,13 +14,14 @@ struct PlaybackWatchProgress {
     private var lastReportedSecond: Int?
     private var segmentHasProgress = false
     private var isCompleted = false
+    var terminalPosition: Double? { lastReportedSecond == -1 ? -1 : lastWatchedPosition }
     private(set) var watchedTime: TimeInterval = 0
     private(set) var maximumPosition: TimeInterval = 0
     private(set) var miniPlayerTime: TimeInterval = 0
     private(set) var pausedTime: TimeInterval = 0
     private var pauseStarted: TimeInterval?
 
-    /// First heartbeat after five real seconds, then every fifteen seconds.
+    /// History checkpoint after five real seconds, then every fifteen seconds.
     /// Explicit pause/exit may flush a shorter, actually watched segment.
     mutating func observe(position: TimeInterval, at time: TimeInterval, isActive: Bool, isMiniPlayer: Bool = false) -> Double? {
         guard !isCompleted, isActive, position.isFinite, position >= 0, time.isFinite else {
@@ -105,7 +106,7 @@ struct PlaybackWatchProgress {
     }
 }
 
-/// One writer per video part and login session. When a slow request is in flight, newer
+/// One history writer per video part and login session. When a slow request is in flight, newer
 /// checkpoints replace the pending one rather than creating more network tasks.
 /// Keeping this separate lets the final checkpoint finish after the player exits.
 @MainActor
@@ -160,6 +161,7 @@ final class PlaybackWatchProgressSender {
 
 /// 移动心跳的观看秒数与历史进度分开；不能把续播/拖动位置当成观看时长。
 struct PlaybackWatchReport: Sendable {
+    enum Delivery: Sendable, Equatable { case start, checkpoint, finish }
     let position: Double
     let watchedTime: Double
     let pausedTime: Double
@@ -170,6 +172,7 @@ struct PlaybackWatchReport: Sendable {
     var playbackSession: String = ""
     var aid: Int = 0
     var miniPlayerTime: Double = 0
+    var delivery: Delivery = .finish
 
 }
 
@@ -202,7 +205,7 @@ final class PlaybackWatchReportSender {
     }
 
     private let report: @Sendable (PlaybackWatchReport) async -> Void
-    private var pending: PlaybackWatchReport?
+    private var pending: [PlaybackWatchReport] = []
     private var task: Task<Void, Never>?
 
     init(report: @escaping @Sendable (PlaybackWatchReport) async -> Void) {
@@ -211,11 +214,18 @@ final class PlaybackWatchReportSender {
 
     func enqueue(_ position: PlaybackWatchReport?) {
         guard let position else { return }
-        pending = position
+        // Start/finish are session boundaries. Never coalesce them across re-entry.
+        // Only replace adjacent history checkpoints from the same playback session.
+        if position.delivery == .checkpoint, let last = pending.last,
+           last.delivery == .checkpoint, last.playbackSession == position.playbackSession {
+            pending[pending.count - 1] = position
+        } else {
+            pending.append(position)
+        }
         guard task == nil else { return }
         task = Task {
-            while let position = pending {
-                pending = nil
+            while !pending.isEmpty {
+                let position = pending.removeFirst()
                 await report(position)
             }
             task = nil
