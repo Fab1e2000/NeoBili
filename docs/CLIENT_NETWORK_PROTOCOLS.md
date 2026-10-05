@@ -1920,7 +1920,7 @@ willResignActive 将 isColdLaunch 置假、isFirstRefresh 置真；didEnterBackg
 
 Swift首页另有独立banner_hash链，不能套用上述HDhelper时间条件：BannerV8Model
 customMapper0x101ae5a88把属性banner_hash映射原响应键hash（0x101ae6024），
-卡片JSON转换0x101afaab8→model→VM；layout准备0x101af5a24读model.banner_hash并
+卡片JSON转换0x101afaab8→model→VM（**已闭合（task-36）**：读字典键 `card_type`→`swift_dynamicCast` String→BannerV8Model metadata 0x101ae5c78→`yy_modelWithJSON:`（selref 0x11f783318 @0x101afab84）→失败 nil（0x101afabec）→`objc_allocWithZone` BannerV8ViewModel 初始化 0x101afa904（0x101afabcc）；**单卡、无状态转换**，无缓存/过滤/重排逻辑；唯一调用方=`-[FeedEmptyViewPlugin _doRefreshIfExistEmptyView]`（0x101b4a720）两处 0x101b4b8d4/0x101b4bb1c；列表级装配残余：需继续追 find_callers 0x101afa904 与 layout 准备 0x101af5a24 的调用方）；layout准备0x101af5a24读model.banner_hash并
 存MainApiMarker+20/+28，新API首建读取，nil为空。不是收到任意响应立即写请求。
 Swift注册前台通知到0x101a35b18，对timeIntervalSinceNow取fabs，abs严格>1800秒
 才清banner（0x101a35ca8/0x101a35cb4），没有负值先决，等于不清；另有账号observer
@@ -2007,7 +2007,7 @@ flush=8，取末卡 idx、当前布局/自动播放/推荐模式后发送。首�
 ### 推荐点击、展示与可见时长的业务触发
 
 旧包同时包含 UIKit HD 与 Swift 实现，以下按实际函数体区分；运行时选择与 9.13
-一致性未验证。下一步 = query_index.py '*MainV2VC*' 20 收双实现入口；运行时选择与 9.13 一致性属运行期/跨版本事实，需 9.13 抓包或真机断点。MainV2VC.didSelect（0x10df3e318）对 bangumi_rcmd 卡路由后调用
+一致性**装配层已闭合（task-36）**：BBHD2PhonePegasusMainV2VC 唯一构造点 = `-[BBHD2PhonePegasusVC buildVCUseCurrentVC:]` 0x10df1a030——0x10df1a0a8 载 classRef 0x11f7c99e8→`objc_alloc`→`initWithMainVM:`（0x10df1a0d0）→addChildViewController，整条路径**无条件**（0x10df1a04c 的 cbz 仅处理已有 mainVC 复用），装配层**无配置分支**选择 Swift 替代 VC；classRef_0 0x11f7f8ce8 其余 16 处加载点全在 MainV2VC 自身生命周期方法内。残余=运行期是否另有 Swift 首页替换路径、与 9.13 一致性属运行期/跨版本事实，需 9.13 抓包或真机断点。MainV2VC.didSelect（0x10df3e318）对 bangumi_rcmd 卡路由后调用
 HomeData.reportCardClick；其他卡走 superclass（0x10dee967c）。super 在实际 cell
 支持 jumpDetail 时调用该方法，另行处理广告 click；只有 cell 的 **精确类名**属于
 LargeCoverV1Cell、SmallCoverV1Cell、SmallCoverV9Cell、SmallCoverV5Cell 白名单
@@ -2579,7 +2579,7 @@ same child._isExposed=true（0x103d64ed4），不等网络ack；同对象再次w
 被抑制，不因后续发送失败恢复业务曝光资格。它不是按MID/ID/IndexPath保存key。
 SubItem init0x103d79f7c置false，modelPropertyBlacklist0x103d79eb0的静态array
 0x120443080唯一项_isExposed，普通YYModel输入JSON不赋该marker；动态setter
-0x103d79ea0仍可写，未闭合全局reset。下一步 = scan_addr_uses.py 0x120443080 收该 marker 全局的全部 ADRP+ADD 读写点，确认是否有全局 reset 写者。
+0x103d79ea0仍可写，**全局 reset 已闭合为静态强否定（task-36）**：marker 数组全局 0x120443080 在整包 __text 内**无任何物化点**（find_pointer_refs ADRP+LDR 引用为空；自实现 ADRP+ADD imm12=0x80、同寄存器、6 指令窗全 __text 扫描为空），**不存在静态全局 reset 写者**；setter 0x103d79ea0 为 Swift witness thunk（`ldr x8,[x26,#0x8]; blr x8`）间接派发，find_callers 空，写入仅限属性 setter + 两处 willDisplay 置 true（0x103d64ed4/0x103d533a8）。残余=若运行期出现重置，需在 setter 0x103d79ea0 下断核对（YYModel 复用/新 model 重建路径）。
 S1创建0x103d58998直接取input model.items（0x103d58b10），将同array/model
 传configure0x103d5f4bc（0x103d58b24）；configure分别保存model/items
 （0x103d5f4e8/0x103d5f50c），retains array0x103d5f514，reload后readiness
