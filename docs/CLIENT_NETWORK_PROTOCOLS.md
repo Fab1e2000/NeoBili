@@ -548,7 +548,7 @@ HttpSign随旧task切换而自动进入Ktor。
 `+[BBResolverUniteHlsParsModel makeWith…]` 0x114a5823c。ivar 偏移数组（元素指针
 0x1210644c0+8i）不在本工具链的 section 表内（`offset()` 返回 None），故 `[x8,#0x500]` 这一
 读点偏移无法自证；全镜像 `str w?,[x?,#0x500]` 扫描也没有落在 0x1000a9–0x1000ab 区。
-⇒ 写入方是 **Swift 直接字段写、尚未定位**（`str w?,[x?,#0x500]` 全镜像扫描无命中）；
+⇒ 写入方是 **Swift 直接字段写、尚未定位**（ivar #10 偏移 0x500，偏移数组 0x1210644c0+8i，全镜像 `str w?,[x?,#0x500]` 扫描无命中）；
 下一步 = 用 fixup-aware 解析器取 `requestType` 的真实 ivar 偏移后扫该偏移的 store，或运行期在 0x1000aae98 断点读 receiver 与命中偏移。
 运输入口0x10009fb10在type2构造KtorRequest（0x1000a4100）；它也在signType=3
 写禁公共参数attrs，Bridge0x1000a205c把attrs传入KntrKtorRequest，再接下面的
