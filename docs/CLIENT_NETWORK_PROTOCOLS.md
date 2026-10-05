@@ -1967,8 +1967,11 @@ JSON 失败分支与具体合并字段下一步 `$PY disassemble.py 0x101a3515c 
 
 响应 modelDescriptions（0x10df575e4）包括 /data/items（数组、必需）、/data/config
 （非数组、可选）、/data/config/auto_refresh_time（非数组、可选）。完整卡片映射、配置
-应用、本地缓存/过滤/重排未证明；下一步 `$PY disassemble.py 0x101afaab8 0x101afb400`
-反汇编卡片 JSON 转换并枚举 model→VM 字段。
+应用、本地缓存/过滤/重排**已否证（team-c38 取证）**：0x101afaab8 是**纯映射**——0x101afab38 dynamicCast →
+0x101afab84 `yy_modelWithJSON:` → 0x101afabcc `BannerV8ViewModel init`（sub_101AFA904），**无本地缓存、无过滤、无重排**；
+上游装配层唯一外部调用者是 `-[FeedEmptyViewPlugin _doRefreshIfExistEmptyView]`（0x101b4a720）内联闭包的两处 BL
+0x101b4b8d4/0x101b4bb1c，随后 0x101b4b8ec/bb34 调 0x101af5a24（`cardType=="banner_v8"` 比较 → 写 BannerLayout 到 ivar
+layout），逐条装配、无中间缓存层。若存在重排，只可能在数据源更上游（本轮未展开，见「首页请求的业务组装」数据源段）。
 
 ### 首页 VM 的首次请求、重试与响应状态
 
