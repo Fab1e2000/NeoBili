@@ -18,6 +18,7 @@ struct HomeFeedCellView: View {
     let state: HomeFeedCellState
     let entranceStart: TimeInterval?
     let onOpenLastSeen: () -> Void
+    var preview: HomeInlinePreview? = nil
 
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
@@ -59,6 +60,7 @@ struct HomeFeedCellView: View {
             case .dynamic(let id):
                 viewModel.sheet = .dynamic(id: id)
             case nil:
+                RecommendationClickReporter.record(video)
                 nowPlaying.open(
                     VideoDetailRoute(bvid: video.bvid, cid: video.cid > 0 ? video.cid : nil, cover: video.pic,
                                      title: video.title, artist: video.owner.name, aid: video.aid, playbackEntry: video.playbackEntry),
@@ -74,10 +76,30 @@ struct HomeFeedCellView: View {
                     HomeVideoCard(video: video, titleWidth: titleWidth)
                 }
                 #else
-                NativeHomeVideoCard(video: video, titleWidth: titleWidth)
+                NativeHomeVideoCard(video: video, titleWidth: titleWidth,
+                    coverAspectRatio: video.isLargeRecommendationCard ? HomeCardLayout.largeCoverAspectRatio : HomeCardLayout.coverAspectRatio)
                 #endif
             }
             .frame(width: size.width, height: size.height)
+            .overlay(alignment: .top) {
+                if video.isLargeRecommendationCard {
+                    ZStack(alignment: .bottom) {
+                        if let preview, preview.videoID == video.bvid, let session = preview.session {
+                            PlayerSurface(session: session)
+                                .opacity(preview.hasFirstFrame ? 1 : 0)
+                        }
+                        HomeLargeCoverOverlay(video: video,
+                            isPlaying: preview?.videoID == video.bvid && preview?.hasFirstFrame == true)
+                        if let preview, preview.videoID == video.bvid, preview.duration > 0 {
+                            ProgressView(value: min(preview.progress / preview.duration, 1))
+                                .tint(.accentColor).frame(height: 2)
+                        }
+                    }
+                    .frame(width: size.width, height: size.width / HomeCardLayout.largeCoverAspectRatio)
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 7, topTrailingRadius: 7))
+                    .allowsHitTesting(false)
+                }
+            }
             // Both this source and its native hosting cell contain one card.
             .videoTransitionSource(video.bvid, in: videoTransition)
             .contentShape(.interaction, Rectangle())
@@ -168,5 +190,38 @@ struct HomeFeedCellView: View {
                 }
             }
         }
+    }
+}
+
+/// The same foreground remains in place when cover pixels switch to video pixels.
+struct HomeLargeCoverOverlay: View {
+    let video: VideoSummary
+    var isPlaying: Bool
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            LinearGradient(stops: [.init(color: .clear, location: 0),
+                                   .init(color: .black.opacity(0.2), location: 0.4),
+                                   .init(color: .black.opacity(0.6), location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+                .frame(height: 52)
+            HStack(spacing: 8) {
+                stat(video.stat.view.biliCountText, icon: "play.rectangle")
+                stat(video.stat.danmaku.biliCountText, icon: "text.bubble")
+                Spacer(minLength: 8)
+                ZStack(alignment: .trailing) {
+                    Text(video.coverCornerText).opacity(isPlaying ? 0 : 1)
+                    Image(systemName: "speaker.slash.fill").opacity(isPlaying ? 1 : 0)
+                        .accessibilityLabel("静音预览")
+                }
+            }
+            .font(.caption2.weight(.semibold)).foregroundStyle(.white)
+            .padding(.horizontal, 8).padding(.bottom, 6)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    private func stat(_ value: String, icon: String) -> some View {
+        HStack(spacing: 2) { Image(systemName: icon); Text(value) }
     }
 }

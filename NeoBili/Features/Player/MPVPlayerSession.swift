@@ -17,10 +17,13 @@ final class MPVPlayerSession {
         didSet { viewController.onEvent = onEvent }
     }
 
+    private(set) var playbackRate: Double = 1
     private var isStopped = false
+    private let activatesAudio: Bool
 
     init(configuration: VideoPlaybackConfiguration) {
-        PlaybackAudioSession.activateOnce()
+        activatesAudio = !configuration.silentPreview
+        if activatesAudio { PlaybackAudioSession.activateOnce() }
         viewController = MPVMetalViewController(configuration: configuration)
     }
 
@@ -32,11 +35,18 @@ final class MPVPlayerSession {
         // SwiftUI 挂载之前。主动强制加载一次，不能指望调用方替我们做这件事。
         viewController.loadViewIfNeeded()
         viewController.open(source: source, startTime: startTime)
+        viewController.setPlaybackRate(playbackRate)
+    }
+
+    func setPlaybackRate(_ rate: Double) {
+        guard !isStopped, PlaybackSpeed.options.contains(rate) else { return }
+        playbackRate = rate
+        if viewController.isViewLoaded { viewController.setPlaybackRate(rate) }
     }
 
     func play() {
         guard !isStopped else { return }
-        PlaybackAudioSession.activateOnce()
+        if activatesAudio { PlaybackAudioSession.activateOnce() }
         viewController.play()
     }
 

@@ -1,8 +1,42 @@
 import XCTest
 import UIKit
+import SwiftUI
 @testable import NeoBili
 
 final class PlayerPlaybackTests: XCTestCase {
+    func testSpeedCommandUsesMPVSpeedAndRejectsInvalidInput() {
+        XCTAssertEqual(PlaybackSpeed.command(1.25), ["set", "speed", "1.25"])
+        XCTAssertEqual(PlaybackSpeed.command(2), ["set", "speed", "2"])
+        for rate in [0.0, -1, .nan, .infinity, 4] { XCTAssertNil(PlaybackSpeed.command(rate)) }
+    }
+
+    @MainActor
+    func testSpeedMenuRendersWithSelectedValueInLightDarkAndLargeText() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        for (name, style, size) in [("light", ColorScheme.light, DynamicTypeSize.large),
+                                    ("dark", .dark, .large), ("large-text", .light, .accessibility3)] {
+            let host = UIHostingController(rootView: PlayerSpeedMenu(rate: 1.5, onSelect: { _ in })
+                .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(uiColor: .systemBackground))
+                .environment(\.colorScheme, style).environment(\.dynamicTypeSize, size))
+            window.rootViewController = host; window.makeKeyAndVisible()
+            host.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(150))
+            let fitted = host.sizeThatFits(in: CGSize(width: 320, height: 240))
+            XCTAssertLessThanOrEqual(fitted.width, 320)
+            XCTAssertLessThanOrEqual(fitted.height, 240)
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image {
+                _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "player-speed-\(name)"; attachment.lifetime = .keepAlways; add(attachment)
+            try image.pngData()?.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("player-speed-\(name).png"))
+        }
+    }
+
     @MainActor
     func testPlayerReturnGuardDoesNotInterceptUnderlyingControlTouches() {
         let canvas = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 120))

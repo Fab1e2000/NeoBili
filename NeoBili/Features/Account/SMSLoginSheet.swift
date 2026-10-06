@@ -76,11 +76,9 @@ struct SMSLoginSheet: View {
                 do {
                     guard account.sessionID == expectedSession,
                           model.preparedAccountSession == DeviceIdentity.shared.loginSessionID, !Task.isCancelled else { throw CancellationError() }
-                    if appAuthorizationOnly {
-                        try await account.completeAppAuthorization(value.cookies, accessKey: value.accessKey, expectedSessionID: expectedSession)
-                    } else {
-                        await account.completeLogin(value.cookies, accessKey: value.accessKey)
-                    }
+                    guard let identitySession = model.preparedAccountSession else { throw CancellationError() }
+                    try await account.completeSMSLogin(value, expectedSessionID: expectedSession,
+                        expectedIdentitySession: identitySession, authorizationOnly: appAuthorizationOnly)
                     if !Task.isCancelled { dismiss() }
                 } catch {
                     completionError = BiliPassport.failureText(for: error)

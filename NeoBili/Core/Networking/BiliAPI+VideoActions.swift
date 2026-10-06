@@ -3,62 +3,69 @@ import Foundation
 extension BiliAPI {
     // MARK: - 视频页写操作（登录后）
 
-    /// 点赞 / 取消点赞。`like` 传 true 是点赞，false 是取消。
-    static func likeVideo(aid: Int, like: Bool) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
-            path: "x/web-interface/archive/like",
-            form: [
-                "aid": String(aid),
-                "like": like ? "1" : "2",
-                "csrf": csrf
-            ]
-        )
+    /// ACT-01: send only the three tracker fields consumed by the official UGC action.
+    static func videoActionParameters(aid: Int, entry: PlaybackEntry,
+                                      sessionID: UUID?) throws -> [String: String] {
+        if let origin = entry.loginSessionID, origin != sessionID { throw CancellationError() }
+        let source = entry.parameters(for: sessionID)
+        return ["aid": String(aid), "from": source["from"] ?? "",
+                "from_spmid": source["from_spmid"] ?? "",
+                "spmid": "united.player-video-detail.0.0"]
     }
 
-    /// 点踩 / 取消点踩。
-    ///
-    /// 网页端没有这个写接口，只能走 App 端，因此它需要 `access_key`——也就是
-    /// 只有扫码登录的账号能用（见 `APIClient.postApp`）。密码登录的账号调用时
-    /// 会拿到 `BiliAPIError.missingAccessKey`。
-    static func dislikeVideo(aid: Int, dislike: Bool, expectedSessionID: UUID? = nil,
-                             client: APIClient = .shared) async throws {
-        try await client.postApp(
-            path: "x/v2/view/dislike",
-            form: [
-                "aid": String(aid),
-                // 注意这个接口是反的：0 才是点踩，1 是取消点踩。传反了服务端会回
-                // 65005「取消踩失败，未点踩过」，看起来像点踩功能整个不能用。
-                "dislike": dislike ? "0" : "1"
-            ],
-            expectedSessionID: expectedSessionID
-        )
+    /// Existing dynamic-feed interaction: its App tracker has not been established yet.
+    static func likeVideo(aid: Int, like: Bool) async throws {
+        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+        try await APIClient.shared.post(path: "x/web-interface/archive/like",
+            form: ["aid": String(aid), "like": like ? "1" : "2", "csrf": csrf])
+    }
+
+    /// App like is the target state: 1 likes, 0 removes the like (web uses 2).
+    static func likeVideo(aid: Int, like: Bool, entry: PlaybackEntry,
+                          expectedSessionID: UUID? = nil, client: APIClient = .shared) async throws {
+        let account = try await client.appAccount(expectedSessionID: expectedSessionID)
+        var form = try videoActionParameters(aid: aid, entry: entry, sessionID: account.sessionID)
+        form["like"] = like ? "1" : "0"
+        try await client.postApp(path: "x/v2/view/like", form: form, expectedSessionID: account.sessionID)
+    }
+
+    /// App 点踩发送操作前的状态：目标点踩为 0，目标取消为 1。
+    /// 独立播放器 provider 仅接收 spmid/from_spmid，不接收 from 或卡片 track_id。
+    /// action_id 来自官方 pvUniqueID，未证实等同于本地 playback session，暂不伪造。
+    static func dislikeVideo(aid: Int, dislike: Bool, entry: PlaybackEntry? = nil,
+                             expectedSessionID: UUID? = nil, client: APIClient = .shared) async throws {
+        let account = try await client.appAccount(expectedSessionID: expectedSessionID)
+        var form = ["aid": String(aid), "dislike": dislike ? "0" : "1"]
+        if let entry {
+            let context = try videoActionParameters(aid: aid, entry: entry, sessionID: account.sessionID)
+            form["spmid"] = context["spmid"]
+            form["from_spmid"] = context["from_spmid"]
+        }
+        try await client.postApp(path: "x/v2/view/dislike", form: form, expectedSessionID: account.sessionID)
     }
 
     /// 一键三连：点赞 + 投币 + 收藏到默认收藏夹，服务端一次做完。
     ///
     /// 返回值说明这三步各自的结果——账号硬币不够时 `coin` 会是 false，
     /// 但点赞和收藏仍然成功，所以要按字段分别反映到界面上。
-    static func tripleAction(aid: Int) async throws -> TripleResult {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        return try await APIClient.shared.post(
-            path: "x/web-interface/archive/like/triple",
-            form: ["aid": String(aid), "csrf": csrf]
-        )
+    static func tripleAction(aid: Int, entry: PlaybackEntry = .other,
+                             expectedSessionID: UUID? = nil, client: APIClient = .shared) async throws -> TripleResult {
+        let account = try await client.appAccount(expectedSessionID: expectedSessionID)
+        let form = try videoActionParameters(aid: aid, entry: entry, sessionID: account.sessionID)
+        return try await client.postAppData(path: "x/v2/view/like/triple", form: form,
+            expectedSessionID: account.sessionID, usesAPIHost: false, headers: [:])
     }
 
-    /// 投币。`multiply` 上限是 2；`selectLike` 为 true 时顺带点赞。
-    static func addCoin(aid: Int, multiply: Int, selectLike: Bool = false) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
-            path: "x/web-interface/coin/add",
-            form: [
-                "aid": String(aid),
-                "multiply": String(multiply),
-                "select_like": selectLike ? "1" : "0",
-                "csrf": csrf
-            ]
-        )
+    /// The current UI selects one coin; preserve an explicit two-coin choice for callers.
+    static func addCoin(aid: Int, multiply: Int, selectLike: Bool = false,
+                        entry: PlaybackEntry = .other, expectedSessionID: UUID? = nil,
+                        client: APIClient = .shared) async throws {
+        let account = try await client.appAccount(expectedSessionID: expectedSessionID)
+        var form = try videoActionParameters(aid: aid, entry: entry, sessionID: account.sessionID)
+        form["multiply"] = String(multiply)
+        form["avtype"] = "1"
+        form["select_like"] = selectLike ? "1" : "0"
+        try await client.postApp(path: "x/v2/view/coin/add", form: form, expectedSessionID: account.sessionID)
     }
 
     /// 一次性调整这个视频在各个收藏夹里的归属。

@@ -77,21 +77,29 @@ struct APIClient {
     static let shared = APIClient()
 
     private static let baseURL = URL(string: "https://api.bilibili.com")!
-    private static let appBaseURL = URL(string: "https://app.bilibili.com")!
-    private let session: URLSession
+    private let transport: HTTPTransport
+    private let appEncoder: any AppRequestEncoding
     private let authentication: @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot
     private let appAuthentication: @Sendable () async -> DeviceIdentity.AppRequestAccount
+    private let appHeaders: @Sendable (UUID) async throws -> [String: String]
 
     init(session: URLSession = AppNetwork.session,
+         appEncoder: any AppRequestEncoding = AppRequestEncoder(),
          authentication: @escaping @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot = {
              await DeviceIdentity.shared.authenticatedRequestSnapshot()
          },
          appAuthentication: @escaping @Sendable () async -> DeviceIdentity.AppRequestAccount = {
              await DeviceIdentity.shared.appAccount()
+         },
+         appHeaders: @escaping @Sendable (UUID) async throws -> [String: String] = { session in
+             guard !AppNetwork.isRegression else { return [:] }
+             return try await DeviceIdentity.shared.appRequestHeaders(expectedSessionID: session)
          }) {
-        self.session = session
+        self.transport = HTTPTransport(session: session)
+        self.appEncoder = appEncoder
         self.authentication = authentication
         self.appAuthentication = appAuthentication
+        self.appHeaders = appHeaders
     }
 
     /// 在实际读取 App 凭据时校验调用方绑定的会话；不能在异步调度之后
@@ -280,25 +288,10 @@ struct APIClient {
     /// （首页推荐补充 buvid、会话与追踪标识）。
     func getApp<T: Decodable>(path: String, params: [String: String],
                               headers: [String: String] = [:], retries: Int = 2,
-                              expectedSessionID: UUID? = nil, requiresAccountCredential: Bool = false) async throws -> T {
-        var query = params
+                              expectedSessionID: UUID? = nil, requiresAccountCredential: Bool = false, usesAPIHost: Bool = false) async throws -> T {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
-        let key = account.accessKey.flatMap { $0.isEmpty ? nil : $0 }
-        if requiresAccountCredential, account.mid != nil, key == nil { throw BiliAPIError.missingAccessKey }
-        if let key { query["access_key"] = key }
-        guard var components = URLComponents(url: Self.appBaseURL.appendingPathComponent(path),
-                                             resolvingAgainstBaseURL: false) else { throw BiliAPIError.invalidURL }
-        components.percentEncodedQuery = AppSigner.queryString(from: AppSigner.signed(query))
-        guard let url = components.url else { throw BiliAPIError.invalidURL }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        request.httpShouldHandleCookies = false
-        request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-        for (name, value) in BiliHeaders.appAccountHeaders(mid: account.mid) {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
-        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        let request = try await encodeAppRequest(.get(path: path, parameters: params,
+            requiresAccountCredential: requiresAccountCredential, usesAPIHost: usesAPIHost), context: .init(account: account, headers: headers))
         return try await perform(request, retries: retries)
     }
 
@@ -307,27 +300,8 @@ struct APIClient {
     func appGRPC(path: String, payload: Data, expectedSessionID: UUID,
                  headers: [String: String]) async throws -> Data {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
-        if account.mid != nil && account.accessKey?.isEmpty != false { throw BiliAPIError.missingAccessKey }
-        guard let url = URL(string: "https://grpc.biliapi.net/" + path) else { throw BiliAPIError.invalidURL }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 15
-        request.httpShouldHandleCookies = false
-        request.httpBody = AppProto.frame(payload)
-        request.setValue("application/grpc", forHTTPHeaderField: "Content-Type")
-        request.setValue("trailers", forHTTPHeaderField: "te")
-        request.setValue("15S", forHTTPHeaderField: "grpc-timeout")
-        request.setValue("gzip", forHTTPHeaderField: "grpc-accept-encoding")
-        request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
-        for (name, value) in BiliHeaders.appAccountHeaders(mid: account.mid).merging(headers, uniquingKeysWith: { _, new in new }) {
-            request.setValue(value, forHTTPHeaderField: name)
-        }
-        if let key = account.accessKey, !key.isEmpty { request.setValue("identify_v1 " + key, forHTTPHeaderField: "authorization") }
-        let metadata = AppProto.string(1, account.accessKey) + AppProto.string(2, AppClientIdentity.mobiApp)
-            + AppProto.string(3, "phone") + AppProto.integer(4, Int(AppClientIdentity.build) ?? 0)
-            + AppProto.string(5, "pink_overseas") + AppProto.string(6, headers["buvid"])
-            + AppProto.string(7, "ios")
-        request.setValue(metadata.base64EncodedString(), forHTTPHeaderField: "x-bili-metadata-bin")
+        let request = try await encodeAppRequest(.grpc(path: path, payload: payload),
+            context: .init(account: account, headers: headers))
         // View and RelatesFeed are read-only; never retry a behavioral write here.
         let (body, response) = try await data(for: request, retries: 2)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -338,6 +312,21 @@ struct APIClient {
         }
         _ = try await appAccount(expectedSessionID: expectedSessionID)
         return try AppProto.unframe(body)
+    }
+
+    /// Confirmed home-card event transport. No automatic retry of an ambiguous write.
+    func postRecommendationClick(body: Data, headers: [String: String], expectedSessionID: UUID, realtime: Bool = false) async throws {
+        let account = try await appAccount(expectedSessionID: expectedSessionID)
+        let operation: AppRequest = realtime ? .realtimeLog(body: body) : .unrealtimeLog(body: body)
+        let request = try await encodeAppRequest(operation, context: .init(account: account, headers: headers))
+        let (body, response) = try await data(for: request, retries: 0)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw BiliAPIError.httpStatus((response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        if let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any],
+           let code = json["code"] as? Int, code != 0 {
+            throw BiliAPIError.apiError(code: code, message: "点击上报失败")
+        }
     }
 
     /// APP 端接口（app.bilibili.com）。
@@ -353,30 +342,33 @@ struct APIClient {
         expectedSessionID: UUID? = nil,
         usesAPIHost: Bool = false, headers: [String: String] = [:]
     ) async throws {
+        let _: BiliEmptyData = try await postAppData(path: path, form: form, expectedSessionID: expectedSessionID,
+            usesAPIHost: usesAPIHost, headers: headers)
+    }
+
+    func postAppData<T: Decodable>(path: String, form: [String: String], expectedSessionID: UUID?,
+                                  usesAPIHost: Bool, headers: [String: String]) async throws -> T {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
-        guard let accessKey = account.accessKey, !accessKey.isEmpty else {
-            throw BiliAPIError.missingAccessKey
-        }
-        guard let url = URL(string: (usesAPIHost ? Self.baseURL : Self.appBaseURL).appendingPathComponent(path).absoluteString) else {
-            throw BiliAPIError.invalidURL
-        }
+        let request = try await encodeAppRequest(.form(path: path, parameters: form, usesAPIHost: usesAPIHost),
+            context: .init(account: account, headers: headers))
 
-        var params = form
-        params["access_key"] = accessKey
-        let signed = AppSigner.signed(params)
+        let result: T = try await perform(request)
+        _ = try await appAccount(expectedSessionID: expectedSessionID)
+        return result
+    }
 
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10
-        request.httpMethod = "POST"
-        request.httpShouldHandleCookies = false
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
-        for (name, value) in BiliHeaders.appAccountHeaders(mid: account.mid) { request.setValue(value, forHTTPHeaderField: name) }
-        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
-        // 签名串和请求体必须逐字节一致，所以两边共用同一个拼接函数。
-        request.httpBody = AppSigner.queryString(from: signed).data(using: .utf8)
-
-        let _: BiliEmptyData = try await perform(request)
+    private func encodeAppRequest(_ operation: AppRequest, context: AppRequestContext) async throws -> URLRequest {
+        // An injected codec can change bytes, never bypass the credential policy.
+        try operation.validate(account: context.account)
+        var resolved = context
+        let common = try await appHeaders(context.account.sessionID)
+        _ = try await appAccount(expectedSessionID: context.account.sessionID)
+        // Common identity is present even when a feature has no custom headers.
+        // Match HTTP field names case-insensitively before endpoint overrides.
+        var merged = Dictionary(common.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { _, last in last })
+        for (key, value) in context.headers { merged[key.lowercased()] = value }
+        resolved.headers = merged
+        return try appEncoder.encode(operation, context: resolved)
     }
 
     /// Cookie（含登录态）与 UA/Referer 是每个请求的公共部分，集中在这里拼。
@@ -398,31 +390,10 @@ struct APIClient {
     /// 照 PiliPlus 的 RetryInterceptor：只读请求遇到连不上、超时这类网络错误时自动重试，
     /// 最多 2 次，间隔 0.5 秒、1 秒。连接中途断开不重试，请求可能已经到了服务端。
     private func data(for request: URLRequest, retries: Int) async throws -> (Data, URLResponse) {
-        var attempt = 0
-        while true {
-            try Task.checkCancellation()
-            let diagnosticID = await RecommendationDiagnostics.shared.begin(request, attempt: attempt)
-            do {
-                let result = try await session.data(for: request)
-                await RecommendationDiagnostics.shared.finish(diagnosticID, data: result.0, response: result.1)
-                return result
-            } catch let error as URLError where attempt < retries && Self.isRetryable(error) {
-                await RecommendationDiagnostics.shared.fail(diagnosticID, error: error)
-                attempt += 1
-                try await Task.sleep(for: .milliseconds(500 * attempt))
-            } catch {
-                await RecommendationDiagnostics.shared.fail(diagnosticID, error: error)
-                throw error
-            }
-        }
+        try await transport.data(for: request, retries: retries)
     }
 
-    static func isRetryable(_ error: URLError) -> Bool {
-        switch error.code {
-        case .timedOut, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .notConnectedToInternet: true
-        default: false
-        }
-    }
+    static func isRetryable(_ error: URLError) -> Bool { HTTPTransport.isRetryable(error) }
 
     private func perform<T: Decodable>(_ request: URLRequest, retries: Int = 0) async throws -> T {
         let (data, response) = try await data(for: request, retries: retries)

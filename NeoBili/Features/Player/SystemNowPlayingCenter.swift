@@ -130,9 +130,9 @@ final class SystemNowPlayingCenter {
         }
     }
 
-    func updatePlaybackState(isPlaying: Bool, sessionID: UUID) {
+    func updatePlaybackState(isPlaying: Bool, sessionID: UUID, rate: Double = 1) {
         guard activeSessionID == sessionID else { return }
-        playbackRate = isPlaying ? 1 : 0
+        playbackRate = isPlaying ? Float(rate) : 0
         infoCenter.playbackState = isPlaying ? .playing : .paused
         publish()
     }

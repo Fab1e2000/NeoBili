@@ -21,8 +21,13 @@ struct AccountSessionClient {
 
     var saveAppAuthorization: @MainActor (String, Int) async throws -> Void = { _, _ in throw BiliAPIError.missingAccessKey }
 
+    var saveSMS: (@MainActor (SMSPassport.Credentials, UUID, Bool) async throws -> Void)? = nil
+
     static var live: AccountSessionClient { AccountSessionClient(
-        credentials: { await DeviceIdentity.shared.accountSnapshot() },
+        credentials: {
+            // Startup/foreground services renew independently of cached account restoration.
+            return await DeviceIdentity.shared.accountSnapshot()
+        },
         save: { await DeviceIdentity.shared.saveLogin($0, accessKey: $1) },
         clear: { await DeviceIdentity.shared.clearLoginCookies() },
         profile: { try await BiliAPI.myProfile() },
@@ -34,7 +39,8 @@ struct AccountSessionClient {
             guard await DeviceIdentity.shared.setAccessKey(key, forAccount: String(mid), expectedSessionID: session) else {
                 throw CancellationError()
             }
-        }
+        },
+        saveSMS: { try await DeviceIdentity.shared.saveSMSLogin($0, expectedSessionID: $1, authorizationOnly: $2) }
     ) }
 }
 
@@ -111,6 +117,7 @@ final class AccountStore {
            cached.mid == snapshot.accountID {
             profile = cached
         }
+        isRestoringSession = false
         await refreshProfile()
 
     }
@@ -190,6 +197,26 @@ final class AccountStore {
             appCredentialError = message
             return message
         }
+    }
+
+    func completeSMSLogin(_ value: SMSPassport.Credentials, expectedSessionID: UUID,
+                          expectedIdentitySession: UUID, authorizationOnly: Bool) async throws {
+        guard sessionID == expectedSessionID else { throw CancellationError() }
+        if authorizationOnly {
+            guard isLoggedIn, accountID == Int(value.cookies.dedeUserID) else {
+                throw BiliPassport.PassportError.rejected(String(localized: "请使用当前账号的手机号授权"))
+            }
+        }
+        if let saveSMS = client.saveSMS {
+            try await saveSMS(value, expectedIdentitySession, authorizationOnly)
+            guard sessionID == expectedSessionID else { throw CancellationError() }
+            if !authorizationOnly { beginSessionChange() }
+            isLoggedIn = true; accountID = Int(value.cookies.dedeUserID)
+            hasAppCredential = true; appCredentialError = nil
+            await refreshProfile()
+        } else if authorizationOnly {
+            try await completeAppAuthorization(value.cookies, accessKey: value.accessKey, expectedSessionID: expectedSessionID)
+        } else { await completeLogin(value.cookies, accessKey: value.accessKey) }
     }
 
     /// 补授权只保存同账号的 App token，不清 Cookie，也不切换账号。

@@ -124,6 +124,7 @@ final class MPVMetalViewController: UIViewController {
     func open(source: PlaybackSource, startTime: TimeInterval = 0) {
         engine.open(source: source, startTime: startTime)
     }
+    func setPlaybackRate(_ rate: Double) { engine.setPlaybackRate(rate) }
     func play() { engine.play() }
     func pause() { engine.pause() }
     /// 供退出手势的提交帧调用：不等内核锁，命令排队执行。

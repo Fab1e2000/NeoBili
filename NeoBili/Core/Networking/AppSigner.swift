@@ -1,40 +1,5 @@
 import CryptoKit
 import Foundation
-import Darwin
-
-/// 与实测官方 iPhone 9.13.0 请求配套的身份；所有 App 通道共用。
-/// build 是协议兼容版本，不是 NeoBili 自己的发布版本。
-enum AppClientIdentity {
-    static let mobiApp = "iphone"
-    static let build = "91300100"
-    static let version = "9.13.0"
-    static let credentialScope = "ios-27eb53fc-v1"
-    static let statistics = #"{"appId":1,"version":"9.13.0","abtest":"","platform":1}"#
-    static let parameters = ["mobi_app": mobiApp, "build": build, "platform": "ios", "device": "phone"]
-
-    static var deviceName: String {
-        let identifier = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? systemValue("hw.machine")
-        // 未登记机型保留真实硬件标识，不冒充抓包手机。
-        return ["iPhone18,3": "iPhone 17", "iPhone18,1": "iPhone 17 Pro",
-                "iPhone18,2": "iPhone 17 Pro Max", "iPhone17,3": "iPhone 16",
-                "iPhone17,4": "iPhone 16 Plus", "iPhone17,1": "iPhone 16 Pro",
-                "iPhone17,2": "iPhone 16 Pro Max"][identifier] ?? identifier
-    }
-
-    static var userAgent: String {
-        let os = ProcessInfo.processInfo.operatingSystemVersion
-        let osVersion = "\(os.majorVersion).\(os.minorVersion)" + (os.patchVersion > 0 ? ".\(os.patchVersion)" : "")
-        return "bili-universal/\(build) CFNetwork/1.0 Darwin/\(systemValue("kern.osrelease")) os/ios model/\(deviceName) mobi_app/iphone build/\(build) osVer/\(osVersion) channel/pink_overseas"
-    }
-
-    private static func systemValue(_ name: String) -> String {
-        var size = 0
-        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return "unknown" }
-        var bytes = [CChar](repeating: 0, count: size)
-        guard sysctlbyname(name, &bytes, &size, nil, 0) == 0 else { return "unknown" }
-        return String(cString: bytes)
-    }
-}
 
 /// B 站 APP 端接口（app.bilibili.com、passport-tv-login）的参数签名。
 ///
@@ -57,7 +22,8 @@ enum AppSigner {
     static func signed(
         _ params: [String: String],
         purpose: Purpose = .app,
-        timestamp: Int = Int(Date().timeIntervalSince1970)
+        timestamp: Int = Int(Date().timeIntervalSince1970),
+        nativeEncoding: Bool = false
     ) -> [String: String] {
         var signedParams = params
         signedParams["appkey"] = purpose == .passport ? passportAppKey : appKey
@@ -65,7 +31,7 @@ enum AppSigner {
         signedParams["ts"] = String(timestamp)
         signedParams["sign"] = nil
 
-        let query = queryString(from: signedParams)
+        let query = queryString(from: signedParams, nativeEncoding: nativeEncoding)
         let digest = Insecure.MD5.hash(data: Data((query + appSecret).utf8))
         signedParams["sign"] = digest.map { String(format: "%02x", $0) }.joined()
         return signedParams
@@ -76,13 +42,13 @@ enum AppSigner {
     /// 转义规则要和服务端一致：这里用的是 JavaScript `encodeURIComponent` 那一套
     /// 保留字符集（`A-Za-z0-9-_.!~*'()` 之外全部转义）。用 Foundation 默认的
     /// `.urlQueryAllowed` 会漏掉 `+`、`&` 等字符，签名就会对不上。
-    static func queryString(from params: [String: String]) -> String {
+    static func queryString(from params: [String: String], nativeEncoding: Bool = false) -> String {
         params
             .sorted { $0.key < $1.key }
             .map { key, value in
-                let encodedKey = percentEncoded(key)
+                let encodedKey = percentEncoded(key, native: nativeEncoding)
                 // 官方 iPhone 签名保留空值的等号；签名与传输共用同一份字节。
-                return "\(encodedKey)=\(percentEncoded(value))"
+                return "\(encodedKey)=\(percentEncoded(value, native: nativeEncoding))"
             }
             .joined(separator: "&")
     }
@@ -91,7 +57,7 @@ enum AppSigner {
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
     )
 
-    private static func percentEncoded(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
+    private static func percentEncoded(_ value: String, native: Bool = false) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: native ? CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~") : unreserved) ?? value
     }
 }

@@ -15,6 +15,8 @@ struct HomeFeedCollection: UIViewRepresentable {
     let isRefreshing: Bool
     /// 刷新淡出期间列表不接收触摸。
     let isInteractionEnabled: Bool
+    var exposureEnabled: Bool = false
+    var inlinePlaybackEnabled: Bool = false
     let refreshDistance: Double
     let controller: HomeFeedScrollController
     let onRefresh: () -> Void
@@ -56,6 +58,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         view.delegate = coordinator
         view.prefetchDataSource = coordinator
         coordinator.attach(view)
+        view.onWindowChanged = { [weak coordinator] in coordinator?.updateExposure() }
         controller.collectionView = view
         return view
     }
@@ -72,6 +75,8 @@ struct HomeFeedCollection: UIViewRepresentable {
             context.animate { coordinator.applyContentOpacityToVisibleCells() }
         }
         coordinator.onOpenMine = onOpenMine
+        coordinator.exposureEnabled = exposureEnabled
+        coordinator.inlinePlaybackEnabled = inlinePlaybackEnabled
         coordinator.removalAnimationDuration = removalAnimationDuration
         coordinator.showsHeaderRow = !pinsTitleBar
         applyInsets(to: view)
@@ -87,6 +92,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         controller.collectionView = view
         coordinator.update(environment: context.environment, hidesPortraitVideos: hidesPortraitVideos)
         coordinator.apply(rows)
+        DispatchQueue.main.async { [weak coordinator] in coordinator?.updateExposure() }
     }
 
     private var topEdgeStyle: UIScrollEdgeEffect.Style { pinsTitleBar && hardTitleBarEdge ? .hard : .soft }
@@ -110,6 +116,9 @@ struct HomeFeedCollection: UIViewRepresentable {
     static func dismantleUIView(_ view: UICollectionView, coordinator: Coordinator) {
         coordinator.pull.detach()
         coordinator.cancelImagePrefetches()
+        coordinator.exposureEnabled = false
+        coordinator.preview.stop()
+        coordinator.updateExposure()
         #if PERFORMANCE_DEMO
         coordinator.scrollProbe.stop()
         #endif
@@ -118,11 +127,10 @@ struct HomeFeedCollection: UIViewRepresentable {
     enum Section: Hashable {
         case header
         /// 本次刷新的内容；没有分隔条时就是全部内容。
-        case latest
+        case cards(String)
         /// 「上次看到这里」分隔条，单独一节，高度按内容自适应。
         case marker
         /// 分隔条之后的上一批内容。
-        case earlier
     }
 
     /// 格子里的 SwiftUI 内容和列表所在的视图树不相连，App 级的依赖要显式带过去。
@@ -169,6 +177,10 @@ struct HomeFeedCollection: UIViewRepresentable {
         private var hasHeaderRow = false
         private static let headerID = "home-page-header"
         var contentOpacity: CGFloat = 1
+        var exposureEnabled = false
+        var inlinePlaybackEnabled = false
+        let preview = HomeInlinePreview()
+        private let exposure = RecommendationExposureTracker()
         let state = HomeFeedCellState()
         let pull = ShortPullRefresh.ObserverView()
         #if PERFORMANCE_DEMO
@@ -229,14 +241,18 @@ struct HomeFeedCollection: UIViewRepresentable {
             let sectionID = dataSource?.sectionIdentifier(for: index)
             let isHeader = sectionID == .header
             let isMarker = sectionID == .marker
+            let isLarge: Bool
+            if let sectionID, let id = dataSource?.snapshot().itemIdentifiers(inSection: sectionID).first,
+               case .video(let video)? = itemsByID[id] { isLarge = video.isLargeRecommendationCard }
+            else { isLarge = false }
             let width = environment.container.effectiveContentSize.width
             // 卡片行高度固定（4:3 封面加文字区），不必逐个测量；分隔条随字号变化，按内容自适应。
             let height: NSCollectionLayoutDimension = isHeader || isMarker
                 ? .estimated(isHeader ? 66 : 44)
-                : .absolute(HomeCardLayout.cardHeight(for: width))
+                : .absolute(isLarge ? HomeCardLayout.largeCardHeight(for: width) : HomeCardLayout.cardHeight(for: width))
             let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: height)
             let group: NSCollectionLayoutGroup
-            if isHeader || isMarker {
+            if isHeader || isMarker || isLarge {
                 group = .vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
             } else {
                 let item = NSCollectionLayoutItem(layoutSize: NSCollectionLayoutSize(
@@ -280,7 +296,9 @@ struct HomeFeedCollection: UIViewRepresentable {
             var latest: [String] = []
             var earlier: [String] = []
             var marker = false
+            var orderedItems: [HomeFeedItem] = []
             for row in items where seen.insert(row.id).inserted {
+                orderedItems.append(row)
                 byID[row.id] = row
                 switch row {
                 case .lastSeen: marker = true
@@ -327,14 +345,16 @@ struct HomeFeedCollection: UIViewRepresentable {
                 snapshot.appendSections([.header])
                 snapshot.appendItems([Self.headerID], toSection: .header)
             }
-            snapshot.appendSections([.latest])
-            snapshot.appendItems(latest, toSection: .latest)
-            if marker {
-                snapshot.appendSections([.marker])
-                snapshot.appendItems([HomeFeedItem.lastSeen.id], toSection: .marker)
-                if !earlier.isEmpty {
-                    snapshot.appendSections([.earlier])
-                    snapshot.appendItems(earlier, toSection: .earlier)
+            for row in HomeFeedRow.group(orderedItems) {
+                switch row {
+                case .lastSeen:
+                    snapshot.appendSections([.marker])
+                    snapshot.appendItems([HomeFeedItem.lastSeen.id], toSection: .marker)
+                case .videos(let videos):
+                    let ids = videos.map { HomeFeedItem.video($0).id }
+                    let section = Section.cards(ids[0])
+                    snapshot.appendSections([section])
+                    snapshot.appendItems(ids, toSection: section)
                 }
             }
             if needsReconfigureAll {
@@ -390,7 +410,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                     viewModel: viewModel,
                     state: state,
                     entranceStart: starts.first ?? nil,
-                    onOpenLastSeen: { [weak self] in self?.onOpenLastSeen() }
+                    onOpenLastSeen: { [weak self] in self?.onOpenLastSeen() }, preview: preview
                 )
                 .environment(environment.nowPlaying)
                 .environment(environment.account)
@@ -446,11 +466,13 @@ struct HomeFeedCollection: UIViewRepresentable {
         /// 在后台排好这些行的标题；宽度要和卡片显示时一致才能命中。
         private func prepareTitles(for rows: [HomeFeedItem]) {
             guard let collectionView else { return }
-            let width = HomeCardLayout.titleWidth(for: collectionView.bounds.width)
             let fontSize = PreparedTitle.fontSize(for: dynamicTypeSize)
             let scale = collectionView.traitCollection.displayScale
             for row in rows {
                 guard case .video(let video) = row else { continue }
+                let width = video.isLargeRecommendationCard
+                    ? max(0, collectionView.bounds.width - HomeCardLayout.horizontalInset * 2 - HomeCardLayout.detailsHorizontalPadding * 2)
+                    : HomeCardLayout.titleWidth(for: collectionView.bounds.width)
                 if let key = PreparedTitle.Key(title: video.title, width: width, fontSize: fontSize, scale: scale) {
                     PreparedTitle.prepare(key)
                 }
@@ -464,12 +486,15 @@ struct HomeFeedCollection: UIViewRepresentable {
         func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
             guard let dataSource else { return }
             let scale = collectionView.traitCollection.displayScale
-            let cover = HomeCardLayout.coverSize(for: collectionView.bounds.width)
             prepareTitles(for: indexPaths.compactMap { dataSource.itemIdentifier(for: $0).flatMap { itemsByID[$0] } })
             for indexPath in indexPaths {
                 guard imagePrefetches[indexPath] == nil else { continue }
                 guard let id = dataSource.itemIdentifier(for: indexPath),
                       case .video(let video)? = itemsByID[id] else { continue }
+                let cover = video.isLargeRecommendationCard
+                    ? CGSize(width: collectionView.bounds.width - HomeCardLayout.horizontalInset * 2,
+                             height: (collectionView.bounds.width - HomeCardLayout.horizontalInset * 2) / HomeCardLayout.largeCoverAspectRatio)
+                    : HomeCardLayout.coverSize(for: collectionView.bounds.width)
                 imagePrefetches[indexPath] = [
                     BiliImageLoader.prefetch(video.secureCoverURL, pointSize: cover, scale: scale),
                     BiliImageLoader.prefetch(video.secureAvatarURL, pointSize: HomeCardLayout.avatarSize, scale: scale)
@@ -523,6 +548,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            updateExposure()
             guard let collectionView,
                   let indexPath = dataSource?.indexPath(for: Self.headerID),
                   let cell = collectionView.cellForItem(at: indexPath) else { return }
@@ -535,6 +561,7 @@ struct HomeFeedCollection: UIViewRepresentable {
 
         func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
                             forItemAt indexPath: IndexPath) {
+            DispatchQueue.main.async { [weak self] in self?.updateExposure() }
             // Keep the prefetch consumer cancellable until this cell leaves.
             // Key visible handles by cell identity: a snapshot may reuse the
             // old index path for a different card before didEndDisplaying.
@@ -556,8 +583,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                   let id = dataSource.itemIdentifier(for: indexPath),
                   case .video(let video)? = itemsByID[id] else { return }
             let lastSection = collectionView.numberOfSections - 1
-            guard indexPath.section == lastSection,
-                  indexPath.item >= collectionView.numberOfItems(inSection: lastSection) - 6 else { return }
+            guard indexPath.section >= max(0, lastSection - 2) else { return }
             let hides = hidesPortraitVideos
             Task { await viewModel.loadMoreIfNeeded(current: video, hidingKnownPortraitVideos: hides) }
         }
@@ -565,6 +591,47 @@ struct HomeFeedCollection: UIViewRepresentable {
         func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell,
                             forItemAt indexPath: IndexPath) {
             displayedImagePrefetches.removeValue(forKey: ObjectIdentifier(cell))?.forEach { $0.cancel() }
+            updateExposure()
+        }
+
+        func updateExposure() {
+            let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+            updateInlinePreview()
+            guard exposureEnabled, contentOpacity > 0.99, let collectionView,
+                  collectionView.window != nil, let dataSource else {
+                exposure.update([], timestamp: timestamp); return
+            }
+            var viewport = collectionView.bounds
+            viewport.origin.y += collectionView.adjustedContentInset.top
+            viewport.size.height = max(0, viewport.height - collectionView.adjustedContentInset.top - collectionView.adjustedContentInset.bottom)
+            let cards: [RecommendationExposureTracker.Card] = collectionView.indexPathsForVisibleItems.compactMap { index in
+                guard let id = dataSource.itemIdentifier(for: index), case .video(let video)? = itemsByID[id],
+                      video.playbackEntry.source == .recommendation,
+                      let position = video.recommendationPosition,
+                      let cell = collectionView.cellForItem(at: index), !cell.isHidden, cell.alpha > 0,
+                      cell.frame.height > 0, cell.frame.width > 0 else { return nil }
+                let intersection = viewport.intersection(cell.frame)
+                guard !intersection.isNull, !intersection.isEmpty else { return nil }
+                let ratio = Double((intersection.width / cell.frame.width) * (intersection.height / cell.frame.height))
+                return .init(video: video, position: position, visibleRatio: ratio)
+            }
+            exposure.update(cards, timestamp: timestamp, policy: viewModel?.exposurePolicy ?? .init())
+        }
+
+        private func updateInlinePreview() {
+            guard inlinePlaybackEnabled, let collectionView, collectionView.window != nil, let dataSource else {
+                preview.stop(); return
+            }
+            var viewport = collectionView.bounds
+            viewport.origin.y += collectionView.adjustedContentInset.top
+            viewport.size.height = max(0, viewport.height - collectionView.adjustedContentInset.top - collectionView.adjustedContentInset.bottom)
+            let candidates = collectionView.indexPathsForVisibleItems.sorted().compactMap { index -> VideoSummary? in
+                guard let id = dataSource.itemIdentifier(for: index), case .video(let video)? = itemsByID[id],
+                      video.isLargeRecommendationCard, let cell = collectionView.cellForItem(at: index),
+                      cell.frame.height > 0, viewport.intersection(cell.frame).height >= min(cell.frame.height,viewport.height) * 0.8 else { return nil }
+                return video
+            }
+            if let video = candidates.first { preview.select(video) } else { preview.stop() }
         }
     }
 }
@@ -572,8 +639,10 @@ struct HomeFeedCollection: UIViewRepresentable {
 /// 标签栏「下滑收起」要知道页面的主滚动视图。推荐页外面没有导航栈替它登记，
 /// 放进窗口时由列表自己登记给所在的视图控制器。
 private final class HomeFeedCollectionView: UICollectionView {
+    var onWindowChanged: (() -> Void)?
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        onWindowChanged?()
         guard window != nil else { return }
         var responder: UIResponder? = next
         while let current = responder {

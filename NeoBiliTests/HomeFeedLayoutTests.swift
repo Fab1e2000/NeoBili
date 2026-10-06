@@ -72,7 +72,7 @@ final class HomeFeedLayoutTests: XCTestCase {
         await model.loadReplacementPage() // No cursor: no extra request.
         XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 1745482992, 1745482980, 1745482970])
         XCTAssertEqual(requested.map(\.pageIndex), [0, 1, 1, 2, 3])
-        XCTAssertEqual(requested.map { AppRecommendationPage.parameters(for: $0)["flush"] }, ["0", "8", "8", "8", "8"])
+        XCTAssertEqual(requested.map { AppRecommendationProtocol.parameters(for: $0)["flush"] }, ["0", "8", "8", "8", "8"])
         XCTAssertEqual(requested[1], requested[2], "Retry preserves the complete request")
         XCTAssertEqual(model.videos.map(\.aid), [1, 2])
         XCTAssertNil(model.errorMessage)

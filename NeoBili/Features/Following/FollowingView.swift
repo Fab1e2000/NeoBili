@@ -492,7 +492,7 @@ struct FollowingView: View {
                 bvid: video.bvid,
                 cover: video.cover,
                 title: video.title,
-                artist: video.authorName
+                artist: video.authorName, playbackEntry: .following
             ),
             from: video.bvid
         )

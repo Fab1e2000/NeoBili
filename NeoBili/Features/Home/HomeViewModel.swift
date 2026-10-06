@@ -42,6 +42,12 @@ enum HomeFeedRow: Identifiable {
         for item in items {
             switch item {
             case .video(let video):
+                if video.isLargeRecommendationCard {
+                    if !pending.isEmpty { rows.append(.videos(pending)); pending = [] }
+                    if markerAfterPendingRow { rows.append(.lastSeen); markerAfterPendingRow = false }
+                    rows.append(.videos([video]))
+                    continue
+                }
                 pending.append(video)
                 if pending.count == 2 {
                     rows.append(.videos(pending))
@@ -95,6 +101,7 @@ struct HomeFeedAccount: Equatable, Sendable {
 @Observable
 final class HomeViewModel {
     private(set) var videos: [VideoSummary] = []
+    private(set) var exposurePolicy = RecommendationExposurePolicy()
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     private(set) var errorMessage: String?
@@ -124,9 +131,10 @@ final class HomeViewModel {
 
     /// 与 PiliPlus 一致：选一个原因提交，成功后提示服务端给的文案并移除这张卡。
     func markUninterested(_ video: VideoSummary, reason: RecommendationFeedbackOptions.Reason) async -> String? {
-        guard let options = video.recommendationFeedback, !reportingIDs.contains(video.bvid) else { return nil }
-        guard options.dislikeReasons?.contains(reason) == true || options.feedbacks?.contains(reason) == true else { return nil }
         let session = currentSessionID()
+        guard !reportingIDs.contains(video.bvid),
+              let options = try? BiliAPI.feedbackOptions(for: video, expectedSessionID: session) else { return nil }
+        guard options.dislikeReasons?.contains(reason) == true || options.feedbacks?.contains(reason) == true else { return nil }
         reportingIDs.insert(video.bvid)
         defer { reportingIDs.remove(video.bvid) }
         do {
@@ -142,8 +150,9 @@ final class HomeViewModel {
 
     /// 撤销这张卡片的「不感兴趣」，卡片本身不动。
     func cancelUninterested(_ video: VideoSummary) async -> String? {
-        guard let options = video.recommendationFeedback, !reportingIDs.contains(video.bvid) else { return nil }
         let session = currentSessionID()
+        guard !reportingIDs.contains(video.bvid),
+              let options = try? BiliAPI.feedbackOptions(for: video, expectedSessionID: session) else { return nil }
         reportingIDs.insert(video.bvid)
         defer { reportingIDs.remove(video.bvid) }
         do {
@@ -396,6 +405,7 @@ final class HomeViewModel {
             guard activeLoadID == loadID, !Task.isCancelled, currentSessionID() == session else { return }
             // 即使这一页全被过滤或去重，仍以原始响应推进；过期请求不能写回游标。
             nextRequest = response.nextRequest
+            exposurePolicy = response.exposurePolicy ?? .init()
             if request.source == .app {
                 if let cursor = response.appCursor, cursor > 0 { appRefreshCursor = cursor }
 

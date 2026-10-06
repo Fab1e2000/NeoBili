@@ -106,6 +106,11 @@ struct PlayerControlsOverlay: View {
 
     @ViewBuilder
     private var playbackMenuContent: some View {
+        PlayerSpeedMenu(rate: viewModel.playbackRate) { rate in
+            viewModel.selectPlaybackRate(rate)
+            scheduleAutoHide()
+        }
+
         Button(isAddingWatchLater ? "正在加入稍后再看…" : "稍后再看", systemImage: "flag", action: addToWatchLater)
             .disabled(isAddingWatchLater || viewModel.bvid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         Menu("定时休眠", systemImage: "moon.zzz") {
@@ -249,5 +254,31 @@ struct PlayerControlsOverlay: View {
             guard !Task.isCancelled else { return }
             controlsVisible = false
         }
+    }
+}
+
+/// Native menu keeps the player uncluttered and exposes the selected rate to VoiceOver.
+struct PlayerSpeedMenu: View {
+    let rate: Double
+    let onSelect: (Double) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(PlaybackSpeed.options, id: \.self) { option in
+                Button { onSelect(option) } label: {
+                    if option == rate { Label(PlaybackSpeed.title(option), systemImage: "checkmark") }
+                    else { Text(PlaybackSpeed.title(option)) }
+                }
+                .accessibilityIdentifier("player.speed.\(option)")
+            }
+        } label: {
+            HStack {
+                Label("播放倍速", systemImage: "speedometer")
+                Text(PlaybackSpeed.title(rate))
+            }
+        }
+        .accessibilityLabel("播放倍速")
+        .accessibilityValue(PlaybackSpeed.title(rate))
+        .accessibilityIdentifier("player.speed")
     }
 }

@@ -22,13 +22,16 @@ struct RecommendationBatch {
     let nextRequest: RecommendationRequest?
     let refreshConfig: AppRecommendationRefreshConfig?
     let appCursor: Int?
+    let exposurePolicy: RecommendationExposurePolicy?
 
     init(videos: [VideoSummary], nextRequest: RecommendationRequest?,
-         refreshConfig: AppRecommendationRefreshConfig? = nil, appCursor: Int? = nil) {
+         refreshConfig: AppRecommendationRefreshConfig? = nil, appCursor: Int? = nil,
+         exposurePolicy: RecommendationExposurePolicy? = nil) {
         self.videos = videos
         self.nextRequest = nextRequest
         self.refreshConfig = refreshConfig
         self.appCursor = appCursor ?? nextRequest?.appCursor
+        self.exposurePolicy = exposurePolicy
     }
 }
 
@@ -53,6 +56,7 @@ extension BiliAPI {
     }
 
     static func appRecommendFeed(request: RecommendationRequest) async throws -> RecommendationBatch {
+        Task { await RecommendationClickReporter.shared.flush() }
         let account = try await APIClient.shared.appAccount(expectedSessionID: nil)
         if account.mid != nil, account.accessKey?.isEmpty != false { throw BiliAPIError.missingAccessKey }
         try Task.checkCancellation()
@@ -60,8 +64,8 @@ extension BiliAPI {
         let context = AppRecommendationSession.shared.takeRequest(accountSession: account.sessionID)
         let page: AppRecommendationPage = try await APIClient.shared.getApp(
             path: "x/v2/feed/index",
-            params: AppRecommendationPage.parameters(for: request, display: await AppRecommendationDisplay.current(),
-                openEvent: context.openEvent, bannerHash: context.bannerHash),
+            params: AppRecommendationProtocol.parameters(for: request, display: await AppRecommendationDisplay.current(),
+                openEvent: context.openEvent, bannerHash: context.bannerHash, network: AppNetworkMetadata.shared.snapshot().queryNetwork),
             headers: headers, expectedSessionID: account.sessionID, requiresAccountCredential: true
         )
         AppRecommendationSession.shared.recordBanner(page.bannerHash, context: context)
@@ -69,10 +73,11 @@ extension BiliAPI {
         let videos = batch.videos.map { video in
             var copy = video
             copy.playbackEntry.loginSessionID = account.sessionID
+            copy.recommendationFeedback = try? feedbackOptions(for: copy, expectedSessionID: account.sessionID)
             return copy
         }
         return RecommendationBatch(videos: videos, nextRequest: batch.nextRequest,
-            refreshConfig: batch.refreshConfig, appCursor: batch.appCursor)
+            refreshConfig: batch.refreshConfig, appCursor: batch.appCursor, exposurePolicy: batch.exposurePolicy)
     }
 
     /// 「不感兴趣」：`reason` 是用户在卡片原因里选的一项，「我不想看」或「反馈」。
@@ -80,6 +85,7 @@ extension BiliAPI {
                             reason: RecommendationFeedbackOptions.Reason,
                             expectedSessionID: UUID? = nil,
                             client: APIClient = .shared) async throws {
+        let session = try feedbackSession(options, expectedSessionID: expectedSessionID)
         var params = feedbackParameters(options)
         if options.dislikeReasons?.contains(reason) == true {
             params["reason_id"] = String(reason.id)
@@ -87,19 +93,52 @@ extension BiliAPI {
             params["feedback_id"] = String(reason.id)
         }
         try await sendFeedback(path: "x/feed/dislike", params: params,
-                               expectedSessionID: expectedSessionID, client: client)
+                               expectedSessionID: session, client: client)
     }
 
     /// 撤销这张卡片的「不感兴趣」。
     static func feedDislikeCancel(_ options: RecommendationFeedbackOptions,
                                  expectedSessionID: UUID? = nil,
                                  client: APIClient = .shared) async throws {
+        let session = try feedbackSession(options, expectedSessionID: expectedSessionID)
         try await sendFeedback(path: "x/feed/dislike/cancel", params: feedbackParameters(options),
-                               expectedSessionID: expectedSessionID, client: client)
+                               expectedSessionID: session, client: client)
     }
 
     static func feedbackParameters(_ options: RecommendationFeedbackOptions) -> [String: String] {
-        AppClientIdentity.parameters.merging(["goto": options.goto, "id": String(options.param)]) { _, value in value }
+        var params = AppClientIdentity.parameters.merging(["goto": options.goto, "id": String(options.param)]) { _, value in value }
+        // FEED-05: these are card attribution values, never account credentials.
+        let allowed = Set(["track_id", "from_spmid", "mid", "rid"])
+        for (key, value) in options.requestContext?.parameters ?? [:] where allowed.contains(key) && !value.isEmpty {
+            params[key] = value
+        }
+        return params
+    }
+
+    static func feedbackOptions(for video: VideoSummary, expectedSessionID: UUID) throws -> RecommendationFeedbackOptions? {
+        guard var options = video.recommendationFeedback else { return nil }
+        if let source = video.playbackEntry.loginSessionID, source != expectedSessionID { throw CancellationError() }
+        _ = try feedbackSession(options, expectedSessionID: expectedSessionID)
+        if options.requestContext == nil {
+            var fields: [String: String] = [:]
+            if video.playbackEntry.source == .recommendation {
+                fields["from_spmid"] = "tm.recommend.0.0"
+                fields["track_id"] = video.playbackEntry.trackID
+            }
+            // Official feedback mid is the uploader, not the signed-in account.
+            if video.owner.mid > 0 { fields["mid"] = String(video.owner.mid) }
+            fields["rid"] = video.recommendationClickFields?["rid"]
+            options.requestContext = .init(loginSessionID: expectedSessionID, parameters: fields)
+        }
+        return options
+    }
+
+    private static func feedbackSession(_ options: RecommendationFeedbackOptions, expectedSessionID: UUID?) throws -> UUID? {
+        if let origin = options.requestContext?.loginSessionID {
+            if let expectedSessionID, expectedSessionID != origin { throw CancellationError() }
+            return origin
+        }
+        return expectedSessionID
     }
 
     private static func sendFeedback(path: String, params: [String: String],

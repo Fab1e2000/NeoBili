@@ -9,6 +9,7 @@ struct HomeView: View {
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     @TitleBarPreference private var titleBarStyle
     private var pinsTitleBar: Bool { titleBarStyle.isPinned }
@@ -108,6 +109,11 @@ struct HomeView: View {
                 hidesPortraitVideos: hidesPortraitVideos,
                 isRefreshing: isRefreshing,
                 isInteractionEnabled: !(isRefreshing && listOpacity < 1),
+                exposureEnabled: isSelected && scenePhase == .active && !nowPlaying.isExpanded
+                    && !nowPlaying.isServiceSheetPresented && viewModel.sheet == nil
+                    && !isRefreshing && listOpacity > 0.99 && tabContentOpacity > 0.99,
+                inlinePlaybackEnabled: isSelected && scenePhase == .active && !nowPlaying.hasMedia
+                    && viewModel.sheet == nil && !isRefreshing && listOpacity > 0.99 && tabContentOpacity > 0.99,
                 refreshDistance: refreshDistance,
                 controller: feedController,
                 onRefresh: { startRefresh() },
@@ -274,6 +280,12 @@ enum HomeCardLayout {
     /// 先根据屏幕宽度算出单列宽度，再加上 4:3 封面高度和文字区高度。
     static func cardHeight(for pageWidth: CGFloat) -> CGFloat {
         coverSize(for: pageWidth).height + detailsHeight
+    }
+
+    static let largeDetailsHeight: CGFloat = 60
+    static let largeCoverAspectRatio: CGFloat = 16 / 9
+    static func largeCardHeight(for pageWidth: CGFloat) -> CGFloat {
+        max(0, pageWidth - horizontalInset * 2) / largeCoverAspectRatio + largeDetailsHeight
     }
 }
 

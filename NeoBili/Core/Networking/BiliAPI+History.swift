@@ -54,40 +54,27 @@ extension BiliAPI {
 }
 
 extension PlaybackWatchReport {
-    var mobileParameters: [String: String] {
-        func seconds(_ value: Double) -> String {
-            String(Int(max(0, min(Double(Int.max) / 2, value.isFinite ? value : 0)).rounded(.down)))
-        }
-        var fields = AppClientIdentity.parameters.merging(sourceFields) { _, value in value }
-        fields.merge([
-            "actionKey": "appkey", "statistics": AppClientIdentity.statistics,
-            "type": "3", "sub_type": "0", "auto_play": "0", "play_type": "1",
-            "c_locale": "zh-Hans_CN", "s_locale": "zh-Hans_CN",
-            "played_time": seconds(watchedTime), "actual_played_time": seconds(watchedTime),
-            "paused_time": seconds(pausedTime), "miniplayer_play_time": seconds(miniPlayerTime), "total_time": seconds(watchedTime + pausedTime),
-            "last_play_progress_time": seconds(position == -1 ? maximumPosition : position),
-            "max_play_progress_time": seconds(maximumPosition), "video_duration": seconds(duration),
-            "start_ts": String(startTimestamp)
-        ]) { _, value in value }
-        return fields
-    }
+    var mobileParameters: [String: String] { AppWatchProtocol.mobileParameters(self) }
 }
 
 extension BiliAPI {
     /// App 授权存在时使用移动心跳与独立历史同步，不再同时发网页心跳。
+    @discardableResult
     static func reportAppWatch(bvid: String, aid: Int, cid: Int, report: PlaybackWatchReport,
                                expectedSessionID: UUID, client: APIClient = .shared,
-                               identity: DeviceIdentity = .shared) async throws {
-        guard aid > 0, cid > 0, report.watchedTime.isFinite, report.watchedTime > 0,
+                               identity: DeviceIdentity = .shared) async throws -> Int? {
+        guard aid > 0, cid > 0, report.watchedTime.isFinite,
+              (report.delivery == .start ? report.watchedTime == 0 : report.watchedTime > 0),
               report.position.isFinite,
-              report.position == -1 || (report.position >= 1 && report.position < Double(Int.max)) else { return }
+              report.position == -1 || (report.position >= 0 && report.position < Double(Int.max)) else { return nil }
         let account = try await client.appAccount(expectedSessionID: expectedSessionID)
-        guard account.mid != nil else { return }
+        guard account.mid != nil else { return nil }
         guard account.accessKey?.isEmpty == false else {
+            guard report.delivery != .start else { return nil }
             // Cookie-only 登录仍保留旧的历史同步通道。
             try await reportWatchProgress(bvid: bvid, cid: cid, playedTime: report.position,
                                           expectedSessionID: expectedSessionID, client: client, identity: identity)
-            return
+            return nil
         }
         let headers = try await identity.appRequestHeaders(expectedSessionID: expectedSessionID)
         var form = report.mobileParameters
@@ -98,23 +85,29 @@ extension BiliAPI {
         form["session"] = playbackSession
         form["sessionID"] = playbackSession
         var firstError: Error?
-        do {
-            try await client.postApp(path: "x/report/heartbeat/mobile", form: form,
-                expectedSessionID: expectedSessionID, usesAPIHost: true, headers: headers)
-        } catch { firstError = error }
+        var serverTimestamp: Int?
+        if report.delivery != .checkpoint {
+            do {
+                let response: AppWatchAcknowledgement = try await client.postAppData(path: "x/report/heartbeat/mobile", form: form,
+                    expectedSessionID: expectedSessionID, usesAPIHost: true, headers: headers)
+                serverTimestamp = response.ts.flatMap { $0 > 0 ? $0 : nil }
+            } catch { firstError = error }
+        }
+        // Zero start is mobile-only; it must not reset an existing history position.
+        guard report.delivery != .start else {
+            if let firstError { throw firstError }
+            return serverTimestamp
+        }
         // 心跳失败也仍尝试写历史；写操作不自动重试，超时不代表服务端未接收。
-        var history = AppClientIdentity.parameters
-        history.merge(["aid": String(aid), "cid": String(cid), "type": "3", "sub_type": "0",
-                       "progress": String(Int(report.position.rounded(.down))),
-                       "start_ts": String(report.startTimestamp), "statistics": AppClientIdentity.statistics,
-                       "actionKey": "appkey", "c_locale": "zh-Hans_CN", "s_locale": "zh-Hans_CN",
-                       "duration": String(Int(max(0, min(Double(Int.max) / 2, report.duration.isFinite ? report.duration : 0)).rounded(.down))),
-                       "device_ts": String(Int(Date().timeIntervalSince1970)),
-                       "disable_rcmd": "0", "teenagers_age": "16", "epid": "0", "sid": "0"]) { _, value in value }
+        let history = AppWatchProtocol.historyParameters(aid: aid, cid: cid, report: report,
+            deviceTimestamp: Int(Date().timeIntervalSince1970))
         do {
             try await client.postApp(path: "x/v2/history/report", form: history,
                 expectedSessionID: expectedSessionID, usesAPIHost: true, headers: headers)
         } catch { if firstError == nil { firstError = error } }
         if let firstError { throw firstError }
+        return serverTimestamp
     }
 }
+
+struct AppWatchAcknowledgement: Decodable { let ts: Int? }

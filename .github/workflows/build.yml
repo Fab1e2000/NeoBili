@@ -1,11 +1,16 @@
 name: Build
 
 on:
-  # 只跟分支；推送版本标签时由 release.yml 负责构建。
-  push:
-    branches: ["**"]
+  # 开发在 develop 上进行，经 PR 合入 main：只在 PR 时测试，不再监听分支推送，
+  # 避免同一提交被「推送」和「PR」各跑一遍、合并后推送 main 再跑一遍。
+  # 推送版本标签时由 release.yml 负责构建。
   pull_request:
   workflow_dispatch:
+
+# 同一个 PR 有新推送时，取消还在跑的旧运行。
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:

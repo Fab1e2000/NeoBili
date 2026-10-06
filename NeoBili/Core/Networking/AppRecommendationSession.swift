@@ -43,15 +43,3 @@ final class AppRecommendationSession: Sendable {
         }
     }
 }
-
-/// Only known locale fields are encoded; unknown region fields are deliberately omitted.
-enum AppRecommendationLocale {
-    static var header: String {
-        func field(_ number: UInt8, _ bytes: Data) -> Data {
-            precondition(bytes.count < 128)
-            return Data([number << 3 | 2, UInt8(bytes.count)]) + bytes
-        }
-        let locale = field(1, Data("zh".utf8)) + field(2, Data("Hans".utf8)) + field(3, Data("CN".utf8))
-        return (field(1, locale) + field(2, locale) + field(4, Data("Asia/Shanghai".utf8))).base64EncodedString()
-    }
-}

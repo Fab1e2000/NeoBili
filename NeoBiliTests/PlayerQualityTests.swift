@@ -3,6 +3,31 @@ import XCTest
 
 @MainActor
 final class PlayerQualityTests: XCTestCase {
+    func testPlaybackSpeedSurvivesQualityReplacementAndRejectsUnsupportedValues() async throws {
+        let low = try Self.payload(quality: 80), high = try Self.payload(quality: 120)
+        var openedRates: [Double] = []
+        let player = try makePlayer(payload: low, loader: { _, _, _ in high },
+            opener: { session, _, _ in openedRates.append(session.playbackRate) })
+        defer { player.stop() }
+        player.selectPlaybackRate(1.5)
+        XCTAssertEqual(player.session.playbackRate, 1.5)
+        await player.load()
+        ready(player, position: 37)
+        player.pause()
+        let error = await player.selectQuality(video: 120)
+        XCTAssertNil(error)
+        XCTAssertEqual(player.playbackRate, 1.5)
+        XCTAssertEqual(player.session.playbackRate, 1.5)
+        XCTAssertEqual(openedRates, [1.5, 1.5])
+        XCTAssertFalse(player.isPlaying)
+        player.selectPlaybackRate(.nan)
+        player.selectPlaybackRate(100)
+        XCTAssertEqual(player.playbackRate, 1.5)
+        player.selectPlaybackRate(0.75)
+        XCTAssertEqual(player.session.playbackRate, 0.75)
+        XCTAssertFalse(player.isPlaying, "Changing speed must not resume paused playback")
+    }
+
     func testDeclared4KIsNotMistakenForAnAlreadyAuthorizedStream() throws {
         let payload = try Self.payload(quality: 80)
         XCTAssertEqual(payload.declaredVideoQualities, [120, 80, 64])
