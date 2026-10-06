@@ -342,7 +342,7 @@ final class PlayerViewModel {
     deinit {
         MainActor.assumeIsolated {
             savePlaybackProgress()
-            checkpointWatchProgress()
+            watchProgressSender?.enqueue(watchProgress.checkpoint())
             finishWatchReport()
             SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
             session.stop()
@@ -522,7 +522,7 @@ final class PlayerViewModel {
             await VideoPreparationCache.shared.cancelPlaybackURL(bvid: bvid, cid: cid,
                 ownerID: playbackRequestOwnerID, sessionID: loginSessionID)
         }
-        checkpointWatchProgress()
+        watchProgressSender?.enqueue(watchProgress.checkpoint())
         finishPlayerBehavior()
         finishWatchReport()
         watchProgress.interrupt()
@@ -775,7 +775,9 @@ final class PlayerViewModel {
             danmaku?.setPaused(true)
             resumeState.complete()
             savePlaybackProgress()
-            enqueueWatchReport(watchProgress.complete(duration: duration))
+            // Final App history is carried by finish, not a second checkpoint.
+            let terminal = watchProgress.complete(duration: duration)
+            watchProgressSender?.enqueue(terminal)
             finishPlayerBehavior()
             finishWatchReport()
             if sleepsAfterVideoEnd {

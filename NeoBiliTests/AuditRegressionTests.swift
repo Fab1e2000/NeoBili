@@ -193,6 +193,9 @@ final class AuditRegressionTests: XCTestCase {
         let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: store, monitorNetwork: false)
         let restore = Task { await account.restoreSessionIfNeeded() }
         await waitUntil { pending.isWaiting }
+        XCTAssertTrue(account.isLoggedIn, "Cached credentials must be usable while network work is pending")
+        XCTAssertEqual(account.accountID, 42)
+        XCTAssertFalse(account.isRestoringSession, "Profile loading must not gate local session restoration")
         store.setOverride(aid: 9, liked: true)
         let oldSession = store.sessionID
         await account.logout()

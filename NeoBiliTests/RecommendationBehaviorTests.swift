@@ -51,6 +51,31 @@ final class RecommendationBehaviorTests: XCTestCase {
         XCTAssertTrue(values.contains { $0.delivery == .checkpoint }, "independent history sync remains")
     }
 
+    func testTerminalBoundarySendsOnlyFinishHistoryForEOFAndStop() async {
+        for eof in [true, false] {
+            let reports = BehaviorReports()
+            var clock = 0.0
+            var player: PlayerViewModel? = PlayerViewModel(bvid: "BVFixture", cid: 2, aid: 1,
+                watchReportReporter: { await reports.append($0) },
+                progressStore: PlaybackProgressStore(defaults: defaults()), watchProgressClock: { clock })
+            player?.session.onEvent?(.duration(3))
+            player?.session.onEvent?(.firstFrame)
+            player?.session.onEvent?(.playing(true))
+            player?.session.onEvent?(.position(0))
+            for position in [1.0, 2.0, 2.9] {
+                clock = position
+                player?.session.onEvent?(.position(position))
+            }
+            if eof { player?.session.onEvent?(.ended) }
+            player?.stop()
+            player = nil
+            let values = await reports.waitForFinish()
+            XCTAssertEqual(values.map(\.delivery), [.start, .finish], "No terminal checkpoint before finish, including teardown")
+            XCTAssertEqual(values.last?.position ?? 0, eof ? -1 : 2.9, accuracy: 0.001)
+            XCTAssertEqual(values.last?.watchedTime ?? 0, 2.9, accuracy: 0.001)
+        }
+    }
+
     func testConfirmedLibraryOriginsSurviveRealPlaybackIntoStartAndFinish() async {
         for (entry, from, spmid) in [(PlaybackEntry.favorites, "6", "main.my-fav.0.0"),
                                      (.watchLater, "6", "main.later-watch.0.0"),

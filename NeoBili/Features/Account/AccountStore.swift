@@ -25,7 +25,7 @@ struct AccountSessionClient {
 
     static var live: AccountSessionClient { AccountSessionClient(
         credentials: {
-            await DeviceIdentity.shared.renewLoginIfNeeded()
+            // Startup/foreground services renew independently of cached account restoration.
             return await DeviceIdentity.shared.accountSnapshot()
         },
         save: { await DeviceIdentity.shared.saveLogin($0, accessKey: $1) },
@@ -117,6 +117,7 @@ final class AccountStore {
            cached.mid == snapshot.accountID {
             profile = cached
         }
+        isRestoringSession = false
         await refreshProfile()
 
     }
