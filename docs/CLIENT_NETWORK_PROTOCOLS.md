@@ -1457,7 +1457,7 @@ boolValue；61000 分支 0x116052750 取 `[self+0x20 tokenInfo].mid` 与
 `logoutWithApi:`（参数为请求 absoluteString，nil 时用字面量 `BFCAccount_validate`）；
 错误分支以 `[BFCAccountInjector apiRequestErrorDomain]` 与 `empty desc` 兜底描述记日志
 （0x116052aa4/0x116052eac）。validateAndRefresh（0x116051cc0）根据服务端
-refresh 布尔值决定刷新；本地提前过期阈值在 validateAndRefresh 0x116051cc0 与服务端 expires_in 的比较链内，静态不可定；下一步 = disassemble.py 0x116051cc0 0x1160521b8 与 0x116047d98 0x116047f00 收齐比较点。
+refresh 布尔值决定刷新；此处未证本地提前过期阈值，不应将 expires_in 保存误写为阈值比较。原生请求公共签名、设备提供者和 Cookie 交接补充见 [DEV-04 实现契约](CLIENT_API_IMPLEMENTATION_CONTRACT.md#dev-04-账号刷新与-confirm)。
 
 refresh（0x116052f78）先请求服务器时间，回调忽略时间请求 error，返回 0 时把 sts
 改为 -1，否则沿用返回整数。Golang builder（0x116047d98）向

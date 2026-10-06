@@ -27,9 +27,11 @@ enum SMSPassport {
         let seccode: String
     }
     enum SendOutcome: Sendable { case sent(String); case captcha(Captcha) }
-    struct Credentials: Equatable, Sendable {
+    struct Credentials: Codable, Equatable, Sendable {
         let cookies: BiliPassport.LoginCookies
         let accessKey: String
+        var refreshToken: String? = nil
+        var expiresIn: Int? = nil
     }
     enum LoginOutcome: Sendable { case confirmed(Credentials); case verification(URL) }
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
@@ -39,12 +41,11 @@ enum SMSPassport {
         let accountSession = identity.loginSessionID
         let headers = try await identity.appRequestHeaders(expectedSessionID: accountSession)
         let buvid = await identity.appBuvid()
+        let deviceID = await identity.registeredDeviceID() ?? ""
         try Task.checkCancellation()
         guard identity.loginSessionID == accountSession else { throw CancellationError() }
-        // 官方 fingerprint 是带加密 key/content 的 POST，生成规则尚未解清。
-        // 暂不发送伪造内容，也不阻止使用公开短信接口所需的自身 buvid 登录。
         return Context(accountSession: accountSession, headers: headers, buvid: buvid,
-                       deviceID: "", loginSession: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())
+                       deviceID: deviceID, loginSession: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())
     }
 
     static func countries(transport: Transport = live) async throws -> [Country] {
@@ -67,6 +68,10 @@ enum SMSPassport {
             "device_platform": AppClientIdentity.deviceName, "channel": "pink_overseas"
         ]) { _, new in new }
         if !context.deviceID.isEmpty { parameters["device_id"] = context.deviceID }
+        if let guest = context.headers.first(where: { $0.key.lowercased() == "guestid" })?.value,
+           let value = Int64(guest), AppGuestRegistration.isValid(value) {
+            parameters["device_tourist_id"] = guest
+        }
         return parameters
     }
     static func makeRequest(path: String, context: Context, fields: [String: String]) -> URLRequest {
@@ -188,7 +193,9 @@ enum SMSPassport {
         guard let sessdata = values["SESSDATA"], !sessdata.isEmpty, let csrf = values["bili_jct"], !csrf.isEmpty,
               let mid = values["DedeUserID"], let number = Int(mid), number > 0,
               String(describing: token["mid"] ?? "") == mid else { throw BiliPassport.PassportError.invalidResponse }
-        return .confirmed(Credentials(cookies: .init(sessdata: sessdata, biliJct: csrf, dedeUserID: mid), accessKey: key))
+        return .confirmed(Credentials(cookies: .init(sessdata: sessdata, biliJct: csrf, dedeUserID: mid), accessKey: key,
+            refreshToken: (token["refresh_token"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            expiresIn: token["expires_in"] as? Int))
     }
     static func isSecurityURL(_ url: URL) -> Bool {
         url.scheme == "https" && url.host == "passport.bilibili.com" && url.path == "/h5/project-msg-auth/auth/entry"
@@ -197,6 +204,9 @@ enum SMSPassport {
         var request = request
         request.httpShouldHandleCookies = false
         let (data, response) = try await transport(request)
+        if !AppNetwork.isRegression, let http = response as? HTTPURLResponse {
+            await DeviceIdentity.shared.observeAppResponse(http, request: request)
+        }
         guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode),
               let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw BiliPassport.PassportError.invalidResponse

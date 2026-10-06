@@ -51,6 +51,36 @@ final class RecommendationBehaviorTests: XCTestCase {
         XCTAssertTrue(values.contains { $0.delivery == .checkpoint }, "independent history sync remains")
     }
 
+    func testConfirmedLibraryOriginsSurviveRealPlaybackIntoStartAndFinish() async {
+        for (entry, from, spmid) in [(PlaybackEntry.favorites, "6", "main.my-fav.0.0"),
+                                     (.watchLater, "6", "main.later-watch.0.0"),
+                                     (.spaceVideo, "66", "main.space-contribution.0.0"),
+                                     (.following, "6", "dt.dt.video.0")] {
+            let reports = BehaviorReports()
+            var clock = 0.0
+            let route = VideoDetailRoute(bvid: "BVFixture", cid: 2, aid: 1, playbackEntry: entry)
+            let player = PlayerViewModel(bvid: route.bvid, cid: 2, aid: 1, playbackEntry: route.playbackEntry,
+                watchReportReporter: { await reports.append($0) },
+                progressStore: PlaybackProgressStore(defaults: defaults()), watchProgressClock: { clock })
+            player.session.onEvent?(.duration(300))
+            player.session.onEvent?(.firstFrame); player.session.onEvent?(.playing(true))
+            player.session.onEvent?(.position(0))
+            clock = 1; player.session.onEvent?(.position(1)); player.stop()
+            let values = await reports.waitForFinish()
+            XCTAssertEqual(values.filter { $0.delivery != .checkpoint }.map(\.delivery), [.start, .finish])
+            for report in values {
+                XCTAssertEqual(report.mobileParameters["from"], from)
+                XCTAssertEqual(report.mobileParameters["from_spmid"], spmid)
+                XCTAssertEqual(report.mobileParameters["spmid"], "united.player-video-detail.0.0")
+                XCTAssertNil(report.mobileParameters["track_id"])
+            }
+            let view = try? AppProto(AppRelatedPage.viewRequest(bvid: route.bvid, aid: 1,
+                entry: route.playbackEntry, playbackSession: "fixture-page", accountSession: UUID()))
+            XCTAssertEqual(view?.text(3), from)
+            XCTAssertEqual(view?.text(5), spmid)
+        }
+    }
+
     func testPreloadSeekAndNoRealPlaybackProduceNoMobileEvents() async {
         let reports = BehaviorReports()
         let player = PlayerViewModel(bvid: "BVFixture", cid: 2, aid: 1,

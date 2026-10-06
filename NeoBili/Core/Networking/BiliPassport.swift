@@ -6,7 +6,7 @@ import Foundation
 /// 登录成功后真正的凭据（SESSDATA 等）通过 Set-Cookie 头下发，需要从
 /// HTTP 响应头里取，而不是从 JSON 里。
 enum BiliPassport {
-    struct LoginCookies: Equatable, Sendable {
+    struct LoginCookies: Codable, Equatable, Sendable {
         let sessdata: String
         let biliJct: String
         let dedeUserID: String

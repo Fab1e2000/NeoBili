@@ -81,6 +81,7 @@ struct APIClient {
     private let appEncoder: any AppRequestEncoding
     private let authentication: @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot
     private let appAuthentication: @Sendable () async -> DeviceIdentity.AppRequestAccount
+    private let appHeaders: @Sendable (UUID) async throws -> [String: String]
 
     init(session: URLSession = AppNetwork.session,
          appEncoder: any AppRequestEncoding = AppRequestEncoder(),
@@ -89,11 +90,16 @@ struct APIClient {
          },
          appAuthentication: @escaping @Sendable () async -> DeviceIdentity.AppRequestAccount = {
              await DeviceIdentity.shared.appAccount()
+         },
+         appHeaders: @escaping @Sendable (UUID) async throws -> [String: String] = { session in
+             guard !AppNetwork.isRegression else { return [:] }
+             return try await DeviceIdentity.shared.appRequestHeaders(expectedSessionID: session)
          }) {
         self.transport = HTTPTransport(session: session)
         self.appEncoder = appEncoder
         self.authentication = authentication
         self.appAuthentication = appAuthentication
+        self.appHeaders = appHeaders
     }
 
     /// 在实际读取 App 凭据时校验调用方绑定的会话；不能在异步调度之后
@@ -282,10 +288,10 @@ struct APIClient {
     /// （首页推荐补充 buvid、会话与追踪标识）。
     func getApp<T: Decodable>(path: String, params: [String: String],
                               headers: [String: String] = [:], retries: Int = 2,
-                              expectedSessionID: UUID? = nil, requiresAccountCredential: Bool = false) async throws -> T {
+                              expectedSessionID: UUID? = nil, requiresAccountCredential: Bool = false, usesAPIHost: Bool = false) async throws -> T {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
-        let request = try encodeAppRequest(.get(path: path, parameters: params,
-            requiresAccountCredential: requiresAccountCredential), context: .init(account: account, headers: headers))
+        let request = try await encodeAppRequest(.get(path: path, parameters: params,
+            requiresAccountCredential: requiresAccountCredential, usesAPIHost: usesAPIHost), context: .init(account: account, headers: headers))
         return try await perform(request, retries: retries)
     }
 
@@ -294,7 +300,7 @@ struct APIClient {
     func appGRPC(path: String, payload: Data, expectedSessionID: UUID,
                  headers: [String: String]) async throws -> Data {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
-        let request = try encodeAppRequest(.grpc(path: path, payload: payload),
+        let request = try await encodeAppRequest(.grpc(path: path, payload: payload),
             context: .init(account: account, headers: headers))
         // View and RelatesFeed are read-only; never retry a behavioral write here.
         let (body, response) = try await data(for: request, retries: 2)
@@ -309,9 +315,10 @@ struct APIClient {
     }
 
     /// Confirmed home-card event transport. No automatic retry of an ambiguous write.
-    func postRecommendationClick(body: Data, headers: [String: String], expectedSessionID: UUID) async throws {
+    func postRecommendationClick(body: Data, headers: [String: String], expectedSessionID: UUID, realtime: Bool = false) async throws {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
-        let request = try encodeAppRequest(.unrealtimeLog(body: body), context: .init(account: account, headers: headers))
+        let operation: AppRequest = realtime ? .realtimeLog(body: body) : .unrealtimeLog(body: body)
+        let request = try await encodeAppRequest(operation, context: .init(account: account, headers: headers))
         let (body, response) = try await data(for: request, retries: 0)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw BiliAPIError.httpStatus((response as? HTTPURLResponse)?.statusCode ?? -1)
@@ -335,17 +342,33 @@ struct APIClient {
         expectedSessionID: UUID? = nil,
         usesAPIHost: Bool = false, headers: [String: String] = [:]
     ) async throws {
-        let account = try await appAccount(expectedSessionID: expectedSessionID)
-        let request = try encodeAppRequest(.form(path: path, parameters: form, usesAPIHost: usesAPIHost),
-            context: .init(account: account, headers: headers))
-
-        let _: BiliEmptyData = try await perform(request)
+        let _: BiliEmptyData = try await postAppData(path: path, form: form, expectedSessionID: expectedSessionID,
+            usesAPIHost: usesAPIHost, headers: headers)
     }
 
-    private func encodeAppRequest(_ operation: AppRequest, context: AppRequestContext) throws -> URLRequest {
+    func postAppData<T: Decodable>(path: String, form: [String: String], expectedSessionID: UUID?,
+                                  usesAPIHost: Bool, headers: [String: String]) async throws -> T {
+        let account = try await appAccount(expectedSessionID: expectedSessionID)
+        let request = try await encodeAppRequest(.form(path: path, parameters: form, usesAPIHost: usesAPIHost),
+            context: .init(account: account, headers: headers))
+
+        let result: T = try await perform(request)
+        _ = try await appAccount(expectedSessionID: expectedSessionID)
+        return result
+    }
+
+    private func encodeAppRequest(_ operation: AppRequest, context: AppRequestContext) async throws -> URLRequest {
         // An injected codec can change bytes, never bypass the credential policy.
         try operation.validate(account: context.account)
-        return try appEncoder.encode(operation, context: context)
+        var resolved = context
+        let common = try await appHeaders(context.account.sessionID)
+        _ = try await appAccount(expectedSessionID: context.account.sessionID)
+        // Common identity is present even when a feature has no custom headers.
+        // Match HTTP field names case-insensitively before endpoint overrides.
+        var merged = Dictionary(common.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { _, last in last })
+        for (key, value) in context.headers { merged[key.lowercased()] = value }
+        resolved.headers = merged
+        return try appEncoder.encode(operation, context: resolved)
     }
 
     /// Cookie（含登录态）与 UA/Referer 是每个请求的公共部分，集中在这里拼。

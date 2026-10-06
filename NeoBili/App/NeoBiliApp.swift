@@ -48,8 +48,17 @@ struct NeoBiliApp: App {
             } else {
                 RootView()
                     .onChange(of: scenePhase) { _, phase in
-                        if phase == .background { AppRecommendationSession.shared.didEnterBackground() }
-                        else if phase == .active { AppRecommendationSession.shared.didBecomeActive() }
+                        if phase == .background {
+                            AppRecommendationSession.shared.didEnterBackground()
+                            Task { await AppBehaviorReporter.shared.setBackground(true) }
+                        }
+                        else if phase == .active {
+                            AppRecommendationSession.shared.didBecomeActive()
+                            Task {
+                                await AppBehaviorReporter.shared.setBackground(false)
+                                await DeviceIdentity.shared.refreshAppServices()
+                            }
+                        }
                     }
             }
         }

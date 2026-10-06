@@ -187,7 +187,7 @@ final class NowPlayingStore {
                 cid: episode.cid,
                 cover: episode.arc?.pic,
                 title: episode.title,
-                artist: detailViewModel?.detail?.owner.name
+                artist: detailViewModel?.detail?.owner.name, playbackEntry: .collection
             )
         )
     }

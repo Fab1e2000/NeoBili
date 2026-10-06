@@ -2,6 +2,49 @@ import XCTest
 @testable import NeoBili
 
 final class AppRecommendationTests: XCTestCase {
+    func testExposurePositionRetainsFilteredSlotsAndNestedServerFields() throws {
+        var ad = card; ad["ad_info"] = ["id": 1]
+        var tracked = card
+        tracked["extra_rpt_fields"] = ["cover_id": "server-cover", "is_cover_test": 1]
+        tracked["rcmd_reason_style"] = ["text": "server-reason"]
+        tracked["rcmd_reason"] = nil
+        let video = try XCTUnwrap(decode([ad, tracked]).videos.first)
+        XCTAssertEqual(video.recommendationPosition, 2)
+        XCTAssertEqual(video.recommendationClickFields?["cover_id"], "server-cover")
+        XCTAssertEqual(video.recommendationClickFields?["is_cover_test"], "1")
+        XCTAssertEqual(video.recommendationClickFields?["rcmd_reason"], "server-reason")
+    }
+    func testStyledReasonsArePreservedOnLargeAndSmallCards() throws {
+        var large = card
+        large["card_goto"] = "inline_av_v2"
+        large["card_type"] = "large_cover_v9"
+        large["rcmd_reason_style"] = ["text": "已关注", "bg_style": 4]
+        var small = card
+        small["card_type"] = "small_cover_v9"
+        small["rcmd_reason_style"] = ["text": "7万点赞 | 竖屏"]
+        let page = try decode([large, small])
+        XCTAssertEqual(page.videos.map(\.recommendationBadge), ["已关注", "7万点赞 | 竖屏"])
+        XCTAssertTrue(page.cards[0].isFollowed)
+        XCTAssertTrue(page.videos[0].isLargeRecommendationCard)
+        XCTAssertEqual(page.cards[1].like, 70_000)
+    }
+
+    func testReasonsPreferVisibleStyleAndFallBackFromInvalidStyle() throws {
+        var styled = card
+        styled["rcmd_reason"] = "旧理由"
+        styled["rcmd_reason_style"] = ["text": "新关注"]
+        var empty = card
+        empty["rcmd_reason"] = "竖屏"
+        empty["rcmd_reason_style"] = ["text": "  "]
+        var malformed = card
+        malformed["rcmd_reason"] = "1万点赞"
+        malformed["rcmd_reason_style"] = "invalid"
+        let page = try decode([styled, empty, malformed, card])
+        XCTAssertEqual(page.videos.map(\.recommendationBadge), ["新关注", "竖屏", "1万点赞", nil])
+        XCTAssertTrue(page.cards[0].isFollowed)
+        XCTAssertFalse(page.cards[1].isFollowed)
+    }
+
     func testCardRetainsOnlyItsOwnServerTrackingFields() throws {
         var tracked = card
         tracked["track_id"] = "fixture-track"
@@ -45,6 +88,25 @@ final class AppRecommendationTests: XCTestCase {
                        "Malformed player_args must be filtered; missing or null arguments are tested separately")
     }
 
+    func testPlacementMetadataPreservesLargeAndSmallVideosButNotPromotions() throws {
+        let placement: [String: Any] = ["resource": 1890, "source": 0, "request_id": "fixture",
+                                       "index": 1, "is_ad_loc": true, "card_index": 1,
+                                       "client_ip": "192.0.2.1"]
+        var large = card
+        large["card_goto"] = "inline_av_v2"
+        large["card_type"] = "large_cover_v9"
+        large["ad_info"] = placement
+        var small = card; small["ad_info"] = placement
+        var promoted = large; promoted["card_goto"] = "ad_inline_av"
+        var explicit = large; explicit["ad_info"] = placement.merging(["is_ad": true]) { _, new in new }
+        var creative = large; creative["ad_info"] = placement.merging(["creative_id": 123]) { _, new in new }
+        var malformed = large; malformed["ad_info"] = "invalid"
+        let videos = try decode([promoted, explicit, creative, malformed, large, small]).videos
+        XCTAssertEqual(videos.count, 2)
+        XCTAssertEqual(videos.map(\.isLargeRecommendationCard), [true, false])
+        XCTAssertEqual(videos.map(\.recommendationPosition), [5, 6])
+    }
+
     func testMissingOrNullPlaybackArgumentsPreserveResolvableVideoIdentity() throws {
         var missing = card; missing["player_args"] = nil
         var null = card; null["player_args"] = NSNull()
@@ -65,6 +127,8 @@ final class AppRecommendationTests: XCTestCase {
         let videos = try decode([inline, live, picture]).videos
         XCTAssertEqual(videos.count, 3)
         XCTAssertNil(videos[0].recommendationTarget)
+        XCTAssertTrue(videos[0].isLargeRecommendationCard)
+        XCTAssertFalse(videos[1].isLargeRecommendationCard)
         guard case .live(let room) = videos[1].recommendationTarget else { return XCTFail("直播卡") }
         XCTAssertEqual(room.roomID, 7736134)
         XCTAssertEqual(room.username, "主播")
@@ -197,7 +261,7 @@ final class AppRecommendationTests: XCTestCase {
             XCTAssertEqual(value["s_locale"], "zh-Hans_CN")
             XCTAssertEqual(value["fnval"], "84948", "Recommendation comparison policy, separate from playback capabilities")
             XCTAssertEqual(value["device_name"], AppClientIdentity.deviceName)
-            for field in ["player_extra_content", "ad_extra", "access_key", "network", "widgets"] {
+            for field in ["player_extra_content", "ad_extra", "access_key", "widgets"] {
                 XCTAssertNil(value[field], "Do not fabricate or copy dynamic state: \(field)")
             }
         }

@@ -154,7 +154,7 @@ struct DynamicDetailView: View {
                     bvid: video.bvid,
                     cover: video.cover,
                     title: video.title,
-                    artist: video.authorName
+                    artist: video.authorName, playbackEntry: .dynamicDetail
                 ),
                 from: video.bvid
             )

@@ -40,8 +40,17 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Networking/AppProto.swift" \
    "$APP/Core/Networking/BiliHeaders.swift" \
    "$APP/Core/Networking/AppDeviceProtocol.swift" \
+   "$APP/Core/Networking/AppDeviceMetadata.swift" \
+   "$APP/Features/Home/RecommendationExposurePolicy.swift" \
    "$APP/Core/Networking/AppRecommendationProtocol.swift" \
    "$APP/Core/Networking/AppBehaviorEncoder.swift" \
+   "$APP/Core/Networking/AppBehaviorReporter.swift" \
+   "$APP/Core/Networking/AppBuvid.swift" \
+   "$APP/Core/Networking/AppDeviceRegistration.swift" \
+   "$APP/Core/Networking/AppGuestRegistration.swift" \
+   "$APP/Core/Networking/AppTicketService.swift" \
+   "$APP/Core/Networking/AppNetworkMetadata.swift" \
+   "$APP/Core/Networking/PasswordCipher.swift" \
    "$APP/Core/Networking/BiliAPI.swift" \
    "$APP/Core/Networking/BiliAPI+Recommendation.swift" \
    "$APP/Core/Networking/BiliAPI+VideoActions.swift" \
@@ -52,6 +61,8 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Networking/AppRecommendationDisplay.swift" \
    "$APP/Core/Networking/WebRecommendationPage.swift" \
    "$APP/Core/Networking/BiliPassport.swift" \
+   "$APP/Core/Networking/SMSPassport.swift" \
+   "$APP/Core/Networking/AppLoginRenewal.swift" \
    "$APP/Core/Networking/WBISigner.swift" \
    "$APP/Core/Networking/DeviceIdentity.swift" \
    "$APP/Core/Networking/KeychainStore.swift" \

@@ -16,21 +16,22 @@ struct AppRequestContext: Sendable {
 /// Only currently implemented wire formats. New verified protocols belong here,
 /// while APIClient retains authentication, response handling and retry decisions.
 enum AppRequest: Sendable {
-    case get(path: String, parameters: [String: String], requiresAccountCredential: Bool)
+    case get(path: String, parameters: [String: String], requiresAccountCredential: Bool, usesAPIHost: Bool = false)
     case form(path: String, parameters: [String: String], usesAPIHost: Bool)
     case grpc(path: String, payload: Data)
     case unrealtimeLog(body: Data)
+    case realtimeLog(body: Data)
 
     func validate(account: AppAccountSnapshot) throws {
         let hasKey = account.accessKey?.isEmpty == false
         switch self {
         case .form:
             guard hasKey else { throw BiliAPIError.missingAccessKey }
-        case let .get(_, _, requiresAccountCredential):
+        case let .get(_, _, requiresAccountCredential, _):
             if requiresAccountCredential, account.mid != nil, !hasKey { throw BiliAPIError.missingAccessKey }
         case .grpc:
             if account.mid != nil, !hasKey { throw BiliAPIError.missingAccessKey }
-        case .unrealtimeLog: break
+        case .unrealtimeLog, .realtimeLog: break
         }
     }
 }
@@ -51,11 +52,11 @@ struct AppRequestEncoder: AppRequestEncoding {
         try operation.validate(account: account)
         let key = account.accessKey.flatMap { $0.isEmpty ? nil : $0 }
         switch operation {
-        case let .get(path, parameters, requiresAccountCredential):
+        case let .get(path, parameters, requiresAccountCredential, usesAPIHost):
             if requiresAccountCredential, account.mid != nil, key == nil { throw BiliAPIError.missingAccessKey }
             var query = parameters
             if let key { query["access_key"] = key }
-            guard var components = URLComponents(url: Self.appURL.appendingPathComponent(path),
+            guard var components = URLComponents(url: (usesAPIHost ? Self.apiURL : Self.appURL).appendingPathComponent(path),
                                                  resolvingAgainstBaseURL: false) else { throw BiliAPIError.invalidURL }
             components.percentEncodedQuery = AppSigner.queryString(from: AppSigner.signed(query, timestamp: timestamp()))
             guard let url = components.url else { throw BiliAPIError.invalidURL }
@@ -93,8 +94,15 @@ struct AppRequestEncoder: AppRequestEncoding {
                 + AppProto.string(7, "ios")
             request.setValue(metadata.base64EncodedString(), forHTTPHeaderField: "x-bili-metadata-bin")
             return request
-        case let .unrealtimeLog(body):
-            var request = common(url: URL(string: "https://dataflow.biliapi.com/log/pbmobile/unrealtime?ios")!,
+        case .unrealtimeLog, .realtimeLog:
+            let body: Data
+            let channel: String
+            switch operation {
+            case .unrealtimeLog(let value): body = value; channel = "unrealtime"
+            case .realtimeLog(let value): body = value; channel = "realtime"
+            default: preconditionFailure()
+            }
+            var request = common(url: URL(string: "https://dataflow.biliapi.com/log/pbmobile/\(channel)?ios")!,
                                  context: context, timeout: 10)
             request.httpMethod = "POST"
             request.httpBody = body

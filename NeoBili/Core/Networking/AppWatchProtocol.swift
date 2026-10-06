@@ -7,7 +7,7 @@ enum AppWatchProtocol {
         var fields = AppClientIdentity.parameters.merging(report.sourceFields) { _, value in value }
         fields.merge([
             "actionKey": "appkey", "statistics": AppClientIdentity.statistics,
-            "type": "3", "sub_type": "0", "auto_play": "0", "play_type": "1",
+            "type": "3", "sub_type": "0", "auto_play": report.isInlinePreview ? "2" : "0", "play_type": "1",
             "c_locale": "zh-Hans_CN", "s_locale": "zh-Hans_CN",
             "played_time": seconds(report.watchedTime), "actual_played_time": seconds(report.watchedTime),
             "paused_time": seconds(report.pausedTime), "miniplayer_play_time": seconds(report.miniPlayerTime),
@@ -23,7 +23,7 @@ enum AppWatchProtocol {
                                   deviceTimestamp: Int) -> [String: String] {
         AppClientIdentity.parameters.merging([
             "aid": String(aid), "cid": String(cid), "type": "3", "sub_type": "0",
-            "progress": String(Int(report.position.rounded(.down))), "start_ts": String(report.startTimestamp),
+            "progress": String(Int(report.position.rounded(.down))), "start_ts": String(report.localStartTimestamp ?? report.startTimestamp),
             "statistics": AppClientIdentity.statistics, "actionKey": "appkey",
             "c_locale": "zh-Hans_CN", "s_locale": "zh-Hans_CN", "duration": seconds(report.duration),
             "device_ts": String(deviceTimestamp), "disable_rcmd": "0", "teenagers_age": "16", "epid": "0", "sid": "0"

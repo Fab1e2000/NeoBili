@@ -231,7 +231,7 @@ struct FavoriteFolderView: View {
                     cid: summary.cid > 0 ? summary.cid : nil,
                     cover: summary.pic,
                     title: summary.title,
-                    artist: summary.owner.name
+                    artist: summary.owner.name, aid: summary.aid, playbackEntry: .favorites
                 ),
                 from: "fav-\(summary.bvid)"
             )

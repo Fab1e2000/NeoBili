@@ -265,3 +265,30 @@ BFCDeviceToken.localBUVID 则是 64 字符本地指纹：设备标识、型号�
 假资料、已知 AES 向量、CommonCrypto/OpenSSL 交叉校验及包内公钥的 Apple Security 调用均已离线验证；假访客正文 178 字节，经填充加密为 192 字节，公钥包装结果为 128 字节。这支持旧包规则可复现和已采集长度相容，没有解密当前抓包、申请自身登记结果或验证推荐变化。字段来源、缺省值、首次运行时间保存及当前版本差异仍需完成核对。完整地址证据和限制见 [NOTSURE.md](../NOTSURE.md#ios-分析样本中的生成与加密规则)。手机采集保持关闭，实际准备好测试版并需要验证时再启用。
 
 尚未确认的信息包括服务器推荐策略与实验分组、完整本地推荐调用、当前官方版本设备编号首次生成与重装生命周期、跨网络地区标签规则、曝光完整状态/门槛/调度规则、当前版本完整指纹和登录资料、登记兼容性及票据内部签名。旧包静态证据不能补足这些项目的当前取值与验收。
+
+## 收藏夹进入普通视频
+
+用户确认从官方收藏夹打开《【狗蛋的游戏评测】皇牌空战8 希孚之翼—长空颂歌》。
+国际版 `iphone_i` 样本中，View 请求字段3为 `6`、字段4为
+`united.player-video-detail.0.0`、字段5为 `main.my-fav.0.0`；对应开始和结束
+移动心跳均为 `from=6/from_spmid=main.my-fav.0.0/auto_play=0`，结束 played_time=21。
+两条移动心跳及独立历史写入均返回业务码0。此样本与前面首页自动播放及首页手动打开
+的请求分开核对，未把它们归为收藏入口。原始材料留在仓库外
+`~/Documents/NeoBiliCapture/current/official_library_entry.flows`，不提交账号或设备凭据。
+这是国际版样本的观察，不代表其他入口或所有版本均使用同一来源值。
+
+### 稍后再看与空间投稿进入普通视频
+
+官方国际版 9.13 的本批操作中，稍后再看 View 请求与移动心跳均携带
+`from=6/from_spmid=main.later-watch.0.0`；空间投稿均携带
+`from=66/from_spmid=main.space-contribution.0.0`。两者详情 `spmid` 均为
+`united.player-video-detail.0.0`，手动播放 `auto_play=0`，开始及结束心跳业务码均为 0。
+
+同批动态快速消费自动播放出现 `from=default-value`、
+`from_spmid=spmid=dt.dt-video-quick-cosume.video.0` 和 `auto_play=1`。
+这不等同于点击进入普通详情；本批最后一条手动详情仍带首页来源，不能据此确定动态详情常量。
+
+后续单独从动态点击《鉴定网传电脑事件，消磨看官吃饭时间5》，View 请求及观看开始心跳
+均为 `from=6/from_spmid=dt.dt.video.0`，详情 `spmid=united.player-video-detail.0.0`、
+`auto_play=0`，开始心跳业务码 0。该映射用于动态流直接进入普通视频；
+动态文字详情内视频、空间动态等入口仍分别保留证据边界。

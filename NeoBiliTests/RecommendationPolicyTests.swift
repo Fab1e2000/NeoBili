@@ -34,8 +34,8 @@ final class RecommendationPolicyTests: XCTestCase {
     }
     func testPoliciesApplyToInitialRefreshAndPaginationWithoutBorrowedState() {
         let fixed = ["auto_refresh_state":"4", "login_event":"0", "inline_sound":"1", "inline_sound_cold_state":"4",
-                     "autoplay_card":"4", "video_mode":"1", "inline_danmu":"2", "client_attr":"1", "qn_policy":"1",
-                     "player_net":"1", "guidance":"1", "soft_fnval":"2", "teenagers_age":"16", "fnval":"84948",
+                     "autoplay_card":"10", "video_mode":"1", "inline_danmu":"1", "client_attr":"0", "qn_policy":"1",
+                     "network":"", "player_net":"3", "guidance":"1", "soft_fnval":"2", "teenagers_age":"16", "fnval":"84948",
                      "fnver":"0", "force_host":"0", "https_url_req":"0", "qn":"32", "voice_balance":"0",
                      "disable_rcmd":"0", "recsys_mode":"0", "fourk":"1", "column":"4"]
         for request in [RecommendationRequest(source: .app), .init(source: .app, isRefresh: true), .init(source: .app, pageIndex: 2, appCursor: 123)] {
@@ -44,11 +44,27 @@ final class RecommendationPolicyTests: XCTestCase {
             XCTAssertEqual(params["open_event"], "hot")
             XCTAssertEqual(params["banner_hash"], "own-banner")
             for key in ["splash_id", "splash_ids", "splash_creative_id"] { XCTAssertEqual(params[key], "") }
-            for key in ["ad_extra", "widgets", "network", "access_key"] { XCTAssertNil(params[key]) }
+            for key in ["ad_extra", "widgets", "access_key"] { XCTAssertNil(params[key]) }
         }
         XCTAssertEqual(AppRecommendationProtocol.parameters(for: .init(source: .app, isLayoutChange: true))["flush"], "2")
         XCTAssertEqual(PlaybackEntry.history.parameters()["from"], "64")
         XCTAssertEqual(PlaybackEntry.search.parameters()["from"], "3")
+    }
+    func testNetworkQueryAndPlayerStateFollowLocalConnection() {
+        for (network, player) in [("wifi", "1"), ("mobile", "2"), ("", "3")] {
+            let fields = AppRecommendationProtocol.parameters(for: .init(source: .app), network: network)
+            XCTAssertEqual(fields["network"], network)
+            XCTAssertEqual(fields["player_net"], player)
+        }
+    }
+    func testResponseExposurePolicyTravelsWithBatch() throws {
+        let body = Data(#"{"items":[],"config":{"visible_area":50,"exposure_duration_start_ratio":0.9,"exposure_duration_end_ratio":0.7,"exposure_duration_min_ms":500}}"#.utf8)
+        let page = try JSONDecoder().decode(AppRecommendationPage.self, from: body)
+        let batch = page.batch(for: .init(source: .app), filter: .none)
+        XCTAssertEqual(batch.exposurePolicy?.showRatio, 0.5)
+        XCTAssertEqual(batch.exposurePolicy?.durationStartRatio, 0.9)
+        XCTAssertEqual(batch.exposurePolicy?.durationEndRatio, 0.7)
+        XCTAssertEqual(batch.exposurePolicy?.minimumDurationMilliseconds, 500)
     }
     func testChinaLocaleContainsOnlyKnownFields() throws {
         let data = try XCTUnwrap(Data(base64Encoded: AppDeviceLocale.header))

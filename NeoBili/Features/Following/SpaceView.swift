@@ -362,7 +362,7 @@ struct SpaceView: View {
                             bvid: video.bvid,
                             cover: video.pic,
                             title: video.title,
-                            artist: video.author
+                            artist: video.author, playbackEntry: .spaceVideo
                         ),
                         from: video.bvid
                     )
@@ -460,7 +460,7 @@ struct SpaceView: View {
                 bvid: video.bvid,
                 cover: video.cover,
                 title: video.title,
-                artist: video.authorName
+                artist: video.authorName, playbackEntry: .spaceDynamic
             ),
             from: video.bvid
         )

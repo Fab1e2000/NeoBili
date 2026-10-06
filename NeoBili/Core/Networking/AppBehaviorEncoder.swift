@@ -4,9 +4,12 @@ import Compression
 /// Wire encoding is independent of the durable click queue and its delivery policy.
 enum AppBehaviorEncoder {
     static func clickPayload(_ event: RecommendationClick, uploadTime: Int) -> Data {
-        let context = event.context
-        let timestamp = event.timestamp
-        let fields = event.fields
+        payload(context: event.context, timestamp: event.timestamp, fields: event.fields,
+                name: RecommendationClick.event, category: 2, player: nil, uploadTime: uploadTime)
+    }
+
+    static func payload(context: AppDeviceSnapshot, timestamp: Int, fields: [String: String],
+                        name: String, category: Int, player: Data?, uploadTime: Int) -> Data {
         func map(_ field: Int, _ values: [String: String]) -> Data {
             values.sorted { $0.key < $1.key }.reduce(Data()) { result, pair in
                 result + AppProto.bytes(field, AppProto.string(1, pair.key) + AppProto.bytes(2, Data(pair.value.utf8)))
@@ -16,15 +19,34 @@ enum AppBehaviorEncoder {
         device += AppProto.string(3, context.buvid) + AppProto.string(4, "pink_overseas")
         device += AppProto.string(5, "Apple") + AppProto.string(6, context.buvid)
         device += AppProto.string(7, context.model) + AppProto.string(15, context.requestSession)
+        device += AppProto.string(14, context.fingerprint)
         let base = AppProto.string(5, context.version) + AppProto.string(6, context.build)
         // Unknown base/fingerprint fields remain absent; copying a captured user's
         // fingerprint would incorrectly associate other devices with that user.
-        var result = AppProto.string(1, RecommendationClick.event) + AppProto.bytes(2, device) + AppProto.bytes(3, base)
+        var result = AppProto.string(1, name) + AppProto.bytes(2, device) + AppProto.bytes(3, base)
         result += AppProto.string(4, context.mid.map(String.init)) + AppProto.integer(5, timestamp)
-        result += AppProto.string(6, RecommendationClick.logID) + AppProto.bytes(11, Data())
+        result += AppProto.string(6, RecommendationClick.logID) + AppProto.integer(9, category)
+        if let serial = context.eventSerial { result += AppProto.integer(8, serial) }
+        if category == 2 { result += AppProto.bytes(11, Data()) }
+        if category == 3 {
+            let content = AppProto.string(1, name) + map(2, fields)
+            result += AppProto.bytes(12, AppProto.bytes(1, content))
+        }
+        if let player { result += AppProto.bytes(17, player) }
         result += map(13, fields) + AppProto.integer(15, timestamp) + AppProto.integer(16, uploadTime)
         result += map(18, ["start_session_id": context.startSession, "polaris_action_id": ""])
         return result
+    }
+
+    static func behaviorBody(_ events: [AppBehaviorEvent], uploadTime: Int) throws -> Data {
+        let data = events.reduce(Data()) { result, event in
+            let metadata = [("appId", "1"), ("platform", "1"), ("eventId", event.name),
+                            ("logId", RecommendationClick.logID), ("appVersionCode", event.context.build)]
+            return result + RecommendationRecordIO.encode(metadata: metadata, payload:
+                payload(context: event.context, timestamp: event.timestamp, fields: event.fields,
+                        name: event.name, category: event.category, player: event.player, uploadTime: uploadTime))
+        }
+        return try RecommendationRecordIO.gzip(data)
     }
 
     static func clickBody(_ event: RecommendationClick, uploadTime: Int) throws -> Data {
@@ -98,4 +120,3 @@ enum RecommendationRecordIO {
         }
     }
 }
-

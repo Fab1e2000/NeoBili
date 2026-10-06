@@ -5,18 +5,19 @@ import UIKit
 struct NativeHomeVideoCard: UIViewRepresentable {
     let video: VideoSummary
     let titleWidth: CGFloat
+    var coverAspectRatio: CGFloat = HomeCardLayout.coverAspectRatio
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.displayScale) private var displayScale
 
     func makeUIView(context: Context) -> CardView { CardView() }
 
     func updateUIView(_ view: CardView, context: Context) {
-        view.configure(video: video, titleWidth: titleWidth, dynamicTypeSize: dynamicTypeSize, scale: displayScale)
+        view.configure(video: video, titleWidth: titleWidth, dynamicTypeSize: dynamicTypeSize, scale: displayScale, aspectRatio: coverAspectRatio)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: CardView, context: Context) -> CGSize? {
         guard let width = proposal.width else { return nil }
-        return CGSize(width: width, height: width / HomeCardLayout.coverAspectRatio + HomeCardLayout.detailsHeight)
+        return CGSize(width: width, height: width / coverAspectRatio + (video.isLargeRecommendationCard ? HomeCardLayout.largeDetailsHeight : HomeCardLayout.detailsHeight))
     }
 
     final class CardView: UIView {
@@ -44,12 +45,14 @@ struct NativeHomeVideoCard: UIViewRepresentable {
         private var configuration: Configuration?
         private var configuredTypeSize: DynamicTypeSize?
         private var durationMeasurement: (availableWidth: CGFloat, width: CGFloat)?
+        private var coverAspectRatio = HomeCardLayout.coverAspectRatio
 
         private struct Configuration: Equatable {
             let video: VideoSummary
             let width: CGFloat
             let typeSize: DynamicTypeSize
             let scale: CGFloat
+            let aspectRatio: CGFloat
         }
 
         init(resolveAvatar: @escaping @Sendable (Int) async -> URL? = { await OwnerAvatarCache.shared.url(for: $0) }) {
@@ -76,8 +79,14 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             danmakuCount.textColor = .white
             danmakuIcon.tintColor = .white
             danmakuIcon.contentMode = .scaleAspectFit
-            badge.textColor = .secondaryLabel
-            badge.backgroundColor = .tertiarySystemFill
+            badge.textColor = UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 1, green: 0.79, blue: 0.25, alpha: 1)
+                    : UIColor(red: 0.72, green: 0.43, blue: 0.05, alpha: 1)
+            }
+            badge.backgroundColor = UIColor(red: 1, green: 0.82, blue: 0.28, alpha: 0.22)
+            badge.accessibilityIdentifier = "home.recommendation.badge"
+            fallbackTitle.accessibilityIdentifier = "home.card.title"
             badge.textAlignment = .center
             badge.layer.cornerRadius = 3
             badge.layer.cornerCurve = .continuous
@@ -110,10 +119,12 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             ).cgColor
         }
 
-        func configure(video: VideoSummary, titleWidth: CGFloat, dynamicTypeSize: DynamicTypeSize, scale: CGFloat) {
-            let updated = Configuration(video: video, width: titleWidth, typeSize: dynamicTypeSize, scale: scale)
+        func configure(video: VideoSummary, titleWidth: CGFloat, dynamicTypeSize: DynamicTypeSize, scale: CGFloat,
+                       aspectRatio: CGFloat = HomeCardLayout.coverAspectRatio) {
+            let updated = Configuration(video: video, width: titleWidth, typeSize: dynamicTypeSize, scale: scale, aspectRatio: aspectRatio)
             guard configuration != updated else { return }
             configuration = updated
+            coverAspectRatio = aspectRatio
             // Rebinding a reused card changes its content, not its typography.
             // Avoid repeated font lookup and symbol configuration on that path.
             if configuredTypeSize != dynamicTypeSize {
@@ -134,14 +145,16 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             playCount.text = video.stat.view.biliCountText
             // 图文卡没有播放数时不画这一组。
             let hidesCount = video.recommendationTarget != nil && video.stat.view == 0
-            playCount.isHidden = hidesCount
-            playIcon.isHidden = hidesCount
+            playCount.isHidden = hidesCount || video.isLargeRecommendationCard
+            playIcon.isHidden = hidesCount || video.isLargeRecommendationCard
             playCountWidth = ceil(playCount.intrinsicContentSize.width)
             danmakuCount.text = video.stat.danmaku.biliCountText
-            let hidesDanmaku = video.recommendationTarget != nil
+            let hidesDanmaku = video.recommendationTarget != nil || video.isLargeRecommendationCard
             danmakuCount.isHidden = hidesDanmaku
             danmakuIcon.isHidden = hidesDanmaku
             danmakuWidth = hidesDanmaku ? 0 : ceil(danmakuCount.intrinsicContentSize.width)
+            gradient.isHidden = video.isLargeRecommendationCard
+            duration.isHidden = video.isLargeRecommendationCard
             let durationText = video.coverCornerText
             if duration.text != durationText {
                 duration.text = durationText
@@ -157,7 +170,8 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             }
             let fontSize = PreparedTitle.fontSize(for: dynamicTypeSize)
             let metrics = PreparedTitle.metrics(fontSize: fontSize)
-            titleHeight = metrics?.boxHeight ?? 40
+            titleHeight = video.isLargeRecommendationCard ? ceil(UIFont.systemFont(ofSize: fontSize, weight: .semibold).lineHeight) : (metrics?.boxHeight ?? 40)
+            fallbackTitle.numberOfLines = video.isLargeRecommendationCard ? 1 : 2
             if metrics == nil {
                 // fontSize(for:) queues measurement outside the current SwiftUI
                 // update. Reconfigure after that measurement, provided the cell
@@ -166,10 +180,16 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                     guard let self, self.configuration == updated,
                           PreparedTitle.metrics(fontSize: fontSize) != nil else { return }
                     self.configuration = nil
-                    self.configure(video: video, titleWidth: titleWidth, dynamicTypeSize: dynamicTypeSize, scale: scale)
+                    self.configure(video: video, titleWidth: titleWidth, dynamicTypeSize: dynamicTypeSize, scale: scale, aspectRatio: aspectRatio)
                 }
             }
-            if PreparedTitle.supports(video.title),
+            if video.isLargeRecommendationCard {
+                title.isHidden = true
+                fallbackTitle.isHidden = false
+                fallbackTitle.attributedText = nil
+                fallbackTitle.font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+                fallbackTitle.text = video.title
+            } else if PreparedTitle.supports(video.title),
                let key = PreparedTitle.Key(title: video.title, width: titleWidth, fontSize: fontSize, scale: scale),
                let image = PreparedTitle.image(for: key) {
                 title.image = image
@@ -186,7 +206,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                     fallbackTitle.text = video.title
                 }
             }
-            let coverSize = CGSize(width: titleWidth + 16, height: (titleWidth + 16) / HomeCardLayout.coverAspectRatio)
+            let coverSize = CGSize(width: titleWidth + 16, height: (titleWidth + 16) / coverAspectRatio)
             cover.load(video.secureCoverURL, size: coverSize, scale: scale)
             avatarTask?.cancel()
             avatar.load(video.secureAvatarURL, size: HomeCardLayout.avatarSize, scale: scale)
@@ -210,7 +230,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             CATransaction.setDisableActions(true)
             defer { CATransaction.commit() }
             let width = bounds.width
-            let coverHeight = width / HomeCardLayout.coverAspectRatio
+            let coverHeight = width / coverAspectRatio
             cover.frame = CGRect(x: 0, y: 0, width: width, height: coverHeight)
             gradient.frame = CGRect(x: 0, y: coverHeight - 52, width: width, height: 52)
             let titleFrame = CGRect(x: 8, y: coverHeight + 8, width: max(0, width - 16), height: titleHeight)

@@ -12,6 +12,9 @@ struct HTTPTransport {
             let diagnosticID = await RecommendationDiagnostics.shared.begin(request, attempt: attempt)
             do {
                 let result = try await session.data(for: request)
+                if !AppNetwork.isRegression, let http = result.1 as? HTTPURLResponse {
+                    await DeviceIdentity.shared.observeAppResponse(http, request: request)
+                }
                 await RecommendationDiagnostics.shared.finish(diagnosticID, data: result.0, response: result.1)
                 return result
             } catch let error as URLError where attempt < retries && Self.isRetryable(error) {

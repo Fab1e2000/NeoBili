@@ -12,6 +12,8 @@ struct AppDeviceSnapshot: Codable, Sendable {
     let model: String
     let version: String
     let build: String
+    var fingerprint: String? = nil
+    var eventSerial: Int? = nil
 }
 
 /// DeviceIdentity owns values/lifetimes; this layer encodes their wire representation.

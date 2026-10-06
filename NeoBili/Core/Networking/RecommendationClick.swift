@@ -20,7 +20,7 @@ struct RecommendationClick: Codable, Sendable {
               let track = video.playbackEntry.trackID, !track.isEmpty else { return nil }
         var fields = original
         fields.merge(["track_id": track, "event": "card_click", "event_policy": "0", "page_from": "1"]) { _, new in new }
-        // NeoBili has no inline autoplay; do not claim the official preview state.
+        // Preserve server fields; unconfirmed preview-state enums are not invented.
         guard fields.count <= 40, fields.allSatisfy({ $0.key.utf8.count <= 100 && $0.value.utf8.count <= 4096 }) else { return nil }
         return .init(id: UUID(), context: context, timestamp: timestamp, accountSession: accountSession, fields: fields)
     }
@@ -62,7 +62,7 @@ actor RecommendationClickReporter {
         Task { await shared.record(video, session: session, timestamp: time) }
     }
     func record(_ video: VideoSummary, session: UUID, timestamp: Int) async {
-        guard let context = try? await identity.appDeviceSnapshot(expectedSessionID: session),
+        guard let context = try? await identity.nextBehaviorSnapshot(expectedSessionID: session),
               let event = RecommendationClick.make(video: video, context: context, accountSession: session, timestamp: timestamp),
               identity.loginSessionID == session else { return }
         queue.append(event)

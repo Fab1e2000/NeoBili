@@ -35,7 +35,7 @@ actor RecommendationDiagnostics {
     private static let parameters: Set<String> = [
         "flush", "pull", "idx", "build", "mobi_app", "platform", "device", "lang", "locale",
         "fnval", "open_event", "openevent", "login_event", "auto_refresh_state", "aid", "cid", "bvid",
-        "played_time", "realtime", "start_ts", "type", "dt", "play_type", "spmid", "from_spmid",
+        "played_time", "realtime", "start_ts", "type", "dt", "play_type", "from", "spmid", "from_spmid",
         "actionKey", "screen", "network", "qn", "progress", "c_locale", "s_locale", "column",
         "inline_sound", "inline_sound_cold_state", "autoplay_card", "video_mode", "inline_danmu",
         "client_attr", "qn_policy", "player_net", "guidance", "soft_fnval", "teenagers_age", "fnver",

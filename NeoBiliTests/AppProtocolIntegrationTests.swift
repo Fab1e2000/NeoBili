@@ -96,6 +96,38 @@ final class AppProtocolIntegrationTests: XCTestCase {
         XCTAssertTrue(ProtocolTransport.state.withLock { $0.requests.isEmpty })
     }
 
+    func testCommonAppIdentityReachesFeedbackWithoutCallerHeaders() async throws {
+        let session = transport()
+        defer { session.invalidateAndCancel() }
+        let account = context().account
+        let client = APIClient(session: session, appAuthentication: { account }, appHeaders: { sessionID in
+            XCTAssertEqual(sessionID, account.sessionID)
+            return ["buvid": "own-device", "GuestId": "123", "x-bili-ticket": "fixture-ticket"]
+        })
+        let _: Payload = try await client.getApp(path: "x/feed/dislike", params: [:], retries: 0,
+                                                expectedSessionID: login)
+        let sent = try XCTUnwrap(ProtocolTransport.state.withLock { $0.requests.first })
+        XCTAssertEqual(sent.value(forHTTPHeaderField: "buvid"), "own-device")
+        XCTAssertEqual(sent.value(forHTTPHeaderField: "guestid"), "123")
+        XCTAssertEqual(sent.value(forHTTPHeaderField: "x-bili-ticket"), "fixture-ticket")
+    }
+
+    func testAccountChangeDuringHeaderPreparationStopsRequest() async throws {
+        let session = transport()
+        defer { session.invalidateAndCancel() }
+        let initial = context().account
+        let current = Mutex(initial)
+        let client = APIClient(session: session, appAuthentication: { current.withLock { $0 } }, appHeaders: { _ in
+            current.withLock { $0 = .init(accessKey: "new-account", mid: 84, sessionID: UUID()) }
+            return ["guestid": "123"]
+        })
+        do {
+            let _: Payload = try await client.getApp(path: "fixture", params: [:], expectedSessionID: login)
+            XCTFail("A request prepared for the old account must not be sent")
+        } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        XCTAssertTrue(ProtocolTransport.state.withLock { $0.requests.isEmpty })
+    }
+
     func testReadRetriesReuseEncodedRequestWhileBehavioralWriteIsNotRetried() async throws {
         let session = transport()
         defer { session.invalidateAndCancel() }

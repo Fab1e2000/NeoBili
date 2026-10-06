@@ -167,12 +167,14 @@ struct PlaybackWatchReport: Sendable {
     let pausedTime: Double
     let maximumPosition: Double
     let duration: Double
-    let startTimestamp: Int
+    var startTimestamp: Int
     let sourceFields: [String: String]
     var playbackSession: String = ""
     var aid: Int = 0
     var miniPlayerTime: Double = 0
     var delivery: Delivery = .finish
+    var localStartTimestamp: Int? = nil
+    var isInlinePreview = false
 
 }
 
@@ -204,12 +206,27 @@ final class PlaybackWatchReportSender {
         return sender
     }
 
-    private let report: @Sendable (PlaybackWatchReport) async -> Void
+    private let report: @Sendable (PlaybackWatchReport) async -> Int?
+    private var serverTimestamps: [String: Int] = [:]
     private var pending: [PlaybackWatchReport] = []
     private var task: Task<Void, Never>?
 
     init(report: @escaping @Sendable (PlaybackWatchReport) async -> Void) {
-        self.report = report
+        self.report = { value in await report(value); return nil }
+    }
+
+    init(serverReport: @escaping @Sendable (PlaybackWatchReport) async -> Int?, receivesAcknowledgements: Bool) {
+        self.report = serverReport
+    }
+
+    static func shared(loginSessionID: UUID, bvid: String, cid: Int,
+                       serverReport: @escaping @Sendable (PlaybackWatchReport) async -> Int?) -> PlaybackWatchReportSender {
+        sharedSenders = sharedSenders.filter { $0.value.value != nil }
+        let key = Key(loginSessionID: loginSessionID, bvid: bvid, cid: cid)
+        if let existing = sharedSenders[key]?.value { return existing }
+        let sender = PlaybackWatchReportSender(serverReport: serverReport, receivesAcknowledgements: true)
+        sharedSenders[key] = WeakReference(sender)
+        return sender
     }
 
     func enqueue(_ position: PlaybackWatchReport?) {
@@ -225,8 +242,15 @@ final class PlaybackWatchReportSender {
         guard task == nil else { return }
         task = Task {
             while !pending.isEmpty {
-                let position = pending.removeFirst()
-                await report(position)
+                var position = pending.removeFirst()
+                if position.delivery != .start, let timestamp = serverTimestamps[position.playbackSession] {
+                    position.startTimestamp = timestamp
+                }
+                let timestamp = await report(position)
+                if position.delivery == .start, let timestamp, timestamp > 0 {
+                    serverTimestamps[position.playbackSession] = timestamp
+                }
+                if position.delivery == .finish { serverTimestamps.removeValue(forKey: position.playbackSession) }
             }
             task = nil
         }

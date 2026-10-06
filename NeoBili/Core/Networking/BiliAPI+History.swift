@@ -59,21 +59,22 @@ extension PlaybackWatchReport {
 
 extension BiliAPI {
     /// App 授权存在时使用移动心跳与独立历史同步，不再同时发网页心跳。
+    @discardableResult
     static func reportAppWatch(bvid: String, aid: Int, cid: Int, report: PlaybackWatchReport,
                                expectedSessionID: UUID, client: APIClient = .shared,
-                               identity: DeviceIdentity = .shared) async throws {
+                               identity: DeviceIdentity = .shared) async throws -> Int? {
         guard aid > 0, cid > 0, report.watchedTime.isFinite,
               (report.delivery == .start ? report.watchedTime == 0 : report.watchedTime > 0),
               report.position.isFinite,
-              report.position == -1 || (report.position >= 0 && report.position < Double(Int.max)) else { return }
+              report.position == -1 || (report.position >= 0 && report.position < Double(Int.max)) else { return nil }
         let account = try await client.appAccount(expectedSessionID: expectedSessionID)
-        guard account.mid != nil else { return }
+        guard account.mid != nil else { return nil }
         guard account.accessKey?.isEmpty == false else {
-            guard report.delivery != .start else { return }
+            guard report.delivery != .start else { return nil }
             // Cookie-only 登录仍保留旧的历史同步通道。
             try await reportWatchProgress(bvid: bvid, cid: cid, playedTime: report.position,
                                           expectedSessionID: expectedSessionID, client: client, identity: identity)
-            return
+            return nil
         }
         let headers = try await identity.appRequestHeaders(expectedSessionID: expectedSessionID)
         var form = report.mobileParameters
@@ -84,16 +85,18 @@ extension BiliAPI {
         form["session"] = playbackSession
         form["sessionID"] = playbackSession
         var firstError: Error?
+        var serverTimestamp: Int?
         if report.delivery != .checkpoint {
             do {
-                try await client.postApp(path: "x/report/heartbeat/mobile", form: form,
+                let response: AppWatchAcknowledgement = try await client.postAppData(path: "x/report/heartbeat/mobile", form: form,
                     expectedSessionID: expectedSessionID, usesAPIHost: true, headers: headers)
+                serverTimestamp = response.ts.flatMap { $0 > 0 ? $0 : nil }
             } catch { firstError = error }
         }
         // Zero start is mobile-only; it must not reset an existing history position.
         guard report.delivery != .start else {
             if let firstError { throw firstError }
-            return
+            return serverTimestamp
         }
         // 心跳失败也仍尝试写历史；写操作不自动重试，超时不代表服务端未接收。
         let history = AppWatchProtocol.historyParameters(aid: aid, cid: cid, report: report,
@@ -103,5 +106,8 @@ extension BiliAPI {
                 expectedSessionID: expectedSessionID, usesAPIHost: true, headers: headers)
         } catch { if firstError == nil { firstError = error } }
         if let firstError { throw firstError }
+        return serverTimestamp
     }
 }
+
+struct AppWatchAcknowledgement: Decodable { let ts: Int? }

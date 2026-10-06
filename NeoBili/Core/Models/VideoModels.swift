@@ -37,6 +37,9 @@ struct VideoSummary: Decodable, Identifiable, Hashable, VideoDimensionProviding 
     var playbackEntry: PlaybackEntry = .other
     /// Original feed fields for an actual card click, never reconstructed from playback.
     var recommendationClickFields: [String: String]? = nil
+    var recommendationPosition: Int? = nil
+    /// Retains the server's full-width video presentation through local filters.
+    var isLargeRecommendationCard = false
     /// 来自网页推荐：没有原因可选，「不感兴趣」和 PiliPlus 一样只能点踩。
     var isWebRecommendation = false
     /// 推荐卡上 UP 主名字前的小标签，如「已关注」「4万点赞」，和 PiliPlus 一样。
@@ -110,6 +113,13 @@ struct RecommendationFeedbackOptions: Decodable, Hashable, Sendable {
     let param: Int
     var dislikeReasons: [Reason]?
     var feedbacks: [Reason]?
+    /// Bound when the card is received, not when a later account taps its menu.
+    var requestContext: RequestContext? = nil
+
+    struct RequestContext: Decodable, Hashable, Sendable {
+        let loginSessionID: UUID
+        let parameters: [String: String]
+    }
 
     var hasReasons: Bool { dislikeReasons != nil || feedbacks != nil }
 }
@@ -227,7 +237,10 @@ struct MemberCard: Decodable, Hashable, Sendable {
 
 /// 来源由实际入口指定。未知入口不伪装成推荐点击；追踪值只来自当前卡片。
 struct PlaybackEntry: Hashable, Sendable {
-    enum Source: Sendable { case recommendation, related, history, search, other }
+    enum Source: String, Sendable {
+        case recommendation, related, history, search, favorites, watchLater
+        case following, dynamicDetail, spaceVideo, spaceDynamic, collection, other
+    }
     let source: Source
     var trackID: String? = nil
     var reportFlowData: String? = nil
@@ -235,6 +248,13 @@ struct PlaybackEntry: Hashable, Sendable {
     static let other = Self(source: .other)
     static let history = Self(source: .history)
     static let search = Self(source: .search)
+    static let favorites = Self(source: .favorites)
+    static let watchLater = Self(source: .watchLater)
+    static let following = Self(source: .following)
+    static let dynamicDetail = Self(source: .dynamicDetail)
+    static let spaceVideo = Self(source: .spaceVideo)
+    static let spaceDynamic = Self(source: .spaceDynamic)
+    static let collection = Self(source: .collection)
     static let related = Self(source: .related)
     static func recommendation(trackID: String?, reportFlowData: String?) -> Self {
         Self(source: .recommendation, trackID: trackID, reportFlowData: reportFlowData)
@@ -246,7 +266,12 @@ struct PlaybackEntry: Hashable, Sendable {
         case .related: result["from"] = "2"; result["from_spmid"] = "united.player-video-detail.relatedvideo.0"
         case .history: result["from"] = "64"; result["from_spmid"] = "main.my-history.0.0"
         case .search: result["from"] = "3"; result["from_spmid"] = "search.search-result.0.0"
-        case .other: break
+        case .favorites: result["from"] = "6"; result["from_spmid"] = "main.my-fav.0.0"
+        case .watchLater: result["from"] = "6"; result["from_spmid"] = "main.later-watch.0.0"
+        case .spaceVideo: result["from"] = "66"; result["from_spmid"] = "main.space-contribution.0.0"
+        case .following: result["from"] = "6"; result["from_spmid"] = "dt.dt.video.0"
+        // Preserve the real local entry without inventing official wire constants.
+        case .dynamicDetail, .spaceDynamic, .collection, .other: break
         }
         let permitsTracking = loginSessionID == nil || loginSessionID == sessionID
         if permitsTracking, let trackID, !trackID.isEmpty { result["track_id"] = trackID }

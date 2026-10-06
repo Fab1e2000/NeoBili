@@ -144,6 +144,14 @@ final class MPVEngine: @unchecked Sendable {
         }
     }
 
+    func setPlaybackRate(_ rate: Double) {
+        guard !isStopped, let command = PlaybackSpeed.command(rate) else { return }
+        eventQueue.async { [weak self] in
+            guard let self, let mpv = self.mpv else { return }
+            self.sendCommand(mpv, command)
+        }
+    }
+
     func seek(to seconds: TimeInterval) {
         guard !isStopped, let mpv else { return }
         sendCommand(mpv, ["seek", String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), seconds), "absolute+exact"])

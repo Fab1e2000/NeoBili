@@ -19,19 +19,22 @@ enum PasswordCipher {
     }
 
     static func encryptedPassword(_ password: String, salt hash: String, publicKeyPEM: String) throws -> String {
+        try encryptRSA(Data((hash + md5Hex(password)).utf8), publicKeyPEM: publicKeyPEM).base64EncodedString()
+    }
+
+    static func encryptRSA(_ message: Data, publicKeyPEM: String) throws -> Data {
         let key = try secKey(fromPEM: publicKeyPEM)
         // 网页端先取密码的 md5 十六进制串，再拼上本次的 hash 一起加密。
-        let message = hash + md5Hex(password)
         var error: Unmanaged<CFError>?
         guard let encrypted = SecKeyCreateEncryptedData(
             key,
             .rsaEncryptionPKCS1,
-            Data(message.utf8) as CFData,
+            message as CFData,
             &error
         ) as Data? else {
             throw CipherError.encryptionFailed
         }
-        return encrypted.base64EncodedString()
+        return encrypted
     }
 
     /// PEM(SPKI) → DER。Security 框架的 `SecKeyCreateWithData` 只认 PKCS#1 裸
