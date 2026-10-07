@@ -174,7 +174,7 @@ actor DeviceIdentity {
     /// APP 端接口（app.bilibili.com）的凭据。短信 App 登录可同时获取它，
     /// 旧 Cookie-only 会话可能为 nil。
     var accessKey: String? {
-        cachedAccessKey
+        appCredentialRejected ? nil : cachedAccessKey
     }
 
     /// 当前登录的 Cookie 凭据；用来换取 App 凭据。
@@ -187,7 +187,7 @@ actor DeviceIdentity {
     typealias AppRequestAccount = AppAccountSnapshot
 
     func appAccount() -> AppRequestAccount {
-        let key = cachedAccessKey.flatMap { $0.isEmpty ? nil : $0 }
+        let key = accessKey.flatMap { $0.isEmpty ? nil : $0 }
         return AppRequestAccount(accessKey: key,
                                  mid: cachedSessdata == nil ? nil : cachedDedeUserID.flatMap(Int.init),
                                  sessionID: loginSessionID)

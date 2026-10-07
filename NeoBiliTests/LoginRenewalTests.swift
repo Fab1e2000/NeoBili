@@ -204,6 +204,22 @@ final class LoginRenewalTests: XCTestCase {
         XCTAssertEqual(cookies, old.cookies)
         XCTAssertEqual(state, "needs-login")
         XCTAssertEqual(calls.withLock { $0 }, 1)
+        let rejectedKey = await identity.accessKey
+        let rejectedAccount = await identity.appAccount()
+        XCTAssertNil(rejectedKey)
+        XCTAssertNil(rejectedAccount.accessKey)
+        XCTAssertEqual(rejectedAccount.mid, 42, "Keep the account so requests require reauthorization, not guest fallback")
+        XCTAssertThrowsError(try AppRequestEncoder().encode(
+            .get(path: "x/v2/feed/index", parameters: [:], requiresAccountCredential: true),
+            context: .init(account: rejectedAccount))) { error in
+                guard case BiliAPIError.missingAccessKey = error else { return XCTFail("Unexpected error: \(error)") }
+        }
+        let replacement = login("replacement")
+        try await identity.saveSMSLogin(replacement, expectedSessionID: identity.loginSessionID, authorizationOnly: true)
+        let restoredKey = await identity.accessKey
+        let restoredAccount = await identity.appAccount()
+        XCTAssertEqual(restoredKey, replacement.accessKey)
+        XCTAssertEqual(restoredAccount.accessKey, replacement.accessKey)
     }
 
     @MainActor
