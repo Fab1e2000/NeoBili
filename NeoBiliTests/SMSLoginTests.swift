@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class SMSLoginTests: XCTestCase {
     private func context() -> SMSPassport.Context {
-        .init(accountSession: UUID(), headers: ["session_id": "own-session", "buvid": "own-buvid"],
+        .init(accountSession: UUID(), headers: ["session_id": "own-session", "buvid": "own-buvid", "guestid": "12345"],
               buvid: "own-buvid", deviceID: "server-device", loginSession: "login-attempt")
     }
     private func form(_ request: URLRequest) -> [String: String] {
@@ -27,6 +27,7 @@ final class SMSLoginTests: XCTestCase {
             XCTAssertEqual(fields["buvid"], "own-buvid")
             XCTAssertEqual(fields["local_id"], "own-buvid")
             XCTAssertEqual(fields["device_id"], "server-device")
+            XCTAssertEqual(fields["device_tourist_id"], "12345")
             XCTAssertEqual(fields["mobi_app"], "iphone")
             XCTAssertEqual(fields["device_name"], "iPhone")
             XCTAssertEqual(fields["code"], "001234")

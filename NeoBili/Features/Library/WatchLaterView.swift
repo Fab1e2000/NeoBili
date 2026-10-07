@@ -1,22 +1,29 @@
 import SwiftUI
 
-/// 稍后再看列表。接口一次性返回全部内容，不需要分页。
+/// 按官方 v2 游标分页加载；批量操作只覆盖明确选中的条目。
 /// 卡片沿用搜索页/相关视频页的 `VideoListCard`，结构与首页同构
 /// （ScrollView + Button + 转场源紧跟 buttonStyle），zoom 动效和首页一致。
 struct WatchLaterView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(AccountStore.self) private var account
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
-    @State private var items: [WatchLaterItem] = []
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `remove`。
-    @State private var removals = ListRemovalState<Int>()
-    @State private var loadID = UUID()
-    @State private var entranceGeneration = 0
+    private let isTabRoot: Bool
+    private let onLayout: (([String: CGRect]) -> Void)?
+    @State private var model: WatchLaterModel
+
+    init(model: WatchLaterModel = WatchLaterModel(), isTabRoot: Bool = false, onLayout: (([String: CGRect]) -> Void)? = nil) {
+        self.isTabRoot = isTabRoot
+        self.onLayout = onLayout
+        _model = State(initialValue: model)
+    }
+
+    private var items: [WatchLaterItem] { model.items }
+    private var isLoading: Bool { model.isLoading }
+    private var errorMessage: String? { model.errorMessage }
 
     private var visibleItems: [WatchLaterItem] {
         items.hidingKnownPortraitVideos(hidesPortraitVideos)
@@ -33,10 +40,10 @@ struct WatchLaterView: View {
                 } description: {
                     Text(errorMessage)
                 } actions: {
-                    Button("重试") { Task { await reload() } }
+                    Button("重试") { Task { await model.load(refresh: true) } }
                 }
                 .scrollingPageHeaderAbove()
-            } else if !isLoading, visibleItems.isEmpty {
+            } else if !isLoading, visibleItems.isEmpty, !model.hasMore {
                 ContentUnavailableView(
                     items.isEmpty ? "稍后再看是空的" : "没有可显示的视频",
                     systemImage: items.isEmpty ? "flag.checkered" : "rectangle.slash"
@@ -46,8 +53,9 @@ struct WatchLaterView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ScrollingPageHeaderRow()
-                        ForEach(visibleItems) { item in
-                            row(item)
+                        ForEach(visibleItems) { item in row(item) }
+                        if model.hasMore || model.errorMessage != nil {
+                            paginationFooter
                         }
                     }
                 }
@@ -62,16 +70,47 @@ struct WatchLaterView: View {
         .overlay {
             if isLoading, items.isEmpty { LoadingTaskAnchor() }
         }
-        .refreshable { await reload() }
-        .task { await loadIfNeeded() }
-        .resolvePortraitVideos(items, batchID: entranceGeneration)
+        .refreshable { await model.load(refresh: true) }
+        .task(id: account.sessionID) { await model.loadInitial() }
+        .resolvePortraitVideos(items, batchID: items.count)
         .videoCardAnimationSource(.watchLater)
+        .onPreferenceChange(WatchLaterLayoutFrames.self) { onLayout?($0) }
+        .toolbar {
+            if !isTabRoot {
+                ToolbarItem(placement: .topBarTrailing) { selectionButton }
+            }
+        }
+
+        .safeAreaInset(edge: .bottom) {
+            if model.isSelecting {
+                LibrarySelectionBar(count: model.selectedIDs.count,
+                    isBusy: model.isRemoving || isLoading, done: endSelection) {
+                    Task { await remove(ids: model.selectedIDs) }
+                }
+            }
+        }
+    }
+
+    private var selectionButton: some View {
+        Button(model.isSelecting ? String(localized: "完成") : String(localized: "选择")) {
+            model.isSelecting.toggle()
+            model.selectedIDs = []
+        }
+        .frame(minHeight: 44)
+        .disabled(items.isEmpty || model.isRemoving || isLoading)
+        .accessibilityIdentifier("watchlater.select")
+    }
+
+    private func endSelection() {
+        model.isSelecting = false
+        model.selectedIDs = []
     }
 
     private func row(_ item: WatchLaterItem) -> some View {
         let summary = item.asVideoSummary
 
         return Button {
+            if model.isSelecting { model.toggle(item); return }
             guard let summary else { return }
             nowPlaying.open(
                 VideoDetailRoute(
@@ -79,24 +118,47 @@ struct WatchLaterView: View {
                     cid: summary.cid > 0 ? summary.cid : nil,
                     cover: summary.pic,
                     title: summary.title,
-                    artist: summary.owner.name
+                    artist: summary.owner.name, aid: summary.aid, playbackEntry: .watchLater
                 ),
                 from: "wl-\(summary.bvid)"
             )
         } label: {
-            VideoListCard(
+            HStack(spacing: 8) {
+                if model.isSelecting {
+                    Image(systemName: model.selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(model.selectedIDs.contains(item.id) ? Color.accentColor : .secondary)
+                        .font(.title2)
+                }
+                if dynamicTypeSize.isAccessibilitySize {
+                    accessibleCard(item, summary: summary)
+                } else {
+                    VideoListCard(
                 coverURL: summary?.secureCoverURL,
                 title: item.title,
                 author: item.upper?.name ?? "",
                 playCount: -1,
                 durationText: summary?.formattedDuration ?? "",
                 animatesEntrance: false
-            )
+                    )
+                }
+            }
+            .background(layoutProbe("card-\(item.id)"))
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(model.selectedIDs.contains(item.id) ? .isSelected : [])
         .contextMenu {
+            if !model.isSelecting {
+                Button {
+                    model.isSelecting = true
+                    model.selectedIDs = [item.id]
+                } label: {
+                    Label("多选", systemImage: "checkmark.circle")
+                }
+                .disabled(model.isRemoving || isLoading)
+                .accessibilityIdentifier("watchlater.multiSelect")
+            }
             Button(role: .destructive) {
-                Task { await remove(item) }
+                Task { await remove(ids: [item.id]) }
             } label: {
                 Label("移出稍后再看", systemImage: "flag.slash")
             }
@@ -112,7 +174,7 @@ struct WatchLaterView: View {
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
-            if let summary {
+            if !model.isSelecting, let summary {
                 await VideoPreparationCache.shared.prefetchWhenSettled(
                     bvid: summary.bvid,
                     cid: summary.cid > 0 ? summary.cid : nil
@@ -121,52 +183,67 @@ struct WatchLaterView: View {
         }
     }
 
-    private func loadIfNeeded() async {
-        guard items.isEmpty, !isLoading else { return }
-        await reload()
-    }
-
-    private func reload() async {
-        guard !removals.hasPending else { return }
-        let requestID = UUID()
-        loadID = requestID
-        let revision = removals.revision
-        isLoading = true
-        defer { if loadID == requestID { isLoading = false } }
-        do {
-            let payload = try await BiliAPI.watchLaterList()
-            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
-            entranceGeneration += 1
-            items = (payload.list ?? []).filter { $0.bvid?.isEmpty == false && !removals.hiddenIDs.contains($0.id) }
-            errorMessage = nil
-        } catch {
-            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
-            if items.isEmpty { errorMessage = error.localizedDescription }
+    private func accessibleCard(_ item: WatchLaterItem, summary: VideoSummary?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CoverThumbnail(url: summary?.secureCoverURL)
+                .frame(maxWidth: 240)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+            Text(item.title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(layoutProbe("title-\(item.id)"))
+            Text(item.upper?.name ?? "")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(layoutProbe("author-\(item.id)"))
+            Label(summary?.formattedDuration ?? "", systemImage: "clock")
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(layoutProbe("duration-\(item.id)"))
         }
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 7))
     }
 
-    /// 同 `HistoryView.delete`：先移走卡片再发请求，失败了放回原位。
-    ///
-    /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
-    private func remove(_ item: WatchLaterItem) async {
-        guard let aid = item.aid else { return }
-        guard items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
-        defer { removals.finish(item.id) }
-        let sessionID = account.sessionID
-        var removedIndex: Int?
-        do {
-            removals.hide(item.id)
-            removedIndex = removals.remove(item.id, from: &items)
-            guard await feedback.confirmRemoval(String(localized: "已移出稍后再看")),
-                  account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
-            try await BiliAPI.removeWatchLater(aid: aid)
-            // 同时完成的刷新也不能留下同 ID 的旧条目。
-            items.removeAll { $0.id == item.id }
-        } catch {
-            if let removedIndex {
-                removals.restore(item, at: removedIndex, in: &items)
+    /// Geometry observation is injected only by rendering tests; normal scrolling has no probes.
+    @ViewBuilder private func layoutProbe(_ key: String) -> some View {
+        if onLayout != nil {
+            GeometryReader { proxy in
+                Color.clear.preference(key: WatchLaterLayoutFrames.self, value: [key: proxy.frame(in: .global)])
             }
-            if !error.isCancellation { feedback.show(error.localizedDescription) }
         }
+    }
+
+    private var paginationFooter: some View {
+        Group {
+            if let error = model.errorMessage {
+                VStack {
+                    Text(error).font(.footnote).foregroundStyle(.secondary)
+                    Button("重试") { Task { await model.load() } }
+                }
+            } else if model.isLoading {
+                ProgressView()
+            } else {
+                Button("加载更多") { Task { await model.load() } }
+            }
+        }
+        .padding()
+    }
+
+    private func remove(ids: Set<Int>) async {
+        let error = await model.remove(ids: ids) {
+            await feedback.confirmRemoval(String(localized: "已移出稍后再看"))
+        }
+        if let error { feedback.show(error) }
+    }
+}
+
+private struct WatchLaterLayoutFrames: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }

@@ -6,7 +6,7 @@ final class RecommendationDiagnosticsTests: XCTestCase {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
         let logger = RecommendationDiagnostics(directory: folder, enabled: { true })
-        var request = URLRequest(url: URL(string: "https://app.bilibili.com/x/v2/feed/index?flush=6&access_key=SECRET_TOKEN&sign=SECRET_SIGN&track_id=SECRET_TRACK")!)
+        var request = URLRequest(url: URL(string: "https://app.bilibili.com/x/v2/feed/index?flush=6&from=64&from_spmid=main.my-history.0.0&access_key=SECRET_TOKEN&sign=SECRET_SIGN&track_id=SECRET_TRACK")!)
         request.setValue("SECRET_COOKIE", forHTTPHeaderField: "Cookie")
         request.setValue("SECRET_DEVICE", forHTTPHeaderField: "buvid")
         let id = await logger.begin(request, attempt: 0)
@@ -19,6 +19,8 @@ final class RecommendationDiagnosticsTests: XCTestCase {
         XCTAssertFalse(text.contains("SECRET"))
         XCTAssertTrue(text.contains("ASMR 示例"))
         XCTAssertTrue(text.contains("\"flush\":\"6\""))
+        XCTAssertTrue(text.contains("\"from\":\"64\""))
+        XCTAssertTrue(text.contains("main.my-history.0.0"))
         XCTAssertTrue(text.contains("response"))
     }
 

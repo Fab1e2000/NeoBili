@@ -19,12 +19,22 @@ final class RecommendationAlignmentTests: XCTestCase {
             currentSessionID: { login }, fetchRecommendations: { request in
                 requests.append(request)
                 if requests.count == 2 { throw URLError(.timedOut) }
-                return RecommendationBatch(videos: [], nextRequest: nil, appCursor: 123)
+                if requests.count == 1 {
+                    let video = VideoSummary(bvid: "BVFixture", aid: 1, cid: 2, title: "Fixture", pic: "", desc: "",
+                        duration: 60, pubdate: 0, owner: .init(mid: 7, name: "owner", face: ""),
+                        stat: .init(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0))
+                    return RecommendationBatch(videos: [video], nextRequest: request.next(appCursor: 99),
+                        appCursor: 99, refreshCursor: 123)
+                }
+                // No displayed replacement: even a terminal response's new head cannot
+                // overwrite the head of the batch that is still on screen.
+                return RecommendationBatch(videos: [], nextRequest: nil, appCursor: 400, refreshCursor: 456)
             })
         await model.loadInitial()
         await model.refresh()
         await model.refresh()
-        XCTAssertEqual(requests.map(\.appCursor), [0, 123, 123])
+        await model.refresh()
+        XCTAssertEqual(requests.map(\.appCursor), [0, 123, 123, 123])
         XCTAssertEqual(requests[1], requests[2], "Failure must not reset the refresh cursor")
         login = UUID() // Same account relogin is still a different credential session.
         await model.refresh()
@@ -159,6 +169,31 @@ final class RecommendationAlignmentTests: XCTestCase {
             expectedSessionID: identity.loginSessionID, client: client, identity: identity)
         XCTAssertEqual(AlignmentProtocol.requests.withLock { $0.map { $0.url!.path } },
                        ["/x/click-interface/web/heartbeat"])
+    }
+
+    func testZeroStartAndHistoryCheckpointHaveSeparateTransports() async throws {
+        let identity = DeviceIdentity(defaults: defaults(), credentials: .memory(), allowsNetwork: false, purgeCookies: {})
+        await identity.saveLogin(.init(sessdata: "fixture", biliJct: "csrf", dedeUserID: "42"), accessKey: "own-token")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AlignmentProtocol.self]
+        let transport = URLSession(configuration: configuration)
+        defer { transport.invalidateAndCancel() }
+        let client = APIClient(session: transport, appAuthentication: { await identity.appAccount() })
+        AlignmentProtocol.requests.withLock { $0 = [] }
+        AlignmentProtocol.rejectHeartbeat.withLock { $0 = false }
+        var report = PlaybackWatchReport(position: 0, watchedTime: 0, pausedTime: 0,
+            maximumPosition: 0, duration: 300, startTimestamp: 100, sourceFields: [:],
+            playbackSession: "own-playback", delivery: .start)
+        try await BiliAPI.reportAppWatch(bvid: "BVFixture", aid: 1, cid: 2, report: report,
+            expectedSessionID: identity.loginSessionID, client: client, identity: identity)
+        XCTAssertEqual(AlignmentProtocol.requests.withLock { $0.map { $0.url!.path } }, ["/x/report/heartbeat/mobile"])
+        report = PlaybackWatchReport(position: 15, watchedTime: 15, pausedTime: 0,
+            maximumPosition: 15, duration: 300, startTimestamp: 100, sourceFields: [:],
+            playbackSession: "own-playback", delivery: .checkpoint)
+        try await BiliAPI.reportAppWatch(bvid: "BVFixture", aid: 1, cid: 2, report: report,
+            expectedSessionID: identity.loginSessionID, client: client, identity: identity)
+        XCTAssertEqual(AlignmentProtocol.requests.withLock { $0.map { $0.url!.path } },
+            ["/x/report/heartbeat/mobile", "/x/v2/history/report"])
     }
 }
 

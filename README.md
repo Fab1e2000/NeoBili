@@ -45,6 +45,11 @@ Built with SwiftUI · Liquid Glass on iOS 26 · Powered by MPVKit
 
 ## Features
 
+Home supports server-provided large cards with muted previews and optional refresh retention.
+Playback speed is adjustable; Watch Later supports pagination, and library video menus
+provide multi-selection for Watch Later, history, and favorites.
+
+
 ### Discover
 
 - **Two-column feed** that shows cover, length and views at a glance. Tap *Recommended* again to jump to the top, or to refresh when you're already there.
@@ -182,3 +187,5 @@ NeoBili's source code is released under the [MIT License](LICENSE). The license 
 - [mpvkit/MPVKit](https://github.com/mpvkit/MPVKit): the libmpv-based playback engine (LGPL build).
 
 These projects remain under their own licenses.
+
+Start with the [documentation index](docs/README.md) for contributor guides and protocol research.

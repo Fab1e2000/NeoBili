@@ -31,6 +31,7 @@ actor VideoPreparationCache {
 struct AccountCredentialsSnapshot: Sendable {
     let hasCredentials: Bool
     var hasAppCredential = false
+    var needsAppReauthorization = false
     var needsAppCredentialMigration = false
     let accountID: Int?
 }

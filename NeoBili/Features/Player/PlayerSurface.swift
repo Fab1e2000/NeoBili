@@ -128,12 +128,17 @@ final class PlayerSurfaceContainerController: UIViewController, PlayerSurfaceOwn
     private func attach(_ content: UIViewController) {
         guard canPresent(), content.parent !== self else { return }
 
-        // 不要从一个正显示在屏幕上的容器手里抢渲染层。
-        // 抢走之后画面就没了，而抢的这一个自己还没上屏（多半根本不会上屏）。
-        if let holder = content.parent,
-           holder.viewIfLoaded?.window != nil,
-           viewIfLoaded?.window == nil {
-            return
+        // SwiftUI may briefly mount two eligible hosts for the same session.
+        // Keep the visible, still-eligible owner stable: stealing on every layout
+        // causes each host to invalidate the other and traps the main run loop.
+        // An explicit page/mini transition or dismantle makes the old host
+        // ineligible, so those legitimate handoffs remain immediate.
+        if let holder = content.parent, holder.viewIfLoaded?.window != nil {
+            if let playerHolder = holder as? PlayerSurfaceContainerController {
+                if playerHolder.canPresent() { return }
+            } else if viewIfLoaded?.window == nil {
+                return
+            }
         }
 
         if content.parent != nil {

@@ -11,6 +11,56 @@ final class MiniPlayerSurfaceTests: XCTestCase {
         var destination: Destination = .page
     }
 
+    func testTwoVisibleEligibleHostsDoNotStealDuringLayoutAndDismantleTransfers() throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let root = UIViewController()
+        window.rootViewController = root
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        let content = UIViewController()
+        let owner = PlayerSurfaceContainerController(content: content, canPresent: { true })
+        var contenderActive = false
+        let contender = PlayerSurfaceContainerController(content: content, canPresent: { contenderActive })
+        for (index, host) in [owner, contender].enumerated() {
+            root.addChild(host)
+            host.view.frame = CGRect(x: 0, y: index * 120, width: 200, height: 100)
+            root.view.addSubview(host.view)
+            host.didMove(toParent: root)
+        }
+        XCTAssertTrue(content.parent === owner)
+        contenderActive = true
+        for _ in 0..<100 {
+            contender.viewDidLayoutSubviews()
+            contender.adopt(content)
+            XCTAssertTrue(content.parent === owner, "A second visible host must not steal during layout")
+            owner.viewDidLayoutSubviews()
+        }
+        owner.stopObservingOwnership()
+        contender.viewDidLayoutSubviews()
+        XCTAssertTrue(content.parent === contender, "Dismantling permits the surviving host to adopt")
+        owner.viewDidLayoutSubviews()
+        XCTAssertTrue(content.parent === contender)
+    }
+
+    func testVisibleHostCanRecoverFromDetachedEligibleHost() throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let root = UIViewController(); window.rootViewController = root
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let content = UIViewController()
+        let detached = PlayerSurfaceContainerController(content: content, canPresent: { true })
+        detached.loadViewIfNeeded()
+        let visible = PlayerSurfaceContainerController(content: content, canPresent: { true })
+        root.addChild(visible); root.view.addSubview(visible.view); visible.didMove(toParent: root)
+        window.isHidden = false
+        visible.viewDidLayoutSubviews()
+        XCTAssertTrue(content.parent === visible)
+        detached.viewDidLayoutSubviews()
+        XCTAssertTrue(content.parent === visible)
+    }
+
     func testRelatedVideoReplacementTransfersToExistingMiniWithoutAnotherLayout() {
         let originalOwnership = PlayerSurfaceOwnership()
         let replacementOwnership = PlayerSurfaceOwnership()

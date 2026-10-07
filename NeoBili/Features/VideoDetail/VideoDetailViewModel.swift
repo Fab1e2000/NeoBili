@@ -77,9 +77,7 @@ final class VideoDetailViewModel {
              try await BiliAPI.videoRelation(aid: $0, bvid: $1)
          },
          relatedPageLoader: (@MainActor (Data?) async throws -> AppRelatedPage)? = nil,
-         sendLike: @escaping @MainActor (Int, Bool) async throws -> Void = {
-             try await BiliAPI.likeVideo(aid: $0, like: $1)
-         }) {
+         sendLike: (@MainActor (Int, Bool) async throws -> Void)? = nil) {
         self.bvid = bvid
         self.entryAid = aid
         self.sourceEntry = playbackEntry
@@ -91,7 +89,11 @@ final class VideoDetailViewModel {
         self.appAccountSessionID = identity.loginSessionID
         self.fetchDetail = fetchDetail
         self.fetchRelation = fetchRelation
-        self.sendLike = sendLike
+        let accountSession = identity.loginSessionID
+        self.sendLike = sendLike ?? { aid, liked in
+            try await BiliAPI.likeVideo(aid: aid, like: liked, entry: playbackEntry,
+                expectedSessionID: accountSession, client: relatedClient)
+        }
     }
 
     func load() async {
@@ -204,7 +206,7 @@ final class VideoDetailViewModel {
         do {
             try await sendLike(detail.aid, !wasLiked)
         } catch {
-            guard likeStore.sessionID == sessionID else { return }
+            guard likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID else { return }
             apply(like: wasLiked, dislike: wasDisliked)
             likeCount = previousLikeCount
             likeStore.setOverride(aid: detail.aid, liked: wasLiked, sessionID: sessionID)
@@ -227,9 +229,10 @@ final class VideoDetailViewModel {
         }
 
         do {
-            try await BiliAPI.dislikeVideo(aid: detail.aid, dislike: !wasDisliked)
+            try await BiliAPI.dislikeVideo(aid: detail.aid, dislike: !wasDisliked, entry: sourceEntry,
+                expectedSessionID: appAccountSessionID, client: relatedClient)
         } catch {
-            guard likeStore.sessionID == sessionID else { return }
+            guard likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID else { return }
             apply(like: wasLiked, dislike: wasDisliked)
             if !wasDisliked, wasLiked {
                 likeCount = previousLikeCount
@@ -254,9 +257,10 @@ final class VideoDetailViewModel {
         coinCount += 1
 
         do {
-            try await BiliAPI.addCoin(aid: detail.aid, multiply: 1)
+            try await BiliAPI.addCoin(aid: detail.aid, multiply: 1, entry: sourceEntry,
+                expectedSessionID: appAccountSessionID, client: relatedClient)
         } catch {
-            guard likeStore.sessionID == sessionID else { return }
+            guard likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID else { return }
             // 只还原投币这一项。整个 relation 覆盖回去的话，会把这期间
             // 其它按钮刚改好的状态一起抹掉。
             apply(coin: previousCoin)
@@ -279,8 +283,9 @@ final class VideoDetailViewModel {
         }
 
         do {
-            let result = try await BiliAPI.tripleAction(aid: detail.aid)
-            guard likeStore.sessionID == sessionID else { return }
+            let result = try await BiliAPI.tripleAction(aid: detail.aid, entry: sourceEntry,
+                expectedSessionID: appAccountSessionID, client: relatedClient)
+            guard likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID else { return }
 
             // 本来就已点赞/已收藏的，计数不能再加一次。
             if result.didLike, !displayedIsLiked { likeCount += 1 }
@@ -301,7 +306,7 @@ final class VideoDetailViewModel {
             )
             actionMessage = tripleSummary(result)
         } catch {
-            guard likeStore.sessionID == sessionID else { return }
+            guard likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID else { return }
             actionMessage = error.localizedDescription
         }
     }
@@ -329,7 +334,7 @@ final class VideoDetailViewModel {
             try await BiliAPI.unfavoriteEverywhere(aid: detail.aid)
             actionMessage = String(localized: "已取消收藏")
         } catch {
-            guard likeStore.sessionID == sessionID else { return }
+            guard likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID else { return }
             apply(favorite: wasFavorited)
             favoriteCount += 1
             actionMessage = error.localizedDescription
@@ -362,7 +367,7 @@ final class VideoDetailViewModel {
             )
             actionMessage = willBeFavorited ? String(localized: "已收藏") : String(localized: "已取消收藏")
         } catch {
-            guard likeStore.sessionID == sessionID else { return }
+            guard likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID else { return }
             apply(favorite: wasFavorited)
             favoriteCount = previousCount
             actionMessage = error.localizedDescription
@@ -379,7 +384,7 @@ final class VideoDetailViewModel {
         do {
             try await BiliAPI.modifyRelation(mid: detail.owner.mid, follow: !wasFollowing)
         } catch {
-            guard likeStore.sessionID == sessionID else { return }
+            guard likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID else { return }
             apply(attention: wasFollowing)
             actionMessage = error.localizedDescription
         }
@@ -389,14 +394,14 @@ final class VideoDetailViewModel {
 
     /// 未登录、详情还没到、或者上一次请求还没回来时都不该继续。
     private func checkReady(_ action: Action, isLoggedIn: Bool) async -> Bool {
-        guard isLoggedIn, likeStore.sessionID == sessionID else {
+        guard isLoggedIn, likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID else {
             actionMessage = String(localized: "请先登录")
             return false
         }
         guard busyActions.isEmpty else { return false }
         busyActions.insert(action)
         await loadRelationIfNeeded()
-        guard relation != nil, likeStore.sessionID == sessionID, !Task.isCancelled else {
+        guard relation != nil, likeStore.sessionID == sessionID, identity.loginSessionID == appAccountSessionID, !Task.isCancelled else {
             busyActions.remove(action)
             return false
         }

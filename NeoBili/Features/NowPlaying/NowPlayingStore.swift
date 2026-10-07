@@ -187,7 +187,7 @@ final class NowPlayingStore {
                 cid: episode.cid,
                 cover: episode.arc?.pic,
                 title: episode.title,
-                artist: detailViewModel?.detail?.owner.name
+                artist: detailViewModel?.detail?.owner.name, playbackEntry: .collection
             )
         )
     }
@@ -391,7 +391,6 @@ final class NowPlayingStore {
             bvid: route.bvid,
             cid: cid,
             aid: route.aid ?? detailViewModel?.detail?.aid ?? 0, playbackEntry: route.playbackEntry,
-            playbackSession: detailViewModel?.appPlaybackSession,
             configuration: playbackConfiguration
         )
         newPlayer.session.surfacePresentation = isMiniPlayerPresented && !isVideoPageDismissalInProgress ? .mini : .page

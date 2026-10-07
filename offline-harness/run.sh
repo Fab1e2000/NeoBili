@@ -31,23 +31,43 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Models/RecommendationFilter.swift" \
    "$APP/Core/UI/AppLanguage.swift" \
    "$APP/Core/Extensions/Int+BiliFormatting.swift" \
-   "$APP/Core/Networking/AppNetwork.swift" \
-   "$APP/Core/Networking/RecommendationDiagnostics.swift" \
-   "$APP/Core/Networking/APIClient.swift" \
-   "$APP/Core/Networking/BiliAPI.swift" \
-   "$APP/Core/Networking/BiliAPI+Recommendation.swift" \
-   "$APP/Core/Networking/BiliAPI+VideoActions.swift" \
-   "$APP/Core/Networking/AppRecommendationSession.swift" \
-   "$APP/Core/Networking/AppRecommendationPage.swift" \
-   "$APP/Core/Networking/AppRelatedPage.swift" \
-   "$APP/Core/Networking/AppRecommendationDisplay.swift" \
-   "$APP/Core/Networking/WebRecommendationPage.swift" \
-   "$APP/Core/Networking/BiliPassport.swift" \
-   "$APP/Core/Networking/WBISigner.swift" \
-   "$APP/Core/Networking/DeviceIdentity.swift" \
-   "$APP/Core/Networking/KeychainStore.swift" \
-   "$APP/Core/Networking/AppSigner.swift" \
-   "$APP/Core/Networking/URL+Bili.swift" \
+   "$APP/Core/Networking/Transport/AppNetwork.swift" \
+   "$APP/Core/Networking/Reporting/RecommendationDiagnostics.swift" \
+   "$APP/Core/Networking/Transport/APIClient.swift" \
+   "$APP/Core/Networking/Transport/HTTPTransport.swift" \
+   "$APP/Core/Networking/Transport/AppRequestEncoding.swift" \
+   "$APP/Core/Networking/Identity/AppClientIdentity.swift" \
+   "$APP/Core/Networking/Transport/AppProto.swift" \
+   "$APP/Core/Networking/Transport/BiliHeaders.swift" \
+   "$APP/Core/Networking/Identity/AppDeviceProtocol.swift" \
+   "$APP/Core/Networking/Identity/AppDeviceMetadata.swift" \
+   "$APP/Features/Home/RecommendationExposurePolicy.swift" \
+   "$APP/Core/Networking/Recommendation/AppRecommendationProtocol.swift" \
+   "$APP/Core/Networking/Reporting/AppBehaviorEncoder.swift" \
+   "$APP/Core/Networking/Reporting/AppBehaviorReporter.swift" \
+   "$APP/Core/Networking/Identity/AppBuvid.swift" \
+   "$APP/Core/Networking/Identity/AppDeviceRegistration.swift" \
+   "$APP/Core/Networking/Identity/AppGuestRegistration.swift" \
+   "$APP/Core/Networking/Identity/AppTicketService.swift" \
+   "$APP/Core/Networking/Identity/AppNetworkMetadata.swift" \
+   "$APP/Core/Networking/Identity/PasswordCipher.swift" \
+   "$APP/Core/Networking/Endpoints/BiliAPI.swift" \
+   "$APP/Core/Networking/Endpoints/BiliAPI+Recommendation.swift" \
+   "$APP/Core/Networking/Endpoints/BiliAPI+VideoActions.swift" \
+   "$APP/Core/Networking/Recommendation/AppRecommendationSession.swift" \
+   "$APP/Core/Networking/Recommendation/AppRecommendationPage.swift" \
+   "$APP/Core/Networking/Recommendation/AppRelatedPage.swift" \
+   "$APP/Core/Networking/Reporting/RecommendationClick.swift" \
+   "$APP/Core/Networking/Recommendation/AppRecommendationDisplay.swift" \
+   "$APP/Core/Networking/Recommendation/WebRecommendationPage.swift" \
+   "$APP/Core/Networking/Identity/BiliPassport.swift" \
+   "$APP/Core/Networking/Identity/SMSPassport.swift" \
+   "$APP/Core/Networking/Identity/AppLoginRenewal.swift" \
+   "$APP/Core/Networking/Identity/WBISigner.swift" \
+   "$APP/Core/Networking/Identity/DeviceIdentity.swift" \
+   "$APP/Core/Networking/Identity/KeychainStore.swift" \
+   "$APP/Core/Networking/Identity/AppSigner.swift" \
+   "$APP/Core/Networking/Transport/URL+Bili.swift" \
    "$APP/Core/UI/EnvironmentAction.swift" \
    "$APP/Features/Danmaku/DanmakuModels.swift" \
    "$APP/Features/Danmaku/DanmakuLoader.swift" \

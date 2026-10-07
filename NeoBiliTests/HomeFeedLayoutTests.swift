@@ -72,7 +72,7 @@ final class HomeFeedLayoutTests: XCTestCase {
         await model.loadReplacementPage() // No cursor: no extra request.
         XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 1745482992, 1745482980, 1745482970])
         XCTAssertEqual(requested.map(\.pageIndex), [0, 1, 1, 2, 3])
-        XCTAssertEqual(requested.map { AppRecommendationPage.parameters(for: $0)["flush"] }, ["0", "8", "8", "8", "8"])
+        XCTAssertEqual(requested.map { AppRecommendationProtocol.parameters(for: $0)["flush"] }, ["0", "8", "8", "8", "8"])
         XCTAssertEqual(requested[1], requested[2], "Retry preserves the complete request")
         XCTAssertEqual(model.videos.map(\.aid), [1, 2])
         XCTAssertNil(model.errorMessage)
@@ -119,7 +119,8 @@ final class HomeFeedLayoutTests: XCTestCase {
                 }
             }
             return RecommendationBatch(videos: [self.video(requested.count)],
-                nextRequest: request.next(appCursor: requested.count == 1 ? 111 : 222))
+                nextRequest: request.next(appCursor: requested.count == 1 ? 111 : 222),
+                refreshCursor: requested.count == 1 ? 111 : 222)
         })
         await model.loadInitial()
         let oldPage = Task { await model.loadReplacementPage() }
@@ -132,6 +133,42 @@ final class HomeFeedLayoutTests: XCTestCase {
         XCTAssertEqual(requested.map(\.appCursor), [0, 111, 111, 222])
         XCTAssertFalse(model.videos.contains { $0.aid == 99 })
         XCTAssertNil(model.errorMessage)
+    }
+
+    func testRefreshHeadIsIndependentOfPaginationAndOnlyChangesWhenBatchIsCommitted() async {
+        var requested: [RecommendationRequest] = []
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let model = HomeViewModel(defaults: defaults, fetchRecommendations: { request in
+            requested.append(request)
+            let n = requested.count
+            return RecommendationBatch(videos: n == 5 ? [] : [self.video(n)],
+                nextRequest: request.next(appCursor: n * 100 + 9), refreshCursor: n * 100 + 1)
+        })
+        await model.loadInitial()                       // adopt head 101, tail 109
+        await model.loadReplacementPage()               // tail 209, still head 101
+        await model.refresh(staged: true)                // pending head 301
+        await model.refresh(staged: true)                // must still request 101
+        model.commitStagedRefresh()                     // adopt head 401
+        await model.refresh()                            // empty: preserve head 401
+        await model.refresh()
+        XCTAssertEqual(requested.map(\.appCursor), [0, 109, 101, 101, 401, 401])
+    }
+
+    func testStagedRefreshFromOldAccountCannotBecomeCurrentHeadOrContent() async {
+        var login = UUID()
+        var requests: [RecommendationRequest] = []
+        let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!,
+            currentSessionID: { login }, fetchRecommendations: { request in
+                requests.append(request)
+                return RecommendationBatch(videos: [self.video(requests.count)], nextRequest: request.next(appCursor: 19), refreshCursor: 11)
+            })
+        await model.loadInitial()
+        await model.refresh(staged: true)
+        login = UUID()
+        model.commitStagedRefresh()
+        XCTAssertEqual(model.videos.first?.aid, 1)
+        await model.refresh()
+        XCTAssertEqual(requests.last?.appCursor, 0)
     }
 
     func testExitStartsWithRefreshAndOnlyWaitsForRemainingTime() {

@@ -116,6 +116,12 @@ struct SpaceCard: Hashable, Sendable {
     /// 当前账号有没有关注他。未登录时恒为 false。
     let isFollowing: Bool
 
+    var appBackground: SpaceBackgroundPayload.Images? = nil
+
+    func bannerURL(isDark: Bool) -> URL? {
+        appBackground?.url(isDark: isDark) ?? secureBannerURL
+    }
+
     var secureAvatarURL: URL? { URL.biliSecure(face) }
     var secureBannerURL: URL? { banner.flatMap { URL.biliSecure($0) } }
 }
@@ -226,6 +232,27 @@ struct SpaceCardPayload: Decodable, Sendable {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 largeImage = container.flexibleString(forKey: .largeImage)
             }
+        }
+    }
+}
+
+/// App 空间响应只读取静态头图，不加载 images 中的装扮或播放资源。
+struct SpaceBackgroundPayload: Decodable, Sendable {
+    let images: Images?
+
+    struct Images: Decodable, Hashable, Sendable {
+        let imgUrl: String?
+        let night_imgurl: String?
+
+        func url(isDark: Bool) -> URL? {
+            if isDark, let night = Self.imageURL(night_imgurl) { return night }
+            return Self.imageURL(imgUrl)
+        }
+
+        private static func imageURL(_ raw: String?) -> URL? {
+            guard let raw, let url = URL.biliSecure(raw),
+                  url.scheme == "https", let host = url.host, !host.isEmpty else { return nil }
+            return url
         }
     }
 }

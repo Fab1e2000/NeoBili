@@ -270,13 +270,7 @@ private final class CollapseVisualWindow {
             try await Task.sleep(for: .milliseconds(20))
         }
         guard portrait else { throw URLError(.timedOut) }
-        if let transition = controller.transitionCoordinator, transition.isAnimated {
-            await withCheckedContinuation { continuation in
-                if !transition.animate(alongsideTransition: nil, completion: { _ in continuation.resume() }) {
-                    continuation.resume()
-                }
-            }
-        }
+        try await TestWindowTransition.wait(for: controller)
         window.frame = scene.coordinateSpace.bounds
         controller.view.frame = window.bounds
         window.setNeedsLayout()

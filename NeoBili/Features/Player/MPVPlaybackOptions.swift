@@ -9,6 +9,7 @@ struct VideoPlaybackConfiguration: Sendable, Equatable {
     var maxBackBufferBytes: Int = 8 * 1024 * 1024
     var networkTimeoutSeconds: Int = 10
     var referer: String = BiliHeaders.referer
+    var silentPreview = false
 
     static let fastStart = VideoPlaybackConfiguration()
 
@@ -53,7 +54,7 @@ enum MPVPlaybackOptions {
         isSimulator: Bool,
         httpHeaderFields: String
     ) -> [(String, String)] {
-        [
+        let options = [
             // 模拟器没有对应的 VideoToolbox 硬解通道，vo=gpu-next 在模拟器上
             // 也拿不到真正的 Metal/Vulkan 设备，交给 mpv 的软解兜底。
             ("hwdec", isSimulator ? "no" : (configuration.hardwareDecoding ? "videotoolbox" : "no")),
@@ -73,5 +74,6 @@ enum MPVPlaybackOptions {
             ("http-header-fields", httpHeaderFields),
             ("user-agent", BiliHeaders.userAgent)
         ]
+        return options + (configuration.silentPreview ? [("mute", "yes"), ("ao", "null")] : [])
     }
 }

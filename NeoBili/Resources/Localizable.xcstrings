@@ -354,6 +354,16 @@
         }
       }
     },
+    "%lld 秒后重新获取": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resend in %lld seconds"
+          }
+        }
+      }
+    },
     "%lld 项": {
       "localizations": {
         "en": {
@@ -474,6 +484,36 @@
         }
       }
     },
+    "App 扫码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App authorization"
+          }
+        }
+      }
+    },
+    "App 授权未完成，请到「设置 → 推荐流」使用验证码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App authorization is incomplete. Verify by SMS in Settings → Recommendations."
+          }
+        }
+      }
+    },
+    "App 授权未完成，请到「设置 → 推荐流」扫码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App authorization is incomplete. Scan to authorize in Settings → Recommendations."
+          }
+        }
+      }
+    },
     "Bilibili 视频": {
       "localizations": {
         "en": {
@@ -510,6 +550,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "LV%lld"
+          }
+        }
+      }
+    },
+    "NeoBili 自身编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "NeoBili identity"
           }
         }
       }
@@ -1132,6 +1182,16 @@
         }
       }
     },
+    "准备导出日志": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prepare log export"
+          }
+        }
+      }
+    },
     "分P": {
       "localizations": {
         "en": {
@@ -1178,6 +1238,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Share Image"
+          }
+        }
+      }
+    },
+    "分享日志文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share log file"
           }
         }
       }
@@ -1264,6 +1334,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Refresh Following Posts"
+          }
+        }
+      }
+    },
+    "刷新后保留上次数据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep previous recommendations after refresh"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新后保留上次数据"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新整理後保留上次資料"
           }
         }
       }
@@ -1704,6 +1796,16 @@
         }
       }
     },
+    "国家或地区": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Country or region"
+          }
+        }
+      }
+    },
     "图片": {
       "localizations": {
         "en": {
@@ -1774,6 +1876,16 @@
         }
       }
     },
+    "安全验证页面无法加载，请关闭后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to load verification. Close it and try again."
+          }
+        }
+      }
+    },
     "完全退出并重新打开 NeoBili 后生效。": {
       "localizations": {
         "en": {
@@ -1790,6 +1902,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Done"
+          }
+        }
+      }
+    },
+    "官方编号（本地测试）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Official identity (local test)"
           }
         }
       }
@@ -2250,6 +2372,16 @@
         }
       }
     },
+    "已选择 %lld 项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld selected"
+          }
+        }
+      }
+    },
     "应用于推荐、关注、搜索、收藏、历史等视频列表。": {
       "localizations": {
         "en": {
@@ -2286,6 +2418,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "On"
+          }
+        }
+      }
+    },
+    "开启后，新推荐后面保留旧卡片；关闭后，下次刷新会替换整个列表。默认开启。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep old cards after new recommendations. When off, the next refresh replaces the entire list. Enabled by default."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后，新推荐后面保留旧卡片；关闭后，下次刷新会替换整个列表。默认开启。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟後，新推薦後面保留舊卡片；關閉後，下次重新整理會替換整個列表。預設開啟。"
           }
         }
       }
@@ -2480,6 +2634,16 @@
         }
       }
     },
+    "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。点「获取」会用当前登录状态向 B 站确认一次 App 端登录，账号的登录设备里会多一条记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This account has no App credential. App recommendations pause until authorization succeeds. Get confirms an App login with your current session and adds a login record to your account."
+          }
+        }
+      }
+    },
     "彩色弹幕": {
       "localizations": {
         "en": {
@@ -2506,6 +2670,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fast Forward"
+          }
+        }
+      }
+    },
+    "恢复 NeoBili 自身编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore NeoBili identity"
           }
         }
       }
@@ -2600,6 +2774,16 @@
         }
       }
     },
+    "手机号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phone number"
+          }
+        }
+      }
+    },
     "打开 UP 主主页": {
       "localizations": {
         "en": {
@@ -2636,6 +2820,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Open Live Room"
+          }
+        }
+      }
+    },
+    "扫码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan to authorize"
           }
         }
       }
@@ -2770,6 +2964,16 @@
         }
       }
     },
+    "推荐实验日志": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recommendation experiment logs"
+          }
+        }
+      }
+    },
     "推荐页": {
       "localizations": {
         "en": {
@@ -2876,6 +3080,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Playback & Quality"
+          }
+        }
+      }
+    },
+    "播放倍速": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback Speed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放倍速"
           }
         }
       }
@@ -3106,6 +3326,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Couldn't get the WBI signing key"
+          }
+        }
+      }
+    },
+    "日志保存在手机上，最多约 8 MB。记录请求参数、返回的视频及观看上报结果，隐藏登录凭据和设备编号。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logs remain on this phone, using up to about 8 MB. They record request parameters, recommended videos and viewing reports, omitting credentials and device identifiers."
+          }
+        }
+      }
+    },
+    "日志含观看内容和操作时间，仅分享给你信任的人。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logs include viewed content and activity times. Share only with people you trust."
+          }
+        }
+      }
+    },
+    "日志导出失败，请重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not export logs. Please try again."
           }
         }
       }
@@ -3546,6 +3796,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Loading live streams"
+          }
+        }
+      }
+    },
+    "正在处理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processing"
           }
         }
       }
@@ -4020,6 +4280,16 @@
         }
       }
     },
+    "登录需要额外验证，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Additional verification required. Try again."
+          }
+        }
+      }
+    },
     "直播": {
       "localizations": {
         "en": {
@@ -4230,6 +4500,26 @@
         }
       }
     },
+    "短信验证码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS code"
+          }
+        }
+      }
+    },
+    "短信验证码登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS sign-in"
+          }
+        }
+      }
+    },
     "石墨灰": {
       "localizations": {
         "en": {
@@ -4256,6 +4546,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sample Video Title"
+          }
+        }
+      }
+    },
+    "移出所选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Selected"
           }
         }
       }
@@ -4578,6 +4878,16 @@
         }
       }
     },
+    "获取验证码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send code"
+          }
+        }
+      }
+    },
     "获赞": {
       "localizations": {
         "en": {
@@ -4708,6 +5018,26 @@
         }
       }
     },
+    "记录推荐与观看日志": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record recommendation and viewing logs"
+          }
+        }
+      }
+    },
+    "设备名牌": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device identity"
+          }
+        }
+      }
+    },
     "评论": {
       "localizations": {
         "en": {
@@ -4804,6 +5134,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Language"
+          }
+        }
+      }
+    },
+    "请使用当前账号扫码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan with your currently signed-in account."
+          }
+        }
+      }
+    },
+    "请使用当前账号的手机号授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify using the phone number linked to your current account"
+          }
+        }
+      }
+    },
+    "请使用当前账号绑定的手机号完成验证。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify using the phone number linked to your current account."
+          }
+        }
+      }
+    },
+    "请使用短信验证码重新授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify again using an SMS code"
           }
         }
       }
@@ -5218,6 +5588,16 @@
         }
       }
     },
+    "选择": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select"
+          }
+        }
+      }
+    },
     "重新加载": {
       "localizations": {
         "en": {
@@ -5498,6 +5878,36 @@
         }
       }
     },
+    "验证码已发送，请在五分钟内填写。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code sent. Enter it within five minutes."
+          }
+        }
+      }
+    },
+    "验证码已过期，请重新获取": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code expired. Request a new code."
+          }
+        }
+      }
+    },
+    "验证码授权": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify by SMS"
+          }
+        }
+      }
+    },
     "高清": {
       "localizations": {
         "en": {
@@ -5554,326 +5964,6 @@
           "stringUnit": {
             "state": "translated",
             "value": ", live now"
-          }
-        }
-      }
-    },
-    "App 授权未完成，请到「设置 → 推荐流」扫码授权": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "App authorization is incomplete. Scan to authorize in Settings → Recommendations."
-          }
-        }
-      }
-    },
-    "请使用当前账号扫码授权": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scan with your currently signed-in account."
-          }
-        }
-      }
-    },
-    "扫码授权": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scan to authorize"
-          }
-        }
-      }
-    },
-    "App 扫码授权": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "App authorization"
-          }
-        }
-      }
-    },
-    "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。点「获取」会用当前登录状态向 B 站确认一次 App 端登录，账号的登录设备里会多一条记录。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This account has no App credential. App recommendations pause until authorization succeeds. Get confirms an App login with your current session and adds a login record to your account."
-          }
-        }
-      }
-    },
-    "推荐实验日志": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recommendation experiment logs"
-          }
-        }
-      }
-    },
-    "记录推荐与观看日志": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Record recommendation and viewing logs"
-          }
-        }
-      }
-    },
-    "设备名牌": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Device identity"
-          }
-        }
-      }
-    },
-    "NeoBili 自身编号": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "NeoBili identity"
-          }
-        }
-      }
-    },
-    "官方编号（本地测试）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Official identity (local test)"
-          }
-        }
-      }
-    },
-    "恢复 NeoBili 自身编号": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Restore NeoBili identity"
-          }
-        }
-      }
-    },
-    "准备导出日志": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Prepare log export"
-          }
-        }
-      }
-    },
-    "分享日志文件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Share log file"
-          }
-        }
-      }
-    },
-    "日志导出失败，请重试。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Could not export logs. Please try again."
-          }
-        }
-      }
-    },
-    "日志含观看内容和操作时间，仅分享给你信任的人。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Logs include viewed content and activity times. Share only with people you trust."
-          }
-        }
-      }
-    },
-    "日志保存在手机上，最多约 8 MB。记录请求参数、返回的视频及观看上报结果，隐藏登录凭据和设备编号。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Logs remain on this phone, using up to about 8 MB. They record request parameters, recommended videos and viewing reports, omitting credentials and device identifiers."
-          }
-        }
-      }
-    },
-    "短信验证码登录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS sign-in"
-          }
-        }
-      }
-    },
-    "国家或地区": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Country or region"
-          }
-        }
-      }
-    },
-    "手机号": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Phone number"
-          }
-        }
-      }
-    },
-    "短信验证码": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS code"
-          }
-        }
-      }
-    },
-    "获取验证码": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Send code"
-          }
-        }
-      }
-    },
-    "%lld 秒后重新获取": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Resend in %lld seconds"
-          }
-        }
-      }
-    },
-    "正在处理": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Processing"
-          }
-        }
-      }
-    },
-    "验证码已发送，请在五分钟内填写。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Code sent. Enter it within five minutes."
-          }
-        }
-      }
-    },
-    "请使用当前账号绑定的手机号完成验证。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verify using the phone number linked to your current account."
-          }
-        }
-      }
-    },
-    "验证码已过期，请重新获取": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Code expired. Request a new code."
-          }
-        }
-      }
-    },
-    "验证码授权": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verify by SMS"
-          }
-        }
-      }
-    },
-    "请使用短信验证码重新授权": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verify again using an SMS code"
-          }
-        }
-      }
-    },
-    "请使用当前账号的手机号授权": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verify using the phone number linked to your current account"
-          }
-        }
-      }
-    },
-    "安全验证页面无法加载，请关闭后重试": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unable to load verification. Close it and try again."
-          }
-        }
-      }
-    },
-    "登录需要额外验证，请重试": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Additional verification required. Try again."
-          }
-        }
-      }
-    },
-    "App 授权未完成，请到「设置 → 推荐流」使用验证码授权": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "App authorization is incomplete. Verify by SMS in Settings → Recommendations."
           }
         }
       }

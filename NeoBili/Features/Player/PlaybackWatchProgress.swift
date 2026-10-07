@@ -6,6 +6,8 @@ struct PlaybackWatchProgress {
     private struct Sample {
         let position: TimeInterval
         let time: TimeInterval
+        var rateStart: TimeInterval
+        var weightedTime: TimeInterval = 0
     }
 
     private var sample: Sample?
@@ -14,13 +16,16 @@ struct PlaybackWatchProgress {
     private var lastReportedSecond: Int?
     private var segmentHasProgress = false
     private var isCompleted = false
+    var terminalPosition: Double? { lastReportedSecond == -1 ? -1 : lastWatchedPosition }
+    private var playbackRate: Double = 1
+    private(set) var actualPlayedTime: TimeInterval = 0
     private(set) var watchedTime: TimeInterval = 0
     private(set) var maximumPosition: TimeInterval = 0
     private(set) var miniPlayerTime: TimeInterval = 0
     private(set) var pausedTime: TimeInterval = 0
     private var pauseStarted: TimeInterval?
 
-    /// First heartbeat after five real seconds, then every fifteen seconds.
+    /// History checkpoint after five real seconds, then every fifteen seconds.
     /// Explicit pause/exit may flush a shorter, actually watched segment.
     mutating func observe(position: TimeInterval, at time: TimeInterval, isActive: Bool, isMiniPlayer: Bool = false) -> Double? {
         guard !isCompleted, isActive, position.isFinite, position >= 0, time.isFinite else {
@@ -28,7 +33,7 @@ struct PlaybackWatchProgress {
             return nil
         }
         let previous = sample
-        sample = Sample(position: position, time: time)
+        sample = Sample(position: position, time: time, rateStart: time)
         guard let previous else { return nil }
         let elapsed = time - previous.time
         let advanced = position - previous.position
@@ -39,6 +44,7 @@ struct PlaybackWatchProgress {
               advanced <= elapsed * 4 + 0.25 else { return nil }
         setPaused(false, at: time)
         watchedTime += elapsed
+        actualPlayedTime += previous.weightedTime + max(0, time - previous.rateStart) * playbackRate
         if isMiniPlayer { miniPlayerTime += elapsed }
         maximumPosition = max(maximumPosition, position)
         lastWatchedPosition = position
@@ -46,6 +52,19 @@ struct PlaybackWatchProgress {
         watchedSinceReport += elapsed
         let interval: TimeInterval = lastReportedSecond == nil ? 5 : 15
         return watchedSinceReport >= interval ? checkpoint() : nil
+    }
+
+    /// Settle the old rate at the exact boundary, but commit it only when the
+    /// next decoder position confirms progress. Interruptions discard this sample.
+    mutating func setPlaybackRate(_ rate: Double, at time: TimeInterval) {
+        guard rate.isFinite, rate > 0, time.isFinite else { return }
+        if var previous = sample {
+            guard time >= previous.rateStart else { return }
+            previous.weightedTime += (time - previous.rateStart) * playbackRate
+            previous.rateStart = time
+            sample = previous
+        }
+        playbackRate = rate
     }
 
     mutating func setPaused(_ paused: Bool, at time: TimeInterval) {
@@ -66,6 +85,7 @@ struct PlaybackWatchProgress {
             pausedTime: pause, maximumPosition: maximumPosition, duration: duration,
             startTimestamp: startTimestamp, sourceFields: sourceFields)
         report.miniPlayerTime = miniPlayerTime
+        report.actualPlayedTime = actualPlayedTime
         return report
     }
 
@@ -105,7 +125,7 @@ struct PlaybackWatchProgress {
     }
 }
 
-/// One writer per video part and login session. When a slow request is in flight, newer
+/// One history writer per video part and login session. When a slow request is in flight, newer
 /// checkpoints replace the pending one rather than creating more network tasks.
 /// Keeping this separate lets the final checkpoint finish after the player exits.
 @MainActor
@@ -160,16 +180,22 @@ final class PlaybackWatchProgressSender {
 
 /// 移动心跳的观看秒数与历史进度分开；不能把续播/拖动位置当成观看时长。
 struct PlaybackWatchReport: Sendable {
+    enum Delivery: Sendable, Equatable { case start, checkpoint, finish }
     let position: Double
     let watchedTime: Double
     let pausedTime: Double
     let maximumPosition: Double
     let duration: Double
-    let startTimestamp: Int
+    var startTimestamp: Int
     let sourceFields: [String: String]
     var playbackSession: String = ""
     var aid: Int = 0
     var miniPlayerTime: Double = 0
+    var delivery: Delivery = .finish
+    var localStartTimestamp: Int? = nil
+    var isInlinePreview = false
+    /// Nil preserves 1x semantics for manually constructed reports.
+    var actualPlayedTime: Double? = nil
 
 }
 
@@ -201,22 +227,51 @@ final class PlaybackWatchReportSender {
         return sender
     }
 
-    private let report: @Sendable (PlaybackWatchReport) async -> Void
-    private var pending: PlaybackWatchReport?
+    private let report: @Sendable (PlaybackWatchReport) async -> Int?
+    private var serverTimestamps: [String: Int] = [:]
+    private var pending: [PlaybackWatchReport] = []
     private var task: Task<Void, Never>?
 
     init(report: @escaping @Sendable (PlaybackWatchReport) async -> Void) {
-        self.report = report
+        self.report = { value in await report(value); return nil }
+    }
+
+    init(serverReport: @escaping @Sendable (PlaybackWatchReport) async -> Int?, receivesAcknowledgements: Bool) {
+        self.report = serverReport
+    }
+
+    static func shared(loginSessionID: UUID, bvid: String, cid: Int,
+                       serverReport: @escaping @Sendable (PlaybackWatchReport) async -> Int?) -> PlaybackWatchReportSender {
+        sharedSenders = sharedSenders.filter { $0.value.value != nil }
+        let key = Key(loginSessionID: loginSessionID, bvid: bvid, cid: cid)
+        if let existing = sharedSenders[key]?.value { return existing }
+        let sender = PlaybackWatchReportSender(serverReport: serverReport, receivesAcknowledgements: true)
+        sharedSenders[key] = WeakReference(sender)
+        return sender
     }
 
     func enqueue(_ position: PlaybackWatchReport?) {
         guard let position else { return }
-        pending = position
+        // Start/finish are session boundaries. Never coalesce them across re-entry.
+        // Only replace adjacent history checkpoints from the same playback session.
+        if position.delivery == .checkpoint, let last = pending.last,
+           last.delivery == .checkpoint, last.playbackSession == position.playbackSession {
+            pending[pending.count - 1] = position
+        } else {
+            pending.append(position)
+        }
         guard task == nil else { return }
         task = Task {
-            while let position = pending {
-                pending = nil
-                await report(position)
+            while !pending.isEmpty {
+                var position = pending.removeFirst()
+                if position.delivery != .start, let timestamp = serverTimestamps[position.playbackSession] {
+                    position.startTimestamp = timestamp
+                }
+                let timestamp = await report(position)
+                if position.delivery == .start, let timestamp, timestamp > 0 {
+                    serverTimestamps[position.playbackSession] = timestamp
+                }
+                if position.delivery == .finish { serverTimestamps.removeValue(forKey: position.playbackSession) }
             }
             task = nil
         }

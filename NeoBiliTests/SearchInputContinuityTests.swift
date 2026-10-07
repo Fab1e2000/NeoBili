@@ -27,12 +27,22 @@ final class SearchInputContinuityTests: XCTestCase {
         // This fixture supplies marked text itself. A real third-party keyboard
         // can asynchronously replace that synthetic composition while its XPC
         // extension starts, independently of the search view's identity.
+        // First-responder status becomes true before the keyboard animation ends.
+        // UIKit's completion can still switch input modes and unmark synthetic text.
+        // Wait for that lifecycle event, not a short run of stable focus samples.
+        let keyboardShown = expectation(description: "Synthetic keyboard finished appearing")
+        keyboardShown.assertForOverFulfill = false
+        let keyboardObserver = NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main
+        ) { _ in keyboardShown.fulfill() }
+        defer { NotificationCenter.default.removeObserver(keyboardObserver) }
         field.inputView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 216))
         field.reloadInputViews()
         // Install the synthetic keyboard before requesting focus. Otherwise a
         // cold simulator may still be starting its real keyboard when we mark text.
         focus.focused = true
         XCTAssertTrue(field.becomeFirstResponder())
+        await fulfillment(of: [keyboardShown], timeout: 3)
         var stableFocusSamples = 0
         for _ in 0..<100 {
             window.layoutIfNeeded()
