@@ -152,6 +152,9 @@ struct FavoriteFolderView: View {
     @State private var removals = ListRemovalState<Int>()
     @State private var loadID = UUID()
     @State private var entranceGeneration = 0
+    @State private var isSelecting = false
+    @State private var selectedIDs: Set<Int> = []
+    @State private var isRemovingSelected = false
 
     private var visibleVideos: [FavMedia] {
         videos.hidingKnownPortraitVideos(hidesPortraitVideos)
@@ -217,12 +220,33 @@ struct FavoriteFolderView: View {
             return videos
         }
         .videoCardAnimationSource(.favorites)
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting {
+                LibrarySelectionBar(count: selectedIDs.count,
+                    isBusy: isRemovingSelected || isLoading || isLoadingMore,
+                    done: { isSelecting = false; selectedIDs = [] }) {
+                    Task { await removeSelected() }
+                }
+            }
+        }
+        .onChange(of: account.sessionID) { _, _ in
+            loadID = UUID()
+            videos = []; selectedIDs = []; isSelecting = false
+            isLoading = false; isLoadingMore = false
+            Task { await reload() }
+        }
     }
 
     private func row(_ media: FavMedia) -> some View {
         let summary = media.asVideoSummary
 
         return Button {
+            if isSelecting {
+                guard !isRemovingSelected else { return }
+                if selectedIDs.contains(media.id) { selectedIDs.remove(media.id) }
+                else { selectedIDs.insert(media.id) }
+                return
+            }
             guard let summary else { return }
             // 收藏接口没有 cid，必须传 nil 让详情页去取（传 0 会让播放器拿空 cid 取流）。
             nowPlaying.open(
@@ -236,6 +260,12 @@ struct FavoriteFolderView: View {
                 from: "fav-\(summary.bvid)"
             )
         } label: {
+            HStack(spacing: 8) {
+                if isSelecting {
+                    Image(systemName: selectedIDs.contains(media.id) ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(selectedIDs.contains(media.id) ? Color.accentColor : .secondary)
+                }
             VideoListCard(
                 coverURL: summary?.secureCoverURL,
                 title: media.title,
@@ -244,9 +274,17 @@ struct FavoriteFolderView: View {
                 durationText: summary?.formattedDuration ?? "",
                 animatesEntrance: false
             )
+            }
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selectedIDs.contains(media.id) ? .isSelected : [])
         .contextMenu {
+            if !isSelecting {
+                Button {
+                    isSelecting = true; selectedIDs = [media.id]
+                } label: { Label("多选", systemImage: "checkmark.circle") }
+                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending)
+            }
             WatchLaterMenuButton(aid: media.id, bvid: media.bvid)
 
             Button(role: .destructive) {
@@ -263,11 +301,43 @@ struct FavoriteFolderView: View {
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
             await loadMoreIfNeeded(current: media)
-            if let summary {
+            if !isSelecting, let summary {
                 // 收藏没有 cid，预取会先取一次详情再取播放地址。
                 await VideoPreparationCache.shared.prefetchWhenSettled(bvid: summary.bvid)
             }
         }
+    }
+
+    private func removeSelected() async {
+        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending else { return }
+        let snapshot = videos
+        let targets = snapshot.filter { selectedIDs.contains($0.id) }
+        guard !targets.isEmpty else { return }
+        let owner = account.sessionID
+        let identitySession = DeviceIdentity.shared.loginSessionID
+        isRemovingSelected = true
+        loadID = UUID()
+        for target in targets { _ = removals.begin(target.id); removals.hide(target.id) }
+        defer {
+            for target in targets { removals.finish(target.id) }
+            isRemovingSelected = false
+            if account.sessionID != owner { Task { await reload() } }
+        }
+        let lookup = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let ids = Set(targets.map(\.id))
+        videos.removeAll { ids.contains($0.id) }
+        let result = await LibraryBatchRemoval.perform(ids: targets.map(\.id),
+            isCurrent: { account.sessionID == owner },
+            confirm: { await feedback.confirmRemoval(String(localized: "已移出收藏夹")) },
+            remove: { id in
+                guard let target = lookup[id] else { return }
+                try await BiliAPI.removeFavorite(folderID: folder.id, aid: target.id, expectedSessionID: identitySession)
+            })
+        guard account.sessionID == owner else { return }
+        videos = snapshot.filter { !result.succeeded.contains($0.id) }
+        selectedIDs.subtract(result.succeeded)
+        if selectedIDs.isEmpty { isSelecting = false }
+        if let error = result.error { feedback.show(error) }
     }
 
     private func loadIfNeeded() async {
@@ -283,7 +353,7 @@ struct FavoriteFolderView: View {
     /// 而点「重试」是另起一个不受牵连的任务，所以反而能成功。改成拿到数据
     /// 之后再整体替换，顺带也没有了刷新过程中的白屏。
     private func reload() async {
-        guard !removals.hasPending else { return }
+        guard !removals.hasPending, !isRemovingSelected else { return }
         let requestID = UUID()
         loadID = requestID
         let revision = removals.revision
@@ -296,6 +366,7 @@ struct FavoriteFolderView: View {
             let incoming = (payload.medias ?? []).filter(\.isVideo)
             entranceGeneration += 1
             videos = incoming.filter { !removals.hiddenIDs.contains($0.id) }
+            selectedIDs.formIntersection(Set(videos.map(\.id)))
             page = 2
             hasMore = incoming.count >= 20
             errorMessage = nil
@@ -306,13 +377,13 @@ struct FavoriteFolderView: View {
     }
 
     private func loadMoreIfNeeded(current media: FavMedia) async {
-        guard hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
+        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
         guard visibleVideos.suffix(5).contains(where: { $0.id == media.id }) else { return }
         await loadNextPage()
     }
 
     private func loadNextPage() async {
-        guard !removals.hasPending else { return }
+        guard !removals.hasPending, !isRemovingSelected else { return }
         guard !isLoadingMore, !isLoading else { return }
         let requestID = UUID()
         loadID = requestID
@@ -347,7 +418,7 @@ struct FavoriteFolderView: View {
     ///
     /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
     private func remove(_ media: FavMedia) async {
-        guard videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
+        guard !isRemovingSelected, videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
         defer { removals.finish(media.id) }
         let sessionID = account.sessionID
         var removedIndex: Int?
@@ -359,6 +430,8 @@ struct FavoriteFolderView: View {
             try await BiliAPI.removeFavorite(folderID: folder.id, aid: media.id)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             videos.removeAll { $0.id == media.id }
+            selectedIDs.remove(media.id)
+            if selectedIDs.isEmpty { isSelecting = false }
         } catch {
             if let removedIndex {
                 removals.restore(media, at: removedIndex, in: &videos)

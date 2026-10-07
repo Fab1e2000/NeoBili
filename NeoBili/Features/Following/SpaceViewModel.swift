@@ -43,7 +43,7 @@ final class SpaceViewModel {
     }
 
     func loadCard() async {
-        guard let card = try? await BiliAPI.spaceCard(mid: mid), !Task.isCancelled else { return }
+        guard let card = try? await BiliAPI.spaceProfile(mid: mid), !Task.isCancelled else { return }
         self.card = card
         isFollowing = card.isFollowing
     }

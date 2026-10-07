@@ -4,9 +4,10 @@ import Foundation
 enum LiveAPI {
     static func recommended(page: Int = 1) async throws -> LiveRoomPage {
         let page = max(1, page)
-        // PiliPlus 的主推荐协议也支持未登录浏览，登录时附带现有凭据。
+        // 直播 iOS 推荐必须携带屏幕倍率；匿名请求也需要此参数。
         let accessKey = await DeviceIdentity.shared.accessKey
-        let payload: LiveAppFeedPayload = try await requestApp(url: makeAppFeedURL(page: page, accessKey: accessKey))
+        let scale = await AppRecommendationDisplay.currentScale()
+        let payload: LiveAppFeedPayload = try await requestApp(url: makeAppFeedURL(page: page, accessKey: accessKey, scale: scale))
         return payload.page(number: page)
     }
 
@@ -95,9 +96,11 @@ enum LiveAPI {
         return try envelope.value()
     }
 
-    static func makeAppFeedURL(page: Int, accessKey: String?, moduleSelect: Bool = false,
+    static func makeAppFeedURL(page: Int, accessKey: String?, scale: Double, moduleSelect: Bool = false,
                                timestamp: Int = Int(Date().timeIntervalSince1970)) throws -> URL {
+        guard scale.isFinite, scale > 0 else { throw BiliAPIError.invalidURL }
         var params = appBrowsingParams(page: page, accessKey: accessKey)
+        params["scale"] = String(scale)
         if let accessKey, !accessKey.isEmpty { params["relation_page"] = "1" }
         if moduleSelect { params["module_select"] = "1" }
         return try makeAppURL(path: "xlive/app-interface/v2/index/feed", params: params, timestamp: timestamp)

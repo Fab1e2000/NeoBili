@@ -11,10 +11,12 @@ struct WatchLaterView: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
+    private let isTabRoot: Bool
     private let onLayout: (([String: CGRect]) -> Void)?
     @State private var model: WatchLaterModel
 
-    init(model: WatchLaterModel = WatchLaterModel(), onLayout: (([String: CGRect]) -> Void)? = nil) {
+    init(model: WatchLaterModel = WatchLaterModel(), isTabRoot: Bool = false, onLayout: (([String: CGRect]) -> Void)? = nil) {
+        self.isTabRoot = isTabRoot
         self.onLayout = onLayout
         _model = State(initialValue: model)
     }
@@ -74,28 +76,34 @@ struct WatchLaterView: View {
         .videoCardAnimationSource(.watchLater)
         .onPreferenceChange(WatchLaterLayoutFrames.self) { onLayout?($0) }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(model.isSelecting ? String(localized: "完成") : String(localized: "选择")) {
-                    model.isSelecting.toggle(); model.selectedIDs = []
-                }
-                .disabled(items.isEmpty || model.isRemoving || isLoading)
-                .accessibilityIdentifier("watchlater.select")
+            if !isTabRoot {
+                ToolbarItem(placement: .topBarTrailing) { selectionButton }
             }
         }
+
         .safeAreaInset(edge: .bottom) {
             if model.isSelecting {
-                HStack {
-                    Text("已选择 \(model.selectedIDs.count) 项")
-                    Spacer()
-                    Button("移出所选", role: .destructive) {
-                        Task { await remove(ids: model.selectedIDs) }
-                    }
-                    .disabled(model.selectedIDs.isEmpty || model.isRemoving || isLoading)
-                    .accessibilityIdentifier("watchlater.removeSelected")
+                LibrarySelectionBar(count: model.selectedIDs.count,
+                    isBusy: model.isRemoving || isLoading, done: endSelection) {
+                    Task { await remove(ids: model.selectedIDs) }
                 }
-                .padding().background(.regularMaterial)
             }
         }
+    }
+
+    private var selectionButton: some View {
+        Button(model.isSelecting ? String(localized: "完成") : String(localized: "选择")) {
+            model.isSelecting.toggle()
+            model.selectedIDs = []
+        }
+        .frame(minHeight: 44)
+        .disabled(items.isEmpty || model.isRemoving || isLoading)
+        .accessibilityIdentifier("watchlater.select")
+    }
+
+    private func endSelection() {
+        model.isSelecting = false
+        model.selectedIDs = []
     }
 
     private func row(_ item: WatchLaterItem) -> some View {
@@ -139,6 +147,16 @@ struct WatchLaterView: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(model.selectedIDs.contains(item.id) ? .isSelected : [])
         .contextMenu {
+            if !model.isSelecting {
+                Button {
+                    model.isSelecting = true
+                    model.selectedIDs = [item.id]
+                } label: {
+                    Label("多选", systemImage: "checkmark.circle")
+                }
+                .disabled(model.isRemoving || isLoading)
+                .accessibilityIdentifier("watchlater.multiSelect")
+            }
             Button(role: .destructive) {
                 Task { await remove(ids: [item.id]) }
             } label: {

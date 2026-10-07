@@ -19,8 +19,8 @@ enum AppRequest: Sendable {
     case get(path: String, parameters: [String: String], requiresAccountCredential: Bool, usesAPIHost: Bool = false)
     case form(path: String, parameters: [String: String], usesAPIHost: Bool)
     case grpc(path: String, payload: Data)
-    case unrealtimeLog(body: Data)
-    case realtimeLog(body: Data)
+    case unrealtimeLog(body: Data, eventCount: Int)
+    case realtimeLog(body: Data, eventCount: Int)
 
     func validate(account: AppAccountSnapshot) throws {
         let hasKey = account.accessKey?.isEmpty == false
@@ -97,9 +97,10 @@ struct AppRequestEncoder: AppRequestEncoding {
         case .unrealtimeLog, .realtimeLog:
             let body: Data
             let channel: String
+            let eventCount: Int
             switch operation {
-            case .unrealtimeLog(let value): body = value; channel = "unrealtime"
-            case .realtimeLog(let value): body = value; channel = "realtime"
+            case .unrealtimeLog(let value, let count): body = value; eventCount = count; channel = "unrealtime"
+            case .realtimeLog(let value, let count): body = value; eventCount = count; channel = "realtime"
             default: preconditionFailure()
             }
             var request = common(url: URL(string: "https://dataflow.biliapi.com/log/pbmobile/\(channel)?ios")!,
@@ -110,6 +111,7 @@ struct AppRequestEncoder: AppRequestEncoding {
             request.setValue("gzip", forHTTPHeaderField: "Content-Encoding")
             // Account headers retain the existing app-key identity for this endpoint.
             apply(context.headers, to: &request)
+            request.setValue(String(eventCount), forHTTPHeaderField: "Neuron-Events")
             return request
         }
     }

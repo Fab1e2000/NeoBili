@@ -206,6 +206,55 @@ final class LoginRenewalTests: XCTestCase {
         XCTAssertEqual(calls.withLock { $0 }, 1)
     }
 
+    @MainActor
+    func testRejectedCredentialUpdatesObservedAccountAndSMSAuthorizationRestoresIt() async throws {
+        let identity = identity(), old = login()
+        try await identity.saveSMSLogin(old, expectedSessionID: identity.loginSessionID, authorizationOnly: false)
+        let client = AccountSessionClient(credentials: { await identity.accountSnapshot() },
+            save: { _, _ in }, clear: {}, profile: { throw URLError(.notConnectedToInternet) },
+            saveSMS: { try await identity.saveSMSLogin($0, expectedSessionID: $1, authorizationOnly: $2) })
+        let account = AccountStore(client: client, defaults: UserDefaults(suiteName: UUID().uuidString)!,
+            likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.restoreSessionIfNeeded()
+        XCTAssertTrue(account.hasAppCredential)
+        let originalSession = identity.loginSessionID
+        await identity.renewLoginIfNeeded(transport: { request in try self.response(request, ["code":61000]) },
+            now: 100, device: device)
+        // The production notification path must update an already restored store.
+        for _ in 0..<100 {
+            if account.needsAppReauthorization { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(account.isLoggedIn)
+        XCTAssertEqual(account.accountID, 42)
+        XCTAssertTrue(account.needsAppReauthorization)
+        XCTAssertFalse(account.hasAppCredential)
+        XCTAssertEqual(identity.loginSessionID, originalSession)
+        let cookies = await identity.loginCookies()
+        XCTAssertEqual(cookies, old.cookies)
+        try await account.completeSMSLogin(login("new"), expectedSessionID: account.sessionID,
+            expectedIdentitySession: originalSession, authorizationOnly: true)
+        XCTAssertTrue(account.hasAppCredential)
+        XCTAssertFalse(account.needsAppReauthorization)
+        let snapshot = await identity.accountSnapshot()
+        XCTAssertTrue(snapshot.hasAppCredential)
+        XCTAssertFalse(snapshot.needsAppReauthorization)
+    }
+
+    func testOldGenerationRejectionDoesNotInvalidateReplacementLogin() async throws {
+        let identity = identity()
+        try await identity.saveSMSLogin(login(), expectedSessionID: identity.loginSessionID, authorizationOnly: false)
+        await identity.renewLoginIfNeeded(transport: { request in
+            try await identity.saveSMSLogin(self.login("replacement", mid: "99"),
+                expectedSessionID: identity.loginSessionID, authorizationOnly: false)
+            return try self.response(request, ["code":61000])
+        }, now: 100, device: device)
+        let snapshot = await identity.accountSnapshot()
+        XCTAssertEqual(snapshot.accountID, 99)
+        XCTAssertTrue(snapshot.hasAppCredential)
+        XCTAssertFalse(snapshot.needsAppReauthorization)
+    }
+
     func testLocalDeviceIDHasIndependentGoldenChecksum() {
         let value = AppLocalDeviceID.generate(vendor: "00112233-4455-6677-8899-AABBCCDDEEFF", platform: "iPhone 17 Pro",
             firstRun: 1_700_000_000_000, date: Date(timeIntervalSince1970: 1_700_000_000), timeZone: TimeZone(secondsFromGMT: 0)!)

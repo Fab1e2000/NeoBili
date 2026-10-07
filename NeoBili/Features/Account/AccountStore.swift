@@ -1,10 +1,12 @@
 import Foundation
 import SwiftUI
 import Network
+import Combine
 
 struct AccountCredentialsSnapshot: Sendable {
     let hasCredentials: Bool
     var hasAppCredential = false
+    var needsAppReauthorization = false
     var needsAppCredentialMigration = false
     let accountID: Int?
 }
@@ -65,6 +67,7 @@ final class AccountStore {
     private(set) var isLoggedIn = false
     /// 有没有 App 登录凭据（access_key）。App 推荐按账号个性化、点踩和不感兴趣都要靠它。
     private(set) var hasAppCredential = false
+    private(set) var needsAppReauthorization = false
     private(set) var isExchangingAppCredential = false
     private(set) var appCredentialError: String?
     private(set) var isRestoringSession = true
@@ -77,6 +80,7 @@ final class AccountStore {
     private let likeStore: VideoLikeStore
     private var refreshID = UUID()
     private var didStartRestoring = false
+    @ObservationIgnored private var credentialObserver: AnyCancellable?
     @ObservationIgnored private var networkMonitor: NWPathMonitor?
     private static let profileKey = "neobili.cachedAccountProfile"
 
@@ -85,6 +89,11 @@ final class AccountStore {
         self.client = client
         self.defaults = defaults
         self.likeStore = likeStore
+        credentialObserver = NotificationCenter.default.publisher(for: .appCredentialStateDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in await self?.refreshAppCredentialState() }
+            }
         if monitorNetwork {
             let monitor = NWPathMonitor()
             monitor.pathUpdateHandler = { [weak self] path in
@@ -112,6 +121,7 @@ final class AccountStore {
         isLoggedIn = true
         accountID = snapshot.accountID
         hasAppCredential = snapshot.hasAppCredential
+        needsAppReauthorization = snapshot.needsAppReauthorization
         if let data = defaults.data(forKey: Self.profileKey),
            let cached = try? JSONDecoder().decode(Profile.self, from: data),
            cached.mid == snapshot.accountID {
@@ -120,6 +130,15 @@ final class AccountStore {
         isRestoringSession = false
         await refreshProfile()
 
+    }
+
+    /// Renewal can finish after account restoration; update the existing observed store.
+    func refreshAppCredentialState() async {
+        let session = sessionID
+        let snapshot = await client.credentials()
+        guard sessionID == session, isLoggedIn, accountID == snapshot.accountID else { return }
+        hasAppCredential = snapshot.hasAppCredential
+        needsAppReauthorization = snapshot.needsAppReauthorization
     }
 
     func retrySessionIfNeeded() async {
@@ -190,6 +209,7 @@ final class AccountStore {
             try await client.exchangeAppCredential()
             guard sessionID == session else { return nil }
             hasAppCredential = true
+            needsAppReauthorization = false
             return nil
         } catch {
             guard sessionID == session, !(error is CancellationError) else { return nil }
@@ -212,7 +232,7 @@ final class AccountStore {
             guard sessionID == expectedSessionID else { throw CancellationError() }
             if !authorizationOnly { beginSessionChange() }
             isLoggedIn = true; accountID = Int(value.cookies.dedeUserID)
-            hasAppCredential = true; appCredentialError = nil
+            hasAppCredential = true; needsAppReauthorization = false; appCredentialError = nil
             await refreshProfile()
         } else if authorizationOnly {
             try await completeAppAuthorization(value.cookies, accessKey: value.accessKey, expectedSessionID: expectedSessionID)
@@ -230,6 +250,7 @@ final class AccountStore {
         try await client.saveAppAuthorization(accessKey, mid)
         guard sessionID == expectedSessionID else { throw CancellationError() }
         hasAppCredential = true
+        needsAppReauthorization = false
         appCredentialError = nil
     }
 
@@ -246,6 +267,7 @@ final class AccountStore {
         isLoggedIn = false
         accountID = nil
         hasAppCredential = false
+        needsAppReauthorization = false
         appCredentialError = nil
         isExchangingAppCredential = false
         profile = nil

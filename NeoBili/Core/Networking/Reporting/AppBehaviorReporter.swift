@@ -127,7 +127,7 @@ actor AppBehaviorReporter {
                 else {
                     let body = try AppBehaviorEncoder.behaviorBody(batch, uploadTime: Int(now() * 1000))
                     let headers = try await identity.appRequestHeaders(expectedSessionID: session)
-                    try await client.postRecommendationClick(body: body, headers: headers,
+                    try await client.postRecommendationClick(body: body, eventCount: batch.count, headers: headers,
                         expectedSessionID: session, realtime: first.realtime)
                 }
             } catch {

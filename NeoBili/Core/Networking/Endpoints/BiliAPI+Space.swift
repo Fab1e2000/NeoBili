@@ -6,14 +6,24 @@ extension BiliAPI {
     ///
     /// 走的是不需要 WBI 的 `card` 接口——`space/wbi/acc/info` 风控严得多，
     /// 而这里要的字段它基本都有。唯一拿不到的是 IP 属地，那一项直接不显示。
-    static func spaceCard(mid: Int) async throws -> SpaceCard {
-        // 自定义空间头图接口返回不稳定，统一使用 card 接口随名片返回的
-        // B 站默认背景，避免偶尔串到回退图或在加载后突然换图。
-        let payload: SpaceCardPayload = try await APIClient.shared.get(
+    static func spaceCard(mid: Int, client: APIClient = .shared) async throws -> SpaceCard {
+        let payload: SpaceCardPayload = try await client.get(
             path: "x/web-interface/card",
             params: ["mid": String(mid), "photo": "true"]
         )
         return payload.asSpaceCard(mid: mid)
+    }
+
+    /// 仅完整空间页请求 App 头图；直播关注等名片使用方不增加请求。
+    static func spaceProfile(mid: Int, client: APIClient = .shared) async throws -> SpaceCard {
+        async let profile = spaceCard(mid: mid, client: client)
+        async let background: SpaceBackgroundPayload? = try? client.getApp(
+            path: "x/v2/space", params: ["vmid": String(mid)], retries: 0
+        )
+        var card = try await profile
+        card.appBackground = await background?.images
+        try Task.checkCancellation()
+        return card
     }
 
     /// 某个 UP 主的投稿列表（空间页「投稿」那一栏）。

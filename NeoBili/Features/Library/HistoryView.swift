@@ -22,6 +22,9 @@ struct HistoryView: View {
     @State private var removals = ListRemovalState<String>()
     @State private var loadID = UUID()
     @State private var entranceGeneration = 0
+    @State private var isSelecting = false
+    @State private var selectedIDs: Set<String> = []
+    @State private var isRemovingSelected = false
 
     private var visibleItems: [HistoryItem] {
         items.hidingKnownPortraitVideos(hidesPortraitVideos)
@@ -92,12 +95,33 @@ struct HistoryView: View {
             return items
         }
         .videoCardAnimationSource(.history)
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting {
+                LibrarySelectionBar(count: selectedIDs.count,
+                    isBusy: isRemovingSelected || isLoading || isLoadingMore,
+                    done: { isSelecting = false; selectedIDs = [] }) {
+                    Task { await removeSelected() }
+                }
+            }
+        }
+        .onChange(of: account.sessionID) { _, _ in
+            loadID = UUID()
+            items = []; selectedIDs = []; isSelecting = false
+            isLoading = false; isLoadingMore = false
+            Task { await reload() }
+        }
     }
 
     private func row(_ item: HistoryItem) -> some View {
         let summary = item.asVideoSummary
 
         return Button {
+            if isSelecting {
+                guard !isRemovingSelected else { return }
+                if selectedIDs.contains(item.id) { selectedIDs.remove(item.id) }
+                else { selectedIDs.insert(item.id) }
+                return
+            }
             guard let summary else { return }
             // 历史自带 cid，可直接并行取详情和播放地址；缺 cid 的条目传 nil 让详情页补。
             nowPlaying.open(
@@ -111,6 +135,12 @@ struct HistoryView: View {
                 from: "history-\(summary.bvid)"
             )
         } label: {
+            HStack(spacing: 8) {
+                if isSelecting {
+                    Image(systemName: selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(selectedIDs.contains(item.id) ? Color.accentColor : .secondary)
+                }
             VideoListCard(
                 coverURL: summary?.secureCoverURL,
                 title: item.displayTitle,
@@ -119,9 +149,17 @@ struct HistoryView: View {
                 durationText: summary?.formattedDuration ?? "",
                 animatesEntrance: false
             )
+            }
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selectedIDs.contains(item.id) ? .isSelected : [])
         .contextMenu {
+            if !isSelecting {
+                Button {
+                    isSelecting = true; selectedIDs = [item.id]
+                } label: { Label("多选", systemImage: "checkmark.circle") }
+                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending)
+            }
             WatchLaterMenuButton(aid: summary?.aid, bvid: summary?.bvid)
 
             Button(role: .destructive) {
@@ -138,13 +176,45 @@ struct HistoryView: View {
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
             await loadMoreIfNeeded(current: item)
-            if let summary {
+            if !isSelecting, let summary {
                 await VideoPreparationCache.shared.prefetchWhenSettled(
                     bvid: summary.bvid,
                     cid: summary.cid > 0 ? summary.cid : nil
                 )
             }
         }
+    }
+
+    private func removeSelected() async {
+        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending else { return }
+        let snapshot = items
+        let targets = snapshot.filter { selectedIDs.contains($0.id) }
+        guard !targets.isEmpty else { return }
+        let owner = account.sessionID
+        let identitySession = DeviceIdentity.shared.loginSessionID
+        isRemovingSelected = true
+        loadID = UUID()
+        for target in targets { _ = removals.begin(target.id); removals.hide(target.id) }
+        defer {
+            for target in targets { removals.finish(target.id) }
+            isRemovingSelected = false
+            if account.sessionID != owner { Task { await reload() } }
+        }
+        let lookup = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let ids = Set(targets.map(\.id))
+        items.removeAll { ids.contains($0.id) }
+        let result = await LibraryBatchRemoval.perform(ids: targets.map(\.id),
+            isCurrent: { account.sessionID == owner },
+            confirm: { await feedback.confirmRemoval(String(localized: "已移除历史记录")) },
+            remove: { id in
+                guard let target = lookup[id] else { return }
+                try await BiliAPI.deleteHistory(kid: target.kidParam, expectedSessionID: identitySession)
+            })
+        guard account.sessionID == owner else { return }
+        items = snapshot.filter { !result.succeeded.contains($0.id) }
+        selectedIDs.subtract(result.succeeded)
+        if selectedIDs.isEmpty { isSelecting = false }
+        if let error = result.error { feedback.show(error) }
     }
 
     private func loadIfNeeded() async {
@@ -158,7 +228,7 @@ struct HistoryView: View {
     /// SwiftUI 持有的下拉刷新任务就被取消，请求跟着失败，页面报「加载失败」；
     /// 而「重试」是另起的任务，不受影响，所以看起来只有下拉会坏。
     private func reload() async {
-        guard !removals.hasPending else { return }
+        guard !removals.hasPending, !isRemovingSelected else { return }
         let requestID = UUID()
         loadID = requestID
         let revision = removals.revision
@@ -171,6 +241,7 @@ struct HistoryView: View {
             let incoming = payload.allItems.filter(\.isVideo)
             entranceGeneration += 1
             items = incoming.filter { !removals.hiddenIDs.contains($0.id) }
+            selectedIDs.formIntersection(Set(items.map(\.id)))
 
             if let cursor = payload.cursor, let nextMax = cursor.max, nextMax > 0, !incoming.isEmpty {
                 cursorMax = nextMax
@@ -187,13 +258,13 @@ struct HistoryView: View {
     }
 
     private func loadMoreIfNeeded(current item: HistoryItem) async {
-        guard hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
+        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
         guard visibleItems.suffix(5).contains(where: { $0.id == item.id }) else { return }
         await loadNextPage()
     }
 
     private func loadNextPage() async {
-        guard !removals.hasPending else { return }
+        guard !removals.hasPending, !isRemovingSelected else { return }
         guard !isLoadingMore, !isLoading else { return }
         let requestID = UUID()
         loadID = requestID
@@ -238,7 +309,7 @@ struct HistoryView: View {
     ///
     /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
     private func delete(_ item: HistoryItem) async {
-        guard items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
+        guard !isRemovingSelected, items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
         defer { removals.finish(item.id) }
         let sessionID = account.sessionID
         var removedIndex: Int?
@@ -250,6 +321,8 @@ struct HistoryView: View {
             try await BiliAPI.deleteHistory(kid: item.kidParam)
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             items.removeAll { $0.id == item.id }
+            selectedIDs.remove(item.id)
+            if selectedIDs.isEmpty { isSelecting = false }
         } catch {
             if let removedIndex {
                 removals.restore(item, at: removedIndex, in: &items)

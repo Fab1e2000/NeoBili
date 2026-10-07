@@ -6,6 +6,8 @@ struct PlaybackWatchProgress {
     private struct Sample {
         let position: TimeInterval
         let time: TimeInterval
+        var rateStart: TimeInterval
+        var weightedTime: TimeInterval = 0
     }
 
     private var sample: Sample?
@@ -15,6 +17,8 @@ struct PlaybackWatchProgress {
     private var segmentHasProgress = false
     private var isCompleted = false
     var terminalPosition: Double? { lastReportedSecond == -1 ? -1 : lastWatchedPosition }
+    private var playbackRate: Double = 1
+    private(set) var actualPlayedTime: TimeInterval = 0
     private(set) var watchedTime: TimeInterval = 0
     private(set) var maximumPosition: TimeInterval = 0
     private(set) var miniPlayerTime: TimeInterval = 0
@@ -29,7 +33,7 @@ struct PlaybackWatchProgress {
             return nil
         }
         let previous = sample
-        sample = Sample(position: position, time: time)
+        sample = Sample(position: position, time: time, rateStart: time)
         guard let previous else { return nil }
         let elapsed = time - previous.time
         let advanced = position - previous.position
@@ -40,6 +44,7 @@ struct PlaybackWatchProgress {
               advanced <= elapsed * 4 + 0.25 else { return nil }
         setPaused(false, at: time)
         watchedTime += elapsed
+        actualPlayedTime += previous.weightedTime + max(0, time - previous.rateStart) * playbackRate
         if isMiniPlayer { miniPlayerTime += elapsed }
         maximumPosition = max(maximumPosition, position)
         lastWatchedPosition = position
@@ -47,6 +52,19 @@ struct PlaybackWatchProgress {
         watchedSinceReport += elapsed
         let interval: TimeInterval = lastReportedSecond == nil ? 5 : 15
         return watchedSinceReport >= interval ? checkpoint() : nil
+    }
+
+    /// Settle the old rate at the exact boundary, but commit it only when the
+    /// next decoder position confirms progress. Interruptions discard this sample.
+    mutating func setPlaybackRate(_ rate: Double, at time: TimeInterval) {
+        guard rate.isFinite, rate > 0, time.isFinite else { return }
+        if var previous = sample {
+            guard time >= previous.rateStart else { return }
+            previous.weightedTime += (time - previous.rateStart) * playbackRate
+            previous.rateStart = time
+            sample = previous
+        }
+        playbackRate = rate
     }
 
     mutating func setPaused(_ paused: Bool, at time: TimeInterval) {
@@ -67,6 +85,7 @@ struct PlaybackWatchProgress {
             pausedTime: pause, maximumPosition: maximumPosition, duration: duration,
             startTimestamp: startTimestamp, sourceFields: sourceFields)
         report.miniPlayerTime = miniPlayerTime
+        report.actualPlayedTime = actualPlayedTime
         return report
     }
 
@@ -175,6 +194,8 @@ struct PlaybackWatchReport: Sendable {
     var delivery: Delivery = .finish
     var localStartTimestamp: Int? = nil
     var isInlinePreview = false
+    /// Nil preserves 1x semantics for manually constructed reports.
+    var actualPlayedTime: Double? = nil
 
 }
 

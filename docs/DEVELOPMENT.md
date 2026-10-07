@@ -77,7 +77,9 @@ Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用�
 - 逻辑或接口修改：运行相关离线/定向回归；阶段完成运行离线与完整模拟器回归。
 - 界面修改：补受影响操作、布局截图、相关深浅色/字号/方向验证，确认前台窗口和显示缩放。
 - 性能修改：用可复现内容及相同配置比较耗时、内存、滚动或播放器生命周期；记录工具链、
-  系统、机型、配置、场景及指标。宿主机确定性性能检查入口为 `zsh offline-harness/performance.sh`。
+  系统、机型、配置、场景及指标。宿主机确定性性能检查入口为 `zsh offline-harness/performance.sh`；
+  上报身份缓存、事件序号迁移与凭据读取次数可单独运行 `zsh offline-harness/behavior-performance.sh`，
+  使用隔离偏好域和内存凭据，不访问真实账号。
 - Simulator 分析可使用 Instruments Time Profiler、Allocations 等；结果用于定位和回归。
   手机功耗、热状态、硬件解码和实际后台行为必须单独实机验证，不从模拟器数值推断。
 
@@ -114,9 +116,16 @@ Cookie 或原始值的持久化哈希。原始重放错误输出不转发。相�
 按操作看差异后，再区分固定版本配置、设置状态、账号设备、会话、网络及服务端动态值。
 样本不变只是观察结果；只有明确协议/功能证据支持的固定配置才写死。
 
+## 本机协议校验
+
+研究契约的检查范围与边界见 [推荐实现核查](RECOMMENDATION_IMPLEMENTATION_REVIEW.md#本机校验范围与入口)。
+`zsh offline-harness/protocol-check.sh` 使用当前生产编码器跑独立签名样本及首页操作参数检查。
+显式加 `--network` 才执行少量真实 GET；可用 `NEOBILI_PROBE_CONTEXT` 指向仓库外的私有上下文JSON。
+无上下文时只验证公共公钥和时间接口，个性化推荐标为未执行。不要将真实上下文加入源码或终端输出。
+
 ## CI
 
-每次 push/PR 在 Xcode 26.2、26.6 编译模拟器目标；26.6 单独执行离线与确定性模拟器回归。
+每次 PR 或手动运行 Build 在 Xcode 26.2、26.6 编译模拟器目标；26.6 单独执行离线与确定性模拟器回归。
 CI 固定选择 iOS 26.5 runtime 的 iPhone，记录选中的设备；缺少工具链/runtime 时失败，
 不自动改用其他版本。结果作为 Actions artifact 上传。CI 不配置真实账号或签名凭据。
 工具链可用性以 [runner 官方清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md)
@@ -137,3 +146,15 @@ CI 固定选择 iOS 26.5 runtime 的 iPhone，记录选中的设备；缺少工�
 `NEOBILI_DEVELOPMENT_TEAM`、`NEOBILI_CODE_SIGN_STYLE`、`NEOBILI_CODE_SIGN_IDENTITY`、
 `NEOBILI_PROVISIONING_PROFILE`。覆盖使用 `[sdk=iphoneos*]`，避免改变正常模拟器的应用标识。
 证书与描述文件留在本机，不把个人标识、迁移记录或凭据写入项目文档。
+
+## 发布
+
+1. 在待合并分支更新 `project.yml` 的版本和递增的构建号，运行 `xcodegen generate`，
+   同时提交生成的 `Info.plist` 与工程变化；编写 `docs/releases/vX.Y.Z.md`。
+2. 功能/修复 PR 经当前离线、Simulator 和 CI 验证后合入 `develop`，再通过发布 PR 合入 `main`。
+3. 在通过 CI 的 `main` 提交创建并推送 `vX.Y.Z` 标签。Release workflow 校验标签和
+   `CFBundleShortVersionString` 一致，构建未签名 IPA、校验和与 **Release 草稿**。
+4. 检查草稿的目标提交、版本说明及附件。发布草稿是独立动作，不能把创建草稿当作已发布。
+
+分发构建不携带个人签名文件、采集材料或账号上下文。手动运行 Release workflow 只产出
+Actions artifact，不创建公开版本；具体命令和行为以 `.github/workflows/release.yml` 为准。

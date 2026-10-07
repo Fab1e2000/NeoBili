@@ -30,6 +30,7 @@ final class HomeInlinePreview {
     @ObservationIgnored private let clock: () -> TimeInterval
     @ObservationIgnored private let injectedReporter: (@Sendable (PlaybackWatchReport) async -> Void)?
     @ObservationIgnored private let openSource: @MainActor (MPVPlayerSession, PlaybackSource) async throws -> Void
+    @ObservationIgnored private let makeSession: @MainActor (VideoPlaybackConfiguration) -> MPVPlayerSession
 
     init(loader: @escaping @Sendable (VideoSummary, UUID, UUID) async throws -> (Int, PlaybackSource) = { video, owner, account in
         guard !AppNetwork.isRegression else { throw CancellationError() }
@@ -42,8 +43,10 @@ final class HomeInlinePreview {
         return (cid, try PlaybackSourceBuilder.makeSource(from: payload, configuration: config))
     }, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          reporter: (@Sendable (PlaybackWatchReport) async -> Void)? = nil,
-         opener: @escaping @MainActor (MPVPlayerSession, PlaybackSource) async throws -> Void = { try await $0.open(source: $1) }) {
+         opener: @escaping @MainActor (MPVPlayerSession, PlaybackSource) async throws -> Void = { try await $0.open(source: $1) },
+         sessionFactory: @escaping @MainActor (VideoPlaybackConfiguration) -> MPVPlayerSession = { MPVPlayerSession(configuration: $0) }) {
         loadSource = loader; self.clock = clock; injectedReporter = reporter; openSource = opener
+        makeSession = sessionFactory
     }
 
     func select(_ video: VideoSummary) {
@@ -56,22 +59,25 @@ final class HomeInlinePreview {
         cid = video.cid
         requestID = UUID(); ownerID = UUID()
         playbackSession = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        var configuration = VideoPlaybackConfiguration.fastStart
-        configuration.quality = 32; configuration.silentPreview = true
-        configuration.maxBufferBytes = 8 * 1024 * 1024; configuration.maxBackBufferBytes = 0
-        let surface = MPVPlayerSession(configuration: configuration)
-        session = surface
-        surface.onEvent = { [weak self, weak surface] event in
-            guard let self, let surface, self.session === surface else { return }
-            self.handle(event)
-        }
         let id = requestID, owner = ownerID, loader = loadSource
-        task = Task { [weak self, weak surface] in
+        task = Task { [weak self] in
             do {
                 try await Task.sleep(for: .milliseconds(250))
                 let (cid, source) = try await loader(video, owner, account)
                 try Task.checkCancellation()
-                guard let self, let surface, self.requestID == id, DeviceIdentity.shared.loginSessionID == account else { return }
+                guard let self, self.requestID == id, DeviceIdentity.shared.loginSessionID == account else { return }
+                // Publishing a session mounts PlayerSurface and initializes mpv,
+                // even before its first frame is visible. Keep that work behind
+                // both the dwell threshold and the cancellable manifest load.
+                var configuration = VideoPlaybackConfiguration.fastStart
+                configuration.quality = 32; configuration.silentPreview = true
+                configuration.maxBufferBytes = 8 * 1024 * 1024; configuration.maxBackBufferBytes = 0
+                let surface = self.makeSession(configuration)
+                self.session = surface
+                surface.onEvent = { [weak self, weak surface] event in
+                    guard let self, let surface, self.session === surface else { return }
+                    self.handle(event)
+                }
                 self.cid = cid; self.duration = source.duration
                 if let reporter = self.injectedReporter { self.reportSender = PlaybackWatchReportSender(report: reporter) }
                 else {
@@ -88,6 +94,10 @@ final class HomeInlinePreview {
     }
 
     func stop() {
+        // Visibility is evaluated on every scroll callback. Once fully idle,
+        // there is no generation to invalidate or observable state to reset.
+        guard current != nil || task != nil || session != nil || videoID != nil
+                || sentWatchStart || sentPlayerStart else { return }
         if let video = current {
             finish()
             let owner = ownerID, account = accountSession, resolvedCID = cid

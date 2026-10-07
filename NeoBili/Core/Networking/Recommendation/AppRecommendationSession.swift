@@ -14,14 +14,28 @@ final class AppRecommendationSession: Sendable {
         var accountSession: UUID?
         var openEvent = "cold"
         var bannerHash = ""
-        var backgrounded = false
+        var backgroundedAt: TimeInterval?
     }
     private let state = Mutex(State())
 
-    func didEnterBackground() { state.withLock { $0.backgrounded = true } }
+    private let now: @Sendable () -> TimeInterval
+
+    init(now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.now = now
+    }
+
+    func didEnterBackground() { state.withLock { $0.backgroundedAt = now() } }
     func didBecomeActive() {
         state.withLock {
-            if $0.backgrounded { $0.openEvent = "hot"; $0.backgrounded = false }
+            if let started = $0.backgroundedAt {
+                if now() - started > 1800 {
+                    $0.bannerHash = ""
+                    // An in-flight response from before expiry must not revive it.
+                    $0.epoch = UUID()
+                }
+                $0.openEvent = "hot"
+                $0.backgroundedAt = nil
+            }
         }
     }
     func takeRequest(accountSession: UUID) -> Context {

@@ -70,7 +70,7 @@ extension BiliAPI {
 
     /// 一次性调整这个视频在各个收藏夹里的归属。
     /// 两个列表都可以为空，服务端按「加入这些、移出那些」处理。
-    static func updateFavorites(aid: Int, addFolderIDs: [Int], removeFolderIDs: [Int]) async throws {
+    static func updateFavorites(aid: Int, addFolderIDs: [Int], removeFolderIDs: [Int], expectedSessionID: UUID? = nil) async throws {
         let csrf = await DeviceIdentity.shared.csrfToken ?? ""
         try await APIClient.shared.post(
             path: "x/v3/fav/resource/deal",
@@ -80,7 +80,7 @@ extension BiliAPI {
                 "add_media_ids": addFolderIDs.map(String.init).joined(separator: ","),
                 "del_media_ids": removeFolderIDs.map(String.init).joined(separator: ","),
                 "csrf": csrf
-            ]
+            ], expectedSessionID: expectedSessionID
         )
     }
 

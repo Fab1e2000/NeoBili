@@ -126,11 +126,10 @@ struct HomeFeedCollection: UIViewRepresentable {
 
     enum Section: Hashable {
         case header
-        /// 本次刷新的内容；没有分隔条时就是全部内容。
+        /// 连续的普通卡共用一节；全宽大卡单独成节。首张卡提供稳定标识。
         case cards(String)
         /// 「上次看到这里」分隔条，单独一节，高度按内容自适应。
         case marker
-        /// 分隔条之后的上一批内容。
     }
 
     /// 格子里的 SwiftUI 内容和列表所在的视图树不相连，App 级的依赖要显式带过去。
@@ -193,6 +192,9 @@ struct HomeFeedCollection: UIViewRepresentable {
         private var latestIDs: [String] = []
         private var earlierIDs: [String] = []
         private var hasMarker = false
+        /// Layout callbacks must not materialize a diffable snapshot per section.
+        private var largeSections: Set<Section> = []
+        private var paginationTriggerIDs: Set<String> = []
         private var environment = CellEnvironment()
         private var needsReconfigureAll = false
         /// 推荐页的入场时钟。格子不直接观察它（见 `TimedFeedEntrance`），由这里监听后
@@ -241,10 +243,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             let sectionID = dataSource?.sectionIdentifier(for: index)
             let isHeader = sectionID == .header
             let isMarker = sectionID == .marker
-            let isLarge: Bool
-            if let sectionID, let id = dataSource?.snapshot().itemIdentifiers(inSection: sectionID).first,
-               case .video(let video)? = itemsByID[id] { isLarge = video.isLargeRecommendationCard }
-            else { isLarge = false }
+            let isLarge = sectionID.map(largeSections.contains) ?? false
             let width = environment.container.effectiveContentSize.width
             // 卡片行高度固定（4:3 封面加文字区），不必逐个测量；分隔条随字号变化，按内容自适应。
             let height: NSCollectionLayoutDimension = isHeader || isMarker
@@ -339,24 +338,44 @@ struct HomeFeedCollection: UIViewRepresentable {
             earlierIDs = earlier
             hasMarker = marker
             hasHeaderRow = showsHeaderRow
+            paginationTriggerIDs = Set(current.suffix(6))
 
             var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
+            var updatedLargeSections: Set<Section> = []
             if showsHeaderRow {
                 snapshot.appendSections([.header])
                 snapshot.appendItems([Self.headerID], toSection: .header)
             }
+            var normalIDs: [String] = []
+            func appendNormalSection() {
+                guard let first = normalIDs.first else { return }
+                let section = Section.cards(first)
+                snapshot.appendSections([section])
+                snapshot.appendItems(normalIDs, toSection: section)
+                normalIDs.removeAll(keepingCapacity: true)
+            }
             for row in HomeFeedRow.group(orderedItems) {
                 switch row {
                 case .lastSeen:
+                    appendNormalSection()
                     snapshot.appendSections([.marker])
                     snapshot.appendItems([HomeFeedItem.lastSeen.id], toSection: .marker)
                 case .videos(let videos):
                     let ids = videos.map { HomeFeedItem.video($0).id }
-                    let section = Section.cards(ids[0])
-                    snapshot.appendSections([section])
-                    snapshot.appendItems(ids, toSection: section)
+                    if videos[0].isLargeRecommendationCard {
+                        appendNormalSection()
+                        let section = Section.cards(ids[0])
+                        updatedLargeSections.insert(section)
+                        snapshot.appendSections([section])
+                        snapshot.appendItems(ids, toSection: section)
+                    } else {
+                        normalIDs.append(contentsOf: ids)
+                    }
                 }
             }
+            appendNormalSection()
+            let layoutKindsChanged = largeSections != updatedLargeSections
+            largeSections = updatedLargeSections
             if needsReconfigureAll {
                 snapshot.reconfigureItems(snapshot.itemIdentifiers.filter { existing.contains($0) || ($0 == Self.headerID && dataSource.snapshot().indexOfItem(Self.headerID) != nil) })
             } else if !changed.isEmpty {
@@ -376,6 +395,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 }
             } else {
                 dataSource.apply(snapshot, animatingDifferences: false)
+                if layoutKindsChanged { collectionView?.collectionViewLayout.invalidateLayout() }
             }
         }
 
@@ -582,8 +602,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             guard let dataSource, let viewModel,
                   let id = dataSource.itemIdentifier(for: indexPath),
                   case .video(let video)? = itemsByID[id] else { return }
-            let lastSection = collectionView.numberOfSections - 1
-            guard indexPath.section >= max(0, lastSection - 2) else { return }
+            guard paginationTriggerIDs.contains(id) else { return }
             let hides = hidesPortraitVideos
             Task { await viewModel.loadMoreIfNeeded(current: video, hidingKnownPortraitVideos: hides) }
         }

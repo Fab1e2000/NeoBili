@@ -37,8 +37,8 @@ extension BiliAPI {
     /// 走的就是下面那个 `updateFavorites`——`deal` 接口只认 `add_media_ids` 和
     /// `del_media_ids` 两个字段。这里以前写的是 `remove_media_ids`，服务端认不出
     /// 来，于是每次都返回成功却什么也没删，表现就是「取消收藏没反应」。
-    static func removeFavorite(folderID: Int, aid: Int) async throws {
-        try await updateFavorites(aid: aid, addFolderIDs: [], removeFolderIDs: [folderID])
+    static func removeFavorite(folderID: Int, aid: Int, expectedSessionID: UUID? = nil) async throws {
+        try await updateFavorites(aid: aid, addFolderIDs: [], removeFolderIDs: [folderID], expectedSessionID: expectedSessionID)
     }
 
     /// 把稿件从**所有**收藏夹里移除。收藏按钮在已收藏状态下再点一次走这里。

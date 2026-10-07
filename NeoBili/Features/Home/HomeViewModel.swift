@@ -241,7 +241,7 @@ final class HomeViewModel {
     private let fetchRecommendations: (RecommendationRequest) async throws -> RecommendationBatch
     /// 刷新拿到的新批次先寄存在这里，等界面把旧卡片淡尽再合并进列表。
     /// 数据一到就换列表的话，用户会看到旧卡片在半透明状态下突然变成新卡片。
-    private var pendingRefresh: [VideoSummary]?
+    private var pendingRefresh: (videos: [VideoSummary], refreshCursor: Int?, session: UUID, source: RecommendationRequest.Source)?
     private var stageNextRefresh = false
     private var activeLoadTask: Task<Void, Never>?
     private var activeLoadID: UUID?
@@ -308,7 +308,7 @@ final class HomeViewModel {
     /// 会取消进行中的加载并立刻开始。
     func refresh(staged: Bool = false, userInitiated: Bool = false) async {
         if userInitiated, isLoading { return }
-        // App 刷新保留自己最近成功响应的游标；网页刷新仍从第一页开始。
+        // App 刷新取当前已采纳批次的首游标；网页刷新仍从第一页开始。
         stageNextRefresh = staged
         await startLoad(reason: .refresh, replacingActiveLoad: true)
     }
@@ -317,7 +317,10 @@ final class HomeViewModel {
     func commitStagedRefresh() {
         guard let batch = pendingRefresh else { return }
         pendingRefresh = nil
-        applyRefresh(batch)
+        let usesApp = defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
+        guard batch.session == currentSessionID(), batch.source == (usesApp ? .app : .web) else { return }
+        applyRefresh(batch.videos)
+        appRefreshCursor = batch.refreshCursor ?? 0
     }
 
     func loadMoreIfNeeded(current video: VideoSummary, hidingKnownPortraitVideos hidesPortraitVideos: Bool = false) async {
@@ -406,22 +409,21 @@ final class HomeViewModel {
             // 即使这一页全被过滤或去重，仍以原始响应推进；过期请求不能写回游标。
             nextRequest = response.nextRequest
             exposurePolicy = response.exposurePolicy ?? .init()
-            if request.source == .app {
-                if let cursor = response.appCursor, cursor > 0 { appRefreshCursor = cursor }
-
-            }
             let newBatch = response.videos
             guard !newBatch.isEmpty else { return }
 
             switch reason {
             case .refresh:
                 if stageNextRefresh {
-                    pendingRefresh = newBatch
+                    pendingRefresh = (newBatch, response.refreshCursor, session, source)
                 } else {
                     applyRefresh(newBatch)
+                    appRefreshCursor = response.refreshCursor ?? 0
                 }
             case .initial, .loadMore:
+                let wasEmpty = videos.isEmpty
                 appendUnique(newBatch)
+                if wasEmpty, !videos.isEmpty { appRefreshCursor = response.refreshCursor ?? 0 }
             }
         } catch {
             guard activeLoadID == loadID, !Self.isCancellation(error) else { return }

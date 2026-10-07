@@ -72,7 +72,7 @@ final class LiveAPITests: XCTestCase {
     }
 
     func testAppFeedUsesIPhonePhoneIdentityAndExactSignedQuery() throws {
-        let url = try LiveAPI.makeAppFeedURL(page: 0, accessKey: "test+a&b", timestamp: 123456)
+        let url = try LiveAPI.makeAppFeedURL(page: 0, accessKey: "test+a&b", scale: 3, timestamp: 123456)
         XCTAssertEqual(url.path, "/xlive/app-interface/v2/index/feed")
         let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
         let query = Dictionary((components.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
@@ -84,7 +84,7 @@ final class LiveAPITests: XCTestCase {
         XCTAssertEqual(query["device_name"], AppClientIdentity.deviceName)
         XCTAssertEqual(query["device_type"], "0")
         XCTAssertNil(query["network"])
-        XCTAssertNil(query["scale"])
+        XCTAssertEqual(query["scale"], "3.0")
         XCTAssertEqual(query["statistics"], AppClientIdentity.statistics)
         XCTAssertEqual(query["relation_page"], "1")
         XCTAssertNil(query["module_select"])
@@ -97,8 +97,23 @@ final class LiveAPITests: XCTestCase {
         XCTAssertEqual(components.percentEncodedQuery, AppSigner.queryString(from: query))
     }
 
+    func testAppFeedRejectsInvalidScaleAndSignsBothDisplayDensities() throws {
+        for scale in [0.0, -1, Double.nan, Double.infinity] {
+            XCTAssertThrowsError(try LiveAPI.makeAppFeedURL(page: 1, accessKey: nil, scale: scale))
+        }
+        for scale in [2.0, 3.0] {
+            let url = try LiveAPI.makeAppFeedURL(page: 2, accessKey: nil, scale: scale, timestamp: 123456)
+            let query = Dictionary(URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map {
+                ($0.name, $0.value ?? "")
+            }, uniquingKeysWith: { first, _ in first })
+            XCTAssertEqual(query["scale"], String(scale))
+            XCTAssertEqual(query["page"], "2")
+            XCTAssertEqual(query["sign"], AppSigner.signed(query, timestamp: 123456)["sign"])
+        }
+    }
+
     func testAppFeedAnonymousProbeOmitsAccountAndOptionalModuleDefaults() throws {
-        let url = try LiveAPI.makeAppFeedURL(page: 1, accessKey: nil, moduleSelect: true, timestamp: 123456)
+        let url = try LiveAPI.makeAppFeedURL(page: 1, accessKey: nil, scale: 2, moduleSelect: true, timestamp: 123456)
         let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
         let query = Dictionary((components.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
         XCTAssertNil(query["access_key"])
