@@ -5,6 +5,33 @@ import XCTest
 
 @MainActor
 final class RecommendationAuthorizationLayoutTests: XCTestCase {
+    func testDeviceIdentitySettingsLayout() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previous = scene.keyWindow
+        let suite = "device-mode-ui.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("random", forKey: AppBuvid.modeKey)
+        for scheme in [ColorScheme.light, .dark] {
+            let window = UIWindow(windowScene: scene)
+            let host = UIHostingController(rootView: NavigationStack { DeviceIdentitySettingsView() }
+                .defaultAppStorage(defaults).preferredColorScheme(scheme))
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+            try await Task.sleep(for: .milliseconds(250))
+            window.layoutIfNeeded()
+            let attachment = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            })
+            attachment.name = "device-mode-\(scheme)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTAssertEqual(defaults.string(forKey: AppBuvid.modeKey), "random")
+        }
+    }
+
     func testAuthorizationSettingsInForegroundAcrossAppearanceTypeSizeAndOrientation() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive })
         let previous = scene.windows.first { $0.isKeyWindow }

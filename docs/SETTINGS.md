@@ -43,3 +43,7 @@
 旧 false 对应随内容滚动、旧 true 对应固定渐变。推荐、搜索、资料库通过 `TitleBarPreference`
 读取偏好；关注与直播始终固定切边。切边使用系统 `.hard`，渐变与滚动模式使用 `.soft`。
 播放器手势和控件位置保留各自合法范围及恢复默认逻辑，避免在调用点重复定义常量。
+
+## 设备编号
+
+高级 → 设备编号通过 `neobili.appBuvid.mode` 选择 `system` / `random`，普通构建默认 system，非法值回退 system。进程启动时固定选择，修改后重启生效，不在播放或请求中途换身份。system 沿用已有 App BUVID；random 首次随机生成并保存于独立实验键，复用此前随机实验版的编号。两种模式分别保存访客登记、fingerprint 和 ticket，登录凭据共用；切回 system 不覆盖原编号。

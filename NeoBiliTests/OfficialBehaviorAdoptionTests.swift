@@ -80,6 +80,76 @@ final class OfficialBehaviorAdoptionTests: XCTestCase {
         XCTAssertEqual(value, "existing-device")
     }
 
+    func testDeviceModePreferenceAppliesOnlyToNewIdentity() async throws {
+        let suite = "device-mode.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(AppBuvid.selectedMode(defaults: defaults), .system)
+        defaults.set("invalid", forKey: AppBuvid.modeKey)
+        XCTAssertEqual(AppBuvid.selectedMode(defaults: defaults), .system)
+        defaults.set("system", forKey: AppBuvid.modeKey)
+        defaults.set("original", forKey: "neobili.appBuvid")
+        let credentials = CredentialStorage.memory()
+        let active = DeviceIdentity(defaults: defaults,
+            randomBuvidExperiment: AppBuvid.selectedMode(defaults: defaults) == .random,
+            credentials: credentials, allowsNetwork: false)
+        defaults.set("random", forKey: AppBuvid.modeKey)
+        XCTAssertEqual(AppBuvid.selectedMode(defaults: defaults), .random)
+        let unchanged = await active.appBuvid()
+        XCTAssertEqual(unchanged, "original", "Changing settings must not change in-flight identity")
+        let restarted = DeviceIdentity(defaults: defaults,
+            randomBuvidExperiment: AppBuvid.selectedMode(defaults: defaults) == .random,
+            credentials: credentials, allowsNetwork: false)
+        let random = await restarted.appBuvid()
+        XCTAssertNotEqual(random, unchanged)
+        defaults.set("system", forKey: AppBuvid.modeKey)
+        let restored = DeviceIdentity(defaults: defaults,
+            randomBuvidExperiment: AppBuvid.selectedMode(defaults: defaults) == .random,
+            credentials: credentials, allowsNetwork: false)
+        let original = await restored.appBuvid()
+        XCTAssertEqual(original, unchanged)
+    }
+
+    func testRandomBuvidExperimentIsStableAndPreservesNormalIdentity() async throws {
+        let suite = "random-buvid.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let credentials = CredentialStorage.memory()
+        defaults.set("original-device", forKey: "neobili.appBuvid")
+        credentials.write("original-device", "neobili.appBuvid")
+        let experimental = DeviceIdentity(defaults: defaults, randomBuvidExperiment: true,
+            credentials: credentials, allowsNetwork: false)
+        let value = await experimental.appBuvid()
+        XCTAssertEqual(value.count, 36)
+        XCTAssertEqual(value, AppBuvid.generate(idfv: String(value.dropFirst(4))))
+        XCTAssertNotEqual(value, "original-device")
+        let restarted = DeviceIdentity(defaults: defaults, randomBuvidExperiment: true,
+            credentials: credentials, allowsNetwork: false)
+        let repeated = await restarted.appBuvid()
+        XCTAssertEqual(value, repeated)
+        defaults.removeObject(forKey: "neobili.experiment.randomBuvid.v1")
+        let restored = DeviceIdentity(defaults: defaults, randomBuvidExperiment: true,
+            credentials: credentials, allowsNetwork: false)
+        let restoredValue = await restored.appBuvid()
+        XCTAssertEqual(value, restoredValue, "Restore the experiment identity from its own credential key")
+        let normal = DeviceIdentity(defaults: defaults, credentials: credentials, allowsNetwork: false)
+        let normalValue = await normal.appBuvid()
+        XCTAssertEqual(normalValue, "original-device")
+        XCTAssertEqual(credentials.read("neobili.appBuvid"), "original-device")
+    }
+
+    func testRandomBuvidRegistrationAndTicketsHaveSeparateStorage() {
+        let credentials = CredentialStorage.memory()
+        let experiment = AppBuvid.experimentRegistrationStorage(credentials)
+        for key in ["neobili.ios.guest.id", "neobili.ios.fingerprint.registration", "neobili.app.ticket"] {
+            credentials.write("original", key)
+            XCTAssertNil(experiment.read(key))
+            experiment.write("experiment", key)
+            XCTAssertEqual(credentials.read(key), "original")
+            XCTAssertEqual(AppBuvid.experimentRegistrationStorage(credentials).read(key), "experiment")
+        }
+    }
+
     func testMobileStartDecodesServerTimeWithoutWritingZeroHistory() async throws {
         let suite = "ack.\(UUID())", settings = UserDefaults(suiteName: suite)!
         defer { settings.removePersistentDomain(forName: suite) }

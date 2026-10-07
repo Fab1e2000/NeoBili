@@ -41,8 +41,21 @@ struct LiveDanmakuPanel: View {
                 superChatStrip
             }
             LiveDanmakuMessageList(model: model)
+                .overlay {
+                    if model.messages.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.title2)
+                            Text(model.connection == .connected ? "暂时没有弹幕" : "正在连接弹幕")
+                                .font(.subheadline)
+                        }
+                        .foregroundStyle(.secondary)
+                        .allowsHitTesting(false)
+                    }
+                }
         }
-        .mediaDetailContainer()
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("直播间弹幕")
     }
@@ -64,9 +77,10 @@ struct LiveDanmakuPanel: View {
             Button {
                 flowEnabled.toggle()
             } label: {
-                DanmakuBadge(isEnabled: flowEnabled)
-                    .font(.system(size: 11, weight: .bold))
-                    .padding(6)
+                Image(systemName: flowEnabled ? "text.bubble.fill" : "text.bubble")
+                    .font(.body)
+                    .foregroundStyle(flowEnabled ? Color.accentColor : Color.secondary)
+                    .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

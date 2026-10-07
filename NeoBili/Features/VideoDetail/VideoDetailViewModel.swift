@@ -28,6 +28,7 @@ final class VideoDetailViewModel {
     /// 所以相关视频不会被详情接口拖慢，反过来也一样。
     private(set) var related: [VideoSummary] = []
     private(set) var isLoadingRelated = false
+    private(set) var relatedErrorMessage: String?
 
     /// 稿件标签。加载失败只是少一行 chip，不影响页面其它部分。
     private(set) var tags: [VideoTag] = []
@@ -116,12 +117,18 @@ final class VideoDetailViewModel {
 
     func loadRelated() async { await fetchRelatedPage(loadMore: false) }
 
-    func loadMoreRelated() async { await fetchRelatedPage(loadMore: true) }
+    func loadMoreRelated() async {
+        guard relatedErrorMessage == nil else { return }
+        await fetchRelatedPage(loadMore: true)
+    }
+
+    func retryRelated() async { await fetchRelatedPage(loadMore: relatedLoaded) }
 
     private func fetchRelatedPage(loadMore: Bool) async {
         guard !isLoadingRelated, likeStore.sessionID == sessionID,
               loadMore ? canLoadMoreRelated : !relatedLoaded else { return }
         isLoadingRelated = true
+        relatedErrorMessage = nil
         defer { isLoadingRelated = false }
         let previous = loadMore ? relatedPagination : nil
         do {
@@ -138,7 +145,9 @@ final class VideoDetailViewModel {
             relatedPagination = page.pagination
             canLoadMoreRelated = page.canLoadMore && page.pagination != nil && page.pagination != previous
         } catch {
-            // Do not substitute web cards without their App tracking receipt.
+            // Preserve App tracking and existing cards; a failed request is not an empty result.
+            guard !error.isCancellation, likeStore.sessionID == sessionID else { return }
+            relatedErrorMessage = error.localizedDescription
         }
     }
 

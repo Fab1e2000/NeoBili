@@ -14,7 +14,7 @@ extension Notification.Name {
 /// 拿到之后所有接口——推荐、评论、收藏、历史——不需要任何额外改动就能获得
 /// 登录态。凭据本体存 Keychain（见 `KeychainStore`），重启 App 后自动恢复。
 actor DeviceIdentity {
-    static let shared = DeviceIdentity(credentials: AppNetwork.isRegression ? .memory() : .keychain,
+    static let shared = DeviceIdentity(randomBuvidExperiment: !AppNetwork.isRegression && AppBuvid.launchMode == .random, credentials: AppNetwork.isRegression ? .memory() : .keychain,
                                        allowsNetwork: !AppNetwork.isRegression,
                                        eventSerialDefaults: AppNetwork.isRegression ? nil :
                                         UserDefaults(suiteName: "com.elsterlee.NeoBili.behavior-sequence"))
@@ -57,6 +57,7 @@ actor DeviceIdentity {
     private var needsAppCredentialMigration = false
     private var fetchTask: Task<Void, Never>?
     private var transientAppBuvid: String?
+    private let experimentalBuvid: String?
     private let vendorIdentifier: @Sendable () async -> String?
     private let deviceRegistration: AppDeviceRegistration?
     private let guestRegistration: AppGuestRegistration?
@@ -90,6 +91,7 @@ actor DeviceIdentity {
     }
 
     init(defaults: UserDefaults = .standard,
+         randomBuvidExperiment: Bool = false,
          credentials: CredentialStorage = AppNetwork.isRegression ? .memory() : .keychain,
          allowsNetwork: Bool = !AppNetwork.isRegression,
          eventSerialDefaults: UserDefaults? = nil,
@@ -110,11 +112,15 @@ actor DeviceIdentity {
             eventSerialDefaults.set(defaults.integer(forKey: serialKey), forKey: serialKey)
         }
         self.credentials = credentials
+        self.experimentalBuvid = randomBuvidExperiment
+            ? AppBuvid.randomExperimentIdentifier(defaults: defaults, credentials: credentials) : nil
+        let registrationCredentials = randomBuvidExperiment
+            ? AppBuvid.experimentRegistrationStorage(credentials) : credentials
         self.allowsNetwork = allowsNetwork
         self.vendorIdentifier = vendorIdentifier
-        self.deviceRegistration = deviceRegistration ?? (allowsNetwork ? AppDeviceRegistration(credentials: credentials) : nil)
-        self.guestRegistration = guestRegistration ?? (allowsNetwork ? AppGuestRegistration(credentials: credentials) : nil)
-        self.ticketService = ticketService ?? (allowsNetwork ? AppTicketService(credentials: credentials) : nil)
+        self.deviceRegistration = deviceRegistration ?? (allowsNetwork ? AppDeviceRegistration(credentials: registrationCredentials) : nil)
+        self.guestRegistration = guestRegistration ?? (allowsNetwork ? AppGuestRegistration(credentials: registrationCredentials) : nil)
+        self.ticketService = ticketService ?? (allowsNetwork ? AppTicketService(credentials: registrationCredentials) : nil)
         self.purgeCookies = purgeCookies
         cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
         if cachedTelemetryEpoch == nil {
@@ -195,6 +201,7 @@ actor DeviceIdentity {
 
     /// Own local identity, separate from server device_id and web buvid3.
     func appBuvid() async -> String {
+        if let experimentalBuvid { return experimentalBuvid }
         #if DEBUG
         if !AppNetwork.isRegression, let override = defaults.string(forKey: RecommendationExperiment.buvidKey), !override.isEmpty { return override }
         #endif

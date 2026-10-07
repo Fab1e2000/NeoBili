@@ -12,6 +12,85 @@ final class RelatedCollectionTests: XCTestCase {
                      stat: VideoStat(view: id, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0))
     }
 
+    func testRelatedFailureIsVisibleAndClearsAfterRetry() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        var shouldFail = true
+        let page = try AppRelatedPage(payload: Data(), isView: false, accountSession: UUID())
+        let model = VideoDetailViewModel(bvid: "BVFixture", relatedPageLoader: { _ in
+            if shouldFail { throw URLError(.notConnectedToInternet) }
+            return page
+        })
+        await model.loadRelated()
+        let store = NowPlayingStore()
+        let content = VideoDescriptionContent(store: store, viewModel: model, components: [],
+            consume: { _ in 0 }, end: {}, canConsume: { _ in false }, canContinue: { false })
+        let host = UIHostingController(rootView: content)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; previous?.makeKey() }
+        func collection(_ view: UIView) -> UICollectionView? {
+            if let list = view as? UICollectionView { return list }
+            return view.subviews.compactMap(collection).first
+        }
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            window.overrideUserInterfaceStyle = style
+            try await Task.sleep(for: .milliseconds(150))
+            host.view.layoutIfNeeded()
+            let list = try XCTUnwrap(collection(host.view))
+            let status = try XCTUnwrap(list.cellForItem(at: IndexPath(item: 1, section: 0)))
+            XCTAssertEqual(status.accessibilityIdentifier, "description.status")
+            XCTAssertGreaterThan(status.bounds.height, 60, "Error message and retry action need visible space")
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "Related failure \(style == .dark ? "dark" : "light")"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        shouldFail = false
+        await model.retryRelated()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertNil(model.relatedErrorMessage)
+        XCTAssertFalse(model.isLoadingRelated)
+    }
+
+    func testPaginationRetryIsAfterRetainedRowsAndCanBeRemoved() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let state = VideoDescriptionScrollState()
+        func content(_ failed: Bool) -> VideoDescriptionCollection {
+            VideoDescriptionCollection(videos: (1...12).map(video), components: [],
+                footers: failed ? [VideoDescriptionComponent("retry", revision: []) { Button("重试") {}.padding() }] : [],
+                scrollState: state, onSelect: { _ in }, consume: { _ in 0 }, end: {},
+                canConsume: { _ in false }, canContinue: { false })
+        }
+        let host = UIHostingController(rootView: content(true))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        try await Task.sleep(for: .milliseconds(150))
+        func collection(_ view: UIView) -> UICollectionView? {
+            if let list = view as? UICollectionView { return list }
+            return view.subviews.compactMap(collection).first
+        }
+        let list = try XCTUnwrap(collection(host.view))
+        list.layoutIfNeeded()
+        list.scrollToItem(at: IndexPath(item: 0, section: 2), at: .bottom, animated: false)
+        list.layoutIfNeeded()
+        let footer = try XCTUnwrap(list.cellForItem(at: IndexPath(item: 0, section: 2)))
+        let last = try XCTUnwrap(list.layoutAttributesForItem(at: IndexPath(item: 11, section: 1)))
+        XCTAssertGreaterThanOrEqual(footer.frame.minY, last.frame.maxY)
+        XCTAssertEqual(footer.accessibilityIdentifier, "description.retry")
+        host.rootView = content(false)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(list.numberOfItems(inSection: 1), 12)
+        XCTAssertEqual(list.numberOfItems(inSection: 2), 0)
+    }
+
     func testNativeRowRebindingAndSimpleCoinSymbol() {
         let row = NativeRelatedVideoCard.CardView(frame: CGRect(x: 0, y: 0, width: 360, height: 110))
         row.configure(video(1), typeSize: .large, scale: 3)

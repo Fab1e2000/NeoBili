@@ -5967,6 +5967,106 @@
           }
         }
       }
+    },
+    "设备编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device Identity"
+          }
+        }
+      }
+    },
+    "编号生成方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identity Generation"
+          }
+        }
+      }
+    },
+    "当前生效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Currently Active"
+          }
+        }
+      }
+    },
+    "系统派生编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System-derived Identity"
+          }
+        }
+      }
+    },
+    "随机编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Random Identity"
+          }
+        }
+      }
+    },
+    "退出并重新打开 App 后生效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takes effect after quitting and reopening the app"
+          }
+        }
+      }
+    },
+    "两种编号均在本机生成并保存。系统派生模式沿用原编号；随机模式首次生成后持续复用，不会每次刷新都更换。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Both identities are generated and saved locally. System-derived mode keeps the original identity; random mode creates one identity and reuses it across refreshes."
+          }
+        }
+      }
+    },
+    "切换会配套切换设备登记与票据，账号登录保持不变。可切回原模式恢复原编号。推荐结果可能变化，此功能用于兼容性测试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching also switches device registration and tickets while retaining your login. Switch back to restore the original identity. Recommendations may change; this feature is for compatibility testing."
+          }
+        }
+      }
+    },
+    "暂时没有弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No chat messages yet"
+          }
+        }
+      }
+    },
+    "正在连接弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to chat"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

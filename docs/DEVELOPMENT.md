@@ -103,6 +103,12 @@ Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用�
 时间和播放位置、播放 session 和 App 请求头会话；不得复制官方 token、ticket 或会话。设备编号默认使用自身编号；经设备所有者明确授权的本地 Debug 对照实验可通过启动环境注入官方编号，保存在独立实验设置中，可恢复自身编号，禁止硬编码或进入分发构建。
 移动心跳成功仅代表接口接受，兴趣是否更新必须用真实播放后刷新进行验收。
 
+设备编号可在“设置 → 高级 → 设备编号”切换，重启后生效，普通构建默认沿用系统派生编号。
+旧实验产物的 Swift 条件 `NEOBILI_RANDOM_BUVID_EXPERIMENT` 仅决定未设置偏好时的默认模式。实验版用随机 UUID 作为种子，保持 iPhone BUVID 格式；编号首次生成后保存并复用，
+不携带预制编号、不覆盖原 `neobili.appBuvid`。实验的访客登记、fingerprint 和 ticket 使用独立存储，
+账号登录凭据继续复用。切回系统派生模式恢复原编号与其登记缓存，之后仍按原有有效期和作用域校验。
+Regression 不自动启用实验，测试通过注入策略使用隔离存储。不要将实验宏加入正式 Release workflow。
+
 ```sh
 python3 scripts/analyze-feed-capture.py --group cold=/private/cold.flows \
   --group pull=/private/pull.flows --group page=/private/page.flows \
