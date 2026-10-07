@@ -554,13 +554,7 @@ private final class PlayerGlassSnapshotHost {
             try await Task.sleep(for: .milliseconds(20))
         }
         guard matchedOrientation else { throw URLError(.timedOut) }
-        if let transition = controller.transitionCoordinator, transition.isAnimated {
-            await withCheckedContinuation { continuation in
-                if !transition.animate(alongsideTransition: nil, completion: { _ in continuation.resume() }) {
-                    continuation.resume()
-                }
-            }
-        }
+        try await TestWindowTransition.wait(for: controller)
         // A new UIWindow can acquire portrait bounds while its hosting root
         // still has the outgoing landscape size. Reset this test-owned root
         // after rotation, instead of assuming window.bounds proves layout.

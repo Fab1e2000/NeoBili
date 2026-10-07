@@ -180,13 +180,7 @@ private final class LivePageSnapshotHost {
             if window.bounds.height > window.bounds.width { break }
             try await Task.sleep(for: .milliseconds(20))
         }
-        if let transition = controller.transitionCoordinator, transition.isAnimated {
-            await withCheckedContinuation { continuation in
-                if !transition.animate(alongsideTransition: nil, completion: { _ in continuation.resume() }) {
-                    continuation.resume()
-                }
-            }
-        }
+        try await TestWindowTransition.wait(for: controller)
         try await Task.sleep(for: .milliseconds(150))
         window.layoutIfNeeded()
         controller.view.layoutIfNeeded()
