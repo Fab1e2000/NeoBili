@@ -6047,6 +6047,26 @@
           }
         }
       }
+    },
+    "暂时没有弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No chat messages yet"
+          }
+        }
+      }
+    },
+    "正在连接弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to chat"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

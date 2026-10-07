@@ -34,6 +34,7 @@ struct VideoDescriptionComponent {
 struct VideoDescriptionCollection: UIViewRepresentable {
     let videos: [VideoSummary]
     let components: [VideoDescriptionComponent]
+    var footers: [VideoDescriptionComponent] = []
     let scrollState: VideoDescriptionScrollState
     let onSelect: (VideoSummary) -> Void
     var onReachEnd: () -> Void = {}
@@ -46,7 +47,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UICollectionView {
         let layout = UICollectionViewCompositionalLayout { section, _ in
-            let height: NSCollectionLayoutDimension = section == 0 ? .estimated(100) : .absolute(110)
+            let height: NSCollectionLayoutDimension = section == 1 ? .absolute(110) : .estimated(100)
             let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: height))
             let group = NSCollectionLayoutGroup.vertical(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: height), subitems: [item])
             let result = NSCollectionLayoutSection(group: group)
@@ -87,6 +88,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             || c.theme != context.environment.appThemeColor
             || c.colorScheme != context.environment.colorScheme
         let rowsChanged = c.videos != videos || environmentChanged
+        let footersChanged = c.footers.map(\.id) != footers.map(\.id) || c.footers.map(\.revision) != footers.map(\.revision) || environmentChanged
         let previous = c.components
         let structureChanged = previous.map(\.id) != components.map(\.id)
         c.typeSize = context.environment.dynamicTypeSize
@@ -94,6 +96,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         c.colorScheme = context.environment.colorScheme
         c.videos = videos
         c.components = components
+        c.footers = footers
         if !c.initialized || stateChanged {
             c.initialized = true
             let savedOffset = scrollState.offset
@@ -106,6 +109,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             // new section against the other section's old item count.
             var reloaded = IndexSet()
             if rowsChanged { reloaded.insert(1) }
+            if footersChanged { reloaded.insert(2) }
             if structureChanged { reloaded.insert(0) }
             if !reloaded.isEmpty {
                 UIView.performWithoutAnimation { view.reloadSections(reloaded) }
@@ -144,6 +148,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
     final class Coordinator: NSObject, UICollectionViewDataSource, UICollectionViewDelegate, UICollectionViewDataSourcePrefetching {
         var videos: [VideoSummary] = []
         var components: [VideoDescriptionComponent] = []
+        var footers: [VideoDescriptionComponent] = []
         var theme: Color?
         var colorScheme: ColorScheme?
         var environment = EnvironmentValues()
@@ -156,11 +161,16 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         var prefetch: [String: Task<Void, Never>] = [:]
         var preparations: [ObjectIdentifier: Task<Void, Never>] = [:]
 
-        func numberOfSections(in collectionView: UICollectionView) -> Int { 2 }
+        func numberOfSections(in collectionView: UICollectionView) -> Int { 3 }
         func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-            section == 0 ? components.count : videos.count
+            section == 0 ? components.count : section == 1 ? videos.count : footers.count
         }
         func collectionView(_ view: UICollectionView, cellForItemAt path: IndexPath) -> UICollectionViewCell {
+            if path.section == 2 {
+                let cell = view.dequeueReusableCell(withReuseIdentifier: "header", for: path)
+                configure(cell, component: footers[path.item])
+                return cell
+            }
             if path.section == 0 {
                 let cell = view.dequeueReusableCell(withReuseIdentifier: components[path.item].introduction == nil ? "header" : "introduction", for: path)
                 configure(cell, at: path.item)
@@ -180,7 +190,9 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             return cell
         }
         func configure(_ cell: UICollectionViewCell, at index: Int) {
-            let component = components[index]
+            configure(cell, component: components[index])
+        }
+        func configure(_ cell: UICollectionViewCell, component: VideoDescriptionComponent) {
             cell.accessibilityIdentifier = "description.\(component.id)"
             cell.clipsToBounds = true
             if let native = cell as? IntroductionCollectionCell, let introduction = component.introduction {
@@ -388,7 +400,7 @@ struct VideoDescriptionContent: View {
                 .padding(.top, 12)
                 .padding(.bottom, 2)
         }
-        let rows = components + [header] + (videos.isEmpty || relatedError != nil ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty, relatedError]) {
+        let status = (videos.isEmpty || relatedError != nil ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty, relatedError]) {
             if loading { ProgressView().padding(24) }
             else if let relatedError {
                 VStack(spacing: 12) {
@@ -403,7 +415,8 @@ struct VideoDescriptionContent: View {
                     .font(.subheadline).foregroundStyle(.secondary).padding(16)
             }
         }] : [])
-        VideoDescriptionCollection(videos: videos, components: rows,
+        let rows = components + [header] + (videos.isEmpty ? status : [])
+        VideoDescriptionCollection(videos: videos, components: rows, footers: videos.isEmpty ? [] : status,
                                    scrollState: store.descriptionScroll, onSelect: store.openRelated,
                                    onReachEnd: { Task { await store.detailViewModel?.loadMoreRelated() } },
                                    consume: consume, end: end, canConsume: canConsume, canContinue: canContinue)
