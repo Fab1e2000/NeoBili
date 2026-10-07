@@ -91,37 +91,47 @@ final class WatchLaterUpgradeTests: XCTestCase {
         let model = WatchLaterModel(client: .init(load: { _, _, _ in .init(items: fixture, nextKey: "next", hasMore: true) },
             remove: { _, _ in XCTFail("Rendering must not write") }, session: { session }))
         let account = AccountStore(monitorNetwork: false)
-        for (name, style, size) in [("light", UIUserInterfaceStyle.light, DynamicTypeSize.large),
-                                    ("dark", .dark, .large), ("large-text", .light, .accessibility2),
-                                    ("landscape", .light, .large)] {
-            var frames: [String: CGRect] = [:]
-            let host = UIHostingController(rootView: NavigationStack { WatchLaterView(model: model, onLayout: { frames = $0 }) }
-                .environment(account).environment(NowPlayingStore()).environment(ActionFeedback()).dynamicTypeSize(size))
-            window.rootViewController = host
-            window.frame = CGRect(x: 0, y: 0, width: name == "landscape" ? 874 : 402, height: name == "landscape" ? 402 : 874)
-            window.overrideUserInterfaceStyle = style; window.makeKeyAndVisible()
-            try await Task.sleep(for: .milliseconds(150))
-            model.isSelecting = true; model.selectedIDs = [1]
-            try await Task.sleep(for: .milliseconds(150)); window.layoutIfNeeded()
-            XCTAssertEqual(model.items.count, 3); XCTAssertEqual(model.selectedIDs, [1])
-            let first = try XCTUnwrap(frames["card-1"])
-            if let second = frames["card-2"] { XCTAssertLessThanOrEqual(first.maxY, second.minY) }
-            if size.isAccessibilitySize {
-                let title = try XCTUnwrap(frames["title-1"])
-                let author = try XCTUnwrap(frames["author-1"])
-                let duration = try XCTUnwrap(frames["duration-1"])
-                for rect in [title, author, duration] {
-                    XCTAssertGreaterThanOrEqual(rect.minY, first.minY)
-                    XCTAssertLessThanOrEqual(rect.maxY, first.maxY)
-                    XCTAssertGreaterThanOrEqual(rect.minX, first.minX)
-                    XCTAssertLessThanOrEqual(rect.maxX, first.maxX)
+        for mode in ["page", "tab-pinned", "tab-scrolling"] {
+            for (name, style, size) in [("light", UIUserInterfaceStyle.light, DynamicTypeSize.large),
+                                        ("dark", .dark, .large), ("large-text", .light, .accessibility2),
+                                        ("landscape", .light, .large)] {
+                var frames: [String: CGRect] = [:]
+                let host = UIHostingController(rootView: TabView {
+                    NavigationStack {
+                        WatchLaterView(model: model, isTabRoot: mode != "page", onLayout: { frames = $0 })
+                            .toolbar(mode == "page" ? .automatic : .hidden, for: .navigationBar)
+                            .safeAreaBar(edge: .top) {
+                                if mode == "tab-pinned" { PageHeader(title: "稍后再看").padding(.horizontal, 20) }
+                            }
+                            .environment(\.scrollingPageHeader, mode == "tab-scrolling" ? ScrollingPageHeader(title: "稍后再看") : nil)
+                    }.tabItem { Label("稍后再看", systemImage: "flag.checkered") }
+                }.environment(account).environment(NowPlayingStore()).environment(ActionFeedback()).dynamicTypeSize(size))
+                window.rootViewController = host
+                window.frame = CGRect(x: 0, y: 0, width: name == "landscape" ? 874 : 402, height: name == "landscape" ? 402 : 874)
+                window.overrideUserInterfaceStyle = style; window.makeKeyAndVisible()
+                try await Task.sleep(for: .milliseconds(150))
+                model.isSelecting = true; model.selectedIDs = [1]
+                try await Task.sleep(for: .milliseconds(150)); window.layoutIfNeeded()
+                XCTAssertEqual(model.items.count, 3); XCTAssertEqual(model.selectedIDs, [1])
+                let first = try XCTUnwrap(frames["card-1"])
+                if let second = frames["card-2"] { XCTAssertLessThanOrEqual(first.maxY, second.minY) }
+                if size.isAccessibilitySize {
+                    let title = try XCTUnwrap(frames["title-1"])
+                    let author = try XCTUnwrap(frames["author-1"])
+                    let duration = try XCTUnwrap(frames["duration-1"])
+                    for rect in [title, author, duration] {
+                        XCTAssertGreaterThanOrEqual(rect.minY, first.minY)
+                        XCTAssertLessThanOrEqual(rect.maxY, first.maxY)
+                        XCTAssertGreaterThanOrEqual(rect.minX, first.minX)
+                        XCTAssertLessThanOrEqual(rect.maxX, first.maxX)
+                    }
+                    XCTAssertLessThanOrEqual(title.maxY, author.minY)
+                    XCTAssertLessThanOrEqual(author.maxY, duration.minY)
                 }
-                XCTAssertLessThanOrEqual(title.maxY, author.minY)
-                XCTAssertLessThanOrEqual(author.maxY, duration.minY)
+                let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+                let attachment = XCTAttachment(image: image); attachment.name = "watchlater-\(mode)-\(name)"; attachment.lifetime = .keepAlways; add(attachment)
+                try image.pngData()?.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("watchlater-\(mode)-\(name).png"))
             }
-            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-            let attachment = XCTAttachment(image: image); attachment.name = "watchlater-\(name)"; attachment.lifetime = .keepAlways; add(attachment)
-            try image.pngData()?.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("watchlater-\(name).png"))
         }
     }
 }

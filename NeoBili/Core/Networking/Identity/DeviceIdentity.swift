@@ -2,6 +2,10 @@ import Foundation
 import CryptoKit
 import Synchronization
 
+extension Notification.Name {
+    static let appCredentialStateDidChange = Notification.Name("NeoBili.appCredentialStateDidChange")
+}
+
 /// Manages the anonymous device identity (buvid3/buvid4) that Bilibili's web
 /// API expects as a cookie on every request, even for guest (logged-out) traffic.
 /// Without it, some endpoints apply stricter risk-control throttling.
@@ -11,9 +15,12 @@ import Synchronization
 /// 登录态。凭据本体存 Keychain（见 `KeychainStore`），重启 App 后自动恢复。
 actor DeviceIdentity {
     static let shared = DeviceIdentity(credentials: AppNetwork.isRegression ? .memory() : .keychain,
-                                       allowsNetwork: !AppNetwork.isRegression)
+                                       allowsNetwork: !AppNetwork.isRegression,
+                                       eventSerialDefaults: AppNetwork.isRegression ? nil :
+                                        UserDefaults(suiteName: "com.elsterlee.NeoBili.behavior-sequence"))
 
     private let defaults: UserDefaults
+    private let eventSerialDefaults: UserDefaults
     private let credentials: CredentialStorage
     private let allowsNetwork: Bool
     private let purgeCookies: @Sendable () -> Void
@@ -37,7 +44,10 @@ actor DeviceIdentity {
     private var renewalTaskID: UUID?
     private var nextRenewalCheck: TimeInterval = 0
     private(set) var renewalState = "idle"
+    private var appCredentialRejected = false
 
+    // Actor-owned mirror: event snapshots must not perform a Keychain IPC per card.
+    private var cachedTelemetryEpoch: String?
     private var cachedBuvid3: String?
     private var cachedBuvid4: String?
     private var cachedSessdata: String?
@@ -82,6 +92,7 @@ actor DeviceIdentity {
     init(defaults: UserDefaults = .standard,
          credentials: CredentialStorage = AppNetwork.isRegression ? .memory() : .keychain,
          allowsNetwork: Bool = !AppNetwork.isRegression,
+         eventSerialDefaults: UserDefaults? = nil,
          vendorIdentifier: @escaping @Sendable () async -> String? = { await AppBuvid.vendorIdentifier() },
          deviceRegistration: AppDeviceRegistration? = nil,
          guestRegistration: AppGuestRegistration? = nil,
@@ -91,6 +102,13 @@ actor DeviceIdentity {
         while startSession == appSessionID { startSession = String(format: "%08x", UInt32.random(in: 0...UInt32.max)) }
         appStartSessionID = startSession
         self.defaults = defaults
+        self.eventSerialDefaults = eventSerialDefaults ?? defaults
+        // Preserve the installation sequence across upgrade. Event writes belong
+        // to their own domain, separate from standard AppStorage preferences.
+        let serialKey = "neobili.neuron.eventSerial"
+        if let eventSerialDefaults, eventSerialDefaults.object(forKey: serialKey) == nil {
+            eventSerialDefaults.set(defaults.integer(forKey: serialKey), forKey: serialKey)
+        }
         self.credentials = credentials
         self.allowsNetwork = allowsNetwork
         self.vendorIdentifier = vendorIdentifier
@@ -98,8 +116,10 @@ actor DeviceIdentity {
         self.guestRegistration = guestRegistration ?? (allowsNetwork ? AppGuestRegistration(credentials: credentials) : nil)
         self.ticketService = ticketService ?? (allowsNetwork ? AppTicketService(credentials: credentials) : nil)
         self.purgeCookies = purgeCookies
-        if credentials.read(Self.telemetryEpochKey) == nil {
+        cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
+        if cachedTelemetryEpoch == nil {
             credentials.write(UUID().uuidString, Self.telemetryEpochKey)
+            cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
         }
         cachedBuvid3 = defaults.string(forKey: buvid3Key)
         cachedBuvid4 = defaults.string(forKey: buvid4Key)
@@ -116,6 +136,7 @@ actor DeviceIdentity {
            let bundle = try? JSONDecoder().decode(LoginBundle.self, from: bytes),
            bundle.scope == AppClientIdentity.credentialScope {
             credentials.write(bundle.epoch, Self.telemetryEpochKey)
+            cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
             renewableLogin = bundle.value
             cachedSessdata = bundle.value.cookies.sessdata
             cachedBiliJct = bundle.value.cookies.biliJct
@@ -127,13 +148,14 @@ actor DeviceIdentity {
 
     func accountSnapshot() -> AccountCredentialsSnapshot {
         AccountCredentialsSnapshot(hasCredentials: cachedSessdata != nil,
-                                   hasAppCredential: cachedAccessKey?.isEmpty == false,
+                                   hasAppCredential: cachedAccessKey?.isEmpty == false && !appCredentialRejected,
+                                   needsAppReauthorization: appCredentialRejected,
                                    needsAppCredentialMigration: needsAppCredentialMigration,
                                    accountID: cachedDedeUserID.flatMap(Int.init))
     }
 
     func saveLogin(_ cookies: BiliPassport.LoginCookies, accessKey: String?) async {
-        let oldEpoch = credentials.read(Self.telemetryEpochKey) ?? ""
+        let oldEpoch = cachedTelemetryEpoch ?? ""
         replaceLoginCookies(sessdata: cookies.sessdata, biliJct: cookies.biliJct, dedeUserID: cookies.dedeUserID)
         setAccessKey(accessKey)
         await ticketService?.invalidateAccount(prefix: oldEpoch + "|")
@@ -152,7 +174,7 @@ actor DeviceIdentity {
     /// APP 端接口（app.bilibili.com）的凭据。短信 App 登录可同时获取它，
     /// 旧 Cookie-only 会话可能为 nil。
     var accessKey: String? {
-        cachedAccessKey
+        appCredentialRejected ? nil : cachedAccessKey
     }
 
     /// 当前登录的 Cookie 凭据；用来换取 App 凭据。
@@ -165,7 +187,7 @@ actor DeviceIdentity {
     typealias AppRequestAccount = AppAccountSnapshot
 
     func appAccount() -> AppRequestAccount {
-        let key = cachedAccessKey.flatMap { $0.isEmpty ? nil : $0 }
+        let key = accessKey.flatMap { $0.isEmpty ? nil : $0 }
         return AppRequestAccount(accessKey: key,
                                  mid: cachedSessdata == nil ? nil : cachedDedeUserID.flatMap(Int.init),
                                  sessionID: loginSessionID)
@@ -210,7 +232,7 @@ actor DeviceIdentity {
         let device = await AppDeviceMetadata.build(buvid: buvid, guestID: guestID, fingerprint: fingerprint)
         headers["x-bili-device-bin"] = device.base64EncodedString()
         guard expectedSessionID == loginSessionID else { throw CancellationError() }
-        let scope = (credentials.read(Self.telemetryEpochKey) ?? "") + "|" + buvid
+        let scope = (cachedTelemetryEpoch ?? "") + "|" + buvid
         if let ticket = await ticketService?.cachedTicket(scope: scope, headers: headers, accessKey: account.accessKey) {
             headers["x-bili-ticket"] = ticket
         }
@@ -232,7 +254,7 @@ actor DeviceIdentity {
         guard expectedSessionID == loginSessionID else { throw CancellationError() }
         return .init(buvid: buvid, requestSession: appSessionID,
                      startSession: appStartSessionID, mid: appAccount().mid,
-                     accountEpoch: credentials.read(Self.telemetryEpochKey) ?? "",
+                     accountEpoch: cachedTelemetryEpoch ?? "",
                      model: AppClientIdentity.deviceName, version: AppClientIdentity.version,
                      build: AppClientIdentity.build, fingerprint: fingerprint)
     }
@@ -246,9 +268,9 @@ actor DeviceIdentity {
         var snapshot = try await appDeviceSnapshot(expectedSessionID: expectedSessionID)
         guard expectedSessionID == loginSessionID else { throw CancellationError() }
         let key = "neobili.neuron.eventSerial"
-        let old = defaults.integer(forKey: key)
+        let old = eventSerialDefaults.integer(forKey: key)
         let next = old >= 0 && old < Int.max ? old + 1 : 1
-        defaults.set(next, forKey: key)
+        eventSerialDefaults.set(next, forKey: key)
         snapshot.eventSerial = next
         return snapshot
     }
@@ -296,15 +318,22 @@ actor DeviceIdentity {
     /// 登录成功后写入凭据。SESSDATA 的值本来就是 URL 转义过的
     ///（含 %2C 等），原样存、原样发即可，不要再做一次编解码。
     func setLoginCookies(sessdata: String, biliJct: String, dedeUserID: String) async {
-        let oldEpoch = credentials.read(Self.telemetryEpochKey) ?? ""
+        let oldEpoch = cachedTelemetryEpoch ?? ""
         replaceLoginCookies(sessdata: sessdata, biliJct: biliJct, dedeUserID: dedeUserID)
         await ticketService?.invalidateAccount(prefix: oldEpoch + "|")
+    }
+
+    private func replaceTelemetryEpoch(_ value: String) {
+        credentials.write(value, Self.telemetryEpochKey)
+        // Preserve the storage result even if a Keychain write fails. Reads occur
+        // only at account transitions; event/header construction uses the mirror.
+        cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
     }
 
     private func replaceLoginCookies(sessdata: String, biliJct: String, dedeUserID: String) {
         discardRenewal()
         credentialSessionID.withLock { $0 = UUID() }
-        credentials.write(UUID().uuidString, Self.telemetryEpochKey)
+        replaceTelemetryEpoch(UUID().uuidString)
         appSessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
         cachedSessdata = sessdata
         cachedBiliJct = biliJct
@@ -335,9 +364,9 @@ actor DeviceIdentity {
     /// 退出登录或凭据失效时清除。
     func clearLoginCookies() async {
         discardRenewal()
-        let oldEpoch = credentials.read(Self.telemetryEpochKey) ?? ""
+        let oldEpoch = cachedTelemetryEpoch ?? ""
         credentialSessionID.withLock { $0 = UUID() }
-        credentials.write(UUID().uuidString, Self.telemetryEpochKey)
+        replaceTelemetryEpoch(UUID().uuidString)
         appSessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
         cachedSessdata = nil
         cachedBiliJct = nil
@@ -356,6 +385,7 @@ actor DeviceIdentity {
     private func discardRenewal() {
         renewalTask?.cancel(); renewalTask = nil; renewalTaskID = nil
         renewableLogin = nil; nextRenewalCheck = 0; renewalState = "idle"
+        appCredentialRejected = false
         credentials.write(nil, Self.renewalKey)
     }
 
@@ -366,15 +396,15 @@ actor DeviceIdentity {
             guard cachedDedeUserID == value.cookies.dedeUserID, cachedSessdata != nil else { throw CancellationError() }
         }
         // Verify the atomic record before changing live credentials. Failed writes keep the old login.
-        let epoch = authorizationOnly ? (credentials.read(Self.telemetryEpochKey) ?? UUID().uuidString) : UUID().uuidString
+        let epoch = authorizationOnly ? (cachedTelemetryEpoch ?? UUID().uuidString) : UUID().uuidString
         let text = try bundleText(value, epoch: epoch)
         credentials.write(text, Self.renewalKey)
         guard credentials.read(Self.renewalKey) == text else { throw AppLoginRenewal.Failure.storage }
-        let oldEpoch = credentials.read(Self.telemetryEpochKey) ?? ""
+        let oldEpoch = cachedTelemetryEpoch ?? ""
         renewalTask?.cancel(); renewalTask = nil; renewalTaskID = nil
         if !authorizationOnly {
             credentialSessionID.withLock { $0 = UUID() }
-            credentials.write(epoch, Self.telemetryEpochKey)
+            replaceTelemetryEpoch(epoch)
             appSessionID = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
         }
         applyLoginBundle(value)
@@ -385,13 +415,14 @@ actor DeviceIdentity {
 
     private func bundleText(_ value: SMSPassport.Credentials, epoch: String? = nil) throws -> String {
         let bytes = try JSONEncoder().encode(LoginBundle(scope: AppClientIdentity.credentialScope,
-            epoch: epoch ?? credentials.read(Self.telemetryEpochKey) ?? "", value: value))
+            epoch: epoch ?? cachedTelemetryEpoch ?? "", value: value))
         guard let text = String(data: bytes, encoding: .utf8) else { throw AppLoginRenewal.Failure.storage }
         return text
     }
 
     private func applyLoginBundle(_ value: SMSPassport.Credentials) {
         renewableLogin = value
+        appCredentialRejected = false
         cachedSessdata = value.cookies.sessdata; cachedBiliJct = value.cookies.biliJct
         cachedDedeUserID = value.cookies.dedeUserID; cachedAccessKey = value.accessKey
         needsAppCredentialMigration = false
@@ -482,6 +513,8 @@ actor DeviceIdentity {
             if case AppLoginRenewal.Failure.rejected(61000) = error {
                 // Keep UI/account deletion under AccountStore's control; never silently cross accounts.
                 renewalState = "needs-login"; nextRenewalCheck = .greatestFiniteMagnitude
+                appCredentialRejected = true
+                NotificationCenter.default.post(name: .appCredentialStateDidChange, object: nil)
             } else { renewalState = "retry-later" }
         }
     }

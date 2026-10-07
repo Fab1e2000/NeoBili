@@ -309,6 +309,24 @@ final class AppRecommendationTests: XCTestCase {
         XCTAssertNil(try decode([]).batch(for: request, filter: .none).nextRequest)
     }
 
+    func testProductionAccountBindingPreservesDistinctResponseHeadAndTail() throws {
+        var first = card; first["idx"] = 900; first["ad_info"] = ["id": 1]
+        var visible = card; visible["idx"] = 800
+        let page = try decode([first, visible, ["idx": 700, "card_goto": "unsupported"]])
+        let login = UUID(), request = RecommendationRequest(source: .app)
+        // This is the same adaptation invoked after appRecommendFeed decodes its response.
+        let batch = BiliAPI.appRecommendationBatch(page: page, request: request, filter: .none, accountSessionID: login)
+        XCTAssertEqual(batch.refreshCursor, 900, "Account binding must preserve the original response head")
+        XCTAssertEqual(batch.appCursor, 700)
+        XCTAssertEqual(batch.nextRequest?.appCursor, 700)
+        XCTAssertEqual(batch.videos.count, 1)
+        XCTAssertEqual(batch.videos.first?.playbackEntry.loginSessionID, login)
+        XCTAssertEqual(batch.videos.first?.recommendationFeedback?.requestContext?.loginSessionID, login)
+        let missingHead = try decode([["card_goto": "unsupported"], visible])
+        XCTAssertNil(BiliAPI.appRecommendationBatch(page: missingHead, request: request,
+            filter: .none, accountSessionID: login).refreshCursor)
+    }
+
     /// 只读烟雾验证：直接访问 App 推荐，不允许热门兜底掩盖接口或解析错误。
     func testAppEndpointReturnsPlayableCardsOverNetwork() async throws {
         try XCTSkipUnless(!AppNetwork.isRegression && ProcessInfo.processInfo.environment["NEOBILI_NETWORK_SMOKE"] == "1", "显式联网验收")

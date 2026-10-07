@@ -6,12 +6,14 @@ final class PlaybackWatchProgressTests: XCTestCase {
     func testPlaybackRatesCountRealElapsedTimeAndDoNotCountSeekJump() {
         for rate in PlaybackSpeed.options {
             var progress = PlaybackWatchProgress()
+            progress.setPlaybackRate(rate, at: 0)
             _ = progress.observe(position: 0, at: 0, isActive: true)
             for second in 1...10 {
                 _ = progress.observe(position: Double(second) * rate, at: Double(second), isActive: true)
             }
             XCTAssertEqual(progress.watchedTime, 10, accuracy: 0.001)
             XCTAssertEqual(progress.maximumPosition, 10 * rate, accuracy: 0.001)
+            XCTAssertEqual(progress.actualPlayedTime, 10 * rate, accuracy: 0.001)
             progress.interrupt(discontinuity: true)
             _ = progress.observe(position: 100, at: 11, isActive: true)
             XCTAssertEqual(progress.watchedTime, 10, accuracy: 0.001)

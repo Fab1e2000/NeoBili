@@ -1,4 +1,5 @@
 import XCTest
+import Synchronization
 @testable import NeoBili
 
 final class RecommendationPolicyTests: XCTestCase {
@@ -25,6 +26,38 @@ final class RecommendationPolicyTests: XCTestCase {
         XCTAssertEqual(session.takeRequest(accountSession: newAccount).bannerHash, "", "Late old-account response must be ignored")
         XCTAssertEqual(AppRecommendationSession().takeRequest(accountSession: account).openEvent, "cold")
     }
+    func testBannerExpiryUsesStrictBackgroundThresholdAndRejectsPreExpiryResponse() {
+        for duration in [1799.0, 1800.0, 1800.001] {
+            let clock = Mutex(100.0)
+            let session = AppRecommendationSession(now: { clock.withLock { $0 } })
+            let account = UUID()
+            let before = session.takeRequest(accountSession: account)
+            session.recordBanner("old", context: before)
+            session.didEnterBackground()
+            clock.withLock { $0 += duration }
+            session.didBecomeActive()
+            let after = session.takeRequest(accountSession: account)
+            XCTAssertEqual(after.openEvent, "hot")
+            XCTAssertEqual(after.bannerHash, duration > 1800 ? "" : "old")
+            session.recordBanner("late", context: before)
+            XCTAssertEqual(session.takeRequest(accountSession: account).bannerHash, duration > 1800 ? "" : "old")
+            if duration > 1800 {
+                session.recordBanner("new", context: after)
+                XCTAssertEqual(session.takeRequest(accountSession: account).bannerHash, "new")
+            }
+        }
+    }
+
+    func testRefreshHeadIsOriginalFirstItemNotFirstDecodableOrFilteredCard() throws {
+        for items in [#"[{"idx":12,"card_goto":"ad_av"},{"idx":13}]"#,
+                      #"[{"card_goto":"unsupported"},{"idx":13}]"#] {
+            let page = try JSONDecoder().decode(AppRecommendationPage.self, from: Data("{\"items\":\(items)}".utf8))
+            XCTAssertEqual(page.nextCursor, 13)
+            XCTAssertEqual(page.refreshCursor, items.contains("12") ? 12 : nil)
+            XCTAssertEqual(page.batch(for: .init(source: .app), filter: .none).refreshCursor, page.refreshCursor)
+        }
+    }
+
     func testBannerIsReadBeforeUnsupportedCardFiltering() throws {
         let body = #"{"items":[{"card_goto":"banner","hash":"own-banner","banner_item":[],"idx":12},{"card_goto":"ad_av","hash":"unrelated","idx":13}]}"#
         let page = try JSONDecoder().decode(AppRecommendationPage.self, from: Data(body.utf8))

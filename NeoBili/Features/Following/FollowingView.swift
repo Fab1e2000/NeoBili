@@ -146,10 +146,9 @@ struct FollowingView: View {
                     items: viewModel.selectionItems,
                     selectedID: pendingSelectionID ?? viewModel.selectedTarget.id,
                     onSelect: select,
-                    onOpenUp: { path.append(.space($0)) },
                     onOpenLive: { up in
                         guard let room = viewModel.liveRoom(for: up) else {
-                            feedback.show(String(localized: "这位 UP 主已结束直播"))
+                            feedback.show(String(localized: "这位 UP 主当前未开播"))
                             return
                         }
                         onOpenLiveRoom(room)
@@ -410,7 +409,10 @@ struct FollowingView: View {
     private func select(_ target: FollowingSelection) {
         // 点回当前页面：取消尚未完成的切换，把淡出的动态恢复出来。
         if target.id == viewModel.selectedTarget.id {
-            guard pendingSelectionID != nil else { return }
+            guard pendingSelectionID != nil else {
+                if let up = target.up { path.append(.space(up)) }
+                return
+            }
             selectionTransitionTask?.cancel()
             selectionTransitionTask = nil
             pendingSelectionID = nil

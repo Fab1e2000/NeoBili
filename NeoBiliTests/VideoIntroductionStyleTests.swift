@@ -158,13 +158,7 @@ private final class IntroductionSnapshotHost {
             try await Task.sleep(for: .milliseconds(20))
         }
         guard scene.interfaceOrientation.isPortrait else { throw URLError(.timedOut) }
-        if let transition = controller.transitionCoordinator, transition.isAnimated {
-            await withCheckedContinuation { continuation in
-                if !transition.animate(alongsideTransition: nil, completion: { _ in continuation.resume() }) {
-                    continuation.resume()
-                }
-            }
-        }
+        try await TestWindowTransition.wait(for: controller)
         window.frame = scene.coordinateSpace.bounds
         controller.view.frame = window.bounds
         window.layoutIfNeeded()

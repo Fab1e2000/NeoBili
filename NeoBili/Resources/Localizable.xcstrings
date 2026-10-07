@@ -1338,6 +1338,28 @@
         }
       }
     },
+    "刷新后保留上次数据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep previous recommendations after refresh"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新后保留上次数据"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新整理後保留上次資料"
+          }
+        }
+      }
+    },
     "刷新推荐": {
       "localizations": {
         "en": {
@@ -2396,6 +2418,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "On"
+          }
+        }
+      }
+    },
+    "开启后，新推荐后面保留旧卡片；关闭后，下次刷新会替换整个列表。默认开启。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep old cards after new recommendations. When off, the next refresh replaces the entire list. Enabled by default."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后，新推荐后面保留旧卡片；关闭后，下次刷新会替换整个列表。默认开启。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟後，新推薦後面保留舊卡片；關閉後，下次重新整理會替換整個列表。預設開啟。"
           }
         }
       }

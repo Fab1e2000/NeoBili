@@ -90,10 +90,7 @@ struct HomeFeedCellView: View {
                         }
                         HomeLargeCoverOverlay(video: video,
                             isPlaying: preview?.videoID == video.bvid && preview?.hasFirstFrame == true)
-                        if let preview, preview.videoID == video.bvid, preview.duration > 0 {
-                            ProgressView(value: min(preview.progress / preview.duration, 1))
-                                .tint(.accentColor).frame(height: 2)
-                        }
+                        if let preview { HomeInlinePreviewProgress(videoID: video.bvid, preview: preview) }
                     }
                     .frame(width: size.width, height: size.width / HomeCardLayout.largeCoverAspectRatio)
                     .clipShape(UnevenRoundedRectangle(topLeadingRadius: 7, topTrailingRadius: 7))
@@ -189,6 +186,19 @@ struct HomeFeedCellView: View {
                     if let message = await viewModel.markUninterested(video, reason: reason) { feedback.show(message) }
                 }
             }
+        }
+    }
+}
+
+/// Playback ticks update only this bar, not the card's hosting tree and native cover.
+private struct HomeInlinePreviewProgress: View {
+    let videoID: String
+    let preview: HomeInlinePreview
+
+    var body: some View {
+        if preview.videoID == videoID, preview.duration > 0 {
+            ProgressView(value: min(preview.progress / preview.duration, 1))
+                .tint(.accentColor).frame(height: 2)
         }
     }
 }

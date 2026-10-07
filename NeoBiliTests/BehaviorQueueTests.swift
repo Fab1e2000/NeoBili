@@ -20,6 +20,44 @@ final class BehaviorQueueTests: XCTestCase {
         }
     }
 
+    func testTransportHeaderMatchesEveryCompressedRecordInBothChannels() async throws {
+        let (identity, _, _, _) = await fixture()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [QueueTransport.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        QueueTransport.requests.withLock { $0 = [] }
+        let client = APIClient(session: session, appAuthentication: { await identity.appAccount() })
+        let queue = AppBehaviorReporter(identity: identity, client: client, automaticScheduling: false)
+        for category in [9, 3] {
+            for _ in 0..<23 {
+                await queue.record(name: "fixture.event", category: category, fields: [:],
+                    session: identity.loginSessionID, timestamp: Int(Date().timeIntervalSince1970 * 1000))
+            }
+        }
+        await queue.flush()
+        let requests = QueueTransport.requests.withLock { $0 }
+        XCTAssertEqual(requests.map { $0.url?.lastPathComponent }, ["unrealtime", "unrealtime", "realtime", "realtime"])
+        var counts: [Int] = []
+        for request in requests {
+            let bytes = [UInt8](try AppProto.gunzip(XCTUnwrap(request.httpBody)))
+            var offset = 0, count = 0
+            while offset < bytes.count {
+                XCTAssertGreaterThanOrEqual(bytes.count - offset, 9)
+                guard bytes.count - offset >= 9 else { break }
+                XCTAssertEqual(Array(bytes[offset..<(offset + 4)]), Array("RDIO".utf8))
+                let length = bytes[(offset + 4)..<(offset + 8)].reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
+                XCTAssertEqual(bytes[offset + 8], RecommendationRecordIO.checksum(length))
+                offset += 9 + Int(length & 0x7fffffff)
+                count += 1
+            }
+            XCTAssertEqual(offset, bytes.count)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Neuron-Events"), String(count))
+            counts.append(count)
+        }
+        XCTAssertEqual(counts, [20, 3, 20, 3])
+    }
+
     func testOfflinePersistsBoundedQueueAndCooldownPreventsRequestStorm() async throws {
         let (identity, _, _, directory) = await fixture()
         let sends = Mutex(0)
@@ -134,4 +172,29 @@ private actor QueueSnapshotGate {
         await withCheckedContinuation { continuation = $0 }
     }
     func release() { continuation?.resume(); continuation = nil }
+}
+
+private final class QueueTransport: URLProtocol, @unchecked Sendable {
+    static let requests = Mutex<[URLRequest]>([])
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        var captured = request
+        if let stream = request.httpBodyStream {
+            stream.open(); defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 4096), data = Data()
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count <= 0 { break }
+                data.append(contentsOf: buffer.prefix(count))
+            }
+            captured.httpBody = data
+        }
+        Self.requests.withLock { $0.append(captured) }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200,
+            httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"code":0}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }

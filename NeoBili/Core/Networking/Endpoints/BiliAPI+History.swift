@@ -44,11 +44,11 @@ extension BiliAPI {
     ///
     /// 端点是 `x/v2/history/delete`——之前写成了 `x/web-interface/history/del`，
     /// 那个路径根本不存在，所以返回的是 HTTP 404 而不是业务错误码。
-    static func deleteHistory(kid: String) async throws {
+    static func deleteHistory(kid: String, expectedSessionID: UUID? = nil) async throws {
         let csrf = await DeviceIdentity.shared.csrfToken ?? ""
         try await APIClient.shared.post(
             path: "x/v2/history/delete",
-            form: ["kid": kid, "jsonp": "jsonp", "csrf": csrf]
+            form: ["kid": kid, "jsonp": "jsonp", "csrf": csrf], expectedSessionID: expectedSessionID
         )
     }
 }

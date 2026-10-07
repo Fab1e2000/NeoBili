@@ -6,6 +6,8 @@ struct AppRecommendationPage: Decodable {
     let cards: [AppRecommendationCard]
     /// 原始响应中最后一个有效 idx，包括之后不展示的卡片。
     let nextCursor: Int?
+    /// Only the original first item supplies the refresh head; never scan past it.
+    let refreshCursor: Int?
     let refreshConfig: AppRecommendationRefreshConfig?
     let bannerHash: String?
     let exposurePolicy: RecommendationExposurePolicy
@@ -20,12 +22,16 @@ struct AppRecommendationPage: Decodable {
         var items = try container.nestedUnkeyedContainer(forKey: .items)
         var result: [AppRecommendationCard] = []
         var cursor: Int?
+        var head: Int?
         var hash: String?
         while !items.isAtEnd {
             let position = items.currentIndex + 1
             let decoder = try items.superDecoder()
             if let fields = try? decoder.container(keyedBy: Keys.self),
-               let idx = fields.integer(.idx), idx > 0 { cursor = idx }
+               let idx = fields.integer(.idx), idx > 0 {
+                cursor = idx
+                if position == 1 { head = idx }
+            }
             if hash == nil, let banner = try? decoder.container(keyedBy: BannerKeys.self), banner.contains(.bannerItem) {
                 hash = banner.text(.hash)
             }
@@ -37,13 +43,14 @@ struct AppRecommendationPage: Decodable {
         bannerHash = hash
         cards = result
         nextCursor = cursor
+        refreshCursor = head
     }
 
     func batch(for request: RecommendationRequest, filter: RecommendationFilter) -> RecommendationBatch {
         let next = nextCursor.flatMap { cursor in
             cursor != request.appCursor ? request.next(appCursor: cursor) : nil
         }
-        return RecommendationBatch(videos: videos(filter: filter), nextRequest: next, refreshConfig: refreshConfig, appCursor: nextCursor, exposurePolicy: exposurePolicy)
+        return RecommendationBatch(videos: videos(filter: filter), nextRequest: next, refreshConfig: refreshConfig, appCursor: nextCursor, refreshCursor: refreshCursor, exposurePolicy: exposurePolicy)
     }
 
     var videos: [VideoSummary] { videos(filter: .none) }

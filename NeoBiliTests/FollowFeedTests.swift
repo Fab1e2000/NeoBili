@@ -315,6 +315,30 @@ final class FollowFeedTests: XCTestCase {
         XCTAssertEqual(card.name, "无头图")
     }
 
+    func testSpaceAppBackgroundUsesDayAndNightImages() throws {
+        let data = Data(#"{"images":{"imgUrl":"http://i0.hdslb.com/day.jpg","night_imgurl":"//i0.hdslb.com/night.jpg","archive":{"ignored":true}}}"#.utf8)
+        let background = try JSONDecoder().decode(SpaceBackgroundPayload.self, from: data)
+        var card = try JSONDecoder().decode(SpaceCardPayload.self,
+            from: Data(#"{"card":{"name":"UP"},"space":{"l_img":"https://i0.hdslb.com/fallback.jpg"}}"#.utf8)).asSpaceCard(mid: 1)
+        card.appBackground = background.images
+        XCTAssertEqual(card.bannerURL(isDark: false)?.lastPathComponent, "day.jpg")
+        XCTAssertEqual(card.bannerURL(isDark: true)?.lastPathComponent, "night.jpg")
+        XCTAssertEqual(card.name, "UP")
+    }
+
+    func testSpaceAppBackgroundFallsBackWithoutValidImages() throws {
+        var card = try JSONDecoder().decode(SpaceCardPayload.self,
+            from: Data(#"{"space":{"l_img":"https://i0.hdslb.com/fallback.jpg"}}"#.utf8)).asSpaceCard(mid: 1)
+        for json in [#"{}"#, #"{"images":null}"#,
+                     #"{"images":{"imgUrl":"","night_imgurl":"file:///tmp/image"}}"#] {
+            card.appBackground = try JSONDecoder().decode(SpaceBackgroundPayload.self, from: Data(json.utf8)).images
+            XCTAssertEqual(card.bannerURL(isDark: false)?.lastPathComponent, "fallback.jpg")
+            XCTAssertEqual(card.bannerURL(isDark: true)?.lastPathComponent, "fallback.jpg")
+        }
+        card.appBackground = .init(imgUrl: "https://i0.hdslb.com/day.jpg", night_imgurl: "")
+        XCTAssertEqual(card.bannerURL(isDark: true)?.lastPathComponent, "day.jpg")
+    }
+
     // MARK: - 搜索联想
 
     func testSuggestPayloadDropsDuplicatesAndEmptyValues() throws {

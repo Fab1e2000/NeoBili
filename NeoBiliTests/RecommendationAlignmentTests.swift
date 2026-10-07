@@ -19,12 +19,22 @@ final class RecommendationAlignmentTests: XCTestCase {
             currentSessionID: { login }, fetchRecommendations: { request in
                 requests.append(request)
                 if requests.count == 2 { throw URLError(.timedOut) }
-                return RecommendationBatch(videos: [], nextRequest: nil, appCursor: 123)
+                if requests.count == 1 {
+                    let video = VideoSummary(bvid: "BVFixture", aid: 1, cid: 2, title: "Fixture", pic: "", desc: "",
+                        duration: 60, pubdate: 0, owner: .init(mid: 7, name: "owner", face: ""),
+                        stat: .init(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0))
+                    return RecommendationBatch(videos: [video], nextRequest: request.next(appCursor: 99),
+                        appCursor: 99, refreshCursor: 123)
+                }
+                // No displayed replacement: even a terminal response's new head cannot
+                // overwrite the head of the batch that is still on screen.
+                return RecommendationBatch(videos: [], nextRequest: nil, appCursor: 400, refreshCursor: 456)
             })
         await model.loadInitial()
         await model.refresh()
         await model.refresh()
-        XCTAssertEqual(requests.map(\.appCursor), [0, 123, 123])
+        await model.refresh()
+        XCTAssertEqual(requests.map(\.appCursor), [0, 123, 123, 123])
         XCTAssertEqual(requests[1], requests[2], "Failure must not reset the refresh cursor")
         login = UUID() // Same account relogin is still a different credential session.
         await model.refresh()

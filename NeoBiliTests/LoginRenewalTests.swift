@@ -204,6 +204,71 @@ final class LoginRenewalTests: XCTestCase {
         XCTAssertEqual(cookies, old.cookies)
         XCTAssertEqual(state, "needs-login")
         XCTAssertEqual(calls.withLock { $0 }, 1)
+        let rejectedKey = await identity.accessKey
+        let rejectedAccount = await identity.appAccount()
+        XCTAssertNil(rejectedKey)
+        XCTAssertNil(rejectedAccount.accessKey)
+        XCTAssertEqual(rejectedAccount.mid, 42, "Keep the account so requests require reauthorization, not guest fallback")
+        XCTAssertThrowsError(try AppRequestEncoder().encode(
+            .get(path: "x/v2/feed/index", parameters: [:], requiresAccountCredential: true),
+            context: .init(account: rejectedAccount))) { error in
+                guard case BiliAPIError.missingAccessKey = error else { return XCTFail("Unexpected error: \(error)") }
+        }
+        let replacement = login("replacement")
+        try await identity.saveSMSLogin(replacement, expectedSessionID: identity.loginSessionID, authorizationOnly: true)
+        let restoredKey = await identity.accessKey
+        let restoredAccount = await identity.appAccount()
+        XCTAssertEqual(restoredKey, replacement.accessKey)
+        XCTAssertEqual(restoredAccount.accessKey, replacement.accessKey)
+    }
+
+    @MainActor
+    func testRejectedCredentialUpdatesObservedAccountAndSMSAuthorizationRestoresIt() async throws {
+        let identity = identity(), old = login()
+        try await identity.saveSMSLogin(old, expectedSessionID: identity.loginSessionID, authorizationOnly: false)
+        let client = AccountSessionClient(credentials: { await identity.accountSnapshot() },
+            save: { _, _ in }, clear: {}, profile: { throw URLError(.notConnectedToInternet) },
+            saveSMS: { try await identity.saveSMSLogin($0, expectedSessionID: $1, authorizationOnly: $2) })
+        let account = AccountStore(client: client, defaults: UserDefaults(suiteName: UUID().uuidString)!,
+            likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.restoreSessionIfNeeded()
+        XCTAssertTrue(account.hasAppCredential)
+        let originalSession = identity.loginSessionID
+        await identity.renewLoginIfNeeded(transport: { request in try self.response(request, ["code":61000]) },
+            now: 100, device: device)
+        // The production notification path must update an already restored store.
+        for _ in 0..<100 {
+            if account.needsAppReauthorization { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(account.isLoggedIn)
+        XCTAssertEqual(account.accountID, 42)
+        XCTAssertTrue(account.needsAppReauthorization)
+        XCTAssertFalse(account.hasAppCredential)
+        XCTAssertEqual(identity.loginSessionID, originalSession)
+        let cookies = await identity.loginCookies()
+        XCTAssertEqual(cookies, old.cookies)
+        try await account.completeSMSLogin(login("new"), expectedSessionID: account.sessionID,
+            expectedIdentitySession: originalSession, authorizationOnly: true)
+        XCTAssertTrue(account.hasAppCredential)
+        XCTAssertFalse(account.needsAppReauthorization)
+        let snapshot = await identity.accountSnapshot()
+        XCTAssertTrue(snapshot.hasAppCredential)
+        XCTAssertFalse(snapshot.needsAppReauthorization)
+    }
+
+    func testOldGenerationRejectionDoesNotInvalidateReplacementLogin() async throws {
+        let identity = identity()
+        try await identity.saveSMSLogin(login(), expectedSessionID: identity.loginSessionID, authorizationOnly: false)
+        await identity.renewLoginIfNeeded(transport: { request in
+            try await identity.saveSMSLogin(self.login("replacement", mid: "99"),
+                expectedSessionID: identity.loginSessionID, authorizationOnly: false)
+            return try self.response(request, ["code":61000])
+        }, now: 100, device: device)
+        let snapshot = await identity.accountSnapshot()
+        XCTAssertEqual(snapshot.accountID, 99)
+        XCTAssertTrue(snapshot.hasAppCredential)
+        XCTAssertFalse(snapshot.needsAppReauthorization)
     }
 
     func testLocalDeviceIDHasIndependentGoldenChecksum() {

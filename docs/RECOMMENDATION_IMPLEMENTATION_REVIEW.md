@@ -1,13 +1,31 @@
 # 推荐实现核查与改进建议
 
-NeoBili 已把“点哪张卡、从哪里进入、实际看了多久”接到同一条播放链，但设备登记和
-“看见了哪些卡、看见多久”仍缺一段。首页请求还有按既定策略固定的状态值。先补清这些
-事实，再判断推荐变化；请求成功不是兴趣画像已经更新的证明。
+本文保留官方协议的逐项证据和版本边界，供当前实现核查使用。NeoBili 已接入设备/访客登记、票据、点击/曝光、真实观看与登录续期；接口存在或回归通过不证明服务端推荐效果。下述建议是核查清单，不表示每项仍缺实现；旧源码行号需按符号定位当前实现。
 
-本文对照当前工作区源码，记录实现差异和可实施建议，不修改生产实现。用户已授权用
-本人既有账号与设备资料做少量本地联网对照，由S1主持串行实验，S2复核构造与结果；
-未经协调不并发消耗同账号推荐状态。已有未提交实现也是核查对象，不视作已发布版本。
-敏感输入和原始响应留在本地忽略的独占目录，不修改其他研究文档。
+## 本机校验范围与入口
+
+验收标准是现有研究的已确认规则以及用户确定的产品策略，不要求与官方新版逐项一致。
+测试必须使用当前生产实现；注入时钟、设备事实与传输响应可以验证协议和生命周期，但不能把模拟成功响应写成服务器接受。
+
+| 链路 | 生产实现与本地检查 | 判定边界 |
+| --- | --- | --- |
+| 首页请求、首尾游标、启动/横幅状态 | AppRecommendationProtocol / Session / Page；AppRecommendationTests、RecommendationPolicyTests、RecommendationAlignmentTests | 固定关闭自动刷新、静音等属于产品策略；请求生成与服务器推荐效果分开判定 |
+| 账号/设备代际与公共编码 | DeviceIdentity、AppRequestEncoder；AppProtocolIntegrationTests、AccountSessionTests、OfficialBehaviorAdoptionTests | golden 字节、换号取消和字段传播可离线验证；不等于真实 token 被接受 |
+| 设备指纹 | IOSFingerprintProtocol、AppDeviceRegistration；DeviceRegistrationTests | 加密、结果保存、失败冷却已有覆盖；资料只实现明确子集，不是54字段全覆盖。另有如下生命周期差异 |
+| 访客与票据 | AppGuestRegistration、AppTicketService；GuestRegistrationTests、AppTicketTests、AppDeviceMetadataTests | 公钥、guest_id、ticket 的持久化/过期/迟到响应可注入测试；实际获取与续期须另有联网结果 |
+| 点击、曝光与观看 | RecommendationClick、AppBehaviorReporter、AppWatchProtocol、播放器状态机；RecommendationExposurePolicyTests、RecommendationBehaviorTests、OfficialBehaviorAdoptionTests、BehaviorQueueTests | 核对原始卡片追踪、比例门限、逐段时长、暂停/seek/倍速、终止边界；本地记录事件不证明服务端更新兴趣 |
+| 登录续期 | AppLoginRenewal、DeviceIdentity；LoginRenewalTests | info→时间→refresh→保存→旧凭据confirm、换号及存储失败可离线验证；无真实完整续期材料时不强制刷新账号 |
+
+设备指纹 DEV-02 的当前具体差异：研究规定成功后 expiry 取请求发起时刻+86400，且 expiry 仅在内存；当前 `register` 取响应完成时刻+86400，并把 expiry 和设备ID一起持久化。研究 getter 异步更新并立即返回旧ID，当前公共头路径会等待 `register` 完成（请求超时10秒）。当前还增加了非零业务码拒绝门禁。上述差异应独立评估，不能因为加密回环测试通过而标成完全契合。
+
+Neuron LOG-01 的当前发送策略也不是逐项复制：HTTP成功判定为200–299并检查可解析JSON的code，研究所选层仅判HTTP200；持久删除在发送前完成，歧义超时不重放，用于避免重复上报。它是显式可靠性取舍，不能称为官方重试/缓存规则完全一致。
+
+`zsh offline-harness/protocol-check.sh` 复用当前源码验证签名字节及首批/刷新/分页参数。
+加 `--network` 最多发送4个无自动重试的GET：公钥、服务器时间，以及在提供独立私有上下文文件后两批推荐。
+输出只含HTTP/业务码、字段存在性与卡片数量，不输出凭据、标题或完整URL；禁止跨站重定向。
+`NEOBILI_PROBE_CONTEXT` 指向私有JSON文件（accessKey、mid、headers），其中 headers 使用 NeoBili 自身上下文。
+未提供时明确跳过个性化推荐，不用访客结果替代。该入口不自动收集凭据，不合成设备指纹，不发送观看/点赞/收藏，不执行凭据轮换；注入头仅验证该快照，不验证头部生成生命周期。
+运行结果保存于忽略的 `DerivedData/Validation/`，不把某次运行状态当作长期协议事实。
 
 ## 证据与判定边界
 
@@ -27,9 +45,9 @@ NeoBili 已把“点哪张卡、从哪里进入、实际看了多久”接到同
   [源码锚点索引](#源码锚点索引本轮逐条核查)；新判定标注证据版本（8.89 静态 / 9.13 抓包 /
   本地实测 / 当前源码）。本轮结论另有独立验证席位做抽样复核，范围与结论见
   [已闭合与残余](#已闭合)。
-- **测试证据**：本文读取测试内容以确定现有覆盖，未运行App测试、编译、Simulator
-  或部署。本地脚本实验单独记录，不能代替回归、真机或推荐因果验收；已有测试定义
-  和历史验收不能代替当前执行。
+- **测试证据**：历史核查章节中的源码阅读不能替代测试执行。当前校验入口见上表，
+  每次执行结果保存在忽略的验证目录；离线回归、真实服务器响应与推荐因果验收分别判断，
+  不以已有测试定义或历史通过记录替代当前执行。
 
 优先级 P0 表示实施前必须闭合的身份/关联基础，P1 表示主要行为补齐，P2 表示后续协议
 完善。优先级来自缺口与依赖，不表示已证明改善推荐。用户暂定全部查清后统一升级。
@@ -43,12 +61,12 @@ NeoBili 已把“点哪张卡、从哪里进入、实际看了多久”接到同
 `loadMore` 0x10df5a4c0 设置不同刷新状态。9.13 的首批/下拉/翻页及混合操作观察见
 [观察文档](RECOMMENDATION_OBSERVATIONS.md#首页参数随操作的变化)。
 
-**NeoBili 实际行为**：[AppRecommendationProtocol](../NeoBili/Core/Networking/AppRecommendationProtocol.swift)
+**NeoBili 实际行为**：[AppRecommendationProtocol](../NeoBili/Core/Networking/Recommendation/AppRecommendationProtocol.swift)
 按 pageIndex/isRefresh/isLayoutChange 生成 flush=0/6/8/2、pull=1/0 与自身游标。
 column=4、auto_refresh_state=4、login_event=0、inline_sound=1、inline_sound_cold_state=4、
-autoplay_card=4、video_mode=1、inline_danmu=2、client_attr=1、qn_policy=1、player_net=1、
-soft_fnval=2、teenagers_age=16、disable_rcmd=0 等仍固定；函数没有读取对应功能/网络/账号状态。
-[BiliAPI+Recommendation](../NeoBili/Core/Networking/BiliAPI+Recommendation.swift) 合入自身
+autoplay_card=10、video_mode=1、inline_danmu=1、client_attr=0、qn_policy=1、
+soft_fnval=2、teenagers_age=16、disable_rcmd=0 为当前策略；network/player_net 根据实际网络生成。
+[BiliAPI+Recommendation](../NeoBili/Core/Networking/Endpoints/BiliAPI+Recommendation.swift) 合入自身
 启动状态与横幅后调用 getApp，最终由 AppRequestEncoder 添加凭据、时间戳与签名。
 
 **补充来源**：S1的设置专项已沿UI写入、Preferences/设备配置、Swift MainApi builder及
@@ -63,15 +81,15 @@ getApiOptions核查。以下是8.89函数体规则，不是9.13运行验收；�
 | inline_sound_cold_state | setter0x113cee934保存inlineVolumeOn/hasHandledVolumeSetting两个Bool；getter0x113cee8ac按未处理+开/关→1/2、已处理+开/关→3/4；builder0x101a33680读取 | 4与已处理设置后关闭相容，不等于初始关闭2 |
 | inline_sound | builder0x101a33574读singleton.mutePlay：true→1；false且AVAudioSession.outputVolume>0→2，否则3 | 1与运行静音相容；不能把cold_state直接复制过来。singleton仅初始化从持久偏好反转；首页volumeDidClick0x113a99fdc在token有效时写音量并setMutePlay，不写cold两项，因此两者不是逐次同步 |
 | autoplay_card | UI0x113ced494选择all10/WiFi3/off4；currentInlineSetting0x113ced790读autoPlay.double_p及doubleAffectedByServerSide，可生成0/1/2/3/4/10/11；Swift getter0x1035ab340、映射0x101a482b8、builder0x101a32e38最终保留合法码，非法兜底11 | 4与显式关闭、解除服务端影响相容；采集见2不代表普遍关闭或固定值；不能仅以Bool编码4/10 |
-| inline_danmu | builder0x101a33764读inlinePlayerDanmakuSwitch，true→2、false→1；defaultConfig0x1147e5398内建true；active内联服务0x114203fe8可持久写入并同步，服务器配置0x1147e7ad8也可覆盖；对象nil省略 | 2对应旧包开启/缺存值默认，Neo没有首页内联播放/弹幕功能，适用状态及新版仍需核对 |
+| inline_danmu | builder0x101a33764读inlinePlayerDanmakuSwitch，true→2、false→1；defaultConfig0x1147e5398内建true；active内联服务0x114203fe8可持久写入并同步，服务器配置0x1147e7ad8也可覆盖；对象nil省略 | 2对应旧包开启/缺存值默认，Neo已有首页静音内联播放，当前关闭内联弹幕并发送1 |
 | voice_balance | UI switchType37→0x10f31b8bc→setEnableLoudNorm0x1147f0704写PlayConfig.volumeBalance并uploadConfig；getter0x1147f062c缺值用内建默认true（0x1147eecd8）；builder0x101a338f8读true→1/false→0，nil不加 | 0只相容显式关闭，旧包默认为1；通用持久化见下文，上层账号同步仍待闭合 |
 | column | getter0x113ceddec按登录读Mid、否则Device；设备底层单/双列+serverflag映射1/3或2/4；UI只接受3/4；Swift0x101a326f0保留合法0..4 | 4对应显式双列且无server影响，不等于直接填写显示列数2 |
 | video_mode | UI0x10f2f3b04将item.type写value，选择0x10f2f5c98加10；manual0x113ced0b4仅11/12，登录写MidConfig.playMode并upload，所有状态写本地kBBListPlayTypeKey；getter按登录读Mid缺省0，否则读设备非零值/缺省-1；builder0x101a339a0直接Int.description | 固定1不能称“用户明确选择11”；fetchVideoModeSettings0x113cecbf4允许1/11同UI样式、2/12同样式，但字段保留来源码，不能据此推断服务器1/11语义完全等价 |
 | recsys_mode | 设置0x10f2f5614→updateFeedMode0x113cee678将关注input1写DeviceConfig.mode=2、其他推荐写1，再upload/通知；getter0x113cee5c0仅底层2为关注，builder0x101a32d8c编码关注1/推荐0 | 固定0与选择推荐模式相容；选中态来自CURRENT本地getter，配置缺失/失败可input0重置；标题/上层账号边界仍待闭合，通用配置落盘见下文 |
 | disable_rcmd（公共项） | UI personalizedRcmdSwitchAction0x10f2f1fb8要求permission_url.rcmd_info存在；disabled时直接写false，开启时仅确认handler0x10f2f2384写true（主文档已统一为与工作表一致的地址）；默认false，本地BFCPreferences持久。公共producer0x10aac566c每次读native0x1000b3e08，false/nil→0、true→1 | Neo首页固定0与保持个性化推荐开启相容，未实现用户开关；旧包是进程共享持久项，不证明无其他账号同步/覆盖 |
-| client_attr（preload） | UI switchType50→0x10f31bb90；setter0x1147f0adc仅player.priority_hdr_842实验命中且值变化才写CloudPlayConfig/upload，缺字段默认false。preload0x1143981fc要求实验、偏好开启、有效VIP全部成立才1 | 固定1不是通用HDR设备能力；设置打开也不保证1，账号权益/实验/首建缓存均影响 |
+| client_attr（preload） | UI switchType50→0x10f31bb90；setter0x1147f0adc仅player.priority_hdr_842实验命中且值变化才写CloudPlayConfig/upload，缺字段默认false。preload0x1143981fc要求实验、偏好开启、有效VIP全部成立才1 | 当前发送0；该字段不是通用HDR设备能力，不能仅按屏幕能力改为1 |
 | qn_policy（preload） | QualityHelper0x114820fc4读持久autoQnEnabled，默认true；updateUserQn:isAuto0x11453b144先经_switch.needUpdate门控，再只有isAuto或手动shouldMemoryQn通过才保存原isAuto。preload0x1143980b8映射1/0；UI自动项明确赋isAutoSwitch=true，delegate/默认proxy及保存门控分流 | 固定1相容默认自动偏好，不能直接等同当前实际清晰度；手动选择经needUpdate与shouldMemoryQn两道保存门控后为0，未保存的选择不必改变偏好。不同业务proxy与账号配置覆盖仍待闭合 |
-| player_net（preload） | helper0x114a0c368–0x114a0c430每次重写网络项，WiFi1/WWAN2/不可达3；底层status异步初始化为0，新API首建读取、同APIparams缓存 | 固定1仅与WiFi相容；“其他reachable→0”可能来自独立读取交错，不能称稳定第四网络类型。另有network按单次status生成wifi/mobile/空串（G1 findings 6：`sub_111EBAA94` status==2→"mobile"、==1→"wifi"、其他→空 CFString），Neo未消费此来源 |
+| player_net（preload） | helper0x114a0c368–0x114a0c430每次重写网络项，WiFi1/WWAN2/不可达3；底层status异步初始化为0，新API首建读取、同APIparams缓存 | 当前按network映射WiFi1/mobile2/其余3；network来自实际网络快照，旧包其它可达值不能直接外推 |
 | https_url_req | UI type10→0x10f31bb80保存本地httpsPlayurlEnabled，默认false；builder0x101a33398–0x101a33424在preload合并后读0/1，nil省键 | 固定0相容默认/关闭，用户打开可为1；服务器/账号其他写入仍待核对 |
 | guidance | BBPhonePegasusConfig本地两Bool默认false；builder0x101a33464–0x101a33548生成!(hasShownGuideTapCard && hasShownGuideLodeMore) | 固定1相容任一未展示或缺存值；两项都true才0，UI写入/清理与账号边界尚未闭合 |
 | teenagers_age（公共项） | 设置成功0x1159777d0及状态同步写Manager/账号Prefs.age；SignHelper0x11609cac4–0x11609cb00每次读age转字符串，无16常量；无存值且无先行写入时getter退0 | 固定16缺生成依据；选择器defaultIndex16对应年龄17，不能当年龄16。同步失败也可能写0；账号suite once重建/覆盖及9.13语义待验，不猜用户年龄 |
@@ -148,9 +166,9 @@ device_type、screen_window_type等旧包条件字段；仅在自身存在相应
 
 **NeoBili 实际行为**：AppRecommendationProtocol 固定 fnval=84948、qn=32、fourk=1、
 force_host=0、soft_fnval=2、client_attr=1。
-[AppRecommendationPlaybackCapabilities](../NeoBili/Core/Networking/AppRecommendationDisplay.swift)
+[AppRecommendationPlaybackCapabilities](../NeoBili/Core/Networking/Recommendation/AppRecommendationDisplay.swift)
 虽命名为播放能力，当前2448实际仅被LiveAPI直播推荐请求消费。普通视频实际取流
-[BiliAPI.playURL](../NeoBili/Core/Networking/BiliAPI+Playback.swift)走网页WBI，默认qn127、
+[BiliAPI.playURL](../NeoBili/Core/Networking/Endpoints/BiliAPI+Playback.swift)走网页WBI，默认qn127、
 fnval4048→16→1兼容路径；不能按ARCHITECTURE的“播放器2448”描述推断真实请求。
 首页84948、相关页PlayerArgs84948、直播推荐2448、普通视频网页取流分别核查；
 这些请求声明都不证明HDR渲染正确。
@@ -178,7 +196,7 @@ T2 findings C-11 另把官方画质列表实现类钉到 `BBPlayerVideoQualityLi
 
 **证据**：8.89 `extraContent` 0x1143982d8 以 screenHeight/screenWidth 分别写
 long_edge/short_edge，另写 translateLanguage→cur_language；函数本身不排序边长。
-**NeoBili 实际行为**：[AppRecommendationDisplay](../NeoBili/Core/Networking/AppRecommendationDisplay.swift)
+**NeoBili 实际行为**：[AppRecommendationDisplay](../NeoBili/Core/Networking/Recommendation/AppRecommendationDisplay.swift)
 读取当前 scene 的 screen.nativeBounds，按 min/max 排序、向下取整，JSON 只含两个边长。
 **判定**：与该函数有差异；上游屏幕 getter 单位/方向及9.13行为尚不能确认，不能仅凭
 旧函数把 nativeBounds 改成 points。**建议/接入**：先核对实际屏幕 getter 与翻译设置，
@@ -190,18 +208,18 @@ long_edge/short_edge，另写 translateLanguage→cur_language；函数本身不
 **证据**：8.89 MainVM.init 0x10df58690 按登录/访客设 login_event=2/1，登录/退出
 观察者重设，成功回调0x10df59104清零。helper.open_event 0x10df57b60 的 getter 消费
 cold/hot；后台间隔严格超过1800秒时清 banner_hash（0x10df579ec 后续方法链，完整
-注册时机未闭合，锚点 0x10df579ec）。重试复用 loadDataOptions，不再次消费 getter。
+通知安装链已闭合，锚点 0x10df579ec）。重试复用 loadDataOptions，不再次消费 getter。
 
-**NeoBili 实际行为**：[AppRecommendationSession](../NeoBili/Core/Networking/AppRecommendationSession.swift)
+**NeoBili 实际行为**：[AppRecommendationSession](../NeoBili/Core/Networking/Recommendation/AppRecommendationSession.swift)
 从cold开始，scene background→active设置hot，takeRequest立即清 openEvent；缺已登录
 账号的App凭据时 BiliAPI 在 takeRequest 前拒绝。横幅在解析过滤前取首个 banner_item
 hash；recordBanner只接受当前store epoch且缓存为空。登录/退出不直接通知此store，
 仅下次takeRequest察觉accountSession变化时清缓存/更新epoch；recordBanner不额外核
 DeviceIdentity当前代际，因此新请求还没开始时旧响应仍可暂写旧epoch，随后新请求会清。
-普通长后台不清。
+后台跨度严格大于1800秒时清空横幅并轮换epoch，迟到旧响应不能恢复过期hash。
 login_event始终0；getApp重试复用编码请求，耗掉open_event后整体失败仍不会恢复它。
 
-**判定**：消费型启动标记与重试复用原则一致；登录映射和长后台横幅失效与8.89有差异。
+**判定**：消费型启动标记与重试复用原则一致；login_event=0仍是本地策略；长后台横幅失效已按8.89规则接入，9.13阈值未独立验收。
 **建议/接入**：在 AppRecommendationSession 独立保存登录事件与横幅有效期，等9.13及
 通知链闭合再应用；明确失败是消费还是恢复，避免诊断读取提前消费。**验证/依赖**：
 假时钟、同账号重登、换号但新推荐还没请求时的旧响应、缺凭据、短/长后台与传输失败；现有 RecommendationPolicyTests
@@ -220,7 +238,7 @@ Tracker trackID 0x115fd2ac0、UserAgent 0x115e04170 与 BFCActiveReport 0x115fd0
 代码把 Keychain 排在 IDFA/IDFV 之前，所以重装后的来源只可能是 Keychain 或重新生成；
 Keychain 跨重装保留属 OS 语义，本样本不能证明“实际重装后仍命中”。
 
-**NeoBili 实际行为**：[DeviceIdentity.appBuvid](../NeoBili/Core/Networking/DeviceIdentity.swift)
+**NeoBili 实际行为**：[DeviceIdentity.appBuvid](../NeoBili/Core/Networking/Identity/DeviceIdentity.swift)
 从defaults复用，缺失时MD5随机UUID生成小写32字符主体，加 `XY`+三字符，结果37字符；
 没有App BUVID的Keychain回退。Debug允许既有独立实验覆盖，Regression不取覆盖。
 换登录不重新生成BUVID；请求、短信local_id及日志共用该值。
@@ -256,12 +274,8 @@ camlight/campx/cpucount/kernelversion/screen/sim/issimulatorIos 等），**isVpn
 另一个类 `BFCAccountDeviceInfo`，字段重名；按 `_objc_msgSend$setXxx:` 全镜像计数会被污染，
 本项以上述描述符与 0x115fd5b54 的站点表为准。
 
-**NeoBili 实际行为**：DeviceIdentity没有上述登记状态；
-[SMSPassport.prepare/baseParameters](../NeoBili/Core/Networking/SMSPassport.swift)
-将deviceID设空，只共用自身buvid/local_id，不发bili_local_id/device_meta/dt或游客登记结果。
-AppDeviceSnapshot不带登记指纹；AppBehaviorEncoder不写bilifp。
-
-**判定**：已证实缺实现，短信成功/设备管理出现条目不证明完整登记或推荐关联。
+**NeoBili 实际行为**：DeviceIdentity 配合 AppDeviceRegistration、AppGuestRegistration 保存自身登记和访客结果，短信登录复用自身设备资料，公共请求携带可用的登记信息。
+**判定**：已接入实现；服务器是否接受完整资料仍需运行证据，短信成功或设备管理出现条目不等于完整登记或推荐关联。
 官方侧 54 项指纹的资料构成已闭合到描述符与赋值来源层，其中 isVpn/ip/userAgent 三项已定稿
 （8.89 静态，team-c3 S1；证据与锚点见下）。
 **建议/接入**：DeviceIdentity分别保存本地指纹、服务端指纹、访客资料及响应和首次运行
@@ -314,11 +328,10 @@ TicketInternal 全镜像唯一构造点是 `-[BFCTicket init]` 0x100095ec8，`pr
 只能当名字索引（token 序号=i+1），**不能用它推注册/执行次序**，也不要用“按类引用点回溯组件
 创建处”这类静态方案。
 **ticket 缓存 reset 边界（8.89 静态，team-c3 S3.5）**：单例槽 0x12027d090 全镜像恰 4 处载入（0x100096208 `-[BFCTicket init]`、0x100096764 `+[TicketPrefs shared]`、0x10009943c startup、0x100099c10 成功保存腿），无 STR / `objc_storeStrong` 写点 ⇒ 静态上没有登录/登出 reset 该缓存的路径；跨账号是否复用同一份缓存需运行期/9.13 抓包。
-**NeoBili 实际行为**：AppDeviceProtocol不加ticket，AppRequest没有Ticket RPC，
-DeviceIdentity无票据缓存/续期；当前只读gRPC入口会重试，不能直接复用为登记/票据写通道。
+**NeoBili 实际行为**：AppTicket 已接入获取、缓存、续期，公共 App 头注入可用票据，HTTPTransport 处理已发送票据的失效响应；无票据时省略。
 新增三次feed/index实测中无ticket组也返回200/code0，带捕获ticket组同样成功；
 这只限定本次国际版参数组合的返回能力，不证明票据有效或被校验，见实验边界。
-**判定**：获取和续期缺实现；官方侧启用范围已闭合（执行 enable=实验命中，不是 preset），
+**判定**：获取和续期已接入，当前服务端完整验收仍待运行证据；官方侧启用范围已闭合（执行 enable=实验命中，不是 preset），
 `ticket.get_max_tries` 只存不读⇒不得写成“会重试 4 次”；当前适用请求范围仍待确认（机制锚点 0x11609919c），
 gateway 跨模块相对次序为精确残余（机制锚点 0x11609919c；运行期打印 `appendClass:` 入参）。（8.89 静态 + 源码）
 **建议/接入**：独立票据状态和异步单任务刷新接 DeviceIdentity/领域服务，再通过
@@ -342,8 +355,7 @@ makeWatchReport另填实际已选quality；surface为page时写详情spmid，min
 独立Story按钮也有相同证据边界：8.89先track story-button，再检查route及播放/共享/
 队列准入；valid图片URL会先取消hidden，不等图片加载回执。Neo无该Story入口，不能
 把按钮可见/点击替代导航成功，也不将Story日志当首页卡片点击协议或推荐必要条件。
-**判定**：真实入口和同代际传播一致；解析没有保存原始批次位置、extra_rpt_fields、
-rcmd_reason_style等曝光上下文。**建议/接入**：AppRecommendationPage解码后单独保存
+**判定**：真实入口和同代际传播已接通；解析保留原始批次位置与选定 extra_rpt_fields，并经路由传递。其它业务扩展字段仍按已支持事件核对。**建议/接入**：AppRecommendationPage解码后单独保存
 不可变卡片报告上下文，经VideoSummary/路由传递；曝光身份不能只用bvid。
 **验证/依赖**：同视频不同批次、旧账号卡片、刷新合并、相关入口及预取不触发；
 RecommendationAlignmentTests已有追踪隔离断言，本次未执行。
@@ -364,7 +376,7 @@ event_policy=0、page_from=1合入，字段限制40项/单值4096bytes。缺trac
 当Swift规则。**验证/依赖**：脱敏不同卡型golden、空/缺track、字符串编号、嵌套覆盖与
 超限处理。**可能影响**：点击归因/特征完整性，字段补齐的推荐效果未证。
 
-### R10 展示及每段可见时长仍缺采集和发送（P1，依赖R08/R11）
+### R10 展示及每段可见时长的采集和发送（P1，依赖R08/R11）
 
 **证据**：9.13已有show/duration事件走realtime、policy=1；8.89 RealExposure/ExposureV2
 0x103eb9998、0x101b6cf80以可见比例阈值和minimum结算，写card_start_time/card_end_time
@@ -374,11 +386,8 @@ splashStyle==0生成真实出现/离开；raw8回调0x101b60644移除duration co
 结算，返回重新建段。raw36/inactive受配置控制，raw33/background与raw37/terminate
 直接结算且仍受minimum门槛；普通show去重池是否重置未闭合（清除链锚点 0x101b60644）。
 **NeoBili 实际行为**：[HomeFeedCollection](../NeoBili/Features/Home/HomeFeedCollection.swift)
-willDisplay/didEndDisplaying只管理预取/动画/分页；没有可见时段上下文和上报。
-AppRequest只有unrealtimeLog，AppBehaviorEncoder只有click。HomeView接收isSelected
-但没有消费/传给列表；onAppear只恢复方向锁，didMoveToWindow只登记滚动视图。
-标签渐入及首页刷新会改变真实透明度，cell存在和willDisplay不能证明当时可见。
-**判定**：已证实缺实现，不能用点击或取流请求替代展示。
+现已接入可见性门禁、逐段曝光时间和 realtime 上报；AppBehaviorReporter 管理事件批次。不能仅凭 cell 存在或 willDisplay 判断可见，标签、遮挡、后台与刷新边界仍是持续回归项。
+**判定**：曝光主链已实现，服务端消费及推荐影响未由本地测试证明。
 **建议/接入**：列表采集器先综合选中标签、scene状态、详情/全屏遮盖、挂载与实际
 透明度形成真实显示门禁，再维护可见卡片逐段起止；真实离开/遮挡/刷新/后台结算。
 点击只有造成实际离开/覆盖才结束时段，被拦截或未成功导航的点击不制造结束；
@@ -478,7 +487,7 @@ mobileQuota=3145728、waitingThreshold=20、waitingMinutes=10、**expireDays=7**
 version/build/session和空Click子消息；未知osver/fts/bilifp及分类/序号/pageType等缺省。
 RecommendationClickReporter在异步record取得设备快照，保留调用时session/time，持久队列
 100条/24小时，按mid/accountEpoch隔离；只连接未建立的指定错误保留，超时/HTTP拒绝丢弃。
-重启保留原事件快照，上传使用当前头；编码不写retrySendCount，请求不加Neuron-Events。
+重启保留原事件快照，上传使用当前头；编码不写retrySendCount，请求按实际编码帧数设置Neuron-Events。
 flush只由新点击和App首页请求触发；网络恢复/前台/重启本身没有独立补发调度，
 非保留型失败删除当前事件并退出，其余事件等下一次触发。点击允许访客，登录/退出
 轮换持久accountEpoch，单纯更新accessKey不轮换；不是允许同账号重登后补旧事件。
@@ -511,12 +520,12 @@ AppBehaviorEncoder的日志version/build使用AppClientIdentity的9.13协议身�
 及PlayerViewModel只认可真实推进；确认观看且aid>0才排全零start，
 退出/完成且已排start才有finish。aid始终缺失则只有网页历史checkpoint，迟到aid可补排
 start；普通App首页视频卡保证有效aid，该限制主要影响其他资料补全路径。历史
-checkpoint不发mobile；AppWatchProtocol区分watched/paused/position/max，当前played_time与
-actual_played_time同取watched。8.89 updatePlayedTime 0x114885674则将墙钟整数增量写
-played_time，以单精度倍率加权增量写actual_played_time；Neo在非1倍速时仍相等，有明确差异，
+checkpoint不发mobile；AppWatchProtocol区分watched/paused/position/max，当前played_time取墙钟观看时长，
+actual_played_time按每段倍率独立累计。8.89 updatePlayedTime 0x114885674则将墙钟整数增量写
+played_time，以单精度倍率加权增量写actual_played_time；Neo已分开两者，
 但不能将8.89分段截断/负墙钟差照搬为真实观看定义。BiliAPI有App凭据且aid/cid有效时独立发mobile和history，
 mobile失败仍尝试history；仅Cookie时非start退网页历史。未登录不发这些移动观看报告。
-play_type=1、auto_play=0等固定，不应根据字段名当完整状态表达。
+play_type=1；auto_play按内联预览2、手动0区分，不应根据字段名当完整状态表达。
 首次累计5秒、随后每15秒生成历史checkpoint；暂停/退出可提前结算短段，但位置整数秒
 须>0且不同于上次，EOF还须末段真实推进并靠近片尾才标-1。
 RootView/VideoPage进入非active只savePlaybackProgress到本地续播store，不显式排
@@ -722,10 +731,10 @@ DD原生响应gateway0x100135830需HTTP response、本地request-header字典及
 非空，dd-v缺失/nil不更新；存在值优先String，其次Int，均cast失败生成"0"，非空
 才以force=false/from=http触发update。空String跳过，"0"触发不等于业务ACK或更新
 成功；本native分支及注册不证明所有引擎同样采用，缺header也不是清配置指令。
-**NeoBili 实际行为**：[AppDeviceProtocol](../NeoBili/Core/Networking/AppDeviceProtocol.swift)
+**NeoBili 实际行为**：[AppDeviceProtocol](../NeoBili/Core/Networking/Identity/AppDeviceProtocol.swift)
 编码自身buvid/session/trace和固定App、系统均zh/Hans/CN、Asia/Shanghai的locale1/2/4。
-[AppRequestEncoder](../NeoBili/Core/Networking/AppRequestEncoding.swift)通过
-[BiliHeaders.appAccountHeaders](../NeoBili/Core/Networking/BiliHeaders.swift)统一添加env/app-key、
+[AppRequestEncoder](../NeoBili/Core/Networking/Transport/AppRequestEncoding.swift)通过
+[BiliHeaders.appAccountHeaders](../NeoBili/Core/Networking/Transport/BiliHeaders.swift)统一添加env/app-key、
 固定aurora-zone，mid>0时加mid和自身计算的eid；gRPC有App凭据时加authorization，
 metadata仅实现1–7字段，并按可选值缺省（访客无accessKey时不编码字段1）。
 当前相关页BiliAPI+Video传入的仍是上述设备头，不生成guestid、x-bili-device-bin、
@@ -791,7 +800,7 @@ enable writer，这些键由 Kotlin 侧创建/写入**，静态只能给出“�
 [社区App签名页](https://janson20.github.io/bilibili-api-collect-mirror/docs/misc/sign/APP.html)
 提供排序与摘要线索，但不同语言示例采用不同编码器，Swift示例使用.urlQueryAllowed，
 不能视作当前iPhone逐字节规范；其跨平台appkey示例也不能直接移入当前身份配置。
-**NeoBili 实际行为**：[AppSigner](../NeoBili/Core/Networking/AppSigner.swift)按原始字符串参数键
+**NeoBili 实际行为**：[AppSigner](../NeoBili/Core/Networking/Identity/AppSigner.swift)按原始字符串参数键
 排序，再分别编码键和值，保留空值等号，签名与传输共用query字节；自定义字符集保留`!*'()`，并非
 上述社区Swift示例。既有AppProtocolIntegrationTests的独立golden覆盖空值、空格、加号、
 与号及中文，没有覆盖这五个字符；测试定义不等于本次已执行。
@@ -895,11 +904,8 @@ NetworkTimestamp多绑定注册及ApiClient moduleInitialize解析/登记类数�
 **NeoBili 实际行为**：[PlayerViewModel](../NeoBili/Features/Player/PlayerViewModel.swift)
 watchStartTimestamp在已出画面、加载/续播门禁通过、playing且非buffering的首次
 时间更新取本地Date秒，reset时清空；
-生成的PlaybackWatchReport.startTimestamp不可变，由AppWatchProtocol原样编码。
-[APIClient.postApp](../NeoBili/Core/Networking/APIClient.swift)只解码BiliEmptyData并返回Void，
-BiliAPI.reportAppWatch及sender也不保留data.ts，没有服务器回执写回或独立时间辅助。
-真实累计观看另用systemUptime推进，不能为补wire时间而替换这一计时来源。
-**判定**：已证实缺回执时间消费；旧包首项弱回写不等于安全的按播放session校正。
+PlaybackWatchReport 保留本地起播时间；PlaybackWatchReportSender 已按播放 session 采用起播响应 data.ts 校正移动心跳时间，历史报告仍保留本地时间。真实累计观看使用 systemUptime，不因 wire 校时而改变。
+**判定**：回执时间已消费，迟到回执的播放 session 隔离仍须回归。
 辅助链的 flag 与持久语义已闭合（失败/在途不清 flag，只有成功 completion 清并保存差值），
 因此“尝试一次失败后本进程不再发起辅助请求”是可判定行为，不能把它当可用校时；
 9.13需不需要、何时使用这些时间仍未验收，本地时间不因此被证明错误。（8.89 静态 + 源码）
@@ -977,7 +983,7 @@ CommonFieldsModel，再填event；queue仅cid匹配才取itemCurrentTime，否�
 quality映射0x11488242c只保留15/16/32/64/74/80/100/112/116/120/129，其余0。
 model自身session先填入，后由当前tracker session覆盖；seq为实例报告顺序，缺该
 扩展键时才补旧值并递增。operation入队返回true不是磁盘或上传成功。
-**NeoBili 实际行为**：[AppBehaviorEncoder](../NeoBili/Core/Networking/AppBehaviorEncoder.swift)
+**NeoBili 实际行为**：[AppBehaviorEncoder](../NeoBili/Core/Networking/Reporting/AppBehaviorEncoder.swift)
 仅构造推荐点击，无PlayerEvent。AppWatchProtocol的history progress及mobile播放
 位置采用整数秒，累计观看另有字段；PlayerViewModel报告使用实际选中quality。
 当前无上述公共model/日志序号/画质映射，不能归入R23应用timer或称为该日志已实现。
@@ -998,36 +1004,36 @@ Int32越界值需显式处理，不能照搬转换指令的异常结果；不为
 
 | 项 | 源码锚点（文件:行） |
 | --- | --- |
-| R01 | [AppRecommendationProtocol:11-22](../NeoBili/Core/Networking/AppRecommendationProtocol.swift#L11-L22)、[BiliAPI+Recommendation:56-77](../NeoBili/Core/Networking/BiliAPI+Recommendation.swift#L56-L77)、[RecommendationDiagnostics:57-80](../NeoBili/Core/Networking/RecommendationDiagnostics.swift#L57-L80) |
-| R02 | [AppRecommendationDisplay:37-39](../NeoBili/Core/Networking/AppRecommendationDisplay.swift#L37-L39)、[LiveAPI:111](../NeoBili/Core/Networking/LiveAPI.swift#L111)、[BiliAPI+Playback:10-18](../NeoBili/Core/Networking/BiliAPI+Playback.swift#L10-L18)、[AppRelatedPage:10,22](../NeoBili/Core/Networking/AppRelatedPage.swift#L10) |
-| R03 | [AppRecommendationDisplay:11-32](../NeoBili/Core/Networking/AppRecommendationDisplay.swift#L11-L32) |
-| R04 | [AppRecommendationSession:12-44](../NeoBili/Core/Networking/AppRecommendationSession.swift#L12-L44)、[BiliAPI+Recommendation:57-68](../NeoBili/Core/Networking/BiliAPI+Recommendation.swift#L57-L68) |
-| R05 | [DeviceIdentity:137-149](../NeoBili/Core/Networking/DeviceIdentity.swift#L137-L149)、[DeviceIdentity:191-236](../NeoBili/Core/Networking/DeviceIdentity.swift#L191-L236) |
-| R06 | [SMSPassport:41-47](../NeoBili/Core/Networking/SMSPassport.swift#L41-L47)、[SMSPassport:63-69](../NeoBili/Core/Networking/SMSPassport.swift#L63-L69)、[AppDeviceProtocol:5-15](../NeoBili/Core/Networking/AppDeviceProtocol.swift#L5-L15) |
-| R07 | [AppDeviceProtocol:19-26](../NeoBili/Core/Networking/AppDeviceProtocol.swift#L19-L26)、[AppRequestEncoding:88-96](../NeoBili/Core/Networking/AppRequestEncoding.swift#L88-L96)（无票据写入；`x-bili-ticket` 仅出现在 [RecommendationDiagnostics:77](../NeoBili/Core/Networking/RecommendationDiagnostics.swift#L77) 的存在性探针） |
-| R08 | [BiliAPI+Recommendation:69-76](../NeoBili/Core/Networking/BiliAPI+Recommendation.swift#L69-L76)、[VideoModels:229-255](../NeoBili/Core/Models/VideoModels.swift#L229-L255) |
-| R09 | [RecommendationClick:15-26](../NeoBili/Core/Networking/RecommendationClick.swift#L15-L26)、[AppRecommendationPage:160-189](../NeoBili/Core/Networking/AppRecommendationPage.swift#L160-L189) |
+| R01 | [AppRecommendationProtocol:11-22](../NeoBili/Core/Networking/Recommendation/AppRecommendationProtocol.swift#L11-L22)、[BiliAPI+Recommendation:56-77](../NeoBili/Core/Networking/Endpoints/BiliAPI+Recommendation.swift#L56-L77)、[RecommendationDiagnostics:57-80](../NeoBili/Core/Networking/Reporting/RecommendationDiagnostics.swift#L57-L80) |
+| R02 | [AppRecommendationDisplay:37-39](../NeoBili/Core/Networking/Recommendation/AppRecommendationDisplay.swift#L37-L39)、[LiveAPI:111](../NeoBili/Core/Networking/Endpoints/LiveAPI.swift#L111)、[BiliAPI+Playback:10-18](../NeoBili/Core/Networking/Endpoints/BiliAPI+Playback.swift#L10-L18)、[AppRelatedPage:10,22](../NeoBili/Core/Networking/Recommendation/AppRelatedPage.swift#L10) |
+| R03 | [AppRecommendationDisplay:11-32](../NeoBili/Core/Networking/Recommendation/AppRecommendationDisplay.swift#L11-L32) |
+| R04 | [AppRecommendationSession:12-44](../NeoBili/Core/Networking/Recommendation/AppRecommendationSession.swift#L12-L44)、[BiliAPI+Recommendation:57-68](../NeoBili/Core/Networking/Endpoints/BiliAPI+Recommendation.swift#L57-L68) |
+| R05 | [DeviceIdentity:137-149](../NeoBili/Core/Networking/Identity/DeviceIdentity.swift#L137-L149)、[DeviceIdentity:191-236](../NeoBili/Core/Networking/Identity/DeviceIdentity.swift#L191-L236) |
+| R06 | [SMSPassport:41-47](../NeoBili/Core/Networking/Identity/SMSPassport.swift#L41-L47)、[SMSPassport:63-69](../NeoBili/Core/Networking/Identity/SMSPassport.swift#L63-L69)、[AppDeviceProtocol:5-15](../NeoBili/Core/Networking/Identity/AppDeviceProtocol.swift#L5-L15) |
+| R07 | [AppDeviceProtocol:19-26](../NeoBili/Core/Networking/Identity/AppDeviceProtocol.swift#L19-L26)、[AppRequestEncoding:88-96](../NeoBili/Core/Networking/Transport/AppRequestEncoding.swift#L88-L96)（无票据写入；`x-bili-ticket` 仅出现在 [RecommendationDiagnostics:77](../NeoBili/Core/Networking/Reporting/RecommendationDiagnostics.swift#L77) 的存在性探针） |
+| R08 | [BiliAPI+Recommendation:69-76](../NeoBili/Core/Networking/Endpoints/BiliAPI+Recommendation.swift#L69-L76)、[VideoModels:229-255](../NeoBili/Core/Models/VideoModels.swift#L229-L255) |
+| R09 | [RecommendationClick:15-26](../NeoBili/Core/Networking/Reporting/RecommendationClick.swift#L15-L26)、[AppRecommendationPage:160-189](../NeoBili/Core/Networking/Recommendation/AppRecommendationPage.swift#L160-L189) |
 | R10 | [HomeFeedCollection:536-568](../NeoBili/Features/Home/HomeFeedCollection.swift#L536-L568) |
-| R11 | [AppRecommendationPage:15-41](../NeoBili/Core/Networking/AppRecommendationPage.swift#L15-L41) |
-| R12 | [RecommendationClick:37-118](../NeoBili/Core/Networking/RecommendationClick.swift#L37-L118)、[AppBehaviorEncoder:6-36](../NeoBili/Core/Networking/AppBehaviorEncoder.swift#L6-L36)、[APIClient:312-323](../NeoBili/Core/Networking/APIClient.swift#L312-L323) |
-| R13 | [PlaybackWatchProgress:25-106](../NeoBili/Features/Player/PlaybackWatchProgress.swift#L25-L106)、[PlayerViewModel:775-820](../NeoBili/Features/Player/PlayerViewModel.swift#L775-L820)、[AppWatchProtocol:6-31](../NeoBili/Core/Networking/AppWatchProtocol.swift#L6-L31)、[BiliAPI+History:62-106](../NeoBili/Core/Networking/BiliAPI+History.swift#L62-L106) |
-| R14 | [AppRecommendationPage:114-195](../NeoBili/Core/Networking/AppRecommendationPage.swift#L114-L195)、[HomeViewModel:426-467](../NeoBili/Features/Home/HomeViewModel.swift#L426-L467)、[VideoPreparationCache:173-192](../NeoBili/Features/Player/VideoPreparationCache.swift#L173-L192) |
-| R15 | [HomeViewModel:126-155](../NeoBili/Features/Home/HomeViewModel.swift#L126-L155)、[BiliAPI+Recommendation:102-117](../NeoBili/Core/Networking/BiliAPI+Recommendation.swift#L102-L117)、[VideoModels:101-115](../NeoBili/Core/Models/VideoModels.swift#L101-L115) |
-| R16 | [DeviceIdentity:37,69-71](../NeoBili/Core/Networking/DeviceIdentity.swift#L37)、[DeviceIdentity:152-164](../NeoBili/Core/Networking/DeviceIdentity.swift#L152-L164)、[SMSPassport:47](../NeoBili/Core/Networking/SMSPassport.swift#L47)、[PlayerViewModel:275](../NeoBili/Features/Player/PlayerViewModel.swift#L275)、[BiliAPI+History:82-85](../NeoBili/Core/Networking/BiliAPI+History.swift#L82-L85) |
+| R11 | [AppRecommendationPage:15-41](../NeoBili/Core/Networking/Recommendation/AppRecommendationPage.swift#L15-L41) |
+| R12 | [RecommendationClick:37-118](../NeoBili/Core/Networking/Reporting/RecommendationClick.swift#L37-L118)、[AppBehaviorEncoder:6-36](../NeoBili/Core/Networking/Reporting/AppBehaviorEncoder.swift#L6-L36)、[APIClient:312-323](../NeoBili/Core/Networking/Transport/APIClient.swift#L312-L323) |
+| R13 | [PlaybackWatchProgress:25-106](../NeoBili/Features/Player/PlaybackWatchProgress.swift#L25-L106)、[PlayerViewModel:775-820](../NeoBili/Features/Player/PlayerViewModel.swift#L775-L820)、[AppWatchProtocol:6-31](../NeoBili/Core/Networking/Reporting/AppWatchProtocol.swift#L6-L31)、[BiliAPI+History:62-106](../NeoBili/Core/Networking/Endpoints/BiliAPI+History.swift#L62-L106) |
+| R14 | [AppRecommendationPage:114-195](../NeoBili/Core/Networking/Recommendation/AppRecommendationPage.swift#L114-L195)、[HomeViewModel:426-467](../NeoBili/Features/Home/HomeViewModel.swift#L426-L467)、[VideoPreparationCache:173-192](../NeoBili/Features/Player/VideoPreparationCache.swift#L173-L192) |
+| R15 | [HomeViewModel:126-155](../NeoBili/Features/Home/HomeViewModel.swift#L126-L155)、[BiliAPI+Recommendation:102-117](../NeoBili/Core/Networking/Endpoints/BiliAPI+Recommendation.swift#L102-L117)、[VideoModels:101-115](../NeoBili/Core/Models/VideoModels.swift#L101-L115) |
+| R16 | [DeviceIdentity:37,69-71](../NeoBili/Core/Networking/Identity/DeviceIdentity.swift#L37)、[DeviceIdentity:152-164](../NeoBili/Core/Networking/Identity/DeviceIdentity.swift#L152-L164)、[SMSPassport:47](../NeoBili/Core/Networking/Identity/SMSPassport.swift#L47)、[PlayerViewModel:275](../NeoBili/Features/Player/PlayerViewModel.swift#L275)、[BiliAPI+History:82-85](../NeoBili/Core/Networking/Endpoints/BiliAPI+History.swift#L82-L85) |
 | R17 | [PlaybackWatchProgress:180-233](../NeoBili/Features/Player/PlaybackWatchProgress.swift#L180-L233)、[PlayerViewModel:305-314](../NeoBili/Features/Player/PlayerViewModel.swift#L305-L314)、[PlayerViewModel:806-820](../NeoBili/Features/Player/PlayerViewModel.swift#L806-L820) |
-| R18 | [AppDeviceProtocol:19-43](../NeoBili/Core/Networking/AppDeviceProtocol.swift#L19-L43)、[BiliHeaders:11-22](../NeoBili/Core/Networking/BiliHeaders.swift#L11-L22)、[AppRequestEncoding:88-96](../NeoBili/Core/Networking/AppRequestEncoding.swift#L88-L96)、[AppProto:70-72](../NeoBili/Core/Networking/AppProto.swift#L70-L72) |
-| R19 | [AppSigner:22-61](../NeoBili/Core/Networking/AppSigner.swift#L22-L61) |
+| R18 | [AppDeviceProtocol:19-43](../NeoBili/Core/Networking/Identity/AppDeviceProtocol.swift#L19-L43)、[BiliHeaders:11-22](../NeoBili/Core/Networking/Transport/BiliHeaders.swift#L11-L22)、[AppRequestEncoding:88-96](../NeoBili/Core/Networking/Transport/AppRequestEncoding.swift#L88-L96)、[AppProto:70-72](../NeoBili/Core/Networking/Transport/AppProto.swift#L70-L72) |
+| R19 | [AppSigner:22-61](../NeoBili/Core/Networking/Identity/AppSigner.swift#L22-L61) |
 | R20 | [HomeViewModel:361-421](../NeoBili/Features/Home/HomeViewModel.swift#L361-L421) |
 | R21 | [NeoBiliApp:50-52](../NeoBili/App/NeoBiliApp.swift#L50-L52) |
-| R22 | [PlayerViewModel:699-702](../NeoBili/Features/Player/PlayerViewModel.swift#L699-L702)、[PlayerViewModel:795-803](../NeoBili/Features/Player/PlayerViewModel.swift#L795-L803)、[AppWatchProtocol:17](../NeoBili/Core/Networking/AppWatchProtocol.swift#L17)、[APIClient:332-343](../NeoBili/Core/Networking/APIClient.swift#L332-L343) |
+| R22 | [PlayerViewModel:699-702](../NeoBili/Features/Player/PlayerViewModel.swift#L699-L702)、[PlayerViewModel:795-803](../NeoBili/Features/Player/PlayerViewModel.swift#L795-L803)、[AppWatchProtocol:17](../NeoBili/Core/Networking/Reporting/AppWatchProtocol.swift#L17)、[APIClient:332-343](../NeoBili/Core/Networking/Transport/APIClient.swift#L332-L343) |
 | R23 | 无对应源码：应用定时心跳、Atomic 数据源与 `new_heartbeat` 均不存在 |
-| R24 | [AppRecommendationPage:114-195](../NeoBili/Core/Networking/AppRecommendationPage.swift#L114-L195)、[LiveAPI:111](../NeoBili/Core/Networking/LiveAPI.swift#L111)（直播通道的 `device_type`，不是首页兴趣选择来源） |
-| R25 | [AppBehaviorEncoder:6-36](../NeoBili/Core/Networking/AppBehaviorEncoder.swift#L6-L36)、[AppWatchProtocol:33-35](../NeoBili/Core/Networking/AppWatchProtocol.swift#L33-L35) |
-| 稍后再看 | [BiliAPI+WatchLater:5-22](../NeoBili/Core/Networking/BiliAPI+WatchLater.swift#L5-L22)、[WatchLaterView](../NeoBili/Features/Library/WatchLaterView.swift) |
+| R24 | [AppRecommendationPage:114-195](../NeoBili/Core/Networking/Recommendation/AppRecommendationPage.swift#L114-L195)、[LiveAPI:111](../NeoBili/Core/Networking/Endpoints/LiveAPI.swift#L111)（直播通道的 `device_type`，不是首页兴趣选择来源） |
+| R25 | [AppBehaviorEncoder:6-36](../NeoBili/Core/Networking/Reporting/AppBehaviorEncoder.swift#L6-L36)、[AppWatchProtocol:33-35](../NeoBili/Core/Networking/Reporting/AppWatchProtocol.swift#L33-L35) |
+| 稍后再看 | [BiliAPI+WatchLater:5-22](../NeoBili/Core/Networking/Endpoints/BiliAPI+WatchLater.swift#L5-L22)、[WatchLaterView](../NeoBili/Features/Library/WatchLaterView.swift) |
 | LatestHistory/续播 | [PlaybackProgressStore](../NeoBili/Features/Player/PlaybackProgressStore.swift)、[PlayerViewModel:317-320](../NeoBili/Features/Player/PlayerViewModel.swift#L317-L320) |
 | 分享菜单 | [VideoActionBar:213-216](../NeoBili/Features/VideoDetail/VideoActionBar.swift#L213-L216) |
 
-调试期采集另有独立实现：[RecommendationDiagnostics](../NeoBili/Core/Networking/RecommendationDiagnostics.swift)
+调试期采集另有独立实现：[RecommendationDiagnostics](../NeoBili/Core/Networking/Reporting/RecommendationDiagnostics.swift)
 只在 DEBUG 且非 Regression 时记录八个已列端点的白名单参数与卡面字段，落盘前剔除凭据，
 `has_ticket`/`has_cookie` 只是存在性探针。它不改变上面的实现判定，也不能把探针结果当
 服务端验收。
@@ -1040,7 +1046,7 @@ Int32越界值需显式处理，不能照搬转换指令的异常结果；不为
 首次appearance经每次binding的TakeCount(1)派发refetch，手动刷新与底部分页独立；
 不能概括为进程全局once，也不能由动作派发推定请求已通过reducer门禁。
 
-Neo的[BiliAPI+WatchLater](../NeoBili/Core/Networking/BiliAPI+WatchLater.swift)用旧网页
+Neo的[BiliAPI+WatchLater](../NeoBili/Core/Networking/Endpoints/BiliAPI+WatchLater.swift)用旧网页
 list/add/del端点，当前列表一次读取，无v2分页。[WatchLaterView](../NeoBili/Features/Library/WatchLaterView.swift)
 以空列表且非loading决定初次加载，refreshable另触发reload；删除先乐观移除，撤销
 窗口确认后await HTTP，失败回滚。菜单添加await业务成功后提示，不采用旧包本地
@@ -1187,9 +1193,9 @@ channel配置或forbidden判定。不相关逻辑不新增实施项；如果未�
 
 | 条目 | 证据（源码 + 官方锚点） | 现判定 |
 | --- | --- | --- |
-| 普通网络刷新与缓存恢复的 compactMap 编号 | 8.89 HD回调0x10df59978、Swift DataFactory 0x101a3e1dc→0x101a4340c→0x101a3e5a4、缓存恢复同链；源码 [AppRecommendationPage:15-41](../NeoBili/Core/Networking/AppRecommendationPage.swift#L15-L41) | NeoBili 不保存批次/原下标是已证事实，不是缺证据；9.13 编号选择机制另见残余（R11/R20） |
+| 普通网络刷新与缓存恢复的 compactMap 编号 | 8.89 HD回调0x10df59978、Swift DataFactory 0x101a3e1dc→0x101a4340c→0x101a3e5a4、缓存恢复同链；源码 [AppRecommendationPage:15-41](../NeoBili/Core/Networking/Recommendation/AppRecommendationPage.swift#L15-L41) | NeoBili 不保存批次/原下标是已证事实，不是缺证据；9.13 编号选择机制另见残余（R11/R20） |
 | 播放 stash、tracker 继承与时间回执的差异 | R13/R16/R17/R22 各自的 8.89 地址与源码锚点（见[源码锚点索引](#源码锚点索引本轮逐条核查)） | 差异方向与缺失实现已判定；9.13 是否要求这些字段另列残余 |
-| 应用定时心跳 | 8.89 Atomic 0x11487eac8、_fireDelegates 0x1149f2f10、startBeating；源码无对应实现（[AppBehaviorEncoder:6-36](../NeoBili/Core/Networking/AppBehaviorEncoder.swift#L6-L36)） | 缺口事实成立且可判定（R23）；不再追同一条链 |
+| 应用定时心跳 | 8.89 Atomic 0x11487eac8、_fireDelegates 0x1149f2f10、startBeating；源码无对应实现（[AppBehaviorEncoder:6-36](../NeoBili/Core/Networking/Reporting/AppBehaviorEncoder.swift#L6-L36)） | 缺口事实成立且可判定（R23）；不再追同一条链 |
 | Series/HD2 的请求与响应锚点 | 0x10411a640/0x10411a6e4/0x10411af68、HD2 0x10df58a10/0x10df58dfc；见[覆盖清单](CLIENT_NETWORK_PROTOCOLS.md#覆盖清单) | 请求与响应配置层已闭合；Series producer 已由 c2 §5 定位（loadBlocRequest→STLoadBloc requestWith:tab:→共享方法体 0x10411af6c），残余转“线上实验取值/tab 来源” |
 | 三次 feed/index 本地实测 | 本地实测：`DerivedData/Validation/recommendation-network-s1/` | 已闭合到“该端点与参数组合未拒绝错误 sign”；不能升级为签名被校验、ticket 有效或个性化已证 |
 | 公共时间辅助的错误路径与缓存持久化 | 8.89 `getLocalRealTimeIntervalWithSyncServer:` 0x115dab37c 只有成功 completion 在 0x115dab68c 清 flag；`requestWithOptions`(0x115dab524) 与 `requestAsync`(0x115dab544) 之间无第二次 handler 写入⇒errorHandler 为 nil，失败分支 0x116093d0c 直接退出。持久化经 BFCPreferences 动态属性层写 suite `BFCLaunchTimePreferences`，key=属性名 `boottime`/`slinterval`，两次独立 setter 非事务；suite 名字面量唯一引用 0x115dab184 | 已闭合（T1 findings P2）：失败或在途不清 flag，且不存在超时清 flag 路径。残余只剩非 ADRP 间接写入与运行期断点确认 |
@@ -1219,7 +1225,7 @@ channel配置或forbidden判定。不相关逻辑不新增实施项；如果未�
 | 条目 | 现有证据 | 下一步可执行动作 |
 | --- | --- | --- |
 | **R11-2 CardData witness +0x40 的字段归属（P0，阻挡曝光定稿；R11-1 已定稿）** | R11-1 定稿：0x101a3ed5c 的 +1 循环在 sub_101A3ECAC，是 Swift 标准库 sort 的归并 run 记账（0x101a3ecd4 `_minimumMergeRunLength`、0x101a3ed18 `_allocateBufferUninitialized`），不写任何卡片字段；`sub_101A3E5A4` 内 0x101a3e95c `add x26,x26,#1` 把 1-based 序号作 x0 传给 CardData 协议 witness 表 +0x40（0x101a3e98c `ldr x28,[x22,#0x40]`、0x101a3e9b0 `blr x28`）。**为什么不可判**：该 requirement 经协议 witness 间接派发，静态无法定位其写入字段 | `disassemble.py 0x101a40040 0x101a40180` 读 compactMap 里 CardData 的 allocObject/init 确定 +0x20/+0x28 是哪个协议 existential；再 `query_index.py '*CardData*WP*' 30` 枚举 +0x40 槽实现并反汇编；真机断点 0x101a3e9b0 读 x28 落到哪个实现 |
-| 设置功能/设置→参数的剩余同步与覆盖 | R01 表已到 8.89 builder 读值层；源码 [AppRecommendationProtocol:11-22](../NeoBili/Core/Networking/AppRecommendationProtocol.swift#L11-L22) 无对应状态源；T1 已证 gateway append-only 漏斗与组数组驱动，模块内次序可定、跨模块不可静态定序（组件由运行期元数据/witness 装配，无静态顺序表）；334 项表零引用。**为什么不可判**：跨模块次序属运行期；9.13 每项最终规则需抓包 | 追账号同步/覆盖次序与 9.13 每项最终规则；gateway 跨模块次序用运行期打印 `appendClass:` 入参（0x11609919c 下断点），静态映射不是替代 |
+| 设置功能/设置→参数的剩余同步与覆盖 | R01 表已到 8.89 builder 读值层；源码 [AppRecommendationProtocol:11-22](../NeoBili/Core/Networking/Recommendation/AppRecommendationProtocol.swift#L11-L22) 无对应状态源；T1 已证 gateway append-only 漏斗与组数组驱动，模块内次序可定、跨模块不可静态定序（组件由运行期元数据/witness 装配，无静态顺序表）；334 项表零引用。**为什么不可判**：跨模块次序属运行期；9.13 每项最终规则需抓包 | 追账号同步/覆盖次序与 9.13 每项最终规则；gateway 跨模块次序用运行期打印 `appendClass:` 入参（0x11609919c 下断点），静态映射不是替代 |
 | Swift 兴趣选择与重编号范围 | R11-1 已定稿（sub_101A3ECAC 的 +1 循环是 stdlib sort 记账，不写卡片字段）；sub_101A3E5A4 内以 1-based 序号调 CardData witness +0x40，字段归属见上方 P0 行。T2 S-1 把 helper 语义闭合到 `sub_101A538D8` 的三种提前返回与 `setContentOffset:` 调用。**为什么不可判**：编号循环边界未读出；回执账号所有权需运行期样本 | 反汇编 `0x101a53fd0–0x101a55004` 与 `0x101a5a800–0x101a5b600` 读编号循环边界；回执账号所有权追 `setSourceType:` 写入者 |
 | 缓存后端过期与活 VM 取消/账号边界 | R20 已有 flush 门控、key、weak-load 与 commit 点地址；T2 C-10 固定写入点 0x101a5a914（scene/version/expirationTime=0）与 FallbackCache 承接。**为什么不可判**：后端过期语义需服务端确认，跨账号污染未实测 | 过期语义交尾部 FallbackCache 章节（task-6）；本项只保留“活 VM 取消防串扰”追查 |
 | 登记资料的运行期取值与 wire 缺省（三字段/请求/回执/落盘已闭合） | 静态部分见「已闭合」表：classRef 0x11f7f02b8 仅 1 处引用；POST /x/resource/fingerprint；门禁 error nil+HTTP 200+data+bili_deviceId、不校验 code；保存 0x115fd74a4 + Keychain service 3。**为什么不可判**：GPB“未设置的可选标量不写 wire”属库语义推断、本镜像未验证，实际取值需运行期 | 真机断点 dump：`-[BFCDeviceToken serverBUVID]_block` 0x115fd72e4 的 `getDeviceInfo` 返回处读 AES 明文；9.13 抓包核回执字段；见[设备登记与访客生命周期](CLIENT_NETWORK_PROTOCOLS.md#设备登记与访客生命周期) |

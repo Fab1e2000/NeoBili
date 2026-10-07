@@ -21,6 +21,18 @@ struct AppRecommendationDisplay: Sendable {
     }
 
     @MainActor
+    static func currentScale() -> Double {
+        #if canImport(UIKit)
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        // Use logical display scale, not native pixel scaling or a captured phone's constant.
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return Double(scene?.screen.scale ?? 1)
+        #else
+        return 1
+        #endif
+    }
+
+    @MainActor
     static func current() -> Self? {
         #if canImport(UIKit)
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }

@@ -51,6 +51,45 @@ final class RecommendationBehaviorTests: XCTestCase {
         XCTAssertTrue(values.contains { $0.delivery == .checkpoint }, "independent history sync remains")
     }
 
+    func testRateBoundariesPauseBufferingSeekAndEOFKeepWeightedTimeSeparate() async throws {
+        let reports = BehaviorReports()
+        var clock = 0.0
+        let player = PlayerViewModel(bvid: "BVFixture", cid: 2, aid: 1,
+            watchReportReporter: { await reports.append($0) },
+            progressStore: PlaybackProgressStore(defaults: defaults()), watchProgressClock: { clock })
+        player.session.onEvent?(.duration(12))
+        player.session.onEvent?(.firstFrame)
+        player.session.onEvent?(.playing(true))
+        player.session.onEvent?(.position(0))
+        clock = 0.5; player.selectPlaybackRate(2)
+        clock = 1; player.session.onEvent?(.position(1.5)) // 0.5×1 + 0.5×2
+        clock = 2; player.session.onEvent?(.position(3.5))
+        player.pause()
+        clock = 12; player.selectPlaybackRate(0.5)
+        player.session.onEvent?(.playing(true))
+        player.session.onEvent?(.position(3.5))
+        clock = 14; player.session.onEvent?(.position(4.5))
+        player.session.onEvent?(.buffering(true))
+        clock = 24; player.selectPlaybackRate(2)
+        player.session.onEvent?(.buffering(false))
+        player.session.onEvent?(.position(4.5))
+        clock = 25; player.session.onEvent?(.position(6.5))
+        await player.seek(to: 10)
+        player.session.onEvent?(.seekCompleted(10))
+        clock = 35; player.session.onEvent?(.position(10))
+        clock = 36; player.session.onEvent?(.position(12))
+        player.session.onEvent?(.ended)
+        let values = await reports.waitForFinish()
+        let finish = try XCTUnwrap(values.last)
+        XCTAssertEqual(finish.position, -1)
+        XCTAssertEqual(finish.watchedTime, 6, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(finish.actualPlayedTime), 8.5, accuracy: 0.001)
+        XCTAssertEqual(finish.mobileParameters["played_time"], "6")
+        XCTAssertEqual(finish.mobileParameters["actual_played_time"], "8")
+        XCTAssertEqual(finish.mobileParameters["paused_time"], "10")
+        player.stop()
+    }
+
     func testTerminalBoundarySendsOnlyFinishHistoryForEOFAndStop() async {
         for eof in [true, false] {
             let reports = BehaviorReports()
@@ -210,6 +249,7 @@ final class RecommendationBehaviorTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
         XCTAssertNil(request.value(forHTTPHeaderField: "authorization"))
         XCTAssertEqual(request.value(forHTTPHeaderField: "session_id"), current.requestSession)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Neuron-Events"), "1")
         let proto = try decodeRecord(try AppProto.gunzip(XCTUnwrap(request.httpBody)))
         XCTAssertEqual(proto.text(1), RecommendationClick.event)
         XCTAssertEqual(proto.text(4), "42")

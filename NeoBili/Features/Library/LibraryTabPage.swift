@@ -29,7 +29,7 @@ struct LibraryTabPage: View {
     @ViewBuilder
     private var content: some View {
         switch tab {
-        case .watchLater: WatchLaterView()
+        case .watchLater: WatchLaterView(isTabRoot: true)
         case .favorites: FavoritesView()
         case .history: HistoryView()
         default: EmptyView()

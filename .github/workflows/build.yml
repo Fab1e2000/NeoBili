@@ -1,7 +1,7 @@
 name: Build
 
 on:
-  # 开发在 develop 上进行，经 PR 合入 main：只在 PR 时测试，不再监听分支推送，
+  # 功能分支经 PR 合入 develop，发布再经 PR 合入 main；只在 PR 时测试，
   # 避免同一提交被「推送」和「PR」各跑一遍、合并后推送 main 再跑一遍。
   # 推送版本标签时由 release.yml 负责构建。
   pull_request:

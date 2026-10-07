@@ -53,7 +53,10 @@ final class AppProtocolIntegrationTests: XCTestCase {
 
     func testLogTransportDoesNotAttachAccessKeyAndKeepsOpaqueBody() throws {
         let body = Data([31, 139, 8, 0])
-        let request = try AppRequestEncoder().encode(.unrealtimeLog(body: body), context: context())
+        var context = context()
+        context.headers["Neuron-Events"] = "999"
+        let request = try AppRequestEncoder().encode(.unrealtimeLog(body: body, eventCount: 1), context: context)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Neuron-Events"), "1")
         XCTAssertEqual(request.url?.absoluteString, "https://dataflow.biliapi.com/log/pbmobile/unrealtime?ios")
         XCTAssertEqual(request.httpBody, body)
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Encoding"), "gzip")

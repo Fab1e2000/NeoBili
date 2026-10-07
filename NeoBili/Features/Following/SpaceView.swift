@@ -5,6 +5,7 @@ import SwiftUI
 /// 排版参考 B 站客户端的空间页，但只保留看内容需要的部分：充电、大航海、
 /// 特别关注这些和播放无关的入口都不做。
 struct SpaceView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appThemeColor) private var themeColor
     let up: FollowedUp
 
@@ -249,7 +250,7 @@ struct SpaceView: View {
     /// 头图。头像压在它的左下角，一半探出到下面的信息区里。
     private var banner: some View {
         Group {
-            if let url = viewModel.card?.secureBannerURL {
+            if let url = viewModel.card?.bannerURL(isDark: colorScheme == .dark) {
                 CoverThumbnail(url: url, aspectRatio: SpaceHeaderLayout.bannerAspectRatio)
             } else {
                 // 没设置过头图（或者名片还没回来）时给一层渐变，

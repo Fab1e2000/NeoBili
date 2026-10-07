@@ -22,15 +22,18 @@ struct RecommendationBatch {
     let nextRequest: RecommendationRequest?
     let refreshConfig: AppRecommendationRefreshConfig?
     let appCursor: Int?
+    let refreshCursor: Int?
     let exposurePolicy: RecommendationExposurePolicy?
 
     init(videos: [VideoSummary], nextRequest: RecommendationRequest?,
          refreshConfig: AppRecommendationRefreshConfig? = nil, appCursor: Int? = nil,
+         refreshCursor: Int? = nil,
          exposurePolicy: RecommendationExposurePolicy? = nil) {
         self.videos = videos
         self.nextRequest = nextRequest
         self.refreshConfig = refreshConfig
         self.appCursor = appCursor ?? nextRequest?.appCursor
+        self.refreshCursor = refreshCursor
         self.exposurePolicy = exposurePolicy
     }
 }
@@ -69,15 +72,22 @@ extension BiliAPI {
             headers: headers, expectedSessionID: account.sessionID, requiresAccountCredential: true
         )
         AppRecommendationSession.shared.recordBanner(page.bannerHash, context: context)
-        let batch = page.batch(for: request, filter: .current())
+        return appRecommendationBatch(page: page, request: request, filter: .current(), accountSessionID: account.sessionID)
+    }
+
+    /// Bind response cards to the requesting account without losing page-level metadata.
+    static func appRecommendationBatch(page: AppRecommendationPage, request: RecommendationRequest,
+                                       filter: RecommendationFilter, accountSessionID: UUID) -> RecommendationBatch {
+        let batch = page.batch(for: request, filter: filter)
         let videos = batch.videos.map { video in
             var copy = video
-            copy.playbackEntry.loginSessionID = account.sessionID
-            copy.recommendationFeedback = try? feedbackOptions(for: copy, expectedSessionID: account.sessionID)
+            copy.playbackEntry.loginSessionID = accountSessionID
+            copy.recommendationFeedback = try? feedbackOptions(for: copy, expectedSessionID: accountSessionID)
             return copy
         }
         return RecommendationBatch(videos: videos, nextRequest: batch.nextRequest,
-            refreshConfig: batch.refreshConfig, appCursor: batch.appCursor, exposurePolicy: batch.exposurePolicy)
+            refreshConfig: batch.refreshConfig, appCursor: batch.appCursor,
+            refreshCursor: batch.refreshCursor, exposurePolicy: batch.exposurePolicy)
     }
 
     /// 「不感兴趣」：`reason` 是用户在卡片原因里选的一项，「我不想看」或「反馈」。

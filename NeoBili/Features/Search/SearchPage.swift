@@ -17,7 +17,7 @@ struct SearchPage: View {
 
     /// 只在搜索首页（历史/热搜）显示标题；输入、联想和结果页让搜索框顶到最上方。
     private var showsHeader: Bool {
-        !isFocused && !viewModel.isShowingSuggestions && !viewModel.hasSubmittedSearch
+        !isFocused && !viewModel.hasSubmittedSearch
     }
 
     /// 标题固定时常驻；随内容滚动时，上滑后收起。
@@ -30,7 +30,9 @@ struct SearchPage: View {
         // Group distributes modifiers onto the changing content branch, which
         // can recreate the input and invoke onDisappear on the first character.
         VStack(spacing: 0) {
-            if viewModel.isShowingSuggestions {
+            if isFocused && viewModel.trimmedQuery.isEmpty {
+                Color.clear
+            } else if isFocused {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if viewModel.suggestions.isEmpty {
@@ -90,6 +92,9 @@ struct SearchPage: View {
                     PageHeader(title: String(localized: "搜索"))
                         .padding(.horizontal, 20)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
+                        // Move the avatar content and its separately rendered glass
+                        // surface as one geometry during header insertion/removal.
+                        .geometryGroup()
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
                 HomeSearchBar(text: Binding(get: { viewModel.query }, set: { viewModel.query = $0 }),

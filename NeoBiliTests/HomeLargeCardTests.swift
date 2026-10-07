@@ -110,6 +110,68 @@ final class HomeLargeCardTests: XCTestCase {
         XCTAssertEqual(report.mobileParameters["last_play_progress_time"],"151")
     }
 
+    func testScrollingMixedCardsKeepsVisibleIdentityAndGeometry() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        let videos = (0..<120).map { video($0, large: $0 % 17 == 8) }
+        let model = HomeViewModel(fetchRecommendations: { _ in .init(videos: [], nextRequest: nil) })
+        let host = UIHostingController(rootView: HomeFeedCollection(
+            rows: HomeFeedRow.group(videos.map(HomeFeedItem.video)), viewModel: model,
+            hidesPortraitVideos: false, isRefreshing: false, isInteractionEnabled: true,
+            refreshDistance: 100, controller: HomeFeedScrollController(), onRefresh: {}, onOpenLastSeen: {}, pinsTitleBar: true)
+            .environment(AccountStore(monitorNetwork: false)).environment(NowPlayingStore()).environment(ActionFeedback())
+            .environment(\.videoCardAnimationOverrides, VideoCardAnimationOverrides(enter: false, exit: false)))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        func descendants<T: UIView>(_ view: UIView, of type: T.Type) -> [T] {
+            (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
+        }
+        let collection = try XCTUnwrap(descendants(host.view, of: UICollectionView.self).first)
+        let source = try XCTUnwrap(collection.dataSource as? UICollectionViewDiffableDataSource<HomeFeedCollection.Section, String>)
+        XCTAssertEqual(source.snapshot().itemIdentifiers, videos.map { HomeFeedItem.video($0).id })
+        XCTAssertEqual(collection.numberOfSections, 15, "Seven large cards separate eight runs of normal cards")
+        let byID = Dictionary(uniqueKeysWithValues: videos.map { (HomeFeedItem.video($0).id, $0) })
+        var observedCells = Set<ObjectIdentifier>()
+        var observations = 0
+        var transientMismatches = 0
+        func inspect(assertStable: Bool) throws {
+            for path in collection.indexPathsForVisibleItems {
+                guard let id = source.itemIdentifier(for: path), let video = byID[id],
+                      let cell = collection.cellForItem(at: path), cell.frame.intersects(collection.bounds) else { continue }
+                observedCells.insert(ObjectIdentifier(cell))
+                let cards = descendants(cell, of: NativeHomeVideoCard.CardView.self)
+                let matches = cards.count == 1 && cards[0].accessibilityLabel?.hasPrefix(video.title + "，") == true
+                    && abs(cards[0].bounds.width - cell.bounds.width) < 1
+                    && abs(cards[0].bounds.height - cell.bounds.height) < 1
+                observations += 1
+                if !matches { transientMismatches += 1 }
+                if assertStable { XCTAssertTrue(matches, "Visible card \(id) must match its cell immediately after rendering; card bounds \(cards.first?.bounds ?? .zero), cell \(cell.bounds)") }
+            }
+        }
+        let start = ProcessInfo.processInfo.systemUptime
+        let maximum = max(0, collection.contentSize.height - collection.bounds.height)
+        let offsets = Array(stride(from: CGFloat(0), through: min(maximum, 6000), by: CGFloat(180)))
+        for offset in offsets + offsets.reversed() {
+            collection.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+            collection.layoutIfNeeded()
+            try inspect(assertStable: false)
+            // One frame, rather than waiting for a visibly broken cell to settle.
+            try await Task.sleep(for: .milliseconds(16))
+            try inspect(assertStable: true)
+        }
+        XCTAssertGreaterThan(observations, 100)
+        XCTAssertEqual(transientMismatches, 0, "The immediate layout pass must not expose a previous card or size")
+        XCTAssertLessThan(observedCells.count, videos.count, "Exercise cell reuse, not only initial creation")
+        let metrics = "sections=\(collection.numberOfSections), uniqueCells=\(observedCells.count), observations=\(observations), transientMismatches=\(transientMismatches), elapsed=\(ProcessInfo.processInfo.systemUptime - start)"
+        print("MIXED_FEED_SCROLL \(metrics)")
+        let attachment = XCTAttachment(string: metrics)
+        attachment.name = "mixed-feed-scroll-metrics"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
     func testLeavingCardCancelsLateManifestAndNoPlaybackIsReported() async throws {
         let gate=PreviewGate()
         let preview=HomeInlinePreview(loader:{_,_,_ in await gate.wait();return (1,.init(video:.init(primary:URL(string:"https://example.invalid/video")!,backups:[]),audio:nil,duration:241))})

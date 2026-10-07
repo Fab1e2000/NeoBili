@@ -29,11 +29,11 @@ struct RecommendationSettingsView: View {
             }
 
             Section {
-                Toggle("保留首页推荐刷新", isOn: $keepsLastData)
+                Toggle("刷新后保留上次数据", isOn: $keepsLastData)
                 Toggle("显示上次看到位置提示", isOn: $showsLastSeenTip)
                     .disabled(!keepsLastData)
             } footer: {
-                Text("下拉刷新时保留上次内容，并在上次刷新的位置显示提示。")
+                Text("开启后，新推荐后面保留旧卡片；关闭后，下次刷新会替换整个列表。默认开启。")
             }
 
             Section {
@@ -88,6 +88,9 @@ struct RecommendationSettingsView: View {
     private var appCredentialFooter: String {
         let base = String(localized: "关闭后改用网页端推荐。若网页端推荐不太符合预期，可切换回 App 端推荐。")
         guard account.isLoggedIn, !account.hasAppCredential else { return base }
+        if account.needsAppReauthorization {
+            return base + String(localized: "App 登录凭据已失效，请使用当前账号的短信验证码重新授权。网页登录状态已保留。")
+        }
         let hint = base + String(localized: "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。请使用当前账号的短信验证码重新授权。")
         guard let credentialError = credentialError ?? account.appCredentialError else { return hint }
         return hint + "\n" + String(localized: "获取失败：\(credentialError)")

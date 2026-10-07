@@ -23,6 +23,7 @@ final class PlayerViewModel {
 
     func selectPlaybackRate(_ rate: Double) {
         guard !isStopped, PlaybackSpeed.options.contains(rate), playbackRate != rate else { return }
+        watchProgress.setPlaybackRate(rate, at: watchProgressClock())
         playbackRate = rate
         session.setPlaybackRate(rate)
         SystemNowPlayingCenter.shared.updateElapsed(currentTime, sessionID: systemMediaSessionID, force: true)
@@ -845,6 +846,7 @@ final class PlayerViewModel {
 
     private func resetWatchReport() {
         watchProgress = PlaybackWatchProgress()
+        watchProgress.setPlaybackRate(playbackRate, at: watchProgressClock())
         watchStartTimestamp = nil
         watchPlaybackSession = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         hasSentWatchStart = false
