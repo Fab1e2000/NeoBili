@@ -34,19 +34,32 @@ final class HomeInlinePreview {
 
     init(loader: @escaping @Sendable (VideoSummary, UUID, UUID) async throws -> (Int, PlaybackSource) = { video, owner, account in
         guard !AppNetwork.isRegression else { throw CancellationError() }
-        let cid: Int
-        if video.cid > 0 { cid = video.cid }
-        else { cid = try await VideoPreparationCache.shared.detail(for: video.bvid).cid }
-        let payload = try await VideoPreparationCache.shared.playbackURL(bvid: video.bvid, cid: cid,
-            ownerID: owner, expectedSessionID: account)
-        var config = VideoPlaybackConfiguration.fastStart; config.quality = 32
-        return (cid, try PlaybackSourceBuilder.makeSource(from: payload, configuration: config))
+        return try await HomeInlinePreview.loadPreviewSource(video, owner: owner, account: account)
     }, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          reporter: (@Sendable (PlaybackWatchReport) async -> Void)? = nil,
          opener: @escaping @MainActor (MPVPlayerSession, PlaybackSource) async throws -> Void = { try await $0.open(source: $1) },
          sessionFactory: @escaping @MainActor (VideoPlaybackConfiguration) -> MPVPlayerSession = { MPVPlayerSession(configuration: $0) }) {
         loadSource = loader; self.clock = clock; injectedReporter = reporter; openSource = opener
         makeSession = sessionFactory
+    }
+
+    nonisolated static func loadPreviewSource(_ video: VideoSummary, owner: UUID, account: UUID,
+                                             cache: VideoPreparationCache = .shared) async throws -> (Int, PlaybackSource) {
+        let cid: Int
+        if video.cid > 0 { cid = video.cid }
+        else { cid = try await cache.detail(for: video.bvid).cid }
+        try Task.checkCancellation()
+        let payload = try await withTaskCancellationHandler {
+            try await cache.playbackURL(bvid: video.bvid, cid: cid,
+                                        ownerID: owner, expectedSessionID: account)
+        } onCancel: {
+            // The card can omit CID; cancel the resolved request, not (bvid, 0).
+            Task { await cache.cancelPlaybackURL(bvid: video.bvid, cid: cid,
+                                                 ownerID: owner, sessionID: account) }
+        }
+        try Task.checkCancellation()
+        var config = VideoPlaybackConfiguration.fastStart; config.quality = 32
+        return (cid, try PlaybackSourceBuilder.makeSource(from: payload, configuration: config))
     }
 
     func select(_ video: VideoSummary) {

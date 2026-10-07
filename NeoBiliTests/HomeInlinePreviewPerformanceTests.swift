@@ -5,8 +5,8 @@ import XCTest
 
 @MainActor
 final class HomeInlinePreviewPerformanceTests: XCTestCase {
-    private func video(_ id: Int) -> VideoSummary {
-        var video = VideoSummary(bvid: "preview-performance-\(id)", aid: id, cid: id,
+    private func video(_ id: Int, cid: Int? = nil) -> VideoSummary {
+        var video = VideoSummary(bvid: "preview-performance-\(id)", aid: id, cid: cid ?? id,
             title: "Preview fixture", pic: "", desc: "", duration: 120, pubdate: 0,
             owner: .init(mid: 0, name: "Fixture", face: ""),
             stat: .init(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0))
@@ -95,6 +95,35 @@ final class HomeInlinePreviewPerformanceTests: XCTestCase {
         XCTAssertEqual(configurations.first?.silentPreview, true)
         XCTAssertEqual(configurations.first?.maxBufferBytes, 8 * 1024 * 1024)
         XCTAssertEqual(configurations.first?.maxBackBufferBytes, 0)
+    }
+
+    func testStoppingCardWithoutCIDCancelsResolvedManifestFlight() async throws {
+        let card = video(10, cid: 0)
+        let started = expectation(description: "Resolved manifest started")
+        let cancelled = expectation(description: "Underlying resolved manifest cancelled")
+        let account = DeviceIdentity.shared.loginSessionID
+        let cache = VideoPreparationCache(detailLoader: { bvid in
+            VideoDetail(bvid: bvid, aid: 10, cid: 777, title: "Fixture", desc: "", pic: "",
+                duration: 120, pubdate: 0, owner: .init(mid: 0, name: "Fixture", face: ""),
+                stat: .init(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0),
+                pages: [], tname: nil, copyright: nil, ugcSeason: nil)
+        }, playbackLoader: { _, cid in
+            XCTAssertEqual(cid, 777)
+            return try await withTaskCancellationHandler {
+                started.fulfill()
+                try await Task.sleep(for: .seconds(60))
+                throw URLError(.timedOut)
+            } onCancel: { cancelled.fulfill() }
+        }, sessionProvider: { account })
+        let preview = HomeInlinePreview(loader: { video, owner, account in
+            try await HomeInlinePreview.loadPreviewSource(video, owner: owner, account: account, cache: cache)
+        })
+        defer { preview.stop() }
+        preview.select(card)
+        await fulfillment(of: [started], timeout: 2)
+        preview.stop()
+        await fulfillment(of: [cancelled], timeout: 2)
+        XCTAssertNil(preview.session)
     }
 
     func testRepeatedIdleStopsDoNotInvalidateObservedState() {

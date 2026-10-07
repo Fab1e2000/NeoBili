@@ -38,8 +38,8 @@ enum PasswordCipher {
     }
 
     /// PEM(SPKI) → DER。Security 框架的 `SecKeyCreateWithData` 只认 PKCS#1 裸
-    /// 公钥，而 B 站返回的是带头部的 SPKI，需要先定位 rsaEncryption OID，
-    /// 剥掉 SPKI 头。两种格式都尝试，兼容服务端未来直接下发裸公钥。
+    /// 公钥，而服务端可能返回带头部的 SPKI。按 ASN.1 结构校验 rsaEncryption OID
+    /// 和长度后提取裸公钥；也接受直接下发的 PKCS#1，不依赖固定头长或密钥位数。
     private static func secKey(fromPEM pem: String) throws -> SecKey {
         let base64 = pem
             .replacingOccurrences(of: "-----BEGIN PUBLIC KEY-----", with: "")
@@ -51,11 +51,10 @@ enum PasswordCipher {
             throw CipherError.malformedPublicKey
         }
 
-        let pkcs1 = stripSPKIHeaderIfPresent(der) ?? der
+        let pkcs1 = try rsaPKCS1Data(der)
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
-            kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
-            kSecAttrKeySizeInBits as String: 2048
+            kSecAttrKeyClass as String: kSecAttrKeyClassPublic
         ]
         guard let key = SecKeyCreateWithData(pkcs1 as CFData, attributes as CFDictionary, nil) else {
             throw CipherError.malformedPublicKey
@@ -63,19 +62,47 @@ enum PasswordCipher {
         return key
     }
 
-    /// SPKI 结构固定为 `SEQUENCE { SEQUENCE { OID rsaEncryption, NULL }, BIT STRING { PKCS#1 } }`。
-    /// 找到 OID 标记后跳过 BIT STRING 的 tag、长度和未用位数占位字节，剩下的就是 PKCS#1。
-    private static func stripSPKIHeaderIfPresent(_ der: Data) -> Data? {
-        // 06 09 2A 86 48 86 F7 0D 01 01 01 = OID rsaEncryption, 05 00 = NULL
-        let marker: [UInt8] = [0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01, 0x05, 0x00]
-        guard let markerRange = der.firstRange(of: Data(marker)) else { return nil }
-        var start = markerRange.upperBound
-        let bytes = [UInt8](der[start...].prefix(5))
-        // BIT STRING：03 82 <len_hi> <len_lo> 00 —— 最后一个 0x00 是未用位数。
-        guard bytes.count >= 5, bytes[0] == 0x03 else { return nil }
-        start += 5
-        guard start < der.count, der[start] == 0x30 else { return nil }
-        return der.subdata(in: start..<der.count)
+    /// Decode DER lengths instead of assuming a 2048-bit SPKI header size.
+    /// Security derives the RSA key size from the extracted modulus.
+    static func rsaPKCS1Data(_ der: Data) throws -> Data {
+        var root = DERReader(bytes: Array(der))
+        var sequence = DERReader(bytes: try root.read(tag: 0x30))
+        guard root.isAtEnd else { throw CipherError.malformedPublicKey }
+        if sequence.bytes.first == 0x02 { return der } // PKCS#1; Security validates the integers.
+        var algorithm = DERReader(bytes: try sequence.read(tag: 0x30))
+        let rsaOID: [UInt8] = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]
+        guard try algorithm.read(tag: 0x06) == rsaOID else { throw CipherError.malformedPublicKey }
+        if !algorithm.isAtEnd {
+            guard try algorithm.read(tag: 0x05).isEmpty else { throw CipherError.malformedPublicKey }
+        }
+        let bitString = try sequence.read(tag: 0x03)
+        guard algorithm.isAtEnd, sequence.isAtEnd, bitString.first == 0,
+              bitString.dropFirst().first == 0x30 else { throw CipherError.malformedPublicKey }
+        return Data(bitString.dropFirst())
+    }
+
+    private struct DERReader {
+        let bytes: [UInt8]
+        var offset = 0
+        var isAtEnd: Bool { offset == bytes.count }
+
+        mutating func read(tag: UInt8) throws -> [UInt8] {
+            guard bytes.count - offset >= 2, bytes[offset] == tag else { throw CipherError.malformedPublicKey }
+            offset += 1
+            let first = bytes[offset]; offset += 1
+            var length = Int(first)
+            if first & 0x80 != 0 {
+                let count = Int(first & 0x7F)
+                guard count > 0, count <= 4, count <= bytes.count - offset,
+                      bytes[offset] != 0 else { throw CipherError.malformedPublicKey }
+                length = 0
+                for _ in 0..<count { length = length * 256 + Int(bytes[offset]); offset += 1 }
+                guard length >= 128 else { throw CipherError.malformedPublicKey }
+            }
+            guard length <= bytes.count - offset else { throw CipherError.malformedPublicKey }
+            defer { offset += length }
+            return Array(bytes[offset..<(offset + length)])
+        }
     }
 
     private static func md5Hex(_ string: String) -> String {

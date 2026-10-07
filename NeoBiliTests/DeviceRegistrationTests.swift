@@ -78,6 +78,44 @@ final class DeviceRegistrationTests: XCTestCase {
         XCTAssertEqual(count,1)
     }
 
+    func testRSAParsesSPKILengthsAndRoundTripsBothKeySizes() throws {
+        func tlv(_ tag: UInt8, _ body: Data) -> Data {
+            let length: [UInt8] = body.count < 128 ? [UInt8(body.count)]
+                : body.count < 256 ? [0x81, UInt8(body.count)]
+                : [0x82, UInt8(body.count >> 8), UInt8(body.count & 255)]
+            return Data([tag] + length) + body
+        }
+        for size in [1024, 2048] {
+            let secret = try XCTUnwrap(SecKeyCreateRandomKey([
+                kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+                kSecAttrKeySizeInBits as String: size
+            ] as CFDictionary, nil))
+            let publicKey = try XCTUnwrap(SecKeyCopyPublicKey(secret))
+            let raw = try XCTUnwrap(SecKeyCopyExternalRepresentation(publicKey, nil) as Data?)
+            let algorithm = Data([0x30, 0x0D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 1, 1, 1, 5, 0])
+            let spki = tlv(0x30, algorithm + tlv(0x03, Data([0]) + raw))
+            XCTAssertEqual(try PasswordCipher.rsaPKCS1Data(spki), raw)
+            XCTAssertEqual(try PasswordCipher.rsaPKCS1Data(raw), raw)
+            let pem = "-----BEGIN PUBLIC KEY-----\n\(spki.base64EncodedString())\n-----END PUBLIC KEY-----"
+            let message = Data("independent-rsa-fixture".utf8)
+            let encrypted = try PasswordCipher.encryptRSA(message, publicKeyPEM: pem)
+            XCTAssertEqual(encrypted.count, size / 8)
+            XCTAssertEqual(SecKeyCreateDecryptedData(secret, .rsaEncryptionPKCS1, encrypted as CFData, nil) as Data?, message)
+            XCTAssertThrowsError(try PasswordCipher.rsaPKCS1Data(spki.dropLast()))
+            XCTAssertThrowsError(try PasswordCipher.rsaPKCS1Data(spki + Data([0])))
+        }
+        for malformed: Data in [Data(), Data([0x30, 0x80]), Data([0x30, 0x84, 255, 255, 255, 255])] {
+            XCTAssertThrowsError(try PasswordCipher.rsaPKCS1Data(malformed))
+        }
+    }
+
+    func testBundledFingerprintPublicKeyEncryptsWithoutSubstitution() throws {
+        let body = try IOSFingerprintProtocol.encryptedBody(material: AppProto.string(1, "ios"), key: Data(1...16))
+        let values = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+        XCTAssertEqual(try bytes(XCTUnwrap(values["key"])).count, 128)
+        XCTAssertFalse(try XCTUnwrap(values["content"]).isEmpty)
+    }
+
     private func bytes(_ hex: String) throws -> Data {
         var bytes = Data(), index = hex.startIndex
         while index < hex.endIndex {
