@@ -63,10 +63,10 @@ final class AppRelatedTests: XCTestCase {
         let model = VideoDetailViewModel(bvid: "BV17x411w7KC", likeStore: likeStore,
                                         identity: identity, relatedClient: client)
         await model.loadRelated()
-        XCTAssertEqual(RelatedProtocol.requests.withLock { $0.count }, 1,
+        XCTAssertEqual(RelatedProtocol.requests.withLock { $0.count }, 2,
                        "Distinct local like-state and credential sessions must not cancel related requests")
         await model.loadRelated()
-        XCTAssertEqual(RelatedProtocol.requests.withLock { $0.count }, 1)
+        XCTAssertEqual(RelatedProtocol.requests.withLock { $0.count }, 2)
     }
     func testPaginationStopsOnRepeatedServerCursorAndInitialIsNotRefetched() async throws {
         let cursor = AppProto.string(2, "same-cursor")
@@ -86,6 +86,86 @@ final class AppRelatedTests: XCTestCase {
         XCTAssertNil(cursors[0])
         XCTAssertEqual(cursors[1], cursor)
         XCTAssertFalse(model.canLoadMoreRelated)
+    }
+
+    func testMissingViewModuleFetchesAppRelatedFeedOnce() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "related-fallback-\(UUID().uuidString)"))
+        let identity = DeviceIdentity(defaults: defaults, credentials: .memory(), allowsNetwork: false)
+        let login = identity.loginSessionID
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RelatedProtocol.self]
+        let transport = URLSession(configuration: configuration)
+        defer { transport.invalidateAndCancel(); RelatedProtocol.payloads.withLock { $0 = [] } }
+        let client = APIClient(session: transport, appAuthentication: {
+            .init(accessKey: "fixture", mid: 42, sessionID: login)
+        })
+        let basic = AppProto.string(1, "Related fixture") + AppProto.string(3, "https://example.invalid/cover")
+            + AppProto.integer(12, 170001) + AppProto.string(5, "fixture-track")
+        let card = AppProto.integer(1, 1) + AppProto.bytes(2, AppProto.integer(1, 60)) + AppProto.bytes(12, basic)
+        let cursor = AppProto.string(2, "next")
+        RelatedProtocol.requests.withLock { $0 = [] }
+        RelatedProtocol.payloads.withLock { $0 = [Data(), AppProto.bytes(1, card) + AppProto.bytes(2, cursor)] }
+        let page = try await BiliAPI.appRelatedPage(bvid: "BV17x411w7KC", aid: 170001,
+            entry: .init(source: .history), playbackSession: "same-playback", expectedSessionID: login,
+            client: client, identity: identity)
+        XCTAssertEqual(page.videos.count, 1)
+        XCTAssertEqual(page.pagination, cursor)
+        XCTAssertEqual(page.videos.first?.playbackEntry.parameters(for: login)["track_id"], "fixture-track")
+        let requests = RelatedProtocol.requests.withLock { $0 }
+        XCTAssertEqual(requests.map { $0.url!.lastPathComponent }, ["View", "RelatesFeed"])
+        let more = try AppProto(AppProto.unframe(XCTUnwrap(requests.last?.httpBody)))
+        XCTAssertEqual(more.text(8), "same-playback")
+        XCTAssertEqual(more.text(3), "64")
+        XCTAssertEqual(more.data(7), Data())
+
+        // A present but empty module must not trigger an extra request.
+        let view = AppProto.bytes(5, AppProto.bytes(1, AppProto.bytes(2,
+            AppProto.bytes(2, AppProto.bytes(22, Data())))))
+        RelatedProtocol.requests.withLock { $0 = [] }
+        RelatedProtocol.payloads.withLock { $0 = [view] }
+        let empty = try await BiliAPI.appRelatedPage(bvid: "BV17x411w7KC", playbackSession: "next-playback",
+            expectedSessionID: login, client: client, identity: identity)
+        XCTAssertTrue(empty.videos.isEmpty)
+        XCTAssertTrue(empty.hasRelatedModule)
+        XCTAssertEqual(RelatedProtocol.requests.withLock { $0.count }, 1)
+    }
+
+    func testFailedRelatedLoadShowsErrorAndCanRetry() async throws {
+        var attempts = 0
+        let page = try AppRelatedPage(payload: Data(), isView: false, accountSession: UUID())
+        let model = VideoDetailViewModel(bvid: "BVFixture", relatedPageLoader: { _ in
+            attempts += 1
+            if attempts == 1 { throw URLError(.notConnectedToInternet) }
+            return page
+        })
+        await model.loadRelated()
+        XCTAssertNotNil(model.relatedErrorMessage)
+        XCTAssertFalse(model.isLoadingRelated)
+        await model.retryRelated()
+        XCTAssertNil(model.relatedErrorMessage)
+        XCTAssertEqual(attempts, 2)
+        await model.loadRelated()
+        XCTAssertEqual(attempts, 2, "Successful empty responses are not transport failures")
+    }
+
+    func testFailedPaginationWaitsForExplicitRetryAndRetainsCursor() async throws {
+        let cursor = AppProto.string(2, "next-page")
+        let page = try AppRelatedPage(payload: AppProto.bytes(2, cursor), isView: false, accountSession: UUID())
+        var cursors: [Data?] = []
+        let model = VideoDetailViewModel(bvid: "BVFixture", relatedPageLoader: { value in
+            cursors.append(value)
+            if cursors.count == 2 { throw URLError(.timedOut) }
+            return page
+        })
+        await model.loadRelated()
+        await model.loadMoreRelated()
+        XCTAssertNotNil(model.relatedErrorMessage)
+        await model.loadMoreRelated()
+        XCTAssertEqual(cursors.count, 2, "Scrolling must not continually retry a failed page")
+        await model.retryRelated()
+        XCTAssertNil(model.relatedErrorMessage)
+        XCTAssertEqual(cursors.count, 3)
+        XCTAssertEqual(cursors[2], cursor)
     }
 
     func testMalformedFramesAndProtobufAreRejected() throws {
@@ -148,13 +228,28 @@ final class AppRelatedTests: XCTestCase {
 
 private final class RelatedProtocol: URLProtocol, @unchecked Sendable {
     static let requests = Mutex<[URLRequest]>([])
+    static let payloads = Mutex<[Data]>([])
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        Self.requests.withLock { $0.append(request) }
+        var captured = request
+        if captured.httpBody == nil, let stream = captured.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var body = Data()
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while true {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count <= 0 { break }
+                body.append(contentsOf: buffer.prefix(count))
+            }
+            captured.httpBody = body
+        }
+        Self.requests.withLock { $0.append(captured) }
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200,
             httpVersion: nil, headerFields: ["Content-Type": "application/grpc", "grpc-status": "0"])!, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: AppProto.frame(Data()))
+        let payload = Self.payloads.withLock { $0.isEmpty ? Data() : $0.removeFirst() }
+        client?.urlProtocol(self, didLoad: AppProto.frame(payload))
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}

@@ -4,6 +4,8 @@ struct AppRelatedPage {
     let videos: [VideoSummary]
     let pagination: Data?
     let canLoadMore: Bool
+    /// Some server device cohorts omit this module from View and require RelatesFeed.
+    let hasRelatedModule: Bool
 
     static func viewRequest(bvid: String, aid: Int, entry: PlaybackEntry, playbackSession: String, accountSession: UUID) -> Data {
         let source = entry.parameters(for: accountSession)
@@ -31,10 +33,12 @@ struct AppRelatedPage {
         var cards: [AppProto] = []
         var cursor: Data?
         var more = false
+        var foundModule = !isView
         if isView {
             for tab in response.messages(5).flatMap({ $0.messages(1) }) {
                 for module in tab.messages(2).flatMap({ $0.messages(2) }) {
                     for relates in module.messages(22) {
+                        foundModule = true
                         cards += relates.messages(1)
                         if let config = relates.messages(2).first { cursor = config.data(3); more = config.number(4) != 0 }
                     }
@@ -44,6 +48,7 @@ struct AppRelatedPage {
             cards = response.messages(1); cursor = response.data(2)
             more = cursor.flatMap { try? AppProto($0).text(2) }?.isEmpty == false
         }
+        hasRelatedModule = foundModule
         pagination = cursor; canLoadMore = more
         videos = cards.compactMap { card in
             guard card.number(1) == 1, let basic = card.messages(12).first, let av = card.messages(2).first,

@@ -22,7 +22,15 @@ extension BiliAPI {
         let method = pagination == nil ? "View" : "RelatesFeed"
         let payload = try await client.appGRPC(path: "bilibili.app.viewunite.v1.View/" + method,
                                               payload: request, expectedSessionID: expectedSessionID, headers: headers)
-        return try AppRelatedPage(payload: payload, isView: pagination == nil, accountSession: expectedSessionID)
+        let page = try AppRelatedPage(payload: payload, isView: pagination == nil, accountSession: expectedSessionID)
+        guard pagination == nil, !page.hasRelatedModule else { return page }
+        // View may omit the related module for this device. Fetch the App feed once;
+        // an explicitly empty module remains an empty result, and errors are not masked.
+        let firstPage = AppRelatedPage.moreRequest(bvid: bvid, aid: aid, entry: entry,
+            playbackSession: playbackSession, accountSession: expectedSessionID, pagination: Data())
+        let related = try await client.appGRPC(path: "bilibili.app.viewunite.v1.View/RelatesFeed",
+            payload: firstPage, expectedSessionID: expectedSessionID, headers: headers)
+        return try AppRelatedPage(payload: related, isView: false, accountSession: expectedSessionID)
     }
 
     static func relatedVideos(bvid: String) async throws -> [VideoSummary] {

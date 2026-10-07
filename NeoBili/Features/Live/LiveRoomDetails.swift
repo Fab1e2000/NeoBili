@@ -44,27 +44,34 @@ struct LiveRoomOwnerRow: View {
             }
             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
 
-            Button(action: onToggleFollow) {
-                Text(followTitle)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(isFollowing == true || isOwnAccount ? Color.primary : Color.white)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 36)
-                    .background(isFollowing == true || isOwnAccount ? Color(uiColor: .tertiarySystemFill) : themeColor,
-                                in: Capsule())
-                    .frame(minHeight: 48)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(room.uid <= 0 || isOwnAccount || isToggling || isFollowing == nil && isLoading)
-            .accessibilityLabel(isFollowing == true ? "取消关注 \(name)" : "\(followTitle) \(name)")
-            .accessibilityIdentifier("live.owner.follow")
+            followButton
+
         }
-        .mediaDetailContainer()
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("live.owner")
     }
+
+    @ViewBuilder
+    private var followButton: some View {
+        let button = Button(action: onToggleFollow) {
+            Text(followTitle)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 4)
+        }
+        .buttonBorderShape(.capsule)
+        .disabled(room.uid <= 0 || isOwnAccount || isToggling || isFollowing == nil && isLoading)
+        .accessibilityLabel(isFollowing == true ? "取消关注 \(name)" : "\(followTitle) \(name)")
+        .accessibilityIdentifier("live.owner.follow")
+        if isFollowing == true || isOwnAccount {
+            button.buttonStyle(.glass).foregroundStyle(.secondary)
+        } else {
+            button.buttonStyle(.glassProminent).tint(themeColor)
+        }
+    }
+
 }
 
 /// 标题与直播元信息的独立容器，轻点展开简介/公告。
@@ -142,7 +149,8 @@ struct LiveRoomIntroductionCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .mediaDetailContainer()
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func toggleDetails() {

@@ -376,6 +376,7 @@ struct VideoDescriptionContent: View {
     var body: some View {
         let all = viewModel?.related ?? []
         let videos = all.hidingKnownPortraitVideos(hidesPortraitVideos)
+        let relatedError = viewModel?.relatedErrorMessage
         let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos)
         // 与原生详情页一样用分区标题组织内容，相关视频不直接接在操作栏下面。
         let header = VideoDescriptionComponent("relatedHeader", revision: []) {
@@ -387,9 +388,17 @@ struct VideoDescriptionContent: View {
                 .padding(.top, 12)
                 .padding(.bottom, 2)
         }
-        let rows = components + [header] + (videos.isEmpty ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty]) {
+        let rows = components + [header] + (videos.isEmpty || relatedError != nil ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty, relatedError]) {
             if loading { ProgressView().padding(24) }
-            else {
+            else if let relatedError {
+                VStack(spacing: 12) {
+                    Text(relatedError).font(.subheadline).foregroundStyle(.secondary)
+                    Button("重试") { Task { await viewModel?.retryRelated() } }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("related.retry")
+                }
+                .padding(16)
+            } else {
                 Text(all.isEmpty ? "暂时没有相关视频" : "相关视频已被内容过滤设置隐藏")
                     .font(.subheadline).foregroundStyle(.secondary).padding(16)
             }
