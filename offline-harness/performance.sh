@@ -17,12 +17,12 @@ swiftc -swift-version 6 -O -parse-as-library \
     -o "$BUILD_DIR/image-pipeline"
 "$BUILD_DIR/image-pipeline"
 swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Features/Player/PlaybackProgressStore.swift" \
+    "$ROOT/NeoBili/Application/Player/PlaybackProgressStore.swift" \
     "$HARNESS/src/PlaybackPersistencePerformance.swift" \
     -o "$BUILD_DIR/persistence-performance"
 "$BUILD_DIR/persistence-performance"
 swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Features/Player/VideoPreparationCache.swift" \
+    "$ROOT/NeoBili/Application/Player/VideoPreparationCache.swift" \
     "$HARNESS/src/VideoPreparationRegression.swift" \
     -o "$BUILD_DIR/video-preparation"
 "$BUILD_DIR/video-preparation"
@@ -30,9 +30,10 @@ swiftc -swift-version 6 -O -parse-as-library \
 # Metadata classification commits a page once, off the main thread, while
 # retaining restart/cancellation durability and the existing cache format.
 swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Core/Models/VideoDimension.swift" \
-    "$ROOT/NeoBili/Core/Models/VideoDurationFilterSettings.swift" \
-    "$ROOT/NeoBili/Core/Models/PortraitVideoStore.swift" \
+    "$ROOT/NeoBili/Domain/Models/VideoDimension.swift" \
+    "$ROOT/NeoBili/Application/Content/VideoFiltering.swift" \
+    "$ROOT/NeoBili/Domain/Models/VideoDurationFilterSettings.swift" \
+    "$ROOT/NeoBili/Application/Content/PortraitVideoStore.swift" \
     "$HARNESS/src/MetadataPersistenceRegression.swift" \
     -o "$BUILD_DIR/metadata-persistence"
 "$BUILD_DIR/metadata-persistence"

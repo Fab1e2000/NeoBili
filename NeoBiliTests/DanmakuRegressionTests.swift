@@ -290,3 +290,13 @@ final class DanmakuNetworkSmokeTests: XCTestCase {
         add(evidence)
     }
 }
+
+@MainActor
+private extension LiveDanmakuModel {
+    func handleFrame(_ data: Data) {
+        let stream = LiveDanmakuConnection()
+        stream.start(roomID: 0) { [weak self] in self?.receive($0) }
+        stream.handleFrame(data)
+        stream.stop()
+    }
+}

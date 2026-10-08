@@ -44,6 +44,7 @@ struct CommentsList: View {
             }
         }
         .commentThreadHost(viewModel: viewModel)
+        .commentLinkHost()
         // 和视频页一样走非模态浮层，别用 alert 去和 fullScreenCover 抢 present。
         .onChange(of: viewModel.actionMessage) { _, message in
             guard let message else { return }

@@ -5,6 +5,25 @@ import SwiftUI
 
 @MainActor
 final class MiniPlayerTests: XCTestCase {
+    func testCommentVideoLinksPreserveHistoryAndReuseCurrentSession() throws {
+        let store = NowPlayingStore(defaults: try makeDefaults())
+        defer { store.close() }
+        let original = route()
+        store.openAndMount(original, from: "entry-card")
+        store.videoPageDidAppear()
+        let player = try XCTUnwrap(store.player)
+        store.openCommentVideo(original)
+        XCTAssertTrue(store.player === player)
+        XCTAssertFalse(store.canGoBack)
+        let linked = VideoDetailRoute(bvid: "BV17x411w7KC", aid: 170001)
+        store.openCommentVideo(linked)
+        XCTAssertEqual(store.route?.bvid, linked.bvid)
+        XCTAssertTrue(store.canGoBack)
+        store.goBack()
+        XCTAssertEqual(store.route?.bvid, original.bvid)
+        XCTAssertFalse(store.canGoBack)
+    }
+
     func testTitleOnlyPlaybackKeepsVideoDisabledAcrossForegroundAndSessionChanges() {
         var state = PlayerVideoOutputState()
         XCTAssertTrue(state.isEnabled)

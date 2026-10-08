@@ -32,7 +32,7 @@ final class VideoActionAttributionTests: XCTestCase {
             XCTAssertNotNil(fields["sign"])
             XCTAssertNil(fields["csrf"])
         }
-        XCTAssertEqual(fields(requests[0])["like"], "0")
+        XCTAssertEqual(fields(requests[0])["like"], "1", "App cancellation must send operation 1")
         XCTAssertEqual(fields(requests[1])["multiply"], "2")
         XCTAssertEqual(fields(requests[1])["select_like"], "0")
         XCTAssertEqual(fields(requests[1])["avtype"], "1")
@@ -65,6 +65,7 @@ final class VideoActionAttributionTests: XCTestCase {
         try await BiliAPI.dislikeVideo(aid: 456, dislike: false, entry: .favorites, expectedSessionID: generation, client: client)
         let requests = VideoActionProtocol.requests.withLock { $0 }
         XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(fields(requests[0])["like"], "0", "App liking must send operation 0, not web operation 1")
         XCTAssertEqual(fields(requests[0])["from"], "6")
         XCTAssertEqual(fields(requests[0])["from_spmid"], "main.my-fav.0.0")
         for request in requests.dropFirst() {

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SMSLoginSheet: View {
+    @Environment(\.applicationServices) private var services
     var appAuthorizationOnly = false
     @Environment(AccountStore.self) private var account
     @Environment(\.dismiss) private var dismiss
@@ -75,13 +76,13 @@ struct SMSLoginSheet: View {
                 guard let value = model.credentials else { return }
                 do {
                     guard account.sessionID == expectedSession,
-                          model.preparedAccountSession == DeviceIdentity.shared.loginSessionID, !Task.isCancelled else { throw CancellationError() }
+                          model.preparedAccountSession == services.session.currentID(), !Task.isCancelled else { throw CancellationError() }
                     guard let identitySession = model.preparedAccountSession else { throw CancellationError() }
                     try await account.completeSMSLogin(value, expectedSessionID: expectedSession,
                         expectedIdentitySession: identitySession, authorizationOnly: appAuthorizationOnly)
                     if !Task.isCancelled { dismiss() }
                 } catch {
-                    completionError = BiliPassport.failureText(for: error)
+                    completionError = LoginModels.failureText(for: error)
                 }
             }
             .sheet(item: $model.captcha) { challenge in

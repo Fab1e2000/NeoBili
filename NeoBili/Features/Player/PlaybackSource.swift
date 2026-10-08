@@ -11,19 +11,27 @@ struct PlaybackStream: Sendable, Hashable {
     }
 }
 
-/// `audio == nil` is a server-side muxed stream, opened directly. Otherwise
+/// Sources without a separate audio track (muxed or silent DASH) open directly. Otherwise
 /// the two elementary streams are joined into one `edl://` pseudo-URL that
 /// mpv demuxes as a single source — see `PlaybackSourceBuilder.edlURL`.
 struct PlaybackSource: Sendable, Hashable {
     let video: PlaybackStream
     let audio: PlaybackStream?
     let duration: TimeInterval
+    let isDASH: Bool
+
+    init(video: PlaybackStream, audio: PlaybackStream?, duration: TimeInterval, isDASH: Bool? = nil) {
+        self.video = video
+        self.audio = audio
+        self.duration = duration
+        self.isDASH = isDASH ?? (audio != nil)
+    }
 
     var candidates: [PlaybackSource] {
         let videos = Array(video.candidates.prefix(2))
         guard let audio else {
             return videos.map {
-                PlaybackSource(video: PlaybackStream(primary: $0, backups: []), audio: nil, duration: duration)
+                PlaybackSource(video: PlaybackStream(primary: $0, backups: []), audio: nil, duration: duration, isDASH: isDASH)
             }
         }
         let audios = Array(audio.candidates.prefix(2))
@@ -32,7 +40,7 @@ struct PlaybackSource: Sendable, Hashable {
                 PlaybackSource(
                     video: PlaybackStream(primary: videoURL, backups: []),
                     audio: PlaybackStream(primary: audioURL, backups: []),
-                    duration: duration
+                    duration: duration, isDASH: isDASH
                 )
             }
         }
@@ -48,10 +56,14 @@ enum PlaybackSourceBuilder {
     static func makeSource(from payload: PlayURLData, configuration: VideoPlaybackConfiguration) throws -> PlaybackSource {
         if let dash = payload.dash,
            let video = bestVideoStream(dash.video, preferredQuality: configuration.quality),
-           let audio = bestAudioStream(dash.allAudio, preferredQuality: configuration.audioQuality),
-           let videoStream = makeStream(from: video),
-           let audioStream = makeStream(from: audio) {
-            return PlaybackSource(video: videoStream, audio: audioStream, duration: TimeInterval(dash.duration))
+           let videoStream = makeStream(from: video) {
+            if dash.allAudio.isEmpty {
+                return PlaybackSource(video: videoStream, audio: nil, duration: TimeInterval(dash.duration), isDASH: true)
+            }
+            if let audio = bestAudioStream(dash.allAudio, preferredQuality: configuration.audioQuality),
+               let audioStream = makeStream(from: audio) {
+                return PlaybackSource(video: videoStream, audio: audioStream, duration: TimeInterval(dash.duration), isDASH: true)
+            }
         }
 
         // durl（html5，服务端已合并好音视频）只在 DASH 拿不到时才用到。

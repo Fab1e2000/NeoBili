@@ -100,6 +100,7 @@ struct CommentThreadView: View {
             }
             // 这一页在 sheet 里，父级的图片查看器盖不进来，自己挂一个。
             .imageViewerHost()
+            .commentLinkHost(beforeOpeningVideo: { dismiss() })
         }
         .presentationDragIndicator(.visible)
         .task { await viewModel.loadRepliesIfNeeded(for: root) }

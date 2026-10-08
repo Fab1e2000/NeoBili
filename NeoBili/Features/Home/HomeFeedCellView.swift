@@ -60,7 +60,7 @@ struct HomeFeedCellView: View {
             case .dynamic(let id):
                 viewModel.sheet = .dynamic(id: id)
             case nil:
-                RecommendationClickReporter.record(video)
+                ApplicationServices.live.telemetry.click(video)
                 nowPlaying.open(
                     VideoDetailRoute(bvid: video.bvid, cid: video.cid > 0 ? video.cid : nil, cover: video.pic,
                                      title: video.title, artist: video.owner.name, aid: video.aid, playbackEntry: video.playbackEntry),

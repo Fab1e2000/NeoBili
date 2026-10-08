@@ -3,6 +3,7 @@ import SwiftUI
 /// 账号密码登录。B 站网页端登录必须先过一次极验滑块，所以流程是：
 /// 取公钥加密密码 → 取极验参数 → 弹滑块 → 提交登录。
 struct PasswordLoginSheet: View {
+    @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
     @Environment(\.dismiss) private var dismiss
 
@@ -102,16 +103,16 @@ struct PasswordLoginSheet: View {
         statusText = nil
         defer { loginTask = nil; if geetestRequest == nil { isSubmitting = false } }
         do {
-            let key = try await BiliPassport.webKey()
+            let key = try await services.authentication.webKey()
             try validateAttempt()
-            let encrypted = try PasswordCipher.encryptedPassword(submittedPassword, salt: key.hash, publicKeyPEM: key.key)
+            let encrypted = try services.authentication.encryptPassword(submittedPassword, key.hash, key.key)
             statusText = nil
-            let captcha = try await BiliPassport.captcha()
+            let captcha = try await services.authentication.captcha()
             try validateAttempt()
             guard !captcha.gt.isEmpty, !captcha.challenge.isEmpty else {
                 // 服务端没下发极验（少见）；直接不带验证提交，失败会显示原话。
                 statusText = nil
-                let cookies = try await BiliPassport.passwordLogin(
+                let cookies = try await services.authentication.passwordLogin(
                     username: submittedUsername,
                     passwordEncrypted: encrypted,
                     captchaToken: captcha.token,
@@ -136,7 +137,7 @@ struct PasswordLoginSheet: View {
         } catch {
             guard !error.isCancellation, !Task.isCancelled else { return }
             statusText = nil
-            errorMessage = BiliPassport.failureText(for: error)
+            errorMessage = LoginModels.failureText(for: error)
         }
     }
 
@@ -146,7 +147,7 @@ struct PasswordLoginSheet: View {
         defer { loginTask = nil; isSubmitting = false }
         do {
             try validateAttempt()
-            let cookies = try await BiliPassport.passwordLogin(
+            let cookies = try await services.authentication.passwordLogin(
                 username: request.username,
                 passwordEncrypted: request.encryptedPassword,
                 captchaToken: request.captchaToken,
@@ -161,7 +162,7 @@ struct PasswordLoginSheet: View {
         } catch {
             guard !error.isCancellation, !Task.isCancelled else { return }
             statusText = nil
-            errorMessage = BiliPassport.failureText(for: error)
+            errorMessage = LoginModels.failureText(for: error)
         }
     }
 

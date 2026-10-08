@@ -158,3 +158,8 @@ private actor LiveFeedResponseGate {
         pending.removeValue(forKey: request)?.resume(returning: LiveRoomPage(rooms: [room], page: 1, hasMore: false))
     }
 }
+
+struct ApplicationServices {
+    static let live = ApplicationServices()
+    var streaming: LiveAPI.Type { LiveAPI.self }
+}

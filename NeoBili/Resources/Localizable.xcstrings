@@ -2,12 +2,58 @@
   "sourceLanguage": "zh-Hans",
   "strings": {
     "": {},
+    "，正在直播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", live now"
+          }
+        }
+      }
+    },
+    "（需大会员）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " (VIP)"
+          }
+        }
+      }
+    },
+    "（需登录）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " (Sign-in Required)"
+          }
+        }
+      }
+    },
     "%.1f 硬币": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%.1f coins"
+          }
+        }
+      }
+    },
+    "%@ / %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ / %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ / %2$@"
           }
         }
       }
@@ -44,18 +90,12 @@
         }
       }
     },
-    "%@ / %@": {
+    "%@ +%@": {
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ / %2$@"
-          }
-        },
         "zh-Hans": {
           "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ / %2$@"
+            "state": "new",
+            "value": "%1$@ +%2$@"
           }
         }
       }
@@ -102,6 +142,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ votes"
+          }
+        }
+      }
+    },
+    "%@，%@，%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@, %3$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@，%2$@，%3$@"
+          }
+        }
+      }
+    },
+    "%@，%@，%@次播放，%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@, %3$@ views, %4$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@，%2$@，%3$@次播放，%4$@"
+          }
+        }
+      }
+    },
+    "%@，共 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@，共 %2$@"
           }
         }
       }
@@ -214,54 +302,6 @@
         }
       }
     },
-    "%@，%@，%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@, %2$@, %3$@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@，%2$@，%3$@"
-          }
-        }
-      }
-    },
-    "%@，%@，%@次播放，%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@, %2$@, %3$@ views, %4$@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@，%2$@，%3$@次播放，%4$@"
-          }
-        }
-      }
-    },
-    "%@，共 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ of %2$@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@，共 %2$@"
-          }
-        }
-      }
-    },
     "%lld": {
       "localizations": {
         "en": {
@@ -354,6 +394,7 @@
         }
       }
     },
+    "%lld 秒": {},
     "%lld 秒后重新获取": {
       "localizations": {
         "en": {
@@ -444,6 +485,26 @@
         }
       }
     },
+    "¥%lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¥%lld"
+          }
+        }
+      }
+    },
+    "720P 60帧": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "720P 60fps"
+          }
+        }
+      }
+    },
     "1080P 60帧": {
       "localizations": {
         "en": {
@@ -460,16 +521,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "1080P High Bitrate"
-          }
-        }
-      }
-    },
-    "720P 60帧": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "720P 60fps"
           }
         }
       }
@@ -505,6 +556,7 @@
       }
     },
     "App 授权未完成，请到「设置 → 推荐流」扫码授权": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -514,12 +566,46 @@
         }
       }
     },
+    "App 登录凭据": {},
+    "App 登录凭据已失效，请使用当前账号的短信验证码重新授权。网页登录状态已保留。": {},
     "Bilibili 视频": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Bilibili Video"
+          }
+        }
+      }
+    },
+    "favorite.action": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorite"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收藏"
+          }
+        }
+      }
+    },
+    "follow.action": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关注"
           }
         }
       }
@@ -554,6 +640,16 @@
         }
       }
     },
+    "mpv 初始化失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to initialize mpv"
+          }
+        }
+      }
+    },
     "NeoBili 自身编号": {
       "localizations": {
         "en": {
@@ -574,72 +670,7 @@
         }
       }
     },
-    "UID": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "UID"
-          }
-        }
-      }
-    },
-    "UP 主空间": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "UP Space"
-          }
-        }
-      }
-    },
-    "favorite.action": {
-      "extractionState": "extracted_with_value",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Favorite"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "收藏"
-          }
-        }
-      }
-    },
-    "follow.action": {
-      "extractionState": "extracted_with_value",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Follow"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关注"
-          }
-        }
-      }
-    },
-    "mpv 初始化失败": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Failed to initialize mpv"
-          }
-        }
-      }
-    },
     "setting.off": {
-      "extractionState": "extracted_with_value",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -656,7 +687,6 @@
       }
     },
     "toast.followed": {
-      "extractionState": "extracted_with_value",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -672,12 +702,22 @@
         }
       }
     },
-    "¥%lld": {
+    "UID": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "¥%lld"
+            "value": "UID"
+          }
+        }
+      }
+    },
+    "UP 主空间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UP Space"
           }
         }
       }
@@ -802,6 +842,16 @@
         }
       }
     },
+    "两种编号均在本机生成并保存。系统派生模式沿用原编号；随机模式首次生成后持续复用，不会每次刷新都更换。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Both identities are generated and saved locally. System-derived mode keeps the original identity; random mode creates one identity and reuses it across refreshes."
+          }
+        }
+      }
+    },
     "主播": {
       "localizations": {
         "en": {
@@ -912,6 +962,16 @@
         }
       }
     },
+    "低于所选值的推荐会被隐藏。已关注 UP 发布的内容可以不受这些条件和标题关键词影响。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide recommendations below these thresholds. Videos from followed creators can be exempt from these criteria and title keywords."
+          }
+        }
+      }
+    },
     "你关注的 UP 主最近没有更新。": {
       "localizations": {
         "en": {
@@ -922,6 +982,7 @@
         }
       }
     },
+    "使用 | 隔开，如：尝试|测试。标题或分区名包含这些词的推荐会被隐藏；网页端推荐不提供分区名，分区关键词只对 App 端推荐生效。": {},
     "保存二维码": {
       "localizations": {
         "en": {
@@ -1052,6 +1113,7 @@
         }
       }
     },
+    "关键词过滤": {},
     "关闭": {
       "localizations": {
         "en": {
@@ -1092,6 +1154,7 @@
         }
       }
     },
+    "关闭后改用网页端推荐。若网页端推荐不太符合预期，可切换回 App 端推荐。": {},
     "关闭弹幕": {
       "localizations": {
         "en": {
@@ -1168,6 +1231,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Content Filter"
+          }
+        }
+      }
+    },
+    "最多选择 %lld 项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose up to %lld"
+          }
+        }
+      }
+    },
+    "最大": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Largest"
+          }
+        }
+      }
+    },
+    "最小": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smallest"
+          }
+        }
+      }
+    },
+    "最短视频时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minimum Video Length"
           }
         }
       }
@@ -1262,12 +1365,23 @@
         }
       }
     },
+    "分区关键词": {},
     "分辨率": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Resolution"
+          }
+        }
+      }
+    },
+    "切换会配套切换设备登记与票据，账号登录保持不变。可切回原模式恢复原编号。推荐结果可能变化，此功能用于兼容性测试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching also switches device registration and tickets while retaining your login. Switch back to restore the original identity. Recommendations may change; this feature is for compatibility testing."
           }
         }
       }
@@ -1510,6 +1624,7 @@
         }
       }
     },
+    "反馈": {},
     "发个友善的弹幕见证当下": {
       "localizations": {
         "en": {
@@ -1620,6 +1735,7 @@
         }
       }
     },
+    "取消踩": {},
     "可可棕": {
       "localizations": {
         "en": {
@@ -1641,6 +1757,7 @@
       }
     },
     "各页面的标题和头像固定在顶部，内容从下方滑过。关注页的头像条、直播页的推荐/关注切换器与标题一起固定。": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -1651,6 +1768,7 @@
       }
     },
     "各页面的标题和头像随内容一起滚走。关注页的头像条、直播页的推荐/关注切换器也随标题一起滚走；搜索页上滑时只收起标题，搜索框留在顶部。": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -1670,6 +1788,16 @@
         }
       }
     },
+    "合集 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collection · %@"
+          }
+        }
+      }
+    },
     "合集 %@，%@，展开分集列表": {
       "localizations": {
         "en": {
@@ -1682,16 +1810,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "合集 %1$@，%2$@，展开分集列表"
-          }
-        }
-      }
-    },
-    "合集 · %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Collection · %@"
           }
         }
       }
@@ -1787,6 +1905,7 @@
       }
     },
     "固定在顶部": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -1826,6 +1945,7 @@
         }
       }
     },
+    "复制 %@": {},
     "外观": {
       "localizations": {
         "en": {
@@ -1836,6 +1956,7 @@
         }
       }
     },
+    "多选": {},
     "大": {
       "localizations": {
         "en": {
@@ -2046,12 +2167,12 @@
         }
       }
     },
-    "展开简介": {
+    "展开视频：%@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Expand Description"
+            "value": "Expand Video: %@"
           }
         }
       }
@@ -2076,12 +2197,12 @@
         }
       }
     },
-    "展开视频：%@": {
+    "展开简介": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Expand Video: %@"
+            "value": "Expand Description"
           }
         }
       }
@@ -2172,6 +2293,7 @@
         }
       }
     },
+    "已关注 UP 豁免推荐过滤": {},
     "已加入稍后再看": {
       "localizations": {
         "en": {
@@ -2202,6 +2324,7 @@
         }
       }
     },
+    "已复制": {},
     "已展开": {
       "localizations": {
         "en": {
@@ -2262,7 +2385,10 @@
         }
       }
     },
+    "已拉黑 %@": {},
+    "已提交": {},
     "已提交不感兴趣": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -2372,6 +2498,7 @@
         }
       }
     },
+    "已获取": {},
     "已选择 %lld 项": {
       "localizations": {
         "en": {
@@ -2594,22 +2721,22 @@
         }
       }
     },
+    "当前生效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Currently Active"
+          }
+        }
+      }
+    },
     "当前用户": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Current User"
-          }
-        }
-      }
-    },
-    "当前系统不支持切换桌面图标。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This system doesn't support changing the app icon."
           }
         }
       }
@@ -2634,7 +2761,18 @@
         }
       }
     },
+    "当前系统不支持切换桌面图标。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This system doesn't support changing the app icon."
+          }
+        }
+      }
+    },
     "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。点「获取」会用当前登录状态向 B 站确认一次 App 端登录，账号的登录设备里会多一条记录。": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -2644,6 +2782,7 @@
         }
       }
     },
+    "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。请使用当前账号的短信验证码重新授权。": {},
     "彩色弹幕": {
       "localizations": {
         "en": {
@@ -2734,6 +2873,8 @@
         }
       }
     },
+    "成功": {},
+    "我不想看": {},
     "我的": {
       "localizations": {
         "en": {
@@ -2814,6 +2955,7 @@
         }
       }
     },
+    "打开后，在列表里停留过的视频点开会更快，但会以你的账号向 B 站请求这些没点开的视频，可能影响推荐。关闭时和 PiliPlus 一样，点开才请求。": {},
     "打开直播间": {
       "localizations": {
         "en": {
@@ -2825,6 +2967,7 @@
       }
     },
     "扫码授权": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -2874,6 +3017,9 @@
         }
       }
     },
+    "拉黑": {},
+    "拉黑 UP 主": {},
+    "拉黑：%@": {},
     "拖动右侧的把手调整顺序，点红色按钮隐藏。标签栏最多 %lld 个（含固定在末尾的搜索），不会出现「更多」。": {
       "localizations": {
         "en": {
@@ -2974,6 +3120,7 @@
         }
       }
     },
+    "推荐流": {},
     "推荐页": {
       "localizations": {
         "en": {
@@ -2990,6 +3137,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Search"
+          }
+        }
+      }
+    },
+    "搜索：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search: %@"
           }
         }
       }
@@ -3040,16 +3197,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Search"
-          }
-        }
-      }
-    },
-    "搜索：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Search: %@"
           }
         }
       }
@@ -3170,6 +3317,7 @@
         }
       }
     },
+    "播放量": {},
     "收藏": {
       "localizations": {
         "en": {
@@ -3230,22 +3378,22 @@
         }
       }
     },
-    "收起简介": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Collapse Description"
-          }
-        }
-      }
-    },
     "收起视频画面": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Collapse Video"
+          }
+        }
+      }
+    },
+    "收起简介": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse Description"
           }
         }
       }
@@ -3281,6 +3429,7 @@
       }
     },
     "数据解析失败": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -3310,6 +3459,7 @@
         }
       }
     },
+    "无法打开这条动态": {},
     "无法播放": {
       "localizations": {
         "en": {
@@ -3400,6 +3550,7 @@
         }
       }
     },
+    "显示上次看到位置提示": {},
     "显示的标签": {
       "localizations": {
         "en": {
@@ -3430,6 +3581,8 @@
         }
       }
     },
+    "暂不支持打开此链接": {},
+    "暂不支持这种动态": {},
     "暂停": {
       "localizations": {
         "en": {
@@ -3480,7 +3633,18 @@
         }
       }
     },
+    "暂时没有弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No chat messages yet"
+          }
+        }
+      }
+    },
     "暂时没有新的推荐，请稍后重试": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -3516,46 +3680,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "More Playback Options"
-          }
-        }
-      }
-    },
-    "最多选择 %lld 项": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose up to %lld"
-          }
-        }
-      }
-    },
-    "最大": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Largest"
-          }
-        }
-      }
-    },
-    "最小": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Smallest"
-          }
-        }
-      }
-    },
-    "最短视频时长": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Minimum Video Length"
           }
         }
       }
@@ -3610,6 +3734,8 @@
         }
       }
     },
+    "未知": {},
+    "未能获取 App 登录凭据": {},
     "本视频播完": {
       "localizations": {
         "en": {
@@ -3661,6 +3787,7 @@
       }
     },
     "查看 UP 主主页": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -3671,6 +3798,7 @@
       }
     },
     "查看全部 %lld 条回复": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -3720,6 +3848,7 @@
         }
       }
     },
+    "标题关键词": {},
     "标题栏": {
       "localizations": {
         "en": {
@@ -3826,6 +3955,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Now Playing"
+          }
+        }
+      }
+    },
+    "正在连接弹幕": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to chat"
           }
         }
       }
@@ -3980,6 +4119,7 @@
         }
       }
     },
+    "滑过视频时预取播放地址": {},
     "滚动": {
       "localizations": {
         "en": {
@@ -4011,6 +4151,7 @@
       }
     },
     "点击重试换一条": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -4030,6 +4171,10 @@
         }
       }
     },
+    "点赞率": {},
+    "点踩": {},
+    "点踩成功": {},
+    "点错了": {},
     "热搜": {
       "localizations": {
         "en": {
@@ -4530,6 +4675,16 @@
         }
       }
     },
+    "确定拉黑 %@（%@）？\n拉黑后不会再收到他的推荐。可以在 B 站 App 或网页的黑名单管理中解除。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "new",
+            "value": "确定拉黑 %1$@（%2$@）？\n拉黑后不会再收到他的推荐。可以在 B 站 App 或网页的黑名单管理中解除。"
+          }
+        }
+      }
+    },
     "确定退出登录？": {
       "localizations": {
         "en": {
@@ -4540,12 +4695,114 @@
         }
       }
     },
+    "确认登录失败": {},
     "示例视频标题": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Sample Video Title"
+          }
+        }
+      }
+    },
+    "视频内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Content"
+          }
+        }
+      }
+    },
+    "视频分集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episodes"
+          }
+        }
+      }
+    },
+    "视频加载中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading video"
+          }
+        }
+      }
+    },
+    "视频加载失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load video: %@"
+          }
+        }
+      }
+    },
+    "视频卡片": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Cards"
+          }
+        }
+      }
+    },
+    "视频地址无效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid video URL"
+          }
+        }
+      }
+    },
+    "视频尚未准备好，请稍后重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The video isn't ready yet. Please try again later"
+          }
+        }
+      }
+    },
+    "视频时长": {},
+    "视频正在加载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video is loading"
+          }
+        }
+      }
+    },
+    "视频详情页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Page"
+          }
+        }
+      }
+    },
+    "视频页顶部的播放区域，按本机屏幕宽度等比缩小。竖屏视频全屏播放时也使用这组设置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The player area at the top of the video page, scaled to this screen width. Portrait videos in full screen use these settings too."
           }
         }
       }
@@ -4718,6 +4975,16 @@
         }
       }
     },
+    "系统派生编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System-derived Identity"
+          }
+        }
+      }
+    },
     "系统设置": {
       "localizations": {
         "en": {
@@ -4788,6 +5055,16 @@
         }
       }
     },
+    "编号生成方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identity Generation"
+          }
+        }
+      }
+    },
     "缩略播放器": {
       "localizations": {
         "en": {
@@ -4828,6 +5105,7 @@
         }
       }
     },
+    "网页端暂不支持精细选择": {},
     "翡翠绿": {
       "localizations": {
         "en": {
@@ -4878,6 +5156,7 @@
         }
       }
     },
+    "获取失败：%@": {},
     "获取验证码": {
       "localizations": {
         "en": {
@@ -4918,106 +5197,6 @@
         }
       }
     },
-    "视频内容": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Video Content"
-          }
-        }
-      }
-    },
-    "视频分集": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Episodes"
-          }
-        }
-      }
-    },
-    "视频加载中": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Loading video"
-          }
-        }
-      }
-    },
-    "视频加载失败：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't load video: %@"
-          }
-        }
-      }
-    },
-    "视频卡片": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Video Cards"
-          }
-        }
-      }
-    },
-    "视频地址无效": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invalid video URL"
-          }
-        }
-      }
-    },
-    "视频尚未准备好，请稍后重试": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The video isn't ready yet. Please try again later"
-          }
-        }
-      }
-    },
-    "视频正在加载": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Video is loading"
-          }
-        }
-      }
-    },
-    "视频详情页": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Video Page"
-          }
-        }
-      }
-    },
-    "视频页顶部的播放区域，按本机屏幕宽度等比缩小。竖屏视频全屏播放时也使用这组设置。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The player area at the top of the video page, scaled to this screen width. Portrait videos in full screen use these settings too."
-          }
-        }
-      }
-    },
     "记录推荐与观看日志": {
       "localizations": {
         "en": {
@@ -5038,6 +5217,17 @@
         }
       }
     },
+    "设备编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device Identity"
+          }
+        }
+      }
+    },
+    "访问：%@": {},
     "评论": {
       "localizations": {
         "en": {
@@ -5089,6 +5279,7 @@
       }
     },
     "该操作需要 App 端登录凭据，请退出后用扫码方式重新登录": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -5139,6 +5330,7 @@
       }
     },
     "请使用当前账号扫码授权": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -5208,6 +5400,7 @@
         }
       }
     },
+    "请退出账号后重新登录": {},
     "账号信息暂时无法加载，请重试": {
       "localizations": {
         "en": {
@@ -5248,6 +5441,7 @@
         }
       }
     },
+    "账号未登录": {},
     "账号管理": {
       "localizations": {
         "en": {
@@ -5308,6 +5502,7 @@
         }
       }
     },
+    "轻点查看动态，再次轻点进入主页；长按进入直播间": {},
     "较大": {
       "localizations": {
         "en": {
@@ -5358,6 +5553,7 @@
         }
       }
     },
+    "过滤": {},
     "返回": {
       "localizations": {
         "en": {
@@ -5438,16 +5634,6 @@
         }
       }
     },
-    "这位 UP 主已结束直播": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This UP has ended the stream"
-          }
-        }
-      }
-    },
     "这位 UP 主最近没有更新。": {
       "localizations": {
         "en": {
@@ -5458,6 +5644,18 @@
         }
       }
     },
+    "这位 UP 主已结束直播": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This UP has ended the stream"
+          }
+        }
+      }
+    },
+    "这位 UP 主当前未开播": {},
     "这位 UP 主还没有公开的视频稿件。": {
       "localizations": {
         "en": {
@@ -5488,6 +5686,7 @@
         }
       }
     },
+    "这条推荐没有提供不感兴趣选项": {},
     "进入全屏": {
       "localizations": {
         "en": {
@@ -5554,6 +5753,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Exit Animation"
+          }
+        }
+      }
+    },
+    "退出并重新打开 App 后生效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takes effect after quitting and reopening the app"
           }
         }
       }
@@ -5698,26 +5907,6 @@
         }
       }
     },
-    "随内容滚动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scroll with Content"
-          }
-        }
-      }
-    },
-    "随内容滚动时，标题随页面滚走；固定时可选择边界清晰的切边背景或柔和的渐变背景。搜索框始终保留在顶部。关注和直播始终使用固定切边导航栏，不受此设置影响。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The scrolling title moves with the page. Pinned titles can use a defined edge or a soft gradient. The search field stays at the top. Following and Live always use a pinned header with a defined edge, regardless of this setting."
-          }
-        }
-      }
-    },
     "隐藏%@": {
       "localizations": {
         "en": {
@@ -5744,6 +5933,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hide Portrait Videos"
+          }
+        }
+      }
+    },
+    "随内容滚动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scroll with Content"
+          }
+        }
+      }
+    },
+    "随内容滚动时，标题随页面滚走；固定时可选择边界清晰的切边背景或柔和的渐变背景。搜索框始终保留在顶部。关注和直播始终使用固定切边导航栏，不受此设置影响。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The scrolling title moves with the page. Pinned titles can use a defined edge or a soft gradient. The search field stays at the top. Following and Live always use a pinned header with a defined edge, regardless of this setting."
+          }
+        }
+      }
+    },
+    "随机编号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Random Identity"
           }
         }
       }
@@ -5788,6 +6007,7 @@
         }
       }
     },
+    "静音预览": {},
     "靛青色": {
       "localizations": {
         "en": {
@@ -5878,6 +6098,7 @@
         }
       }
     },
+    "首页使用 App 端推荐": {},
     "验证码已发送，请在五分钟内填写。": {
       "localizations": {
         "en": {
@@ -5938,132 +6159,32 @@
         }
       }
     },
-    "（需大会员）": {
+    "推荐内容过滤": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": " (VIP)"
+            "value": "Recommendation filters"
           }
         }
       }
     },
-    "（需登录）": {
+    "点赞率、播放量、关键词及关注豁免仅影响首页推荐。全局画幅和时长规则仍会生效。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": " (Sign-in Required)"
+            "value": "Like ratio, views, keywords, and followed-creator exemptions apply only to Home recommendations. Global aspect ratio and duration filters still apply."
           }
         }
       }
     },
-    "，正在直播": {
+    "开启后提前获取列表视频的播放地址，不下载媒体内容。可能缩短点开后的等待时间，也会增加接口请求；对推荐结果的影响尚未确认。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": ", live now"
-          }
-        }
-      }
-    },
-    "设备编号": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Device Identity"
-          }
-        }
-      }
-    },
-    "编号生成方式": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Identity Generation"
-          }
-        }
-      }
-    },
-    "当前生效": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Currently Active"
-          }
-        }
-      }
-    },
-    "系统派生编号": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "System-derived Identity"
-          }
-        }
-      }
-    },
-    "随机编号": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Random Identity"
-          }
-        }
-      }
-    },
-    "退出并重新打开 App 后生效": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Takes effect after quitting and reopening the app"
-          }
-        }
-      }
-    },
-    "两种编号均在本机生成并保存。系统派生模式沿用原编号；随机模式首次生成后持续复用，不会每次刷新都更换。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Both identities are generated and saved locally. System-derived mode keeps the original identity; random mode creates one identity and reuses it across refreshes."
-          }
-        }
-      }
-    },
-    "切换会配套切换设备登记与票据，账号登录保持不变。可切回原模式恢复原编号。推荐结果可能变化，此功能用于兼容性测试。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Switching also switches device registration and tickets while retaining your login. Switch back to restore the original identity. Recommendations may change; this feature is for compatibility testing."
-          }
-        }
-      }
-    },
-    "暂时没有弹幕": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No chat messages yet"
-          }
-        }
-      }
-    },
-    "正在连接弹幕": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connecting to chat"
+            "value": "Fetch playback URLs for list videos ahead of time without downloading media. This may reduce waiting when opening a video but adds API requests. Its effect on recommendations is unknown."
           }
         }
       }

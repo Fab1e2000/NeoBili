@@ -3,6 +3,7 @@ import SwiftUI
 /// 推荐流里点开的图文卡：按编号取动态详情，复用关注页的动态详情页。
 /// 首页没有导航栈，所以从底部弹出，详情页右上角的关闭按钮直接收起它。
 struct RecommendedDynamicSheet: View {
+    @Environment(\.applicationServices) private var services
     let id: String
     @State private var entry: DynamicEntry?
     @State private var errorMessage: String?
@@ -36,7 +37,7 @@ struct RecommendedDynamicSheet: View {
             entry = nil
             errorMessage = nil
             do {
-                let item = try await BiliAPI.dynamicDetail(id: id)
+                let item = try await services.community.dynamicDetail(id: id)
                 try Task.checkCancellation()
                 if let loaded = item.asEntry {
                     entry = loaded

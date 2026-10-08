@@ -250,7 +250,7 @@ struct NetworkLoadingRegression {
                     // after the click snapshot and before any reporter runs.
                     if changeOnClick { currentSession = newSession }
                     return clickedSession
-                }, feedbackClient: client,
+                }, feedbackService: .live(client: client), videoService: .live(client: client),
                 fetchRecommendations: { request in RecommendationBatch(videos: [video(1)], nextRequest: request.next(appCursor: 1)) })
             await model.loadInitial()
             changeOnClick = true
@@ -280,7 +280,7 @@ struct NetworkLoadingRegression {
                 DeviceIdentity.AppRequestAccount(accessKey: "fixture", mid: 42, sessionID: token)
             })
             let model = HomeViewModel(defaults: defaults(), currentAccount: { fixtureAccount },
-                currentSessionID: { token }, feedbackClient: client,
+                currentSessionID: { token }, feedbackService: .live(client: client), videoService: .live(client: client),
                 fetchRecommendations: { request in RecommendationBatch(videos: [video(1)], nextRequest: request.next(appCursor: 1)) })
             await model.loadInitial()
             switch action {

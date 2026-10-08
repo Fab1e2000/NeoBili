@@ -5,6 +5,7 @@ import SwiftUI
 /// 结构与首页保持同构（ScrollView + 卡片 Button + 转场源直接挂在
 /// Button 上），这样点开/退出视频页的 zoom 动效和首页完全一致。
 struct HistoryView: View {
+    @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
@@ -197,7 +198,7 @@ struct HistoryView: View {
         let targets = snapshot.filter { selectedIDs.contains($0.id) }
         guard !targets.isEmpty else { return }
         let owner = account.sessionID
-        let identitySession = DeviceIdentity.shared.loginSessionID
+        let identitySession = services.session.currentID()
         isRemovingSelected = true
         loadID = UUID()
         for target in targets { _ = removals.begin(target.id); removals.hide(target.id) }
@@ -215,7 +216,7 @@ struct HistoryView: View {
             confirm: { await feedback.confirmRemoval(String(localized: "已移除历史记录")) },
             remove: { id in
                 guard let target = lookup[id] else { return }
-                try await BiliAPI.deleteHistory(kid: target.kidParam, expectedSessionID: identitySession)
+                try await services.library.deleteHistory(kid: target.kidParam, expectedSessionID: identitySession)
             })
         guard account.sessionID == owner else { return }
         items = snapshot.filter { !result.succeeded.contains($0.id) }
@@ -243,7 +244,7 @@ struct HistoryView: View {
         isLoadingMore = false
         defer { if loadID == requestID { isLoading = false } }
         do {
-            let payload = try await BiliAPI.historyPage(max: 0, viewAt: 0)
+            let payload = try await services.library.historyPage(max: 0, viewAt: 0)
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = payload.allItems.filter(\.isVideo)
             entranceGeneration += 1
@@ -282,7 +283,7 @@ struct HistoryView: View {
             }
         }
         do {
-            let payload = try await BiliAPI.historyPage(max: cursorMax, viewAt: cursorViewAt)
+            let payload = try await services.library.historyPage(max: cursorMax, viewAt: cursorViewAt)
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = payload.allItems.filter(\.isVideo)
             let existing = Set(items.map(\.id))
@@ -310,14 +311,14 @@ struct HistoryView: View {
         guard !isRemovingSelected, items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
         let sessionID = account.sessionID
         defer { if account.sessionID == sessionID { removals.finish(item.id) } }
-        let identitySession = DeviceIdentity.shared.loginSessionID
+        let identitySession = services.session.currentID()
         var removedIndex: Int?
         do {
             removals.hide(item.id)
             removedIndex = removals.remove(item.id, from: &items)
             guard await feedback.confirmRemoval(String(localized: "已移除历史记录")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
-            try await BiliAPI.deleteHistory(kid: item.kidParam, expectedSessionID: identitySession)
+            try await services.library.deleteHistory(kid: item.kidParam, expectedSessionID: identitySession)
             guard account.sessionID == sessionID else { return }
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             items.removeAll { $0.id == item.id }

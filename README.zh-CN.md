@@ -109,28 +109,21 @@ zsh offline-harness/run.sh
 ## 项目结构
 
 ```text
-.
-├── NeoBili/
-│   ├── App/              # 应用入口、根视图与标签栏设置
-│   ├── Core/
-│   │   ├── Models/       # 数据模型与设置项
-│   │   ├── Networking/   # 接口客户端、请求签名与各业务接口
-│   │   ├── Platform/     # 屏幕方向控制
-│   │   ├── UI/           # 主题、玻璃控件与通用视图
-│   │   └── …             # 诊断与扩展
-│   ├── Features/         # 推荐、关注、直播、搜索、播放器、弹幕、
-│   │                     # 视频详情、媒体库、我的、设置等功能
-│   └── Resources/        # 24 个主题色图标、资源与多语言文本
-├── NeoBiliTests/         # 单元测试
-├── offline-harness/      # 可在 macOS 上直接运行的离线逻辑测试
-├── design/               # App 图标设计源文件
-├── scripts/              # 图标生成等脚本
-└── docs/                 # 架构说明、使用手册与版本说明
+NeoBili/
+  App/              # Startup and production composition
+  Features/         # Screens and UI components
+  Application/      # State, tasks and use-case coordination
+  Domain/           # Shared values and service contracts
+  Data/             # Network, identity and media adapters
+  Platform/         # Player and system integration
+  Core/             # Shared UI, formatting and diagnostics
+NeoBiliTests/       # Simulator regression tests
+offline-harness/   # Host-side deterministic checks
+docs/              # Development guides and topic-based research
+scripts/           # Build, validation and deployment commands
 ```
 
-- **架构**：目录职责、数据流与状态所有权见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **测试**：按[开发与测试指南](docs/DEVELOPMENT.md)执行分层验证。
-- **图标**：白底立体挤出的 B 字图标，可编辑源文件在 [`design/app-icon-2026/`](design/app-icon-2026/)，由 `scripts/generate-app-icons.py` 生成全部 24 个主题色版本
+各层职责、状态所有权和依赖注入见[架构](docs/ARCHITECTURE.md)。
 
 ## 文档
 

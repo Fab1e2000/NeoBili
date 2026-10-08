@@ -61,7 +61,11 @@ final class AppRelatedTests: XCTestCase {
         })
         RelatedProtocol.requests.withLock { $0 = [] }
         let model = VideoDetailViewModel(bvid: "BV17x411w7KC", likeStore: likeStore,
-                                        identity: identity, relatedClient: client)
+                                        session: .live(identity: identity), services: {
+                                            var services = ApplicationServices.live
+                                            services.video = .live(client: client, identity: identity)
+                                            return services
+                                        }())
         await model.loadRelated()
         XCTAssertEqual(RelatedProtocol.requests.withLock { $0.count }, 2,
                        "Distinct local like-state and credential sessions must not cancel related requests")

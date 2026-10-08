@@ -209,3 +209,9 @@ enum LiveRoomFollowRegression {
                      "A completed old follow must not reappear after logout")
     }
 }
+
+struct ApplicationServices {
+    static let live = ApplicationServices()
+    var community: BiliAPI.Type { BiliAPI.self }
+    var video: BiliAPI.Type { BiliAPI.self }
+}

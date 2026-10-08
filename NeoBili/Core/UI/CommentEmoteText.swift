@@ -212,12 +212,15 @@ struct CommentEmoteText: View {
     /// 所以单独传一份进来。
     let textStyle: Font.TextStyle
     var prefix: String = ""
+    var prefixURL: URL? = nil
+    var jumpURLs: [String: CommentJumpLink] = [:]
     /// 隐藏的高度探针共享可见正文的图片请求，仅观察已加载的表情。
     var loadsEmotes = true
 
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.displayScale) private var displayScale
     @Environment(\.commentTimeJump) private var timeJump
+    @Environment(\.openURL) private var openURL
 
     var store: CommentEmoteStore = .shared
 
@@ -231,7 +234,10 @@ struct CommentEmoteText: View {
         composed
             .font(font)
             .environment(\.openURL, OpenURLAction { url in
-                guard let seconds = CommentTimeLinks.seconds(from: url) else { return .systemAction }
+                guard let seconds = CommentTimeLinks.seconds(from: url) else {
+                    openURL(url)
+                    return .handled
+                }
                 timeJump?(seconds)
                 return .handled
             })
@@ -245,11 +251,17 @@ struct CommentEmoteText: View {
         // 一次组合只求一次字号；每个表情不再反复创建 UIFontMetrics / traits。
         let scaledFont = emotes.isEmpty ? nil : scaledFont
         let baseline = ((scaledFont?.descender ?? 0) * Self.baselineOffsetRatio).rounded()
+        var prefixText = AttributedString(prefix)
+        prefixText.foregroundColor = .secondary
+        prefixText.link = prefixURL
+        if emotes.isEmpty {
+            return Text(prefixText + CommentLinks.attributed(message, metadata: jumpURLs, includesTimes: timeJump != nil))
+        }
         return CommentEmoteSegments.prepared(message: message, emotes: emotes)
-            .reduce(Text(prefix).foregroundColor(.secondary)) { partial, segment in
+            .reduce(Text(prefixText)) { partial, segment in
             switch segment {
             case .text(let value):
-                return partial + (timeJump == nil ? Text(value) : Text(CommentTimeLinks.attributed(value)))
+                return partial + Text(CommentLinks.attributed(value, metadata: jumpURLs, includesTimes: timeJump != nil))
             case .emote(let literal, let emote):
                 guard let url = emote.secureURL,
                       let font = scaledFont,

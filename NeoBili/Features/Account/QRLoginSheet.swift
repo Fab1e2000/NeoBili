@@ -5,6 +5,7 @@ import SwiftUI
 /// 同一台设备上登录时，先「保存二维码」，再在哔哩哔哩 App 的「扫一扫 → 相册」
 /// 里选这张图完成确认。
 struct QRLoginSheet: View {
+    @Environment(\.applicationServices) private var services
     var appAuthorizationOnly = false
     @Environment(AccountStore.self) private var account
     @Environment(\.dismiss) private var dismiss
@@ -175,7 +176,7 @@ struct QRLoginSheet: View {
             var consecutiveFailures = 0
 
             while !Task.isCancelled {
-                let outcome: BiliPassport.QRCodePollOutcome
+                let outcome: LoginModels.QRCodePollOutcome
                 do {
                     outcome = try await poll(channel)
                     consecutiveFailures = 0
@@ -183,7 +184,7 @@ struct QRLoginSheet: View {
                     return
                 } catch {
                     consecutiveFailures += 1
-                    guard BiliPassport.isTransient(error), consecutiveFailures < 5 else { throw error }
+                    guard LoginModels.isTransient(error), consecutiveFailures < 5 else { throw error }
                     try await Task.sleep(for: .seconds(2))
                     continue
                 }
@@ -214,13 +215,13 @@ struct QRLoginSheet: View {
             // 页面关闭属于正常取消。
         } catch {
             guard !error.isCancellation, !Task.isCancelled else { return }
-            phase = .failed(BiliPassport.failureText(for: error))
+            phase = .failed(LoginModels.failureText(for: error))
         }
     }
 
     private func makeQRCode() async throws -> (Channel, String) {
         do {
-            let info = try await BiliPassport.generateAppQRCode()
+            let info = try await services.authentication.generateAppQRCode()
             return (.app(authCode: info.authCode), info.url)
         } catch is CancellationError {
             throw CancellationError()
@@ -228,17 +229,17 @@ struct QRLoginSheet: View {
             if appAuthorizationOnly || error.isCancellation || Task.isCancelled { throw error }
             // App 链路自己出问题时（签名被服务端改动、接口下线等）不该让用户
             // 完全登录不了，退回网页扫码；代价只是拿不到 access_key。
-            let info = try await BiliPassport.generateQRCode()
+            let info = try await services.authentication.generateQRCode()
             return (.web(qrcodeKey: info.qrcodeKey), info.url)
         }
     }
 
-    private func poll(_ channel: Channel) async throws -> BiliPassport.QRCodePollOutcome {
+    private func poll(_ channel: Channel) async throws -> LoginModels.QRCodePollOutcome {
         switch channel {
         case .app(let authCode):
-            try await BiliPassport.pollAppQRCode(authCode)
+            try await services.authentication.pollAppQRCode(authCode)
         case .web(let qrcodeKey):
-            try await BiliPassport.pollQRCode(qrcodeKey)
+            try await services.authentication.pollQRCode(qrcodeKey)
         }
     }
 

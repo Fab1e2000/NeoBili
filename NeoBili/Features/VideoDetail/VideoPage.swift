@@ -604,7 +604,7 @@ struct VideoPage: View {
     private func sendDanmaku(_ text: String, mode: DanmakuMode) async throws {
         guard let detail = viewModel?.detail else { return }
         let player = store.player
-        try await BiliAPI.shootDanmaku(cid: store.activeCid ?? detail.cid, bvid: detail.bvid, message: text,
+        try await ApplicationServices.live.comment.shootDanmaku(cid: store.activeCid ?? detail.cid, bvid: detail.bvid, message: text,
                                        progress: player?.currentTime ?? 0, mode: mode.rawValue)
         player?.danmaku?.appendSent(text: text, mode: mode)
         feedback.show(String(localized: "弹幕已发送"))

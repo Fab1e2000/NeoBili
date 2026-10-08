@@ -35,3 +35,16 @@ struct AccountCredentialsSnapshot: Sendable {
     var needsAppCredentialMigration = false
     let accountID: Int?
 }
+
+// Host composition root: the same service contracts and adapters as the app.
+// Only presentation-only services are omitted from this smaller executable.
+struct ApplicationServices {
+    var session: SessionService = .live()
+    var video: VideoService = .live()
+    var recommendation: RecommendationService = .live()
+    static let live = ApplicationServices()
+}
+extension HomeFeedAccount {
+    static func current() async -> Self { await ApplicationServices.live.session.homeAccount() }
+}
+enum ServiceError: Error { case unconfigured(String) }

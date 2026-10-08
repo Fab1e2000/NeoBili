@@ -186,3 +186,8 @@ private actor PageCount {
     private(set) var value = 0
     func add() { value += 1 }
 }
+
+struct ApplicationServices {
+    static let live = ApplicationServices()
+    var streaming: LiveAPI.Type { LiveAPI.self }
+}

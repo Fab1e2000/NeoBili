@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 收藏夹列表（账号创建的全部收藏夹，含默认收藏夹）。
 struct FavoritesView: View {
+    @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
     @Environment(\.scrollingPageHeader) private var scrollingPageHeader
     @Environment(ActionFeedback.self) private var feedback
@@ -107,13 +108,13 @@ struct FavoritesView: View {
     private func delete(_ folder: FavFolder) async {
         guard folderRemovals.begin(folder.id) else { return }
         let sessionID = account.sessionID
-        let identitySession = DeviceIdentity.shared.loginSessionID
+        let identitySession = services.session.currentID()
         defer { if account.sessionID == sessionID { folderRemovals.finish(folder.id) } }
         let removedIndex = folderRemovals.remove(folder.id, from: &folders)
         do {
             guard await feedback.confirmRemoval(String(localized: "已移除收藏夹")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
-            try await BiliAPI.deleteFavoriteFolders(folderIDs: [folder.id], expectedSessionID: identitySession)
+            try await services.library.deleteFavoriteFolders(folderIDs: [folder.id], expectedSessionID: identitySession)
         } catch {
             if account.sessionID == sessionID, let removedIndex {
                 folderRemovals.restore(folder, at: removedIndex, in: &folders)
@@ -136,7 +137,7 @@ struct FavoritesView: View {
         errorMessage = nil
         defer { if loadID == requestID { isLoading = false } }
         do {
-            let result = try await BiliAPI.favoriteFolders(ownerMid: mid)
+            let result = try await services.library.favoriteFolders(ownerMid: mid)
             guard loadID == requestID, account.sessionID == sessionID, folderRemovals.revision == revision, !Task.isCancelled else { return }
             folders = LibraryPageRules.unique(result)
         } catch {
@@ -150,6 +151,7 @@ struct FavoritesView: View {
 /// 结构与首页同构（ScrollView + Button + 转场源紧跟 buttonStyle），
 /// 保证 zoom 动效和首页完全一致。
 struct FavoriteFolderView: View {
+    @Environment(\.applicationServices) private var services
     let folder: FavFolder
 
     @Environment(AccountStore.self) private var account
@@ -336,7 +338,7 @@ struct FavoriteFolderView: View {
         let targets = snapshot.filter { selectedIDs.contains($0.id) }
         guard !targets.isEmpty else { return }
         let owner = account.sessionID
-        let identitySession = DeviceIdentity.shared.loginSessionID
+        let identitySession = services.session.currentID()
         isRemovingSelected = true
         loadID = UUID()
         for target in targets { _ = removals.begin(target.id); removals.hide(target.id) }
@@ -354,7 +356,7 @@ struct FavoriteFolderView: View {
             confirm: { await feedback.confirmRemoval(String(localized: "已移出收藏夹")) },
             remove: { id in
                 guard let target = lookup[id] else { return }
-                try await BiliAPI.removeFavorite(folderID: folder.id, aid: target.id, expectedSessionID: identitySession)
+                try await services.library.removeFavorite(folderID: folder.id, aid: target.id, expectedSessionID: identitySession)
             })
         guard account.sessionID == owner else { return }
         videos = snapshot.filter { !result.succeeded.contains($0.id) }
@@ -384,7 +386,7 @@ struct FavoriteFolderView: View {
         isLoadingMore = false
         defer { if loadID == requestID { isLoading = false } }
         do {
-            let payload = try await BiliAPI.favoriteVideos(folderID: folder.id, page: 1)
+            let payload = try await services.library.favoriteVideos(folderID: folder.id, page: 1)
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = (payload.medias ?? []).filter(\.isVideo)
             entranceGeneration += 1
@@ -420,7 +422,7 @@ struct FavoriteFolderView: View {
             }
         }
         do {
-            let payload = try await BiliAPI.favoriteVideos(folderID: folder.id, page: page)
+            let payload = try await services.library.favoriteVideos(folderID: folder.id, page: page)
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = (payload.medias ?? []).filter(\.isVideo)
             let existing = Set(videos.map(\.id))
@@ -443,14 +445,14 @@ struct FavoriteFolderView: View {
         guard !isRemovingSelected, videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
         let sessionID = account.sessionID
         defer { if account.sessionID == sessionID { removals.finish(media.id) } }
-        let identitySession = DeviceIdentity.shared.loginSessionID
+        let identitySession = services.session.currentID()
         var removedIndex: Int?
         do {
             removals.hide(media.id)
             removedIndex = removals.remove(media.id, from: &videos)
             guard await feedback.confirmRemoval(String(localized: "已移出收藏夹")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
-            try await BiliAPI.removeFavorite(folderID: folder.id, aid: media.id, expectedSessionID: identitySession)
+            try await services.library.removeFavorite(folderID: folder.id, aid: media.id, expectedSessionID: identitySession)
             guard account.sessionID == sessionID else { return }
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             videos.removeAll { $0.id == media.id }

@@ -4,7 +4,7 @@
 
 全客户端静态网络研究与分模块覆盖深度见 [客户端网络协议研究](CLIENT_NETWORK_PROTOCOLS.md)。
 
-完整字段清单和用户选定的发送策略见 [NOTSURE.md](../NOTSURE.md)。实现结构见 [架构](ARCHITECTURE.md)，采集与验证入口见 [开发与测试](DEVELOPMENT.md#官方推荐请求对比)。本文不包含手机号、验证码、账号凭据、真实设备编号、票据或安全验证 URL。
+完整字段清单和用户选定的发送策略见 [NOTSURE.md](research/recommendation-parameters.md)。实现结构见 [架构](ARCHITECTURE.md)，采集与验证入口见 [开发与测试](DEVELOPMENT.md#官方推荐请求对比)。本文不包含手机号、验证码、账号凭据、真实设备编号、票据或安全验证 URL。
 
 当前实现已采用已解码的首页视频卡点击事件通道，将移动心跳调整为真实播放开始/结束边界，
 并拆分页面与播放会话。事件队列保留创建时的身份与会话快照。具体处理及尚未实现的字段见
@@ -75,7 +75,7 @@ NOTSURE.md 的“已落实的点击、观看与会话策略”；下文“当时
 
 NeoBili 早期 App 请求使用 Android 身份；当前使用 `mobi_app=iphone`、`build=91300100`、`platform=ios` 及版本 9.13.0。国际版样本使用 `mobi_app=iphone_i`、`build=91300300`。国际版短信登录及授权兑换样本的 appkey 为 `0ac1706090f12cfc`；安全中心请求样本另有 `27eb53fc9058f8c3`。当前 NeoBili 登录和业务使用后一组 iOS appkey。
 
-NeoBili 默认 App BUVID 由随机 UUID 的 MD5 摘要组成 `XY…` 格式，保存在本地；已有值直接复用。代码注释参考 PiliPlus 的 App BUVID 与网页 buvid3 分开保存做法。Debug 对照实验可通过本机设置覆盖成采集到的官方 BUVID，原始编号没有写入源码，Release 不读取该覆盖。重新登录没有重新生成 App BUVID。
+采样时的 NeoBili 使用随机 UUID 的 MD5 摘要生成 `XY…` 格式 App BUVID；下表对照属于该阶段。当前 `AppBuvid` 新生成路径默认采用自身 IDFV 的36字符 Y 分支，已有编号保留，不在升级或重新登录时强制替换；设置中的随机模式使用独立 UUID 种子与存储。App BUVID 与网页 buvid3 分开。经授权的 Debug 官方编号覆盖仍与生产自身编号分开，Release 不读取该覆盖；这些历史对照不代表当前默认编号生成方式。
 
 在同账号基准请求上，以内存中的真实值替换选定字段，重新生成时间戳和签名，两轮采用相反顺序。记录的 30 次请求均 HTTP 200、业务码 0。标题关键词统计使用 ASMR、助眠、掏耳、采耳、哄睡：
 
@@ -156,7 +156,7 @@ NeoBili 默认 App BUVID 由随机 UUID 的 MD5 摘要组成 `XY…` 格式，�
 
 用户从历史打开同一视频连续播放后返回。本批开始、结束移动心跳请求相隔约 168.3 秒，结束实际观看时间为 169 秒，暂停时间为 0；并非精确 180 秒样本。只抓到这两条移动心跳，均业务码 0。结束播放位置及历史 progress 为 298，累计观看时间与续播位置分开。另有一条 ViewProgress、一条 click/ios 和一条历史同步请求。
 
-本次心跳 session/sessionID 全程相等且不变，View 请求字段 6 与心跳编号不同。此前首页暂停与历史重入样本也只见开始、结束移动心跳。NeoBili 当前累计 5 秒后首次、随后每 15 秒的发送策略与这些捕获记录不同；其他日志流量未据此归类为观看心跳。
+本次心跳 session/sessionID 全程相等且不变，View 请求字段 6 与心跳编号不同。此前首页暂停与历史重入样本也只见开始、结束移动心跳。当前 NeoBili 累计5秒后首次、随后每15秒的 checkpoint 仅同步历史；移动心跳在真实起播和结束边界发送（BiliAPI.reportAppWatch）。不能把历史同步周期记作移动心跳周期；其他日志流量也未据此归类为观看心跳。
 
 ### 暂停、后台与恢复样本
 
@@ -180,7 +180,7 @@ NeoBili 默认 App BUVID 由随机 UUID 的 MD5 摘要组成 `XY…` 格式，�
 | gRPC `bilibili.api.ticket.v1.Ticket/GetTicket` | 响应字段 1 为 ticket，后续 x-bili-ticket 相同；字段 2 为创建时间，字段 3 为 ttl，样本为 28800 秒，grpc-status 为 0 |
 | GetTicket 请求 | context 包含 x-fingerprint/x-exbadbasket，并见 key_id、32 字节 sign；该样本未携带 token |
 
-当前未取得上述加密内容的完整生成规则。NeoBili 没有实现 App fingerprint、访客登记和 GetTicket 的申请/续期；生产不发送对应的 device_id、device_tourist_id、device_info/device_meta/dt、bili_local_id、guestid 和 x-bili-ticket。
+采样阶段尚未实现上述登记和票据链；该描述不再代表当前实现。当前已接入 AppDeviceRegistration、AppGuestRegistration 与 AppTicketService，公共头在结果可用时携带 guestid 和 x-bili-ticket，并编码设备元数据。加密、回执与持久化规则见实现契约 DEV-02/03 和 TICKET-01/02；指纹仅实现明确子集，不能据已有字段或这些历史样本宣称完整官方资料、实际续期与服务端消费都已验收。
 
 ## 短信登录与设备管理
 
@@ -275,7 +275,7 @@ NeoBili 默认 App BUVID 由随机 UUID 的 MD5 摘要组成 `XY…` 格式，�
 
 fingerprint 的 key 为十六进制编码的 128 字节内容，content 为 496–544 字节、整 16 字节块；访客 device_info 为 192 字节，登录 device_meta 为 1136 字节，dt 为 Base64 编码的 128 字节内容。本批 web/key 返回 1024 位 RSA 公钥。已见 64 字符 device_id/fp/bili_local_id 符合 32 位 hex、14 位可解析日期时间、16 位 hex、2 位校验的候选结构，最后一段匹配前面 hex 字节求和模 256。没有由长度和校验关系认定完整的 iOS 加密或标识生成算法。
 
-当前已从旧版 iOS 分析样本取得部分生成代码的函数体证据，尚未完整证明当前版本的明文资料与生命周期；[bilive_client](https://github.com/bilive/bilive_client/blob/master/bilive/lib/app_client.ts) 的 Android AES/RSA 实现仅作研究候选。基础曝光可复用已验收的日志包装，另外接入实际可见时段和 realtime 通道；设备登记需完成字段和版本核对后，用自身资料取得、持久化并复用对应服务器响应。细节与实施边界见 [NOTSURE.md](../NOTSURE.md#基础曝光的字段来源与补齐方案)。当前生产仍未增加曝光和设备登记请求。
+当前已从旧版 iOS 分析样本取得部分生成代码的函数体证据，尚未完整证明当前版本的明文资料与生命周期；[bilive_client](https://github.com/bilive/bilive_client/blob/master/bilive/lib/app_client.ts) 的 Android AES/RSA 实现仅作研究候选。基础曝光可复用已验收的日志包装，另外接入实际可见时段和 realtime 通道；设备登记需完成字段和版本核对后，用自身资料取得、持久化并复用对应服务器响应。细节与实施边界见 [NOTSURE.md](research/recommendation-parameters.md#基础曝光的字段来源与补齐方案)。当前生产仍未增加曝光和设备登记请求。
 
 已下载 [BiliBiliMApp 发布的 8.89.0 目标包](https://github.com/TouchFriend/BiliBiliMApp/releases/tag/3.1.0)，文件摘要匹配发布资产，包内 build 为 88900100。主程序加密标志 cryptid=0；同时加载第三方 BilibiliVideoTools 插件，因此不把它视为未经修改的官方原包。现已通过定向提取代码绕开坏符号表，并分析设备标识、fingerprint、访客和短信登录函数体；版本不同于当前采集的 9.13.0，不据此声明当前客户端完整等价。文件与核验摘要留在忽略的研究目录；原始源码和服务器端推荐算法不包含在此包中。
 
@@ -285,7 +285,7 @@ BFCDeviceToken.localBUVID 则是 64 字符本地指纹：设备标识、型号�
 
 旧包 fingerprint 明文是有 54 项描述符字段的 Protobuf；其 content 使用 AES-128-ECB + PKCS#7，随机 16 字节 key 每字节为 1–127。key 先转 hex 字符串，再经包内 1024 位公钥与 Apple RSAEncryptionPKCS1 包装，密文转 hex。访客明文则是 IDFV、IDFA、DeviceType、Buvid、fts 五项 JSON；访客和登录 device_meta 使用 AES-128-CBC + PKCS#7，随机 16 字符字母数字 key 同时作 IV，RSA 包装后 Base64 为 dt。登录资料通过另一设备模型生成 JSON，不能与指纹 Protobuf 或访客五项 JSON 共用正文。访客/登录的 CRSA 入口已定位 padding=1，但静态 RSA 内部函数与完整更新调用方尚未追完。
 
-假资料、已知 AES 向量、CommonCrypto/OpenSSL 交叉校验及包内公钥的 Apple Security 调用均已离线验证；假访客正文 178 字节，经填充加密为 192 字节，公钥包装结果为 128 字节。这支持旧包规则可复现和已采集长度相容，没有解密当前抓包、申请自身登记结果或验证推荐变化。字段来源、缺省值、首次运行时间保存及当前版本差异仍需完成核对。完整地址证据和限制见 [NOTSURE.md](../NOTSURE.md#ios-分析样本中的生成与加密规则)。手机采集保持关闭，实际准备好测试版并需要验证时再启用。
+假资料、已知 AES 向量、CommonCrypto/OpenSSL 交叉校验及包内公钥的 Apple Security 调用均已离线验证；假访客正文 178 字节，经填充加密为 192 字节，公钥包装结果为 128 字节。这支持旧包规则可复现和已采集长度相容，没有解密当前抓包、申请自身登记结果或验证推荐变化。字段来源、缺省值、首次运行时间保存及当前版本差异仍需完成核对。完整地址证据和限制见 [NOTSURE.md](research/recommendation-parameters.md#ios-分析样本中的生成与加密规则)。手机采集保持关闭，实际准备好测试版并需要验证时再启用。
 
 尚未确认的信息包括服务器推荐策略与实验分组、完整本地推荐调用、当前官方版本设备编号首次生成与重装生命周期、跨网络地区标签规则、曝光完整状态/门槛/调度规则、当前版本完整指纹和登录资料、登记兼容性及票据内部签名。旧包静态证据不能补足这些项目的当前取值与验收。
 

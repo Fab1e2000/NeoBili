@@ -60,7 +60,7 @@ private struct CommentMetaRow: View {
     /// 时间 + 点赞按钮那一行。
     var body: some View {
         HStack(spacing: 12) {
-            Text(comment.relativeTime)
+            Text([comment.relativeTime, comment.location].compactMap { $0 }.joined(separator: "  "))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
@@ -124,11 +124,6 @@ struct ExpandableCommentMessage: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .background { messageMeasurements }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    guard canExpandMessage else { return }
-                    withAnimation(.easeInOut(duration: 0.2)) { isMessageExpanded.toggle() }
-                }
 
             if canExpandMessage {
                 Button {
@@ -148,12 +143,12 @@ struct ExpandableCommentMessage: View {
 
     private var messageBody: some View {
         CommentEmoteText(message: comment.message, emotes: comment.emotes,
-                         font: .subheadline, textStyle: .subheadline)
+                         font: .subheadline, textStyle: .subheadline, jumpURLs: comment.content.jumpURLs)
     }
 
     private var measuredMessageBody: some View {
         CommentEmoteText(message: comment.message, emotes: comment.emotes,
-                         font: .subheadline, textStyle: .subheadline, loadsEmotes: false)
+                         font: .subheadline, textStyle: .subheadline, jumpURLs: comment.content.jumpURLs, loadsEmotes: false)
     }
 
     /// 只比较六行和七行即可知道是否溢出，不为收起的长文排版全部内容。
@@ -191,6 +186,7 @@ private struct CommentReplyPreview: View {
     let comment: Comment
     let viewModel: CommentsViewModel
     @Environment(\.openCommentThread) private var openCommentThread
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         if comment.rcount > 0 || !(viewModel.submittedReplies[comment.id] ?? []).isEmpty {
@@ -212,12 +208,17 @@ private struct CommentReplyPreview: View {
                     emotes: reply.emotes,
                     font: .caption,
                     textStyle: .caption,
-                    prefix: "\(reply.member.uname)："
+                    prefix: "\(reply.member.uname)：",
+                    prefixURL: URL(string: "neobili://comment-thread/\(comment.id)"),
+                    jumpURLs: reply.content.jumpURLs
                 )
                     // 楼中楼只折叠回复数量，不截断单条正文，也不预留隐藏行高度。
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if let location = reply.location {
+                    Text(location).font(.caption2).foregroundStyle(.tertiary)
+                }
             }
 
             if viewModel.isLoadingReplies(comment) {
@@ -233,8 +234,9 @@ private struct CommentReplyPreview: View {
             }
 
             if viewModel.shouldShowAllReplies(comment) {
-                Text("查看全部回复")
+                Button("查看全部回复") { openCommentThread(comment) }
                     .font(.caption.weight(.medium))
+                    .buttonStyle(.plain)
                     .foregroundStyle(.primary)
             }
 
@@ -254,13 +256,12 @@ private struct CommentReplyPreview: View {
             values[.block] = anchor
         }
 #endif
-        // 整块都是进单独页面的入口，「查看全部回复」只是块内的一行文字提示，
-        // 不再是独立按钮——两个可点的东西叠在一起，点哪儿都一样反而费解。
-        .contentShape(RoundedRectangle(cornerRadius: CommentLayout.replyCornerRadius, style: .continuous))
-        .onTapGesture { openCommentThread(comment) }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(String(localized: "查看全部 \(comment.rcount) 条回复"))
+        .environment(\.openURL, OpenURLAction { url in
+            if url.scheme == "neobili", url.host == "comment-thread" {
+                openCommentThread(comment)
+            } else { openURL(url) }
+            return .handled
+        })
     }
 }
 

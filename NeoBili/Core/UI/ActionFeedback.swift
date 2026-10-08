@@ -132,6 +132,7 @@ extension View {
 /// 首页、搜索、相关视频、收藏、历史五处都要这一项，做成独立视图后各处只写
 /// 一行；登录检查和提示文案也就只有一份。
 struct WatchLaterMenuButton: View {
+    @Environment(\.applicationServices) private var services
     /// 稿件 avid。搜索结果没有 avid，只能靠 bvid。两者给一个即可。
     var aid: Int?
     var bvid: String?
@@ -147,7 +148,7 @@ struct WatchLaterMenuButton: View {
             }
             Task {
                 do {
-                    try await BiliAPI.addWatchLater(aid: aid, bvid: bvid)
+                    try await services.library.addWatchLater(aid: aid, bvid: bvid)
                     feedback.show(String(localized: "已加入稍后再看"))
                 } catch {
                     feedback.show(error.localizedDescription)

@@ -6,6 +6,7 @@ import SwiftUI
 /// 收进去的那几个默认打勾（靠 `list-all` 带回来的 `fav_state`），确认时只提交
 /// 勾选状态发生变化的部分。
 struct FavoriteFolderSheet: View {
+    @Environment(\.applicationServices) private var services
     /// 当前账号的 mid，用来查自己的收藏夹。
     let ownerMid: Int
     /// 要收藏的稿件 avid。
@@ -102,7 +103,7 @@ struct FavoriteFolderSheet: View {
     private func loadFolders() async {
         isLoading = true
         do {
-            let loaded = try await BiliAPI.favoriteFolders(ownerMid: ownerMid, videoAid: videoAid)
+            let loaded = try await services.library.favoriteFolders(ownerMid: ownerMid, videoAid: videoAid)
             folders = loaded
             let existing = Set(loaded.filter(\.containsQueriedVideo).map(\.id))
             originalSelection = existing

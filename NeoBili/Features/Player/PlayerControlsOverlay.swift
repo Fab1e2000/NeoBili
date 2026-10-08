@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 原生按钮、菜单与滑杆组成媒体控制层；手势区域与稳定的视频渲染层分别管理。
 struct PlayerControlsOverlay: View {
+    @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -161,7 +162,7 @@ struct PlayerControlsOverlay: View {
             defer { isAddingWatchLater = false }
             guard account.isLoggedIn, account.sessionID == session else { return }
             do {
-                try await BiliAPI.addWatchLater(aid: nil, bvid: bvid)
+                try await services.library.addWatchLater(aid: nil, bvid: bvid)
                 guard account.sessionID == session else { return }
                 feedback.show(String(localized: "已加入稍后再看"))
             } catch {

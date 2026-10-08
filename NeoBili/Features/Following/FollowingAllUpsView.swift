@@ -15,7 +15,7 @@ final class FollowingAllUpsModel {
     private var pageSignatures: Set<Set<Int>> = []
 
     init(mid: Int, loader: @escaping Loader = { mid, page in
-        try await BiliAPI.followings(mid: mid, page: page)
+        try await ApplicationServices.live.community.followings(mid: mid, page: page)
     }) {
         self.mid = mid
         self.loader = loader
