@@ -92,7 +92,7 @@ private struct LiveFeedPage: View {
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .live)
 
-    @State private var model: LiveFeedModel
+    private let model: LiveFeedModel
     @State private var entranceClock = VideoEntranceClock()
     @State private var previousEntranceGeneration: Int?
     @State private var refreshTask: Task<Void, Never>?
@@ -105,7 +105,7 @@ private struct LiveFeedPage: View {
 
     init(model: LiveFeedModel, isActive: Bool,
          onSelectRecommended: @escaping () -> Void, onOpenRoom: @escaping (LiveRoom, String) -> Void) {
-        _model = State(initialValue: model)
+        self.model = model
         self.isActive = isActive
         self.onSelectRecommended = onSelectRecommended
         self.onOpenRoom = onOpenRoom

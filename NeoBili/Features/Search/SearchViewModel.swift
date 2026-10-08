@@ -36,12 +36,25 @@ final class SearchViewModel {
     /// 已经真正搜过的那个词。为空表示这一页还没搜过东西，页面停在提示状态。
     private(set) var submittedKeyword = ""
 
-    private var searchTask: Task<Void, Never>?
-    private var generation = UUID()
+    @ObservationIgnored private let searchVideos: (String, Int) async throws -> SearchResultPage
+    @ObservationIgnored private let searchSuggestions: (String) async throws -> [SearchSuggestion]
+    @ObservationIgnored private let recordHistory: @MainActor (String) -> Void
+    @ObservationIgnored private var knownResultIDs = Set<String>()
+    @ObservationIgnored private var suggestionRequest = UUID()
+    @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var generation = UUID()
     private(set) var pageNumber = 0
     private(set) var isLoadingMore = false
     private(set) var hasMore = false
     private(set) var loadMoreError: String?
+
+    init(searchVideos: @escaping (String, Int) async throws -> SearchResultPage = { try await BiliAPI.searchVideos(keyword: $0, page: $1) },
+         searchSuggestions: @escaping (String) async throws -> [SearchSuggestion] = { try await BiliAPI.searchSuggestions(term: $0) },
+         recordHistory: @escaping @MainActor (String) -> Void = { SearchHistory.shared.record($0) }) {
+        self.searchVideos = searchVideos
+        self.searchSuggestions = searchSuggestions
+        self.recordHistory = recordHistory
+    }
 
     var trimmedQuery: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -63,6 +76,8 @@ final class SearchViewModel {
         searchTask?.cancel()
         searchTask = nil
         generation = UUID()
+        suggestionRequest = UUID()
+        knownResultIDs.removeAll(keepingCapacity: true)
         pageNumber = 0
         isLoadingMore = false
         hasMore = false
@@ -82,14 +97,14 @@ final class SearchViewModel {
         let trimmed = trimmedQuery
         reset()
         guard !trimmed.isEmpty else { return }
-        SearchHistory.shared.record(trimmed)
+        recordHistory(trimmed)
         submittedKeyword = trimmed
         isLoading = true
         let request = generation
         searchTask = Task {
             defer { if generation == request { isLoading = false } }
             do {
-                let page = try await BiliAPI.searchVideos(keyword: trimmed, page: 1)
+                let page = try await searchVideos(trimmed, 1)
                 guard !Task.isCancelled, generation == request else { return }
                 append(page, number: 1)
             } catch {
@@ -108,7 +123,7 @@ final class SearchViewModel {
         loadMoreError = nil
         defer { if generation == request { isLoadingMore = false } }
         do {
-            let page = try await BiliAPI.searchVideos(keyword: keyword, page: next)
+            let page = try await searchVideos(keyword, next)
             guard !Task.isCancelled, generation == request else { return }
             append(page, number: next)
         } catch {
@@ -118,8 +133,8 @@ final class SearchViewModel {
     }
 
     private func append(_ page: SearchResultPage, number: Int) {
-        var known = Set(results.map(\.bvid))
-        let incoming = (page.result ?? []).filter { known.insert($0.bvid).inserted }
+        // Keep the index across pages instead of rescanning the accumulated list.
+        let incoming = (page.result ?? []).filter { !$0.bvid.isEmpty && knownResultIDs.insert($0.bvid).inserted }
         results.append(contentsOf: incoming)
         if number == 1 { resultsGeneration += 1 }
         pageNumber = number
@@ -131,11 +146,13 @@ final class SearchViewModel {
     ///
     /// 由视图的 `.task(id:)` 驱动：输入变化时上一次的任务会被取消，所以这里
     /// 先睡一小会儿就等于防抖——用户还在连着打字时不会发出请求。
-    /// 联想只是锦上添花，失败时保持上一批候选词，不打断用户输入。
+    /// 新输入立即移除旧候选；失败时仍可直接提交当前词。
     func loadSuggestions() async {
         let term = trimmedQuery
+        let request = UUID()
+        suggestionRequest = request
+        suggestions = []
         guard isShowingSuggestions else {
-            suggestions = []
             return
         }
 
@@ -143,8 +160,9 @@ final class SearchViewModel {
         guard !Task.isCancelled else { return }
 
         do {
-            let list = try await BiliAPI.searchSuggestions(term: term)
-            guard !Task.isCancelled, term == trimmedQuery else { return }
+            let list = try await searchSuggestions(term)
+            guard !Task.isCancelled, suggestionRequest == request,
+                  term == trimmedQuery, isShowingSuggestions else { return }
             suggestions = list
         } catch {
             // 静默失败：搜索本身仍然可用。

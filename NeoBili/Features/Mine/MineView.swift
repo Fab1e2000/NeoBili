@@ -57,7 +57,10 @@ struct MineView: View {
             MineServiceSheet(service: service)
                 .appTextSize()
         }
-        .onChange(of: account.sessionID) { serviceSheet = nil }
+        .onChange(of: account.sessionID) {
+            serviceSheet = nil
+            nowPlaying.isServiceSheetPresented = false
+        }
         .sheet(item: $loginSheet) { sheet in
             switch sheet {
             // sheet 有自己的 UIHostingController，文字档位要在根部重新注入。

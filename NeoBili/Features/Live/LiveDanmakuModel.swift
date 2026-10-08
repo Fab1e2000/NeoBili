@@ -10,6 +10,7 @@ import SwiftUI
 @MainActor
 @Observable
 final class LiveDanmakuModel {
+    typealias SuperChatLoader = @MainActor (Int) async throws -> [[String: Any]]
     struct Medal: Hashable, Sendable {
         let name: String
         let level: Int
@@ -42,6 +43,7 @@ final class LiveDanmakuModel {
 
         func remaining(at now: TimeInterval = Date().timeIntervalSince1970) -> TimeInterval { end - now }
         var isValid: Bool { remaining() > 0 }
+        func bannerDuration(at now: TimeInterval) -> TimeInterval { max(0, min(10, remaining(at: now))) }
     }
 
     enum ConnectionState: Equatable {
@@ -66,12 +68,17 @@ final class LiveDanmakuModel {
     private var heartbeatTask: Task<Void, Never>?
     private var receiveLoop: Task<Void, Never>?
     private var connectGeneration = 0
-    private var isLoadingHistory = false
+    @ObservationIgnored private var historyTask: Task<Void, Never>?
+    @ObservationIgnored private let superChatLoader: SuperChatLoader
     @ObservationIgnored private var pendingMessages: [Message] = []
     @ObservationIgnored private var messageFlushTask: Task<Void, Never>?
 
     static let messageLimit = 200
     private static let messageTrimmedCount = 150
+
+    init(superChatLoader: @escaping SuperChatLoader = { try await LiveAPI.superChatList(roomID: $0) }) {
+        self.superChatLoader = superChatLoader
+    }
 
     // MARK: - 生命周期
 
@@ -82,7 +89,8 @@ final class LiveDanmakuModel {
         roomID = newRoomID
         connectGeneration += 1
         receiveLoop = Task { await connect() }
-        Task { await loadSuperChats() }
+        let generation = connectGeneration
+        historyTask = Task { await loadSuperChats(roomID: newRoomID, generation: generation) }
     }
 
     func stop() {
@@ -91,6 +99,8 @@ final class LiveDanmakuModel {
         heartbeatTask = nil
         receiveLoop?.cancel()
         receiveLoop = nil
+        historyTask?.cancel()
+        historyTask = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         session?.invalidateAndCancel()
@@ -102,7 +112,9 @@ final class LiveDanmakuModel {
         messages = []
         superChats = []
         popularity = nil
-        flowEngine = nil
+        // A reconnect can keep the same mounted fullscreen renderer. Its weak
+        // attachment belongs to the representable lifecycle, not the socket.
+        flowEngine?.clear(keepTimelineAt: 0)
         hiddenSuperChatIDs = []
         deletedSuperChatIDs = []
     }
@@ -117,7 +129,7 @@ final class LiveDanmakuModel {
     // MARK: - 连接
 
     private func connect() async {
-        guard !AppNetwork.isRegression else { return }
+        guard !AppNetwork.isRegression, !Task.isCancelled else { return }
         let generation = connectGeneration
         connection = .connecting
         // 服务器列表逐个尝试；每个候选 8 秒内没完成认证就换下一个。
@@ -232,11 +244,11 @@ final class LiveDanmakuModel {
     func handleFrame(_ data: Data) {
         var offset = 0
         while data.count - offset >= 16 {
-            let remaining = data.subdata(in: offset..<data.count)
-            guard let header = LivePacketCodec.header(of: remaining),
+            guard let header = LivePacketCodec.header(of: data, offset: offset),
                   header.headerLength >= 16, header.totalLength >= header.headerLength,
-                  header.totalLength <= remaining.count else { return }
-            let body = remaining.subdata(in: header.headerLength..<header.totalLength)
+                  header.totalLength <= data.count - offset else { return }
+            let start = data.startIndex + offset
+            let body = data.subdata(in: (start + header.headerLength)..<(start + header.totalLength))
             switch header.protover {
             case 0, 1:
                 dispatch(operation: header.operation, body: body)
@@ -406,15 +418,11 @@ final class LiveDanmakuModel {
         if superChats.count > 5 { superChats.removeLast(superChats.count - 5) }
     }
 
-    private func loadSuperChats() async {
-        guard !isLoadingHistory else { return }
-        isLoadingHistory = true
-        defer { isLoadingHistory = false }
-        let roomID = roomID
-        let generation = connectGeneration
-        let list = (try? await LiveAPI.superChatList(roomID: roomID)) ?? []
+    private func loadSuperChats(roomID: Int, generation: Int) async {
+        guard generation == connectGeneration, !Task.isCancelled else { return }
+        let list = (try? await superChatLoader(roomID)) ?? []
         // stop()/重连之后返回的结果不能再进已清空的列表。
-        guard generation == connectGeneration, !list.isEmpty else { return }
+        guard generation == connectGeneration, !Task.isCancelled, !list.isEmpty else { return }
         // 服务端按时间正序；append 是「新条目插到最前」，所以正序迭代后
         // 最新的排在最前，prune 的 removeLast 丢的也是最旧的。
         for entry in list {

@@ -184,13 +184,24 @@ final class HomeViewModel {
 
     /// 拉黑 UP 主：照 PiliPlus 成功后记进本地黑名单，之后的推荐不再出现他。
     /// PiliPlus 只移除当前这张卡；这里把列表里他的卡都移除，免得拉黑后眼前还留着。
-    func block(_ owner: VideoOwner) async -> String {
+    func block(_ owner: VideoOwner) async -> String? {
+        let session = currentSessionID()
         do {
             try await blockUser(owner.mid)
+            guard currentSessionID() == session, !Task.isCancelled else { return nil }
             RecommendationFilter.block(owner.mid, defaults: defaults)
-            for video in videos where video.owner.mid == owner.mid { remove(video) }
+            // Publish one list mutation, even when the UP owns many cards.
+            // Count removals on the fresh side before changing the boundary.
+            if let boundary = lastRefreshAt {
+                let removed = videos.prefix(boundary).count { $0.owner.mid == owner.mid }
+                lastRefreshAt = boundary - removed
+            }
+            videos.removeAll { $0.owner.mid == owner.mid }
             return String(localized: "已拉黑 \(owner.name)")
-        } catch { return error.localizedDescription }
+        } catch {
+            guard currentSessionID() == session, !Self.isCancellation(error) else { return nil }
+            return error.localizedDescription
+        }
     }
 
     /// 移除卡片；它在「上次看到这里」之前时，提示卡跟着前移一位。

@@ -33,14 +33,18 @@ struct RecommendedDynamicSheet: View {
             }
         }
         .task(id: id) {
+            entry = nil
+            errorMessage = nil
             do {
                 let item = try await BiliAPI.dynamicDetail(id: id)
+                try Task.checkCancellation()
                 if let loaded = item.asEntry {
                     entry = loaded
                 } else {
                     errorMessage = String(localized: "暂不支持这种动态")
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 errorMessage = error.localizedDescription
             }
         }

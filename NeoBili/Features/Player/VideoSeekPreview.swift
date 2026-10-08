@@ -29,9 +29,9 @@ struct VideoStoryboard: Decodable {
     func tile(at seconds: Double) -> Tile? {
         guard seconds.isFinite, !index.isEmpty, imgXLen > 0, imgYLen > 0,
               imgXLen <= 100, imgYLen <= 100,
-              imgXSize > 0, imgYSize > 0, !image.isEmpty else { return nil }
+              imgXSize.isFinite, imgYSize.isFinite, imgXSize > 0, imgYSize > 0, !image.isEmpty else { return nil }
         let perImage = imgXLen * imgYLen
-        let offset = min(max(0, index.filter { $0 <= seconds }.count - 2), image.count * perImage - 1)
+        let offset = min(max(0, index.reduce(0) { $0 + ($1 <= seconds ? 1 : 0) } - 2), image.count * perImage - 1)
         let raw = image[offset / perImage]
         guard let url = URL(string: raw.hasPrefix("//") ? "https:" + raw : raw.replacingOccurrences(of: "http://", with: "https://")),
               url.scheme == "https" else { return nil }
@@ -55,6 +55,7 @@ final class VideoStoryboardStore {
     @ObservationIgnored private var video: VideoPreviewID?
     @ObservationIgnored private var order: [URL] = []
     @ObservationIgnored private var requests: [URL: Task<UIImage, Error>] = [:]
+    @ObservationIgnored private var cachedFrame: (tile: VideoStoryboard.Tile, image: UIImage)?
     @ObservationIgnored private var metadataTask: Task<VideoStoryboard, Error>?
 
     @ObservationIgnored private let metadataLoader: (VideoPreviewID) async throws -> VideoStoryboard
@@ -89,6 +90,7 @@ final class VideoStoryboardStore {
             for request in requests.values { request.cancel() }
             requests.removeAll()
             sprites.removeAll()
+            cachedFrame = nil
             order.removeAll()
             failedURLs.removeAll()
             storyboard = nil
@@ -131,12 +133,13 @@ final class VideoStoryboardStore {
     /// cancels a sprite download. Keep at most four decoded sheets (~23 MB).
     func prepare(at seconds: Double) async {
         guard let board = storyboard, let tile = board.tile(at: seconds) else { return }
+        let currentGeneration = generation
         await loadSprite(tile.url)
-        guard !Task.isCancelled, let position = board.image.firstIndex(where: {
+        guard generation == currentGeneration, !Task.isCancelled, let position = board.image.firstIndex(where: {
             Self.secureURL($0) == tile.url
         }) else { return }
         for neighbor in [position + 1, position - 1] where board.image.indices.contains(neighbor) {
-            if Task.isCancelled { return }
+            if generation != currentGeneration || Task.isCancelled { return }
             if let url = Self.secureURL(board.image[neighbor]) { await loadSprite(url) }
         }
     }
@@ -206,9 +209,12 @@ final class VideoStoryboardStore {
     }
 
     func frame(at seconds: Double) -> UIImage? {
-        guard let tile = storyboard?.tile(at: seconds),
-              let cgImage = sprites[tile.url]?.cgImage?.cropping(to: tile.rect) else { return nil }
-        return UIImage(cgImage: cgImage)
+        guard let tile = storyboard?.tile(at: seconds) else { return nil }
+        if let cachedFrame, cachedFrame.tile == tile { return cachedFrame.image }
+        guard let cgImage = sprites[tile.url]?.cgImage?.cropping(to: tile.rect) else { return nil }
+        let image = UIImage(cgImage: cgImage)
+        cachedFrame = (tile, image)
+        return image
     }
 }
 

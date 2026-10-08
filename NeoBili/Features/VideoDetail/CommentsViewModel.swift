@@ -35,6 +35,7 @@ final class CommentsViewModel {
 
     @ObservationIgnored private var commentIDs: Set<Int> = []
     @ObservationIgnored private var replyIDs: [Int: Set<Int>] = [:]
+    @ObservationIgnored private var hasLoadedInitialPage = false
     private var nextPage = 1
     private let fetchReplies: @MainActor (Int, Int, Int, Int) async throws -> CommentReplyPage
     private let fetchComments: @MainActor (Int, Int, Int) async throws -> CommentPage
@@ -121,7 +122,7 @@ final class CommentsViewModel {
     /// 第一次切到评论页时调用。已经加载过就直接返回，
     /// 所以在简介和评论之间来回切换不会重复请求。
     func loadInitial() async {
-        guard comments.isEmpty, !isLoading, errorMessage == nil else { return }
+        guard !hasLoadedInitialPage, !isLoading, !isLoadingMore, errorMessage == nil else { return }
         isLoading = true
         await loadNextPage()
         isLoading = false
@@ -239,6 +240,7 @@ final class CommentsViewModel {
         do {
             let page = try await fetchComments(oid, type, nextPage)
             try Task.checkCancellation()
+            hasLoadedInitialPage = true
             totalCount = page.page.count
             let newComments = page.replies ?? []
             guard !newComments.isEmpty else {

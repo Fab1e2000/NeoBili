@@ -51,15 +51,18 @@ extension BiliAPI {
     }
 
     /// 删除整个收藏夹。可以一次删多个，服务端要求逗号分隔。
-    static func deleteFavoriteFolders(folderIDs: [Int]) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
+    static func deleteFavoriteFolders(folderIDs: [Int], expectedSessionID: UUID? = nil,
+                                      client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+        let sessionID = expectedSessionID ?? identity.loginSessionID
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(
             path: "x/v3/fav/folder/del",
             form: [
                 "media_ids": folderIDs.map(String.init).joined(separator: ","),
                 "platform": "web",
                 "csrf": csrf
-            ]
+            ],
+            expectedSessionID: sessionID
         )
     }
 }

@@ -127,10 +127,13 @@ private struct VideoListCardContent: View, Equatable {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: VideoListCardLayout.textAreaHeight, alignment: .top)
+            // Preserve the ordinary 90pt row, but let larger text grow instead
+            // of drawing the author/metadata outside a fixed-height card.
+            .frame(minHeight: VideoListCardLayout.textAreaHeight, alignment: .top)
 
             Spacer(minLength: 0)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.vertical, VideoListCardLayout.contentPadding)
         .padding(.horizontal, showsCardChrome ? VideoListCardLayout.contentPadding : 0)
         .background {

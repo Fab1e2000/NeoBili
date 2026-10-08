@@ -36,3 +36,9 @@ swiftc -swift-version 6 -O -parse-as-library \
     "$HARNESS/src/MetadataPersistenceRegression.swift" \
     -o "$BUILD_DIR/metadata-persistence"
 "$BUILD_DIR/metadata-persistence"
+
+swiftc -swift-version 6 -O -parse-as-library \
+    "$ROOT/NeoBili/Core/Extensions/BiliDateFormatting.swift" \
+    "$HARNESS/src/DateFormattingPerformance.swift" \
+    -o "$BUILD_DIR/date-formatting"
+"$BUILD_DIR/date-formatting"

@@ -12,6 +12,9 @@ struct LiveRoomCard: View {
 
 private struct LiveRoomCardContent: View, Equatable {
     let room: LiveRoom
+    @ScaledMetric(relativeTo: .subheadline) private var detailsHeight: CGFloat = 81
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.room == rhs.room }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -56,7 +59,7 @@ private struct LiveRoomCardContent: View, Equatable {
             .padding(.horizontal, 8)
             .padding(.top, 8)
             .padding(.bottom, 10)
-            .frame(height: 81, alignment: .top)
+            .frame(minHeight: detailsHeight, alignment: .top)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .secondarySystemGroupedBackground))

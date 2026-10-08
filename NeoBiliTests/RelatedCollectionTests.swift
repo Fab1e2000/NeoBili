@@ -91,6 +91,86 @@ final class RelatedCollectionTests: XCTestCase {
         XCTAssertEqual(list.numberOfItems(inSection: 2), 0)
     }
 
+    func testRelatedCardAccommodatesEveryDynamicTypeSizeWithoutOverlappingLabels() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        host.view.backgroundColor = .systemBackground
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        for size in DynamicTypeSize.allCases {
+            let height = NativeRelatedVideoCard.rowHeight(typeSize: size)
+            let row = NativeRelatedVideoCard.CardView(frame: CGRect(x: 0, y: 0, width: 360, height: height))
+            row.backgroundColor = .systemBackground
+            row.isOpaque = true
+            row.frame.origin = CGPoint(x: 16, y: window.safeAreaInsets.top + 16)
+            host.view.addSubview(row)
+            row.configure(video(1), typeSize: size, scale: 2)
+            window.layoutIfNeeded()
+            row.layoutIfNeeded()
+            let labels = row.subviews.compactMap { $0 as? UILabel }.sorted { $0.frame.minY < $1.frame.minY }
+            XCTAssertEqual(labels.count, 3)
+            for label in labels {
+                XCTAssertGreaterThanOrEqual(label.frame.height, ceil(label.font.lineHeight), "字号 \(size)")
+                XCTAssertLessThanOrEqual(label.frame.maxY, height - 10, "字号 \(size)")
+            }
+            for (earlier, later) in zip(labels, labels.dropFirst()) {
+                XCTAssertLessThanOrEqual(earlier.frame.maxY, later.frame.minY, "字号 \(size)")
+            }
+            if size.isAccessibilitySize {
+                XCTAssertGreaterThan(height, 110)
+                for scheme in [UIUserInterfaceStyle.light, .dark] {
+                    window.overrideUserInterfaceStyle = scheme
+                    try await Task.sleep(for: .milliseconds(50))
+                    window.layoutIfNeeded()
+                    row.layoutIfNeeded()
+                    XCTAssertTrue(window.isKeyWindow)
+                    XCTAssertTrue(row.window === window)
+                    XCTAssertEqual(row.traitCollection.userInterfaceStyle, scheme)
+                    let background = UIColor.systemBackground.resolvedColor(with: row.traitCollection)
+                    for label in labels {
+                        let foreground = label.textColor.resolvedColor(with: label.traitCollection)
+                        XCTAssertGreaterThan(contrast(foreground, over: background), 1.25,
+                            "标题、UP 与元信息应在 \(scheme) 背景上可见")
+                    }
+                    let format = UIGraphicsImageRendererFormat()
+                    format.scale = row.traitCollection.displayScale
+                    format.opaque = true
+                    let renderer = UIGraphicsImageRenderer(size: row.bounds.size, format: format)
+                    var rendered = false
+                    let image = renderer.image { context in
+                        background.setFill()
+                        context.fill(row.bounds)
+                        rendered = row.drawHierarchy(in: row.bounds, afterScreenUpdates: true)
+                    }
+                    XCTAssertTrue(rendered, "必须截取已挂载窗口中的实际卡片")
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "related-card-\(size)-\(scheme.rawValue)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+            }
+            row.removeFromSuperview()
+        }
+    }
+
+    private func contrast(_ foreground: UIColor, over background: UIColor) -> CGFloat {
+        var fr: CGFloat = 0, fg: CGFloat = 0, fb: CGFloat = 0, fa: CGFloat = 0
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        XCTAssertTrue(foreground.getRed(&fr, green: &fg, blue: &fb, alpha: &fa))
+        XCTAssertTrue(background.getRed(&br, green: &bg, blue: &bb, alpha: &ba))
+        func linear(_ component: CGFloat) -> CGFloat {
+            component <= 0.04045 ? component / 12.92 : pow((component + 0.055) / 1.055, 2.4)
+        }
+        let base = 0.2126 * linear(br) + 0.7152 * linear(bg) + 0.0722 * linear(bb)
+        let ink = 0.2126 * linear(fr * fa + br * (1 - fa))
+            + 0.7152 * linear(fg * fa + bg * (1 - fa))
+            + 0.0722 * linear(fb * fa + bb * (1 - fa))
+        return (max(base, ink) + 0.05) / (min(base, ink) + 0.05)
+    }
+
     func testNativeRowRebindingAndSimpleCoinSymbol() {
         let row = NativeRelatedVideoCard.CardView(frame: CGRect(x: 0, y: 0, width: 360, height: 110))
         row.configure(video(1), typeSize: .large, scale: 3)

@@ -479,3 +479,124 @@ private actor LivePlayerQualityLog {
     private(set) var values: [Int] = []
     func append(_ quality: Int) { values.append(quality) }
 }
+
+@MainActor
+final class LiveDanmakuLifecycleTests: XCTestCase {
+    func testConnectionResetKeepsMountedFlowEngineAndClearsPreviousComments() {
+        let model = LiveDanmakuModel()
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
+        engine.mode = .live
+        model.attach(flowEngine: engine)
+        model.append(message: message("before"))
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+        model.stop()
+        XCTAssertTrue(engine.layer.sublayers?.isEmpty ?? true)
+        model.append(message: message("after"))
+        XCTAssertEqual(engine.layer.sublayers?.count, 1, "Reconnect must still deliver comments to the mounted renderer")
+        model.stop()
+    }
+
+    func testDismantlingOldRendererDoesNotDetachItsReplacement() {
+        let model = LiveDanmakuModel()
+        let old = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
+        let current = DanmakuEngine(frame: old.frame)
+        old.mode = .live
+        current.mode = .live
+        model.attach(flowEngine: old)
+        model.attach(flowEngine: current)
+        LiveDanmakuFlowView.dismantleUIView(old, coordinator: model)
+        model.append(message: message("current"))
+        XCTAssertTrue(old.layer.sublayers?.isEmpty ?? true)
+        XCTAssertEqual(current.layer.sublayers?.count, 1)
+        LiveDanmakuFlowView.dismantleUIView(current, coordinator: model)
+        model.append(message: message("detached"))
+        XCTAssertEqual(current.layer.sublayers?.count, 1, "A removed renderer must not receive more comments")
+        model.stop()
+    }
+
+    func testSlicedConcatenatedFrameRetainsAllMessages() {
+        let model = LiveDanmakuModel()
+        let body = Data(#"{"cmd":"DANMU_MSG","info":[[],"message",[42,"tester"]]}"#.utf8)
+        let packet = LivePacketCodec.packet(op: 5, protover: 0, seq: 1, body: body)
+        let batch = Data([0xAA]) + packet + packet
+        model.handleFrame(batch.dropFirst())
+        model.flushMessages()
+        XCTAssertEqual(model.messages.map(\.text), ["message", "message"])
+        model.stop()
+    }
+
+    func testNewRoomHistoryDoesNotWaitForOldRoomAndRejectsOldResponse() async throws {
+        let gate = LiveSuperChatGate()
+        let model = LiveDanmakuModel(superChatLoader: { room in await gate.load(room) })
+        defer { model.stop(); gate.cancelAll() }
+        model.start(roomID: 1)
+        try await waitForHistory { gate.pending[1] != nil }
+        model.start(roomID: 2)
+        try await waitForHistory { gate.pending[2] != nil }
+        gate.resolve(room: 2, id: 22)
+        try await waitForHistory { model.superChats.first?.id == 22 }
+        gate.resolve(room: 1, id: 11)
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertEqual(model.superChats.map(\.id), [22])
+        XCTAssertEqual(gate.requests, [1, 2])
+    }
+
+    func testStoppingRejectsPendingSuperChatHistory() async throws {
+        let gate = LiveSuperChatGate()
+        let model = LiveDanmakuModel(superChatLoader: { room in await gate.load(room) })
+        defer { model.stop(); gate.cancelAll() }
+        model.start(roomID: 1)
+        try await waitForHistory { gate.pending[1] != nil }
+        model.stop()
+        gate.resolve(room: 1, id: 11)
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertTrue(model.superChats.isEmpty)
+    }
+
+    func testBannerDurationIsBoundedByTenSecondsAndActualExpiration() {
+        func item(end: TimeInterval) -> LiveDanmakuModel.SuperChat {
+            .init(id: 1, price: 30, message: "SC", userName: "user", faceURL: nil,
+                  start: 90, end: end, backgroundColor: .blue, bottomColor: .blue,
+                  priceColor: .white, fontColor: .white)
+        }
+        XCTAssertEqual(item(end: 500).bannerDuration(at: 100), 10)
+        XCTAssertEqual(item(end: 105).bannerDuration(at: 100), 5)
+        XCTAssertEqual(item(end: 100).bannerDuration(at: 100), 0)
+        XCTAssertEqual(item(end: 99).bannerDuration(at: 100), 0)
+    }
+
+    private func waitForHistory(_ condition: () -> Bool) async throws {
+        for _ in 0..<100 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("Timed out waiting for isolated SC history state")
+        throw URLError(.timedOut)
+    }
+
+    private func message(_ id: String) -> LiveDanmakuModel.Message {
+        .init(id: id, name: "tester", text: id, color: nil, emoteURL: nil, emoteSize: nil, medal: nil)
+    }
+}
+
+@MainActor
+private final class LiveSuperChatGate {
+    private(set) var pending: [Int: CheckedContinuation<[[String: Any]], Never>] = [:]
+    private(set) var requests: [Int] = []
+    func load(_ room: Int) async -> [[String: Any]] {
+        requests.append(room)
+        return await withCheckedContinuation { pending[room] = $0 }
+    }
+    func resolve(room: Int, id: Int) {
+        let entry: [String: Any] = ["id": id, "price": 30, "message": "room \(room)",
+                                    "start_time": Date().timeIntervalSince1970,
+                                    "end_time": Date().timeIntervalSince1970 + 300,
+                                    "user_info": ["uname": "fixture"]]
+        pending.removeValue(forKey: room)?.resume(returning: [entry])
+    }
+    func cancelAll() {
+        let remaining = pending.values
+        pending.removeAll()
+        for continuation in remaining { continuation.resume(returning: []) }
+    }
+}

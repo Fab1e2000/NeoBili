@@ -31,6 +31,7 @@ cp "$APP/Core/Models/VideoDimension.swift" \
    "$APP/Core/Models/RecommendationFilter.swift" \
    "$APP/Core/UI/AppLanguage.swift" \
    "$APP/Core/Extensions/Int+BiliFormatting.swift" \
+   "$APP/Core/Extensions/BiliDateFormatting.swift" \
    "$APP/Core/Networking/Transport/AppNetwork.swift" \
    "$APP/Core/Networking/Reporting/RecommendationDiagnostics.swift" \
    "$APP/Core/Networking/Transport/APIClient.swift" \

@@ -8,6 +8,7 @@ struct ImagePipelineRegression {
         try await lateCancelledCompletion()
         try await cancelledBeforeRequest()
         boundedMemory()
+        randomizedLRU()
         print("ALL IMAGE PIPELINE CHECKS PASS")
     }
 
@@ -122,6 +123,49 @@ struct ImagePipelineRegression {
         cache.removeAll()
         precondition(retained == nil && cache.cachedByteCount == 0)
         print("PASS  One cache owner, byte-bounded LRU, replacement, oversized rejection and full release")
+    }
+
+    static func randomizedLRU() {
+        // Independent simple reference model exercises replacement, promotion,
+        // multi-eviction, zero cost and removeAll with a reproducible workload.
+        let cache = ImageMemoryCache<Int, Int>(maximumBytes: 100, maximumEntries: 17)
+        var reference: [Int: (value: Int, cost: Int)] = [:]
+        var order: [Int] = []
+        var seed: UInt64 = 42
+        func next() -> Int {
+            seed = seed &* 6364136223846793005 &+ 1
+            return Int((seed >> 32) % 1000)
+        }
+        for index in 0..<10000 {
+            let key = next() % 40
+            switch next() % 10 {
+            case 0:
+                cache.removeAll()
+                reference.removeAll()
+                order.removeAll()
+            case 1...4:
+                precondition(cache.value(for: key) == reference[key]?.value)
+                if reference[key] != nil {
+                    order.removeAll { $0 == key }
+                    order.append(key)
+                }
+            default:
+                let cost = next() % 130
+                cache.insert(index, for: key, cost: cost)
+                if cost <= 100 {
+                    reference[key] = nil
+                    order.removeAll { $0 == key }
+                    while reference.values.reduce(0, { $0 + $1.cost }) + cost > 100 || reference.count >= 17 {
+                        reference[order.removeFirst()] = nil
+                    }
+                    reference[key] = (index, cost)
+                    order.append(key)
+                }
+            }
+            precondition(cache.cachedByteCount == reference.values.reduce(0, { $0 + $1.cost }))
+        }
+        for key in 0..<40 { precondition(cache.value(for: key) == reference[key]?.value) }
+        print("PASS 10000 deterministic cache operations match independent LRU reference")
     }
 
     static func until(_ condition: @Sendable () async -> Bool) async throws {

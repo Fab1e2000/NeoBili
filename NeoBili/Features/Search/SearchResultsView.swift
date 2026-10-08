@@ -16,6 +16,7 @@ struct SearchResultsView: View {
     }
 
     var body: some View {
+        let visibleResults = self.visibleResults
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(visibleResults) { item in
@@ -76,11 +77,14 @@ struct SearchResultsView: View {
             if viewModel.isLoading || (visibleResults.isEmpty && viewModel.results.hasPendingVideoDimensions(hidesPortraitVideos)) {
                 LoadingTaskAnchor()
             } else if let message = viewModel.errorMessage {
-                ContentUnavailableView(
-                    "搜索失败",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(message)
-                )
+                ContentUnavailableView {
+                    Label("搜索失败", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("重试加载") { viewModel.submit(keyword: viewModel.submittedKeyword) }
+                        .buttonStyle(.bordered)
+                }
             } else if visibleResults.isEmpty {
                 if viewModel.results.isEmpty {
                     ContentUnavailableView.search(text: viewModel.submittedKeyword)

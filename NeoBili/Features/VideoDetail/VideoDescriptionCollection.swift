@@ -9,7 +9,7 @@ final class VideoDescriptionScrollState {
 }
 
 /// One vertical scroll surface: self-sizing introduction followed by recycled,
-/// fixed-height related cards. No nested expanding list or per-scroll SwiftUI state.
+/// font-sized related cards. No nested expanding list or per-scroll SwiftUI state.
 struct VideoDescriptionComponent {
     let id: String
     let revision: [AnyHashable]
@@ -46,8 +46,9 @@ struct VideoDescriptionCollection: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> UICollectionView {
-        let layout = UICollectionViewCompositionalLayout { section, _ in
-            let height: NSCollectionLayoutDimension = section == 1 ? .absolute(110) : .estimated(100)
+        let layout = UICollectionViewCompositionalLayout { [weak coordinator = context.coordinator] section, _ in
+            let rowHeight = NativeRelatedVideoCard.rowHeight(typeSize: coordinator?.typeSize ?? .large)
+            let height: NSCollectionLayoutDimension = section == 1 ? .absolute(rowHeight) : .estimated(100)
             let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: height))
             let group = NSCollectionLayoutGroup.vertical(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: height), subitems: [item])
             let result = NSCollectionLayoutSection(group: group)
@@ -84,7 +85,8 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         c.collapse.attach()
         let stateChanged = c.scrollState !== scrollState
         c.scrollState = scrollState
-        let environmentChanged = c.typeSize != context.environment.dynamicTypeSize
+        let typeSizeChanged = c.typeSize != context.environment.dynamicTypeSize
+        let environmentChanged = typeSizeChanged
             || c.theme != context.environment.appThemeColor
             || c.colorScheme != context.environment.colorScheme
         let rowsChanged = c.videos != videos || environmentChanged
@@ -97,6 +99,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         c.videos = videos
         c.components = components
         c.footers = footers
+        if typeSizeChanged { view.collectionViewLayout.invalidateLayout() }
         if !c.initialized || stateChanged {
             c.initialized = true
             let savedOffset = scrollState.offset
@@ -180,7 +183,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             let cell = view.dequeueReusableCell(withReuseIdentifier: "video", for: path) as! PersistentFeedHostingCell
             let content = Button { [weak self] in self?.onSelect?(video) } label: {
                 NativeRelatedVideoCard(video: video)
-                    .frame(height: 110)
+                    .frame(height: NativeRelatedVideoCard.rowHeight(typeSize: environment.dynamicTypeSize))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -252,6 +255,14 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
     func makeUIView(context: Context) -> CardView { CardView() }
     func updateUIView(_ view: CardView, context: Context) { view.configure(video, typeSize: typeSize, scale: scale) }
 
+    static func rowHeight(typeSize: DynamicTypeSize) -> CGFloat {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
+        let titleHeight = ceil(UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).lineHeight * 2)
+        let ownerHeight = ceil(UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traits).lineHeight)
+        let metadataHeight = ceil(UIFont.preferredFont(forTextStyle: .caption2, compatibleWith: traits).lineHeight)
+        return max(110, max(64, 10 + titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight) + 10)
+    }
+
     final class CardView: UIView {
         private let cover = NativeHomeVideoCard.CardImageView()
         private let title = UILabel()
@@ -307,9 +318,11 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
             super.layoutSubviews()
             cover.frame = CGRect(x: 0, y: 10, width: 160, height: 90)
             let x: CGFloat = 170, width = max(0, bounds.width - 170)
-            title.frame = CGRect(x: x, y: 10, width: width, height: min(52, ceil(title.font.lineHeight * 2)))
-            owner.frame = CGRect(x: x, y: 64, width: width, height: 18)
-            metadata.frame = CGRect(x: x, y: 83, width: width, height: 17)
+            title.frame = CGRect(x: x, y: 10, width: width, height: ceil(title.font.lineHeight * 2))
+            owner.frame = CGRect(x: x, y: max(64, title.frame.maxY + 4), width: width,
+                                 height: max(18, ceil(owner.font.lineHeight)))
+            metadata.frame = CGRect(x: x, y: owner.frame.maxY + 1, width: width,
+                                    height: max(17, ceil(metadata.font.lineHeight)))
             separator.frame = CGRect(x: 0, y: bounds.height - 1 / max(1, scale), width: bounds.width, height: 1 / max(1, scale))
         }
     }

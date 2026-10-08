@@ -130,10 +130,10 @@ final class FollowingViewModel {
 
     func loadInitial() async {
         async let upList: Void = loadUpsIfNeeded()
-        async let live: Void = liveDirectory.refresh()
+        // FollowingView owns the visibility/foreground-scoped directory task.
+        // Starting a second scan here duplicates the first portal request.
         await feed.loadInitial()
         await upList
-        await live
     }
 
     func refresh(staged: Bool = false, stagingID: UUID? = nil) async {

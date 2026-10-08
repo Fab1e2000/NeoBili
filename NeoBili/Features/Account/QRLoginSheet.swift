@@ -188,6 +188,7 @@ struct QRLoginSheet: View {
                     continue
                 }
 
+                guard !Task.isCancelled, account.sessionID == authorizationSessionID else { return }
                 switch outcome {
                 case .waiting:
                     phase = .waiting
@@ -203,7 +204,7 @@ struct QRLoginSheet: View {
                         await account.completeLogin(cookies, accessKey: accessKey)
                     }
                     phase = .succeeded
-                    try? await Task.sleep(for: .seconds(0.8))
+                    try await Task.sleep(for: .seconds(0.8))
                     dismiss()
                     return
                 }
@@ -212,6 +213,7 @@ struct QRLoginSheet: View {
         } catch is CancellationError {
             // 页面关闭属于正常取消。
         } catch {
+            guard !error.isCancellation, !Task.isCancelled else { return }
             phase = .failed(BiliPassport.failureText(for: error))
         }
     }
@@ -223,7 +225,7 @@ struct QRLoginSheet: View {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            if appAuthorizationOnly { throw error }
+            if appAuthorizationOnly || error.isCancellation || Task.isCancelled { throw error }
             // App 链路自己出问题时（签名被服务端改动、接口下线等）不该让用户
             // 完全登录不了，退回网页扫码；代价只是拿不到 access_key。
             let info = try await BiliPassport.generateQRCode()

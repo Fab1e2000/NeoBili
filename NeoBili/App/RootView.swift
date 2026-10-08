@@ -52,9 +52,7 @@ struct RootView: View {
                 }
             }
             Tab(MainTab.search.title, systemImage: MainTab.search.systemImage, value: MainTab.search, role: .search) {
-                NavigationStack {
-                    SearchPage(viewModel: search, isFocused: $isSearchFocused, onSubmit: submitSearch)
-                }
+                RootSearchPage(search: search, isFocused: $isSearchFocused, onSubmit: submitSearch)
                 .tint(.primary)
                 .background {
                     Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
@@ -75,10 +73,6 @@ struct RootView: View {
         .tabBarMinimizeBehavior(miniPlayerEnabled && !nowPlaying.holdsTabBarMinimize ? .onScrollDown : .never)
         .onChange(of: miniPlayerEnabled) { nowPlaying.applyMiniPlayerSetting() }
         .tabMiniPlayerHost(isActive: { !nowPlaying.isServiceSheetPresented }, transitionNamespace: videoTransition)
-        .task(id: search.trimmedQuery) { await search.loadSuggestions() }
-        .onChange(of: search.trimmedQuery) {
-            if search.trimmedQuery.isEmpty { search.reset() }
-        }
         // 提示浮层只包住 TabView，不要包住下面那个 fullScreenCover。
         //
         // 浮层内部带一个 `.animation(value:)`，把它套在 cover 外面时，每次提示
@@ -224,4 +218,22 @@ struct RootView: View {
 
 #Preview {
     RootView()
+}
+
+/// Search typing observes the query inside its own tab, leaving the root's
+/// player presentation, tab configuration and account lifecycle unaffected.
+private struct RootSearchPage: View {
+    let search: SearchViewModel
+    @Binding var isFocused: Bool
+    let onSubmit: (String?) -> Void
+
+    var body: some View {
+        NavigationStack {
+            SearchPage(viewModel: search, isFocused: $isFocused, onSubmit: onSubmit)
+        }
+        .task(id: search.trimmedQuery) { await search.loadSuggestions() }
+        .onChange(of: search.trimmedQuery) {
+            if search.trimmedQuery.isEmpty { search.reset() }
+        }
+    }
 }

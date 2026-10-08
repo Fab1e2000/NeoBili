@@ -79,7 +79,9 @@ Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用�
 - 性能修改：用可复现内容及相同配置比较耗时、内存、滚动或播放器生命周期；记录工具链、
   系统、机型、配置、场景及指标。宿主机确定性性能检查入口为 `zsh offline-harness/performance.sh`；
   上报身份缓存、事件序号迁移与凭据读取次数可单独运行 `zsh offline-harness/behavior-performance.sh`，
-  使用隔离偏好域和内存凭据，不访问真实账号。
+  使用隔离偏好域和内存凭据，不访问真实账号。宿主性能入口同时检查位图 LRU 的确定性
+  随机操作及日期格式化的语言/时区并发隔离，并输出日期列表格式化前后对照；这些是热点
+  操作的成本，不替代相同页面内容的帧率、内存或真机功耗验收。
 - Simulator 分析可使用 Instruments Time Profiler、Allocations 等；结果用于定位和回归。
   手机功耗、热状态、硬件解码和实际后台行为必须单独实机验证，不从模拟器数值推断。
 
