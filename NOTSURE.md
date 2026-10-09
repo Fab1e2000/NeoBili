@@ -1,451 +1,129 @@
-# 尚未确认的推荐与行为参数
-
-采集现象与字段关联的汇总见 [官方推荐流采集记录](docs/RECOMMENDATION_OBSERVATIONS.md)。
-功能、设置、状态的生成与读取时机另见
-[8.89静态参数来源表](docs/CLIENT_NETWORK_PROTOCOLS.md#功能设置与首页请求参数)；
-该版本证据用于复核下列策略，不把一次采集稳定值提升为代码常量。
-
-范围：目前抓到的官方首页推荐请求、请求头、观看反馈及相关事件。本文不是官方 App 全部内部参数清单。样本中取值不变，不代表可以永久写死；发现差异不代表已证明它导致推荐差异。
-
-## 已确定并实现的处理策略
-
-本区域记录抓包发现与用户决定，策略确定不等于官方全部语义已解清。本区域的策略现已进入首页推荐实现；fnval=84948 仅用于首页推荐对照，播放器实际能力声明保持 2448。
-
-| 参数 | 抓包发现 | 已决定的处理方式 |
-| --- | --- | --- |
-| `auto_refresh_state` | 最初开启为 1，关闭后为 4，重新开启为 3；3 在连续刷新及重启后保留。1 与 3 的完整区别仍未知。 | 固定发送 `4`，采用关闭自动刷新的策略。不是认定官方参数恒定为 4。 |
-| `open_event` | 冷启动请求为 `cold`；普通手动刷新为空值；后台返回后的下一次请求为 `hot`。本轮返回后未立即发推荐请求，标记保留到随后手动刷新。 | 按官方已观察规则随真实生命周期生成：冷启动 `cold`、后台返回后的请求 `hot`、普通刷新空值。 |
-| `login_event` | 冷启动样本为 2，后续请求为 0；字段完整含义尚未确认，2 不能解释成用户重新登录。 | 按用户决定固定发送 `0`，包括冷启动；这是主动选择，与官方冷启动样本不同。 |
-| `flush` | 首批请求为 0，手动下拉刷新为 6，翻页为 8；另有旧样本为 1；布局专项“双列→单列→双列”确认切换时自动请求为 2，随后手动刷新为 6；不能把 0/6/8 当作完整取值集合。 | 按官方操作逻辑生成：首批 `0`、手动刷新 `6`、翻页 `8`、布局切换触发的请求 `2`；其他未知自动触发场景仍待确认。 |
-| `pull` | 首批及手动刷新为 1，翻页为 0。 | 按官方已观察规则生成：首批／刷新 `1`、翻页 `0`，使用数字字符串。 |
-| `inline_sound` | 本轮静音→有声→静音且每次重启为 1→3→1，冷启动与随后刷新一致；旧样本还见其他值。 | 固定发送 `1`，采用首页静音策略。 |
-| `inline_sound_cold_state` | 同轮操作为 4→3→4，静音再次重启仍为 4；完整编码含义未全部确认。 | 固定发送 `4`，与 `inline_sound=1` 配套。 |
-| `autoplay_card` | 本轮关闭→开启→关闭且不重启，刷新值为 4→10→4。 | 首页大卡片静音预览已按用户要求开启，改发送已采样的开启值 `10`；不启用首页自动刷新。 |
-| `video_mode` | 同轮三次刷新均为 1，未随首页自动播放开关变化；完整语义仍未确认。 | 按用户决定固定发送 `1`；这是选定策略，不代表已证明所有场景恒定。 |
-| `inline_danmu` | 后续静态研究确认：开启为 2、关闭为 1。 | 现有首页预览不绘制弹幕，发送 `1`，替代早期样本固定值。 |
-| `client_attr` | 后续研究确认与 Dolby/HDR 优先偏好相关。 | 当前播放实现未接对应优先能力，发送 `0`，不把样本值当作自身能力。 |
-| `qn_policy` | 混合操作批次 12 条官方推荐请求中保持为 1；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `1`，已实现。 |
-| `player_net` | 后续研究确认：Wi-Fi 1、蜂窝 2、不可达 3；network 同源为 wifi/mobile/空。 | 按当前网络读取，未获得状态前为未知，不再固定为 Wi-Fi。 |
-| `guidance` | 混合操作批次 12 条官方推荐请求中保持为 1；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `1`，已实现。 |
-| `soft_fnval` | 混合操作批次 12 条官方推荐请求中保持为 2；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `2`，已实现。 |
-| `teenagers_age` | 混合操作批次 12 条官方推荐请求中保持为 16；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `16`，已实现。 不据此认定用户真实年龄。 |
-| `fnval` | 混合操作批次 12 条官方推荐请求中保持为 84948；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `84948`，已实现。 此值来自官方样本，尚不代表 NeoBili 实际具备所有声明的播放能力，实现时须明确这一差距。 |
-| `fnver` | 混合操作批次 12 条官方推荐请求中保持为 0；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `0`，已实现。 |
-| `force_host` | 混合操作批次 12 条官方推荐请求中保持为 0；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `0`，已实现。 |
-| `https_url_req` | 混合操作批次 12 条官方推荐请求中保持为 0；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `0`，已实现。 |
-| `qn` | 混合操作批次 12 条官方推荐请求中保持为 32；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `32`，已实现。 |
-| `voice_balance` | 混合操作批次 12 条官方推荐请求中保持为 0；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `0`，已实现。 |
-| `disable_rcmd` | 混合操作批次 12 条官方推荐请求中保持为 0；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `0`，已实现。 |
-| `recsys_mode` | 混合操作批次 12 条官方推荐请求中保持为 0；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `0`，已实现。 |
-| `fourk` | 混合操作批次 12 条官方推荐请求中保持为 1；完整语义或其他场景变化未全部验证。 | 按用户决定固定发送 `1`，已实现。 |
-| `column` | 布局专项双列→单列→双列为 4→3→4；切换触发 flush=2，旧样本 2 的含义仍未知。 | 按用户决定固定发送 `4`，采用本次官方显式双列模式编号；不按实际列数填写。 |
-| `from` | 同一视频首页→搜索→历史专项为 7→3→64；随后新增 3 个历史视频、6 条上报全部为 64，业务码均为 0。 | 按真实入口使用官方已验证映射：首页推荐 `7`、搜索结果 `3`、观看历史 `64`；不统一写死，不为其他未验证入口猜值，已实现。 |
-| `banner_hash` | 本批首次冷启动为空；后续请求值与之前首页响应的横幅 hash 完全一致。 | 按用户决定遵循官方已观察流程：会话首次请求为空，从自身首页横幅响应获取并记录 hash，同会话后续持续回传，新会话重新获取；横幅更新/失效时的替换规则仍待验证。 |
-| `splash_id`、`splash_ids`、`splash_creative_id` | 本批前两项为空；素材编号偶尔出现且匹配服务器开屏响应。 | 用户认可：Neo 不展示官方开屏素材时发送空值，不冒用官方素材编号。 |
-| `ad_extra` | 同次启动内保持，重启后变化；Base64 解码为未解清的二进制。 | 用户认可：暂不发送，不复制或编造官方附加包；省略与空值的效果尚未对照。 |
-| `widgets` | 本批未出现，旧批次曾条件性携带。 | 用户认可：无对应组件状态时暂不发送，触发条件仍未知。 |
-| `x-bili-locale-bin` | 已解 App locale、系统 locale、时区；官方样本为 zh/Hans/CN、zh/Hans/US、Asia/Shanghai，另有字段 5=+08:00、8=USA。 | 按用户决定固定中国配置：App 与系统 locale 均为 zh/Hans/CN，时区 Asia/Shanghai；附加字段 5/8 的正式含义及中国编码尚未验证，不照抄 USA、不猜补未知编码，实现只编码已确认的字段 1/2/4，省略未确认的 5/8。仅针对语言/地区包，不意味着把网络 IP 地区标签也固定。 |
-
-## 首页推荐请求（仍待确认）
-
-- `network`：请求时的网络类型；官方样本为 wifi，其他网络及切换行为未验证。
-
-## 混合操作验证：固定候选与动态字段
-
-在同一 Wi-Fi、同一账号下，刷新、翻页、观看/暂停/跳转、搜索/历史入口、布局切换、后台返回及重启这一批共捕获 12 条官方推荐请求，业务码均为 0。混合操作用于筛选变化项，不足以确定每一变化的具体触发原因。
-
-- 本批保持不变的候选：`client_attr=1`、`qn_policy=1`、`soft_fnval=2`、`player_net=1`、`teenagers_age=16`、`fnval=84948`、`fnver=0`、`force_host=0`、`https_url_req=0`、`qn=32`、`guidance=1`、`voice_balance=0`、`disable_rcmd=0`、`recsys_mode=0`、`fourk=1`。用户已决定将这些值全部作为固定发送策略，见上方策略区；这不等于由本批证明它们普遍恒定。
-- `column` 出现 2、3、4；布局专项“双列→单列→双列”请求依次为 4→3→4，确认本次显式双列为 4、单列为 3。旧样本 2 对应何种默认/布局状态仍未确认；不能把字段数字直接当实际列数。
-- `flush` 出现 0、2、6、8；布局专项确认切换布局触发 2，随后手动刷新为 6。
-- `ad_extra`、`banner_hash` 各出现两种内容，确认本批有变化；未保存具体内容。
-- `widgets` 在 12 条请求中仅 1 条携带，触发条件未知。
-- `x-bili-network-bin` 有内容及携带状态变化；`x-bili-metadata-ip-region` 出现两种内容，即使本批未切网络也不能写死。
-- `idx`、`open_event`、`login_event`、`pull`、`session_id`、时间戳、签名及请求追踪号也有变化，与已知请求/生命周期规则继续核对。
-- 账号、设备、票据在本批保持稳定，不代表可以硬编码其真实值，仍须使用自身账号和设备生成/获取。
-
-## 请求头、账号、设备与会话
-
-- `x-bili-ticket`：登录凭证之外的通行附票；79 条官方推荐请求中见两种票据，尚未从已捕获响应正文找到相同票据。捕获的 /api/ticket/district/dl 位于 show.bilibili.com，不能凭路径里的 ticket 当作 App 身份票据获取接口。获取、续期及绑定规则仍未解决。单独加入票据的两轮本地请求未观察到稳定的 ASMR 标题推荐改善，不能据此排除其其他作用。
-- `buvid`：客户端设备名牌；NeoBili 使用自身值，官方生成、注册和关联规则未完全确认。当前单字段替换实验中是最强推荐差异线索，详见下方对照结论；不能把官方真实编号写死进应用。
-- `guestid`：访客身份标记；官方使用方式及与设备、账号的关联未知。
-- `session_id`：一次 App 使用会话编号；NeoBili 已共用自身会话。已核对短时普通后台返回保持、实际进程重启更新；生成算法、长时间后台和全部账号切换规则仍未知。
-- `x-bili-trace-id`：请求追踪号；格式已仿照，与其他事件的关联规则仍未知。
-- `x-bili-network-bin`：Base64 解码后可按 Protobuf 拆出字段。样本字段 1 为 1，与开源协议定义 WIFI=1 对应；字段 5 含嵌套数据：子字段 1 按 float 解出 1.0 或约 0.98734，子字段 2 为可变整数，子字段 3 为疑似毫秒时间戳；其精确语义未确认，且部分请求未携带。不能整段固定。
-- `x-bili-metadata-ip-region`：IP 地区标签；取值来源、更新规则和作用未确认。
-- `x-bili-metadata-legal-region`：法律地区标签；取值来源、更新规则和作用未确认。
-- `x-bili-metadata-recent-region`：近期地区标签；取值来源、更新规则和作用未确认。
-- `x-bili-redirect`：请求路由或转向标记；确切用途未确认。
-- `x-bili-aurora-eid`：额外身份标签；部分值已核对，完整生成和关联规则未确认。
-- `x-bili-aurora-zone`：NeoBili 使用的额外区域标签；完整语义及与官方请求的对应关系未确认。
-- `access_key` 的客户端授权范围：令牌账号和有效期已由服务器验证，是否与官方 iPhone 客户端授权完全等价仍未证实；本地 credentialScope 标签不能证明服务端权限。
-
-### 高优先级字段的本地请求对照结论
-
-使用已捕获的同账号请求作基准，在内存中替换选定字段、重新生成时间戳及签名，直接请求推荐接口；两轮采用相反顺序。30 次请求全部 HTTP 200、业务码 0。真实凭据和设备编号未写入结果文件或本文，未修改应用实现。
-
-| 对照项 | 实际观察 | 当前判断 |
-| --- | --- | --- |
-| 只替换 `access_key` | 两轮标题关键词命中均为 0；同时替换令牌和票据为 0、1。 | 未见稳定改善，不能认定授权令牌是主因，也不能认定两类令牌完全等价。 |
-| 只增加官方 `x-bili-ticket` | 两轮标题关键词命中均为 0。 | 未见稳定改善，获取和续期规则仍未知。 |
-| 只替换 `buvid` | Neo 原样两轮为 0、0，换官方 buvid 为 2、2；随后统一 `flush=6/pull=1`，Neo 基准为 0、0，只换 buvid 为 1、1。 | 在四次单字段替换中均出现同方向变化，是目前最强线索。支持设备身份影响推荐；尚不能区分设备兴趣画像、实验分组、注册或风控关联。 |
-| 只替换 `guestid` | 两轮均为 0，与对应 Neo 基准相同。 | 本样本未见改善，不能认定完全无作用。 |
-| 只替换 `session_id` | 两轮均为 0，与对应 Neo 基准相同。 | 本样本未见改善，不能认定完全无作用。 |
-| 官方完整刷新请求换成 Neo buvid | 官方基准两轮为 2、0，换 Neo buvid 为 0、0。 | 第一轮支持 buvid 线索，第二轮官方自身也为 0，因此反向证据尚不稳定。 |
-
-表中数字只统计视频标题含 ASMR、助眠、掏耳、采耳、哄睡的数量，不是完整兴趣分类，也不是衡量两批视频流一致性的指标。首轮字段拆分保持 Neo 原分页基准，后续 buvid 复核已统一为下拉刷新；仍保留各自基准游标及其他状态。重复请求会消耗推荐候选，时间与服务器状态也可能变化，小样本不能证明唯一根因。
-
-后续优先验证同一客户端设备名牌下的观看反馈与首页推荐是否关联，以及 Neo 自身设备身份的生成、注册和复用方式。观看反馈与推荐实验分组尚未排除；不能靠复制官方设备编号宣称完成对齐。既定参数策略仍已实现。
-
-## 观看、历史与推荐关联
-
-- `from_spmid`：同一视频入口专项确认首页为 tm.recommend.0.0、搜索为 search.search-result.0.0、历史为 main.my-history.0.0；旧样本与用户操作不一致的情况仍需保留，不能仅凭字段断言真实入口。
-- `spmid`：本轮首页、搜索、历史进入同一普通视频均为 united.player-video-detail.0.0；其他播放场景未确认。
-- `track_id`：已改用 App ViewUnite 相关卡片，保留其返回值，真实点击后随观看心跳上报，换登录会话丢弃；本轮首页、搜索播放携带，历史播放为空或缺失；具体值来源及完整生命周期仍待确认，不能只给首页保留或为历史捏造。
-- `report_flow_data`：App 相关卡片现已保留并随实际观看上报；本轮首页、搜索播放携带，历史播放为空或缺失；内容来源和内部语义仍待解码。
-- `session`：本轮首页、搜索、历史每次重新进入同一视频都换新编号，同次播放开始/退出上报编号一致；重试、换集等生命周期未全验证。
-- `sessionID`：本轮三段播放各自均等于 session；其他场景的关系及生命周期未全验证。
-- `play_type`：播放类型分类；普通视频之外的编码未全确认。
-- `play_mode`：播放模式分类；完整编码未确认。
-- `play_status`：播放状态分类；完整编码未确认。
-- `type`：内容或事件类型；各接口完整编码未确认。
-- `sub_type`：内容或事件子类型；各接口完整编码未确认。
-- `perfer_type`：接口原字段名；确切语义和编码未确认。
-- `auto_play`：是否自动播放；非普通手动播放场景的上报规则未充分验证。
-- `is_audio_play`：是否音频播放；仅听声音等场景未充分验证。
-- `is_auto_qn`：是否自动选择画质；状态组合未充分验证。
-- `quality`：实际播放画质；切换和自动画质场景的上报口径未充分验证。
-- `paused_time`：暂停时间统计；与官方计时口径是否完全一致仍缺场景对照。
-- `miniplayer_play_time`：小窗观看时间统计；与官方计时口径是否完全一致仍缺场景对照。
-- `list_play_time`：列表播放时间统计；具体口径与官方对应关系未确认。
-- `network_type`：观看上报的网络分类；完整编码和切换规则未确认。
-- `cur_language`：播放时语言标签；完整编码和变化条件未确认。
-- `user_status`：用户状态标签；完整编码和变化条件未确认。
-- `extra`：观看事件附加数据；完整内容和生成规则未知。
-- `polaris_action_id`：行为关联编号；完整语义和生成规则未知。
-- `idfa`：系统广告标识；官方在授权或标识不可用时如何处理，以及推荐是否依赖它未知。
-- `idfv`：系统应用供应商标识；官方使用和绑定规则，以及推荐是否依赖它未知。
-- 历史上报 `scene`：历史记录场景分类；完整编码未确认。
-- 历史上报 `device_ts`：现按当前设备 Unix 秒生成，不复用抓包时间；与官方完整时间口径仍需跨场景验证。
-- 历史上报 `sid`：普通 UGC 使用已观察到的 0，其他内容场景仍未确认。
+# 推荐参数研究
 
-## 尚未解清的事件与服务端行为
+参数的处理策略、采集观察和未决问题已集中到[推荐与行为参数](docs/research/recommendation-parameters.md)。
 
-- `/x/report/click/ios`：官方点击回执；二进制编码未解清，未对齐。
-- 基础曝光及展示时长：事件封装、卡片关联、时间单位和原始列表位置已解码，生产尚未发送；精确可见面积、门槛及全部状态枚举仍未知，按既定优先范围不继续追面积实验。
-- 服务端实验分组：是否给两客户端不同推荐策略，当前没有直接证据。
-- 短期兴趣绑定和同步延迟：是否按设备、会话或票据绑定，以及何时跨客户端同步，当前没有直接证据。
+此入口保留以兼容已有链接。日常开发请先阅读[开发与测试](docs/DEVELOPMENT.md)。
 
-## 已确认的边界
+<a id="已确定并实现的处理策略"></a>
 
-新令牌有效且属于同一账号；最新移动观看心跳和历史进度同步返回成功；观看时长与播放进度已分开；刷新使用 NeoBili 自己的服务器游标。接口成功不等于推荐系统已采用该信号，上述差异对推荐结果的影响仍需受控验证。本文不保存真实凭据或设备标识值。
+[已确定并实现的处理策略](docs/research/recommendation-parameters.md#已确定并实现的处理策略)
 
-实现补充：本地自动刷新已关闭，手动刷新与翻页保留。banner_hash 来自自身 `/x/v2/feed/index` 响应的 `data.items[].hash`（带 banner_item 的横幅卡），在过滤前提取；同会话只采用首个非空值，启动新进程或换登录会话清空。布局触发 flush=2 已支持，但当前 NeoBili 固定双列，没有布局切换操作入口。官方设备编号仍只用于本机 Debug 实验，不进入源码或分发构建。
+<a id="首页推荐请求仍待确认"></a>
 
-## 设备登记与登录链路
+[首页推荐请求（仍待确认）](docs/research/recommendation-parameters.md#首页推荐请求仍待确认)
 
-当前证据来自官方国际版的重装、短信登录样本；不把国际版和中国版混为同一实验条件。两次国际版样本使用相同 App buvid，与先前中国版样本不同；尚不能把版本间差异归因于重装，也不能据此认定每次重装都会保持编号。
+<a id="混合操作验证固定候选与动态字段"></a>
 
-以下是观察到的请求顺序与数据依赖，不表示所有启动任务必须串行，也不表示已找到设备管理列表的唯一写入接口。
+[混合操作验证：固定候选与动态字段](docs/research/recommendation-parameters.md#混合操作验证固定候选与动态字段)
 
-| 环节 | 官方样本的请求与结果 | NeoBili 当前实现与待确认项 |
-| --- | --- | --- |
-| 准备 App 设备编号 | 最早捕获的请求已携带 buvid；登录前后保持一致。 | 自身 App buvid 本地生成并持久化；Debug 可使用本机官方编号。官方首次生成、注册或恢复来源仍未知。 |
-| 取得附加票据 | gRPC `bilibili.api.ticket.v1.Ticket/GetTicket` 已解出响应字段 1 的 ticket，后续 x-bili-ticket 与其完全一致；grpc-status=0，本样本 ttl=28800 秒。请求含 context 映射的 x-fingerprint/x-exbadbasket、key_id 和 32 字节 sign，token 未携带。 | 尚未实现此票据链路；指纹包、内部 sign 的生成及续期触发仍未知，不能用普通 URL 的 App sign 替代内部 sign，不能永久复用捕获票据。 |
-| 取得设备指纹标识 | POST `/x/resource/fingerprint`（text/plain JSON 请求体含 key/content，生成规则未解清），业务码 0，返回 `data.bili_deviceId`。请求本身已有 buvid。 | 未实现此 App 接口；网页 `/x/frontend/finger/spi` 获取 buvid3/buvid4 是另一条链路，不能替代。 |
-| 登记访客 | POST `/x/passport-user/guest/reg`，业务码 0，携带 device_info/dt/sdk_ver 等，返回 `data.guest_id`。 | 未实现官方访客登记；device_info 格式及各字段生成方式尚未解清。 |
-| 短信登录提交设备资料 | POST `/x/passport-login/login/sms` 携带 buvid、device_id、device_tourist_id、device_name、device_platform、device_meta、bili_local_id、local_id、login_session_id 等。已核对 device_id 等于此前 bili_deviceId，device_tourist_id 等于此前 guest_id，正文 buvid 等于请求头 buvid。 | 当前使用 SMSPassport 的同路径 App 短信登录，提交自身 buvid/local_id、真实设备名称与本次登录会话。指纹 device_id、访客编号及加密资料未解清，暂不发送。 |
-| 本样本的安全验证与授权兑换 | 短信登录响应包含 status/url 等，随后观察到安全中心验证与 POST `/x/passport-login/oauth2/access_token`。兑换时 device_id 仍匹配 bili_deviceId，guestid 请求头匹配 guest_id，正文 buvid 匹配请求头。 | 不认定所有登录都必须经过安全验证或此兑换路径。当前短信响应直接成功时保存 token 和 Cookie；status 非零承接安全页面，再兑换 authorization_code。设备资料、票据绑定仍待确认。 |
-| 登录后使用 | `/x/v2/account/myinfo` 确认账号，后续推荐等请求携带账号身份以及 guestid、buvid、x-bili-ticket 等。 | 已有账号确认、App token 与推荐请求，但未完整实现上述访客/设备/票据衔接。 |
+<a id="请求头账号设备与会话"></a>
 
-用户已在当前短信登录修正后的手机验收中报告设备管理新增“哔哩哔哩”条目；展示条目与各设备字段的具体映射尚未验证。官方提交设备资料是已确认的差异；不能宣称补齐某字段就一定新增设备条目，也不能从 NeoBili 未出现在列表推断服务器拒绝其观看反馈或推荐请求。
+[请求头、账号、设备与会话](docs/research/recommendation-parameters.md#请求头账号设备与会话)
 
-后续优先解清 `bili_deviceId`、`guest_id` 的获取与持久化，`device_info/device_meta`、`device_name/device_platform`、`bili_local_id/local_id/login_session_id` 的来源，以及短信授权中的设备资料登记与绑定。使用自身标识与真实设备资料，不把抓包中的真实凭据或身份编号写入源码。
+<a id="高优先级字段的本地请求对照结论"></a>
 
-### 已补充确认与建议实现方案
+[高优先级字段的本地请求对照结论](docs/research/recommendation-parameters.md#高优先级字段的本地请求对照结论)
 
-官方国际版两次短信登录表单的 `local_id` 都与该请求的 App buvid 一致；授权兑换表单也相同。`bili_local_id` 是另一项 64 字符十六进制标识，尚未确定来源；不能与 local_id 或 bili_deviceId 混用。`login_session_id` 是 32 字符十六进制值，生成算法仍未知。device_info/device_meta 是十六进制字符串，dt 可 Base64 解码为 128 字节；这些格式不能单独证明具体加密算法或内部字段。
+<a id="观看历史与推荐关联"></a>
 
-当前选定短信为唯一登录方式，旧扫码申请/轮询曾缺少 buvid 与共享会话头；生产已不再使用该路径。短信发送、提交及安全验证后兑换共享本次自身 buvid、local_id、App 会话和登录会话，请求追踪号每次更新。
+[观看、历史与推荐关联](docs/research/recommendation-parameters.md#观看历史与推荐关联)
 
-后续待补齐：在解清 iOS 加密 key/content 后请求 fingerprint 获取并持久化自身 bili_deviceId；解清 device_info/dt 后登记自身 guest_id；继续确认 device_meta、bili_local_id 和票据内部签名与续期规则。以上字段不复制真实抓包值，也不把 Android 实现直接当作 iOS 规则。最终分别验收登录成功、设备管理登记、观看反馈和推荐变化；同一参数被服务器接受不证明兴趣反馈与官方等价。
+<a id="尚未解清的事件与服务端行为"></a>
 
-公开源码对照：bilive_client 的 app_client.ts 展示了 Android 的 guest/reg 设备资料加密和登录关联实现，可用于定位问题，不能直接作为当前 iOS 的协议规则。源码地址：https://github.com/bilive/bilive_client/blob/master/bilive/lib/app_client.ts 。
+[尚未解清的事件与服务端行为](docs/research/recommendation-parameters.md#尚未解清的事件与服务端行为)
 
-### 当前短信登录实现范围
+<a id="已确认的边界"></a>
 
-登录入口已改为仅短信验证码，推荐设置的补授权也使用当前账号的短信验证。旧扫码/密码协议保留用于原有回归，生产不再调用扫码交换或自动迁移。
-同次发短信、验证码提交及额外安全验证后的授权兑换共用自身 buvid、local_id 和登录会话。fingerprint 必须 POST 加密 key/content，目前未实现，不能直接 GET 领取 device_id。设备名称为 iPhone，device_platform 使用当前真实硬件机型；请求签名和时间戳重新生成。
-发短信使用 `/x/passport-login/sms/send`，提交使用 `/x/passport-login/login/sms`，观察到 status=5 的官方验证链路通过隔离安全页面承接，并以真实验证返回的 code 调用 `/x/passport-login/oauth2/access_token`。用户已报告当前测试版短信登录成功，并在设备管理看到新的“哔哩哔哩”条目；其他账号和风控场景未验收。
-仍未发送 device_id、device_info/device_meta/dt、bili_local_id、device_tourist_id/guestid 和 x-bili-ticket：iOS 设备资料加密与票据内部签名尚未解清，不能用复制值补齐。当前实现尽量对齐已确认的数据关联，不宣称完整复刻官方设备登记。
+[已确认的边界](docs/research/recommendation-parameters.md#已确认的边界)
 
-App 短信的 `cid` 已确认使用电话区号：中国大陆成功样本为 86，发送列表编号 1 会返回 86005“手机号格式错误”。地区列表的 id 仅用于界面选择，发送与提交都转换为 country_id。
+<a id="设备登记与登录链路"></a>
 
-安全验证登录分支：实测短信提交返回 status=5，安全问答成功后 App 授权兑换返回 86033“appID不匹配”。旧安全页问答请求缺少 App 身份与签名，而官方样本带签名；当前为指定安全中心请求补同次 App 身份与签名。用户安装该修正后已报告登录成功，并新增“哔哩哔哩”设备条目；其他安全验证场景尚未验收，不能将此前错误直接归因于设备指纹。
+[设备登记与登录链路](docs/research/recommendation-parameters.md#设备登记与登录链路)
 
-## 首页点击、播放、暂停与返回操作样本
+<a id="已补充确认与建议实现方案"></a>
 
-用户按“首页刷新 → 点击《有一个宇宙里，所有人都在狗斗！》 → 播放约 30 秒 → 暂停约 10 秒 → 再播放约 20 秒 → 返回刷新”完成一批官方操作。前后两次推荐均为 flush=6/pull=1，各返回 9 张卡片；初次响应包含用户所指视频。以下值仅来自这一批，未改动生产参数策略。
+[已补充确认与建议实现方案](docs/research/recommendation-parameters.md#已补充确认与建议实现方案)
 
-- 选中视频的首个与结束移动心跳均返回业务码 0。开始时 played_time/actual_played_time/paused_time/total_time 为 0；结束时为 53/53/12/65。位置 last_play_progress_time/max_play_progress_time 和历史 progress 为 52，视频时长为 703。
-- 首页卡片、选中视频 View 请求及两个心跳中的 track_id 相同；首页卡片与两个心跳的 report_flow_data 相同。两项长度分别为 52 和 53 字符，本文不保存内容。不能从这次相等关系认定追踪值每条视频唯一。
-- 选中视频两个心跳的 session 与 sessionID 相等且全程不变，32 字符；App 请求头 session_id 为另一个 8 字符编号，本批保持不变。
-- 新差异：选中视频 View 请求字段 6 的 32 字符值与移动心跳 session 不同。当前 NeoBili 实现会共用视频页与播放器会话；该样本中的不同关系待重新进入和不同入口操作对照，暂未调整实现。
-- 手动进入视频的 from=7、from_spmid=tm.recommend.0.0、spmid=united.player-video-detail.0.0；play_type=1、play_mode=1、play_status=0、auto_play=0、type=3、sub_type=0。本次开始 quality=32，结束 quality=64。
-- 暂停附近出现 ViewUnite/PlayPause，进出视频附近出现 click/ios 和 ViewProgress；这些协议尚未完整解码。
-- 同批还有其他 aid 的心跳，from=76、spmid=tm.recommend.0.0、auto_play=2、play_status=1；这些请求与选中视频分开统计，未将它们算入用户的手动观看时间。
-- 本批只看到选中视频的开始和结束移动心跳，没有在捕获文件中找到该视频每 15 秒一次的移动心跳；这项观察与 NeoBili 当前发送频率分别记录。
+<a id="当前短信登录实现范围"></a>
 
-## 同一视频从历史记录重复进入
+[当前短信登录实现范围](docs/research/recommendation-parameters.md#当前短信登录实现范围)
 
-用户从历史记录两次打开《有一个宇宙里，所有人都在狗斗！》，分别播放后返回历史列表。两次 View 请求、四条选中视频移动心跳与两条历史上报均已采集；移动心跳和历史业务码均为 0。
+<a id="首页点击播放暂停与返回操作样本"></a>
 
-| 项目 | 第一次进入 | 第二次进入 |
-| --- | --- | --- |
-| `from` / `from_spmid` | 64 / main.my-history.0.0 | 64 / main.my-history.0.0 |
-| `track_id` / `report_flow_data` | 未携带有效值 | 未携带有效值 |
-| View 请求字段 6 | 新的 32 字符编号 A | 新的 32 字符编号 C |
-| 心跳 `session/sessionID` | 两者为另一个编号 B，开始和结束相同 | 两者为另一个编号 D，开始和结束相同 |
-| 编号关系 | A 与 B 不同 | C 与 D 不同；A/B/C/D 各不相同 |
-| 累计真实观看时间 | 开始 0，结束 48 秒 | 开始 0，结束 37 秒 |
-| 最后 / 最大播放位置、历史 progress | 98 秒 | 132 秒 |
-| 暂停时间 | 0 | 0 |
+[首页点击、播放、暂停与返回操作样本](docs/research/recommendation-parameters.md#首页点击播放暂停与返回操作样本)
 
-两次 App 请求头 session_id 保持同一个 8 字符编号；play_type=1、play_mode=1、play_status=0、auto_play=0、type=3、sub_type=0 均相同。开始 quality=32，结束 quality=64。两个过程都只捕获到选中视频的开始与结束移动心跳，未见每 15 秒一次的移动心跳。
+<a id="同一视频从历史记录重复进入"></a>
 
-此次重复进入及此前首页样本均观察到页面请求编号与观看心跳编号不同；当前 NeoBili 共用两者的实现差异已记录，尚未改代码。历史入口继续使用 64，不补造追踪字段；累计观看时间从本次开始计算，与续播位置分别记录。
+[同一视频从历史记录重复进入](docs/research/recommendation-parameters.md#同一视频从历史记录重复进入)
 
-## 历史入口前台连续播放样本
+<a id="历史入口前台连续播放样本"></a>
 
-用户从历史打开同一条“狗斗”视频，按连续前台播放、不暂停、不拖动、不锁屏、不切后台的步骤操作后返回。捕获到的两条移动心跳请求相隔约 168.3 秒；退出上报的实际观看时间为 169 秒，所以本次不是精确 180 秒的样本。
+[历史入口前台连续播放样本](docs/research/recommendation-parameters.md#历史入口前台连续播放样本)
 
-- 只捕获到开始和结束两条 `/x/report/heartbeat/mobile`，均业务码 0；开始观看时间为 0，结束 played_time/actual_played_time/total_time 均为 169，paused_time 为 0。
-- 结束时 last_play_progress_time/max_play_progress_time 及独立历史 progress 均为 298，视频总时长为 703；续播位置没有计入本次累计观看时间。
-- 两个移动心跳的 session/sessionID 相同；View 请求字段 6 与它们不同。App 请求头 session_id 保持不变，from=64，没有有效的 track_id/report_flow_data。
-- 本批还捕获到一条 ViewProgress、一条 click/ios 和一条 history/report；当前分析只统计已列出的相关接口，不将其他日志协议等同于移动心跳。
-- 此前首页暂停样本、两次历史重入及本次连续播放都未见选中视频每 15 秒的移动心跳。NeoBili 当前首个累计 5 秒、随后每 15 秒发送的实现与这些样本不同；开始、暂停、后台、恢复和退出等事件的完整发送规则继续分别验证，暂未改代码。
+<a id="暂停暂停后切后台与恢复样本"></a>
 
-## 暂停、暂停后切后台与恢复样本
+[暂停、暂停后切后台与恢复样本](docs/research/recommendation-parameters.md#暂停暂停后切后台与恢复样本)
 
-用户从历史进入同一视频，依次执行播放、暂停、继续、再次暂停后回桌面、返回 App、继续播放及退出。本批按实际捕获时间统计约 209 秒，未把操作步骤中的预定秒数当作实际时长。
+<a id="同一视频页三次暂停字段样本"></a>
 
-- 移动心跳仍只有开始和退出两条，业务码均为 0；未捕获中途暂停、后台或恢复动作对应的额外移动心跳。
-- `PlayPause` 共三条，距 View 请求约 28.0、105.8、208.5 秒；最后一条接近退出上报。请求均 HTTP 200，正文 Protobuf 含字段 1、2、5、6、7，完整编码语义尚未验证。
-- 独立历史上报共两条，约 109.1、209.6 秒，progress 分别 380、420，业务码均为 0。第一条处于中途而非退出时；没有逐动作时刻标记，暂不认定其唯一触发条件为切后台。
-- 退出移动心跳 played_time/actual_played_time=126、paused_time=83、total_time=209；126+83=209，last_play_progress_time/max_play_progress_time=420，miniplayer_play_time=0。
-- 开始与结束心跳 session/sessionID 保持相同，暂停与后台返回后没有在已捕获心跳中换号；View 请求字段 6 仍与心跳编号不同。App 请求头 session_id 保持不变。
-- `from=64`、`auto_play=0`、`play_status=0` 等手动播放字段保持，追踪字段没有有效值。本批没有改动生产实现；移动心跳、暂停 RPC 与独立历史同步分别记录。
+[同一视频页三次暂停字段样本](docs/research/recommendation-parameters.md#同一视频页三次暂停字段样本)
 
-## 同一视频页三次暂停字段样本
+<a id="首页只浏览不点击的日志样本"></a>
 
-用户从历史进入同一视频，三次播放后暂停，最后停留在暂停的视频页；本批未要求退出、拖动或切后台。三条 PlayPause 请求距 View 约 17.5、54.7、91.6 秒，均 HTTP 200、grpc-status=0，解码后的响应正文为空消息。
+[首页只浏览、不点击的日志样本](docs/research/recommendation-parameters.md#首页只浏览不点击的日志样本)
 
-| PlayPause 字段 | 第一次暂停 | 第二次暂停 | 第三次暂停 | 本批关系 |
-| --- | --- | --- | --- | --- |
-| 字段 6 map：`stop_ts` | 436 | 462 | 484 | 与播放位置相符；不是 Unix 时间戳 |
-| 字段 6 map：`session_play_ts` | 16 | 42 | 64 | 随本次播放增加；本批与 stop_ts 的差始终为 420，等于上一批结束的历史位置；未测拖动、倍速，不能据此确定完整计时规则 |
-| 字段 6 map：`player_is_vertical` | 2 | 2 | 2 | 本批未变；枚举含义未知 |
-| 字段 6 map：`non_player_area_width` | 402 | 402 | 402 | 本批未变；字段名指向播放器外区域宽度，单位与计算规则未确认 |
-| 字段 6 map：`non_player_area_height` | 437 | 437 | 437 | 本批未变；字段名指向播放器外区域高度，单位与计算规则未确认 |
-| 字段 5 | 2528 字节 | 相同 | 相同 | 非明文 JSON；未在本批 View 响应的递归解码字节字段中找到完全相同的值，来源及语义未知 |
-| 字段 7 | 页面会话编号 | 相同 | 相同 | 与 View 字段 6 相等，与移动心跳的观看会话不同 |
+<a id="首页卡片点击及对应曝光记录"></a>
 
-字段 1、2 分别为本视频 aid、cid。本批只捕获到进入时的一条移动心跳，观看时间为 0；用户尚未退出，因此没有结束心跳。仅凭暂停时发出 PlayPause，不能确认其为观看反馈，也不能排除与暂停广告有关；本批未改变生产代码或将这些字段写死。
+[首页卡片点击及对应曝光记录](docs/research/recommendation-parameters.md#首页卡片点击及对应曝光记录)
 
-## 首页只浏览、不点击的日志样本
+<a id="点击与曝光日志的完整封装解码"></a>
 
-用户按首页刷新、停留、向下浏览并停留、不点击视频的步骤完成一批操作。本分组捕获到 19 条 `/log/pbmobile/realtime`、9 条 `/log/pbmobile/unrealtime`、2 条 `/log/mobile`，以及 3 条 `/x/report/click/ios`。实时日志正文中识别到完整事件名：
+[点击与曝光日志的完整封装解码](docs/research/recommendation-parameters.md#点击与曝光日志的完整封装解码)
 
-- `tm.recommend.feed-card.0.show`
-- `tm.recommend.feed-card.duration.show`
-- `tm.recommend.inline.start-play.show`
+<a id="卡片滑出滑回操作的待核对样本"></a>
 
-前两项字段名分别指向首页卡片展示、展示时长，第三项指向首页 inline 播放。尚未完整解码事件参数、卡片对应关系、时长单位及正文封装，不能仅凭事件名宣称已复刻曝光协议。非实时日志和 mobile 日志还包含其他页面、登录及导航事件，可能有缓存后补发，不能把分组中的每条日志归因于当前浏览动作。本组出现 click/ios 不构成用户点击视频的证据；接口用途继续对照点击操作研究。本批未改生产代码。
+[卡片滑出、滑回操作的待核对样本](docs/research/recommendation-parameters.md#卡片滑出滑回操作的待核对样本)
 
-## 首页卡片点击及对应曝光记录
+<a id="同一卡片第二段展示时长的结算"></a>
 
-用户按首页刷新、点击视频、播放约 20 秒、返回并停留的步骤操作，指定标题“神人电台 217：都差球不多”。本批推荐响应中找到完整标题“【纯净版】【熟肉】神人电台 217：都差球不多”，card_goto=av。
+[同一卡片第二段展示时长的结算](docs/research/recommendation-parameters.md#同一卡片第二段展示时长的结算)
 
-- 非实时日志 `/log/pbmobile/unrealtime` 中识别出 `tm.recommend.main-card.0.click`。对事件名后的局部 Protobuf 消息前缀解码：字段 1 为事件名，字段 13 为 key/value 扩展字段，字段 18 也包含 key/value 条目；尚未完整解出批次外层封装和所有基础字段。
-- 点击记录字段 13 的 `param` 与选中首页卡片的视频编号相等，`track_id` 与该卡片的 52 字符追踪值相等；card_type=small_cover_v2。这项关联不是仅凭接口名称或请求时间判断。
-- 实时日志中的 `tm.recommend.feed-card.0.show` 和 `tm.recommend.feed-card.duration.show` 均找到对应本卡片的记录，param、track_id 也与首页响应相等。
-- 展示记录包含 position、is_background、is_insert_card、is_shouping、tm_card_play_state 等；时长记录包含 card_start_time/card_end_time，二者各为 13 位数字。完整单位、可见面积门槛、触发/去重/补发规则尚未确定。
-- 点击扩展字段还包含 title、tid、page_from、event、goto、event_policy、up_id 等；字段 18 包含 start_session_id（8 字符）与 polaris_action_id。未将这些字段的全部语义视为已确认，也未复制会话或原始追踪值到本文。
-- 日志字符串中事件名出现两次，但只局部解出一个相应点击消息；不能将字符串出现次数当作两次点击。click/ios 另有一条，尚未解码用途。
+<a id="点击曝光日志的设备账号与会话关联"></a>
 
-本批证据明确连起了“推荐卡片 → 展示/展示时长 → 卡片点击”的 param/track_id 关系；没有据此认定服务端推荐使用了哪些事件或多大权重。尚未修改生产实现。
+[点击、曝光日志的设备、账号与会话关联](docs/research/recommendation-parameters.md#点击曝光日志的设备账号与会话关联)
 
-## 点击与曝光日志的完整封装解码
+<a id="真实重启后的日志身份与缓存补发"></a>
 
-两批日志的 HTTP 原始正文均为 gzip；解压后按 RecordIO 记录串拆分，magic 为 RDIO。格式与 [Apache brpc recordio.cc](https://github.com/apache/brpc/blob/master/src/butil/recordio.cc) 一致：9 字节头包含 magic、带元数据标志的网络字节序长度及长度 CRC-8；元数据带名字与长度，剩余正文为单条事件 Protobuf。现有两批共 34 个请求、383 条记录全部通过长度/校验和检查，按解码结果重新编码后与解压正文逐字节一致。没有进行联网重放上报。
+[真实重启后的日志身份与缓存补发](docs/research/recommendation-parameters.md#真实重启后的日志身份与缓存补发)
 
-- RecordIO 元数据包含 appId、platform、eventId、logId、appVersionCode；eventId 与 Protobuf 字段 1 的事件名相同。因此一条事件名在原始正文出现两次不意味着重复点击。点击批次完整拆出 main-card 点击事件一条。
-- 本次采集身份为官方国际版：推荐请求 mobi_app=iphone_i、build=91300300，statistics appId=14/version=6.6.0/platform=1；日志元数据 appId=14/platform=1/appVersionCode=91300300。不能把此配置当作官方中国版身份对齐规则。
-- 本次目标卡片展示记录约在首页请求后 1.44 秒上传；展示时长记录约 13.62 秒上传，点击约 14.18 秒上传。View 请求约 12.50 秒发出；点击消息中的近上传时间字段 5 比上传早约 1.748 秒，接近 View 请求时刻。这里只记录相对时间关系，不把字段 5/15/16 的完整生命周期语义当作已确定。
-- 展示/展示时长消息 event_policy=1，点击 event_policy=0；它们分别在 realtime 与 unrealtime 路径出现。尚未确定 event_policy 是否独立决定队列选择，也未确定固定定时发送规则。
-- 目标卡片 card_end_time 按 Unix 毫秒换算比上传早约 1.129 秒，card_end_time-card_start_time=11593，即 11.593 秒；毫秒格式与同条日志接近上传时刻的时间字段相符。可见区域门槛、后台中断及累计规则仍待验证。
-- 同一 param/track_id 的展示位置为 3，展示时长位置为 4；只浏览批次 88 组可匹配记录、点击批次 4 组的时长 position 均比展示 position 大 1，支持不同起始编号约定，不能两个事件直接复用同一位置值。
-- 只浏览批次 88 条卡片展示各对应不同 param/track_id；91 条展示时长中有 6 组相同 param/track_id 各有两条。两批每条相关事件的 Protobuf 正文均不同，未观察到完全相同的正文重发。不能据此认定所有重复都应丢弃，重新进入视野的触发规则仍需受控验证。
-- start_session_id 在每批日志内保持一个值，但目标点击日志中的该值不等于本请求的 session_id 头；生成与换号规则仍未解清。Protobuf 基础字段 2 可完整解成另一条嵌套消息，身份及设备字段的逐项对应继续核对。
+<a id="普通后台与前台切换的会话规则"></a>
 
-以上更新替代此前只能局部前缀解码的限制；完整封装已解清，全部基础字段语义和事件调度/去重策略尚未解清。本批仍未改生产实现。
+[普通后台与前台切换的会话规则](docs/research/recommendation-parameters.md#普通后台与前台切换的会话规则)
 
-## 卡片滑出、滑回操作的待核对样本
+<a id="后续验证的优先范围"></a>
 
-用户报告已完成滑出、滑回操作，指定标题“反差？如何融合在工业设计中？”。响应中匹配到的实际标题为“反差？如何融入在工业设计中？”，位于下拉刷新响应 items 的索引 2。以下相对时间以本分组首个请求为零点。
+[后续验证的优先范围](docs/research/recommendation-parameters.md#后续验证的优先范围)
 
-- 推荐请求约 0 秒 flush=5/pull=1、13.833 秒 flush=6/pull=1、31.154 秒 flush=8/pull=0；目标卡片在第二批响应中。
-- 目标卡片只找到一条 feed-card.0.show，上传约 16.23 秒，position=3；一条 feed-card.duration.show，上传约 31.75 秒，position=4。
-- 目标展示时段为约 14.603 至 31.265 秒，共 16662 毫秒（16.662 秒）；两条记录的 param、track_id 均与目标响应卡片相同。
-- 本分组还包含另一视频“【IGN】Switch 2与PC版《巫师3：狂猎 — 重制版》画面对比”的 main-card 点击，字段 5 对应约 41.579 秒，上传约 44.686 秒；不是目标卡片的点击。
-- 九个日志请求、68 条 RecordIO 记录均通过完整拆分、校验和及重新编码一致性检查。目标卡片在本文件中未见第二段展示时长或第二次展示；不能由此认定返回视野时不重新计时，尚未核对实际返回操作，也不能排除仍在显示的时段尚未结算。
+<a id="已落实的点击观看与会话策略"></a>
 
-用户随后确认已滑回并完整显示同一卡片。此次文件仍只见一段目标时长，下一步单独记录再次显示后离开视野的结算，以区分尚未结束的时段与发送/去重行为；本批未据此制定去重规则，未修改生产代码。
+[已落实的点击、观看与会话策略](docs/research/recommendation-parameters.md#已落实的点击观看与会话策略)
 
-## 同一卡片第二段展示时长的结算
+<a id="基础曝光的字段来源与补齐方案"></a>
 
-用户补做“不刷新，完整显示目标卡片，再滑出并等候”的操作。该补充分组没有新的目标推荐响应，分析使用上一分组的目标 param/track_id 进行关联，没有因本组未刷新而视为目标缺失。
+[基础曝光的字段来源与补齐方案](docs/research/recommendation-parameters.md#基础曝光的字段来源与补齐方案)
 
-- 两个实时日志请求、26 条 RecordIO 记录均通过长度、校验和及重新编码一致性检查。
-- 新增一条目标 feed-card.duration.show，param/track_id 与上一批目标卡片完全相同，position=4、event_policy=1、tm_card_play_state=1。本补充分组没有目标 feed-card.0.show，其他卡片的展示事件分别统计。
-- 新时段为 236707 毫秒（236.707 秒）。将两个抓包文件的请求时间统一到原分组的零点，第一段为 14.603 至 31.265 秒；第二段为 43.249 至 279.956 秒，两段之间有 11.984 秒间隔。第二段不是从第一段的起点累计而来，开始时间落在此前返回视野的操作分组内，结束时间落在本次补充操作附近。
-- 第二段结束约 0.375 秒后上传。236.707 秒包含操作与交流间隔，不是本次要求停留 10 秒的精确计时样本。
+<a id="指纹与访客登记的关联及加密缺口"></a>
 
-这次同一推荐卡片有一次展示事件和两段独立展示时长，支持“滑回重新开始一个展示时段，离开后结算；同一卡片滑回没有再次发送展示事件”的本次操作行为。不能扩展为跨刷新、跨页面、跨会话的统一去重规则；可见面积/最短展示时间门槛、后台与自动预览的计时规则仍未确定。实现策略继续记录，尚未改生产代码。
+[指纹与访客登记的关联及加密缺口](docs/research/recommendation-parameters.md#指纹与访客登记的关联及加密缺口)
 
-## 点击、曝光日志的设备、账号与会话关联
+<a id="ios-分析样本中的生成与加密规则"></a>
 
-对点击、卡片滑回、补充结算三个分组的 153 条 tm.recommend 事件完整 Protobuf 正文进行同一次脱敏关联分析。只记录相等关系和长度，不保存真实账号、设备或会话原值。下表的“2.3”表示事件字段 2 内嵌消息的字段 3，不是 protobuf 的小数编号。
+[iOS 分析样本中的生成与加密规则](docs/research/recommendation-parameters.md#ios-分析样本中的生成与加密规则)
 
-| 日志字段 | 三组样本的相等关系 | 已确认范围 |
-| --- | --- | --- |
-| 2.1 | 14，与 RecordIO appId 及推荐 statistics appId 相同 | 当前国际版产品标识 |
-| 2.3、2.6 | 均为同一个 36 字符值，与 HTTP buvid 头、gRPC 设备字段 3 相同 | BUVID 在日志中有两个位置，不能独立生成两个设备号 |
-| 2.4 | 与 gRPC 设备字段 7 相同 | 同一渠道值；不把它视为新设备编号 |
-| 2.5、2.7 | 分别为 Apple、iPhone 17，与 gRPC 设备字段 8、9 相同 | 手机品牌及型号样本 |
-| 2.14 | 64 字符，与 gRPC 设备字段 14 相同；不同于 BUVID | 另一个共享设备标识；完整生成/获取规则未知 |
-| 2.15 | 8 字符，与本批 HTTP session_id 头相同 | 日志与请求头共享的编号；换号生命周期未知 |
-| 3.5、3.6 | 6.6.0、91300300；分别与 gRPC 设备字段 13、推荐 build 相同 | 当前国际版版本与构建 |
-| 4 | 与观看心跳 mid 相同，9 字符 | 当前登录账号编号，不能填设备号或固定账号 |
-| 6 | 六位数字，与 RecordIO logId 相同；153 条均为一个值 | 不支持“每条事件生成一个新 logId”的猜测，其用途仍待确认 |
-| 18.start_session_id | 三组共一个 8 字符值，与 HTTP session_id 及 2.15 不同；也未匹配视频页或观看会话 | 独立编号，首次来源及重启生命周期待验证 |
+<a id="当前设备登记接入边界"></a>
 
-2.8、2.9、3.2、3.7、3.9 等基础字段尚未确定语义。公开 [gRPC Device 定义](https://lxb007981.github.io/bilibili-API-collect/grpc_api/bilibili/metadata/device/device.proto) 将设备字段 14 标为 fp；该命名只辅助定位，不能从共享关系认定服务端推荐必定依赖它。当前工程没有实现官方 App 指纹申请与日志链路，不复制此捕获值作为生产指纹。
+[当前设备登记接入边界](docs/research/recommendation-parameters.md#当前设备登记接入边界)
 
-后续优先通过保持账号、真实重启官方 App 的操作区分日志内会话、请求头会话和 start_session_id 的生命周期。当前只记录身份关联，未发送新日志、未改生产实现。
+<a id="现有功能的协议接入状态"></a>
 
-## 真实重启后的日志身份与缓存补发
-
-用户完成“首页刷新并等候 → 后台划掉官方 App → 重新打开并等候 → 首页再次刷新”的一批操作，账号保持不变。22 个 pbmobile 请求、231 条 RecordIO 记录均通过完整解码与重新编码一致性校验。以下 A/B/C/D 为本次分析中的相等关系标签，不保存原值。
-
-| 信息 | 重启前 | 重启后 | 本批确认 |
-| --- | --- | --- | --- |
-| HTTP session_id、日志设备消息 2.15 | 8 字符编号 A | 新的 8 字符编号 C | 新发生事件的日志编号与请求头一致；真正重启后换号 |
-| 日志 18.start_session_id | 另一个 8 字符编号 B | 新的 8 字符编号 D | 本批随重启换号，A/B/C/D 四者各不相同 |
-| HTTP BUVID、日志设备消息 2.3/2.6 | 同一 36 字符值 | 原值 | 重启未重新生成设备名牌 |
-| 日志设备消息 2.14 | 同一 64 字符指纹值 | 原值 | 重启未改变该指纹；生成规则仍未知 |
-| 日志顶层字段 4 | 同一 9 字符账号号 | 原值 | 保持登录账号 |
-
-首页请求约在分组开始后 3.894 秒（flush=6/pull=1）使用 A；32.229 秒的重新打开请求为 flush=0/pull=1/open_event=cold，使用 C；50.329 秒的手动刷新继续使用 C。约 32.176–32.442 秒还有 app.active.startup-copy.sys、startup-infra.sys、startup-pegasus.sys、startup.sys 事件，携带 C/D，与用户重启操作相符。
-
-关键补发样本：约 33.506 秒的实时上传同时装有新事件（C/D）与重启前事件（A/B）；约 34.806 秒的非实时上传也混装两者。两包共 15 条旧事件（其中 7 条 tm.recommend 事件）保留 A/B，而上传请求头已经是 C；其字段 5 时间早于重新打开的 cold 请求。BUVID、账号、指纹仍相同。此前“日志 2.15 与本次上传请求头相等”的关系仅适用于未跨会话补发的样本，不能作为所有日志的校验条件。
-
-据此记录实现约束：事件发生时保存该事件的身份、会话和时间快照，真实重启的新事件使用新的独立会话编号；旧队列补发保留旧快照，不能按上传时的当前会话重写所有记录。两个会话的完整生成算法、普通后台/前台是否换号、账号切换时的身份快照规则仍需验证。当前未修改生产实现或新增联网日志上报。
-
-## 普通后台与前台切换的会话规则
-
-用户按“首页刷新 → 回桌面保留 App → 返回 App → 首页刷新”完成一批操作。19 个 pbmobile 请求、105 条 RecordIO 记录均完整解码，重新编码与捕获的解压正文一致；零解码错误。
-
-- 全批请求头 session_id 与日志设备消息 2.15 都保持编号 A；18.start_session_id 始终为另一个编号 B，A/B 均为 8 字符且不同，没有出现重启样本里的新 C/D。
-- BUVID、日志账号 mid、64 字符指纹全批各只见一个值。两个首页推荐请求约在分组开始后 44.675、94.654 秒，均 flush=6/pull=1/open_event=hot，均使用 A。
-- 本批仍出现 app.active.startup-copy.sys、startup-infra.sys，编号保持 A/B。因此这些事件名不能独立用作“进程真的重启了”的标记。
-- 非实时日志中的事件字段 5 时间范围早于部分上传时间，首次该类包还含分组开始前约 290 秒的旧事件。它们继续携带 A/B；没有据此将延迟上传视为当时重新发生的动作，也未遇到本批跨会话补发的不同编号。
-
-结合上一批冷启动样本，可记录当前已验证的处理规则：短时普通后台返回保留两个会话编号；实际结束进程再重新打开时，为新事件建立两个新的独立会话编号；事件快照在队列补发时保留。这两批没有确定所有长时间后台、系统回收、登录退出和账号切换情形，也未解出两个编号的生成算法。生产实现仍未修改。
-
-## 后续验证的优先范围
-
-用户明确以获取接近官方的推荐流为目标，停止精确可见面积和最短曝光门槛实验。这些细节保留为未知项，降低优先级，不因取消实验而认定官方门槛已确认。后续优先处理已有证据的点击回执、真实观看反馈、设备/账号/会话关联差异，并通过真实观看后首页推荐的变化验收；曝光可先采用记录真实可见卡片的合理默认规则，作为 NeoBili 实现选择，不称为官方精确规则。原始官方指纹等未知标识仍不得复制为生产固定值。
-
-## 已落实的点击、观看与会话策略
-
-| 项目 | 当前处理 | 证据与边界 |
-| --- | --- | --- |
-| 首页视频卡点击 | 实际点击发送 main-card.0.click；保留当前卡片 param/track_id/类型/标题及已返回附加字段 | 已解码的 unrealtime + RecordIO + Protobuf + gzip 通道；不把预取当点击 |
-| 移动观看开始/结束 | 真实推进后发送观看量和位置为 0 的开始记录；离开或实际播完发送累计结束记录 | 官方连续播放、暂停后台样本主要为两端记录；不每 15 秒发送移动心跳 |
-| 历史同步 | 保留累计 5 秒首次、之后 15 秒及暂停/离开的历史检查点 | 独立历史通道；该定时策略沿用 NeoBili，不声称官方历史触发规则已全部确认 |
-| 页面/播放会话 | 页面 32 位与播放 32 位分开；播放暂停续播保留，重新进入/重播重建 | View 与 mobile session/sessionID 不同；不复制官方会话原值 |
-| 请求/启动会话 | 两个独立 8 位编号；普通后台返回保持，进程重启重建 | 使用自身随机生成方式；官方随机算法仍未知 |
-| 队列补发 | 事件时间、设备、账号、会话快照保留，上传头使用当前会话 | 仅确定未连接的失败补发；跨账号及旧登录代际记录丢弃，包括同账号重登后重启，为 NeoBili 隔离选择 |
-| logId | `001538` 固定协议标签 | 已完整解码样本中固定，不用作自增或唯一事件编号；中国版身份的两次真机点击上传返回 HTTP 200，无 JSON 业务码 |
-| 仍未补齐部分 | 日志设备指纹 2.14、其他基础字段和 click/ios 保留缺省/未实现 | 2.14 与 fingerprint 响应编号的关系已核对，但自身指纹申请仍未实现；不填抓包私有原值，不声明官方上报完整一致或推荐效果已验证 |
-
-## 基础曝光的字段来源与补齐方案
-
-重新离线核对中国版、国际版的既有首页日志、重装、只浏览、点击、滑回、重启和后台样本，并与新测试版真机日志比较。按每条事件的原始 param/track_id 匹配同文件中的推荐卡片，不按上传时间认定动作发生时间；缓存旧事件及没有对应推荐响应的事件不进入位置统计。
-
-| 项目 | 已核对的关系 | 实现需要保留的信息 |
-| --- | --- | --- |
-| 展示事件 | `tm.recommend.feed-card.0.show`，出现于 `/log/pbmobile/realtime`，event_policy=1 | 实际显示的卡片及其身份快照，不把预取或请求成功计为展示 |
-| 展示时长 | `tm.recommend.feed-card.duration.show`，同样走 realtime、event_policy=1；起止时间为 Unix 毫秒 | 每段真实可见时间的起止；同一卡片可有多段，不能把所有时长去重成一段 |
-| 卡片关联 | 两种事件携带原始 param/track_id、card_type、card_goto/goto；部分附带推荐理由和附加卡片字段 | 保留本次响应的原始关联，不能只按 bvid 合并来自不同批次的同一视频 |
-| 展示 position | 882 条可匹配记录均等于该卡片在对应 `data.items` 数组中的零起始下标 +1 | 保留每批原始下标，包括随后被过滤的广告和其他卡片；不使用过滤后的屏幕列表下标 |
-| 时长 position | 1440 条可匹配记录均等于上述原始下标 +2 | 与展示编号区分，不能直接复用展示 position；样本包含分页，不能用整个累计列表的全局下标代替每批下标 |
-| 推荐理由 | 部分日志 rcmd_reason 与卡片 `rcmd_reason` 或 `rcmd_reason_style.text` 相等 | 保留已返回的文字；空值、其他类型及未匹配部分仍须逐项核对 |
-| 封面试验字段 | 匹配样本中 cover_id/is_cover_test 出现在响应 `extra_rpt_fields`，不是根对象的同名字段 | 读取已返回的嵌套字段，不给没有返回这些字段的卡片捏造试验编号 |
-| 状态字段 | is_background 出现 1/2/3，不能由 flush 一对一推导；is_shouping 出现 0/1，第一批和翻页不同 | 这些完整编码仍未解清，不能因为名称而直接猜为 Bool 或全局写死；面积门槛仍不追 |
-
-原始数组位置现已进入 `VideoSummary` 的曝光上下文，嵌套附加字段仍待补齐；`AppRecommendationPage` 已在解析时过滤卡片，后续仅对过滤后的列表编号会丢失上述关系。首页原生列表的 willDisplay/didEndDisplaying、滚动及页面状态回调现已接入基础曝光；新测试版本轮两条首页视频只出现点击日志，没有上述两种曝光事件。
-
-基础实现可以复用已验收的 RecordIO/Protobuf/gzip 包装和身份快照，另行接 realtime 通道。采用 NeoBili 自己的合理可见规则：只统计前台正在显示的首页，排除预取、遮住的首页和屏幕外卡片；卡片离开、点击、刷新替换或进入后台时结算真实时段。同一批卡片的展示去重与再次可见时长分开，换账号丢弃旧记录。具体可见门槛和调度策略属于客户端选择，不声明为官方精确规则；基础方案已写入生产实现，接口接收和推荐效果还需分别验收。
-
-## 指纹与访客登记的关联及加密缺口
-
-| 字段或环节 | 新核对的事实 | 当前缺口 |
-| --- | --- | --- |
-| fingerprint 的响应编号 | 同一中国版样本 19 次 `/x/resource/fingerprint` 返回相同 bili_deviceId；请求的 key 和 content 各有 19 个不同值 | 不能固定重放加密正文；响应编号稳定不证明它首次由服务端生成，也不证明永远不变 |
-| 日志和 gRPC 指纹 | 该响应编号与同一中国版样本的日志设备字段 2.14、gRPC Device 字段 14 完全相同；国际版重装和后续冷启动样本也找到对应关系 | 已知道应使用哪项登记结果；NeoBili 已接入自身登记适配器，只在实际成功回执后填写；真机当前服务器兼容仍未验收 |
-| 登录 device_id | 国际版登录样本匹配上述 bili_deviceId | 取得并持久化自身结果后，登录、日志和 gRPC 要共用；不能分别生成三套随机值 |
-| bili_local_id | 登录样本中是另一项 64 字符编号，没有匹配上述 device_id/fp | 不能与 device_id、BUVID/local_id 混用；生成输入仍待解清 |
-| guest_id | guest/reg 响应编号与后续登录 device_tourist_id、请求头 guestid 找到对应关系；重装记录中出现三个响应值，后续登录/请求头使用其中两个 | 保存实际响应并按设备/登记生命周期更新，不把任意一个捕获编号写死；没有确认完整刷新触发规则 |
-| 指纹申请正文 | JSON key 为 256 个十六进制字符（128 字节），content 为 496–544 字节的整 16 字节块；抓包正文仍为加密内容 | iOS 明文资料结构、密钥来源、加密及填充规则仍待取得依据，长度不能单独证明具体算法 |
-| 访客和登录正文 | guest/reg 的 device_info 为 192 字节十六进制内容；登录 device_meta 为 1136 字节；dt 为 Base64 编码的 128 字节内容；本批 web/key 返回 1024 位 RSA 公钥 | 访客资料和登录资料不是同一份正文。公开参考支持 RSA/AES 方向，但尚未证明当前 iOS 使用相同资料结构和算法 |
-| 64 字符结构 | 本批 device_id/fp/bili_local_id 均符合“32 位十六进制 + 14 位可解析日期时间 + 16 位十六进制 + 2 位校验”的候选结构，末两位匹配前 62 字符按 hex 解码后逐字节求和模 256 | 只确认格式与校验关系；前 32 位输入、时区、随机部分来源、服务端选择/覆盖规则仍未知，不能用能通过校验的新字符串冒充已经登记的指纹 |
-
-公开 [bilive_client 代码](https://github.com/bilive/bilive_client/blob/master/bilive/lib/app_client.ts) 用随机 16 字符密钥作 AES-128-CBC 的 key/IV，加密 Android 设备 JSON，再以 web/key 的 RSA 公钥加密密钥作为 dt。该流程只能作为当前 iOS 加密研究的候选；不直接复制其 Android 字段或硬件模板。GitHub 命中的 [AccountService 声明](https://github.com/status102/Bilibili/blob/e386f82275d85311b48643d9693a51e76a0fcdf3/src/com/status102/bilibili/api/main/account/AccountService.kt) 仅声明 fingerprint POST 和响应类型，没有给出加密生成实现。
-
-已从 [BiliBiliMApp 的公开发布页](https://github.com/TouchFriend/BiliBiliMApp/releases/tag/3.1.0) 下载 `bili-universal_8.89.0.app.zip`，下载文件的 SHA-256 与发布资产的摘要相符。包内版本为 8.89.0、build 88900100，主程序为 arm64，`LC_ENCRYPTION_INFO_64.cryptid=0`；也发现加载 `BilibiliVideoTools.dylib`，因此它是第三方处理过的分析样本，不能认定为未经修改的官方原包。此包与当前采集的 9.13.0 不同，二进制和检查结果保存在忽略的 `DerivedData/Validation/official-ios-package/`，不进入分发构建。
-
-已绕开恢复符号表的坏记录：按 Mach-O 段映射虚拟地址，提取小段函数代码到独立分析文件，由 LLVM 定向反汇编，再解析原文件符号、Objective-C 引用和导入指针。原程序没有修改或执行。已读到设备标识、fingerprint、访客和短信登录相关函数体；下节记录本样本的证据。另一公开站点列出 9.13.0，但实际下载接口返回 login_required，当前未取得该版二进制。安装包及反编译结果不是原始源码，也不包含服务器端推荐算法。
-
-下一步设备方案需完成资料字段的来源、缺省值、首次运行时间的持久化和更新入口核对，再用自身真实资料申请 fingerprint/guest，保存实际响应并在登录、日志和 gRPC 复用。两条申请可能并行，现有时间顺序不证明必须先 fingerprint 再 guest。8.89.0 的离线规则验证不能替代 9.13.0 或服务器兼容性验收。本次未新增生产设备登记请求，也未替换本机 Debug 的 BUVID 实验配置；手机采集保持关闭，准备好测试版且实际需要验证时再开启。
-
-### iOS 分析样本中的生成与加密规则
-
-以下结论来自上述第三方处理过的 **8.89.0** 包的函数体和数据表；只有明确指出的结构关系已与既有抓包比对，不将整套规则认定为当前官方版本实现。
-
-| 环节 | 本包函数体证据 | 与当前样本的关系及限制 |
-| --- | --- | --- |
-| 36 字符跟踪 BUVID | `+[BFCBuvid buvid]`（0x1167cbe68）进程内 dispatch_once 缓存；先读取 Preferences.trackID，再读 BFCKeychain service 枚举 2、键 buvid；均不合法时先试无连字符 IDFA，再试去除连字符的 IDFV。32 字符主体 S 的第 2/12/22 个零起始字符组成三个前缀字符：IDFA 分支为 Z+三字符+S，IDFV 分支为 Y+三字符+S。新值回写 Preferences 和 Keychain。 | 既有三个采集文件中抽取的 3,893 项 Y/Z 形态 buvid 序列化条目全部符合前缀关系。这是重复条目核对，不是 3,893 个独立设备；混合文件另含 82 项 37 字符条目。36 字符值不是带连字符的 UUID。没有证明当前客户端首次采用哪个分支、IDFV 来源或重装规则。 |
-| 64 字符本地指纹 | `-[BFCDeviceToken localBUVID]`（0x115fd6c80）先读 Preferences.localBuvid，再读 BFCKeychain service 枚举 3、键 localBUVID，并校验。新值主体为 `MD5(I+"+"+model+"+Apple")` 的大写 hex + 当前日期 yyyyMMddHHmmss + `MD5("iOS+"+firstRunTime)` 的大写 hex 前 16 字符；I 优先初始化时保存的 IDFA，缺失则 IDFV。日期使用 systemTimeZone、systemLocale。附加前 62 字符逐对 strtol(base16) 后求和模 256 的两位大写 hex。 | 原先疑似随机的 16 字符尾部，在此包实际由首次运行时间派生；不能据此当作随机数。signBUVID/validateBUVID 的函数体与抓包校验关系吻合。服务端返回编号与本地编号仍分别保存，不能用合法格式冒充登记成功。 |
-| 指纹资料 | `generateInfo`（0x115fd5b54）创建 BFCDeviceIosDeviceInfo；`getDeviceInfo` 通过 dispatch_once 生成并保留该对象，fingerprintMaterialBin 返回其 `.data`。descriptor（0x115fd895c）给出 54 项 Protobuf 字段。已定位 iOS/系统版本、IDFA/IDFV、型号/Apple、时间、磁盘/内存、语言/地区、App 版本/构建、mid、首次运行时间、buvidLocal、屏幕、网络及若干硬件状态等资料来源。 | 指纹明文是 Protobuf；登录资料是另一模型的 JSON。54 项描述符不意味着每项都实际赋值。详细字段号及原始类型枚举保存在忽略研究目录，尚需完整核对缺省、注入 getter 和当前版本差异。 |
-| fingerprint key/content | `requestUpdateBuvidWithData:completion:`（0x115fd7ed0）生成 16 字节，每字节为 arc4random()%127+1。CCCrypt 参数 op=0、alg=0、options=3、keyLength=16、IV=NULL：AES-128-ECB + PKCS#7。content 为密文 hex；随机 key 先转 hex 字符串，再以 UTF-8 字符串为 RSA 明文。`crsaWithPublicKeyPath:encrypt:`（0x115fd8400）读取包内 BFCDevice.pem，使用 SecKeyCreateEncryptedData 与 RSAEncryptionPKCS1；RSA 密文再转 hex 为 key。 | 包内实际公钥为 1024 位，密文 128 字节，符合当前 key 长度；源码调用虽设置 2048 位属性，离线 Apple Security 验证仍导入为实际 128 字节块。不能把 16 字节原始 key 直接作为 RSA 明文，也不能把 Android CBC 套到此接口。当前抓包密文没有因此被解密。 |
-| 服务器指纹与更新 | `currentBUVID`（0x115fd7754）优先返回 serverBUVID，缺失回退 localBUVID。serverBUVID getter 读内存并按 CFAbsoluteTimeGetCurrent 判断是否异步申请；发起时设置 120 秒窗口，非空成功响应后设置此次发起时间+86400 秒。变化时保存 Preferences.serverBuvid 和 Keychain service 枚举 3、键 serverBUVID；请求回调提取 data.bili_deviceId。 | 调用 getter 才可能触发申请，不是每 24 小时主动定时任务；节流时间在此路径为内存状态。旧包已证实本地生成+服务器返回两层，不能推断服务器首次生成、选择或覆盖的内部规则。 |
-| 访客 device_info | `-[BFCAccountGuestInfo init]`（0x11605a924）JSON 字典只有 IDFV、IDFA、DeviceType="ios"、Buvid、fts；IDFV/IDFA 来自设备读取，Buvid 来自 BFCBuvid，fts 来自 BFCAccountGuestPreferences.firstRunTime 并转十进制字符串。随机 key 为 16 字符，每字符由 arc4random()%62 映射到 `0–9A–Za–z`；CCCrypt options=1，key 与 IV 使用同一段 16 字节：AES-128-CBC + PKCS#7，密文转 hex。 | 假资料离线得到 192 字节密文，与现有访客样本长度一致；仅支持结构合理性，不证明服务器兼容。现代系统未授权且 readDirectly=false 时 IDFA getter 返回 nil，GuestInfo 用字典下标赋 nil 会省略该键（假资料 Foundation 验证已通过）；不填其他设备的值。 |
-| 登录 device_meta 与 dt | `-[BFCAccountDeviceToken init]`（0x116058af4）将 generateInfo 的 BFCAccountDeviceInfo 经 yy_modelToJSONData 序列化，再使用与访客相同的随机字母数字 key、CBC/key=IV/PKCS#7，密文转 hex。短信请求的 RSA 回调（0x116049274）每次新建此对象，把 meta 放入 device_meta，以 web/key 响应公钥包装其 16 字符 key，再 Base64 得到 dt。访客回调（0x11604991c）同样包装访客对象 key。 | 登录与访客的资料、随机 key 分别生成。BFCAccountRSA.encrypt: 默认 options=0，不加响应 hash 前缀；CRSA.encrypt: 传递 padding=1 给静态 RSA 函数，尚未沿该无名函数完整核对 RSA 内部实现。包内 fingerprint 的 RSAEncryptionPKCS1 是独立的明确证据。 |
-| 登录字段关联 | SMS 参数生成（0x116048e54）：BFCBuvid.buvid→local_id 和 buvid；AccountInjector.localBuvid→bili_local_id，currentBuvid→device_id；Injector 实际分别取 DeviceService.localBuvid/fingerprint，DeviceService（0x1049572ec）分别连接 BFCDeviceToken.localBUVID/currentBUVID。BFCAccountGuest.guestId→device_tourist_id。 | 解释了 36 字符 buvid/local_id、64 字符 bili_local_id 与登记返回 device_id 为不同概念；与既有登录相等关系吻合。不能把 BFCDeviceToken 方法名中的 BUVID 当成 HTTP 跟踪 BUVID。 |
-| guest 保存/复用 | BFCAccountGuest 初始化从 GuestPreferences.guestId 读取；saveGuestIdWithData: 通过 barrier 更新内存与 Preferences；loadGuestIdWithCompletionBlock: 仅在值为 0 或 -2 时请求登记，成功提取 guest_id 并保存，否则直接返回现值。 | 这段没有周期续期条件，不代表所有调用方都没有主动清除/更新入口；完整生命周期仍待定位。 |
-
-离线验证脚本与反汇编保存在 `DerivedData/Validation/official-ios-package/analysis/`。验证包括反汇编指令与原文件逐字节核对、AES 已知向量、CommonCrypto 与 OpenSSL 的填充/模式交叉检查、随机字节与字母数字映射算术、假资料校验码和包内 RSA 公钥的 Apple Security 调用。没有执行第三方 App、请求服务器或启用手机采集。加密规则可复现不等于设备登记、完整上报或推荐兴趣变化已经验收；生产仍使用现有自身持久化身份。
-
-## 当前设备登记接入边界
-
-`AppBuvid` 已接入自身 IDFV 的已确认 Y 分支，保留旧编号及授权 Debug 覆盖值。
-`AppDeviceRegistration` 按 8.89 的加密格式提交已实现的真实 iOS 字段子集，
-未实现的 SDK/派生/硬件字段保持缺省；没有填入官方抓包的私人编号。
-成功回执存 Keychain，以同一结果填登录 device_id、Neuron AppInfo 字段14和 Device 头字段14。
-资料生成尚非完整54字段，旧公钥/部分资料与9.13服务器兼容、真实登录设备管理条目仍需真机验收。
-设备管理名称由服务器客户端身份决定，不能保证显示为 NeoBili。访客、bili_local_id 和票据仍未接入。
-
-## 现有功能的协议接入状态
-
-访客登记、ticket 获取/缓存/续期、Device protobuf、网络类型、反馈来源和曝光阈值已进入生产实现。访客回执供请求头及 SMS device_tourist_id 使用；ticket 由自己的材料申请，不复制官方票据。地区三个头、网络质量子消息、Device fts 的准确生命周期、ticket 可选安全材料和完整 fingerprint 资料仍有明确证据缺口。单元/回归通过不代表服务器接受，也不代表推荐效果等同。
+[现有功能的协议接入状态](docs/research/recommendation-parameters.md#现有功能的协议接入状态)

@@ -23,6 +23,75 @@ final class DanmakuRegressionTests: XCTestCase {
         }
     }
 
+    func testSuppressedPlaybackSkipsHiddenTimelineAndClearsStaleLayers() {
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
+        engine.prepare(items: [
+            DanmakuItem(time: 0, text: "原画面", mode: 5, color: 0xFFFFFF),
+            DanmakuItem(time: 10, text: "隐藏期间", mode: 5, color: 0xFFFFFF),
+            DanmakuItem(time: 21, text: "恢复以后", mode: 5, color: 0xFFFFFF)
+        ])
+        engine.update(currentTime: 0)
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+        engine.isSuppressed = true
+        engine.update(currentTime: 20)
+        engine.isSuppressed = false
+        engine.update(currentTime: 20)
+        XCTAssertTrue(engine.layer.sublayers?.isEmpty ?? true)
+        engine.update(currentTime: 21)
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+    }
+
+    func testSeekWhileSuppressedDoesNotRestoreOldHiddenPosition() {
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
+        engine.prepare(items: [DanmakuItem(time: 5, text: "回退后", mode: 5, color: 0xFFFFFF)])
+        engine.isSuppressed = true
+        engine.update(currentTime: 100)
+        engine.seek(to: 5)
+        engine.isSuppressed = false
+        engine.update(currentTime: 5)
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+    }
+
+    func testAppearanceChangeWhileSuppressedKeepsLatestHiddenPosition() {
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
+        engine.prepare(items: [
+            DanmakuItem(time: 10, text: "已错过", mode: 1, color: 0xFFFFFF),
+            DanmakuItem(time: 21, text: "新弹幕", mode: 1, color: 0xFFFFFF)
+        ])
+        engine.isSuppressed = true
+        engine.update(currentTime: 20)
+        engine.applyAppearance(fontSize: 21, opacity: 0.8, blockTop: true, blockBottom: false)
+        engine.isSuppressed = false
+        engine.update(currentTime: 20)
+        XCTAssertTrue(engine.layer.sublayers?.isEmpty ?? true)
+        engine.update(currentTime: 21)
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+        // An explicit seek still overrides the hidden position after an appearance rebuild.
+        engine.isSuppressed = true
+        engine.update(currentTime: 100)
+        engine.applyAppearance(fontSize: 18, opacity: 1, blockTop: false, blockBottom: false)
+        engine.seek(to: 10)
+        engine.isSuppressed = false
+        engine.update(currentTime: 10)
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+    }
+
+    func testSeekingKeepsEveryCommentAtTheExactBoundary() {
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
+        engine.prepare(items: [
+            DanmakuItem(time: 0, text: "以前", mode: 5, color: 0xFFFFFF),
+            DanmakuItem(time: 10, text: "边界一", mode: 5, color: 0xFFFFFF),
+            DanmakuItem(time: 10, text: "边界二", mode: 5, color: 0xFFFFFF),
+            DanmakuItem(time: 20, text: "以后", mode: 5, color: 0xFFFFFF)
+        ])
+        engine.seek(to: 10)
+        engine.update(currentTime: 10)
+        XCTAssertEqual(engine.layer.sublayers?.count, 2)
+        engine.seek(to: 100)
+        engine.update(currentTime: 100)
+        XCTAssertTrue(engine.layer.sublayers?.isEmpty ?? true)
+    }
+
     func testVideoColorFieldKeepsItsPositionWhenFontSizeIsMissing() {
         let items = DanmakuLoader.parse(Data("<i><d p=\"1,1,,16711680,0,0,u,1\">红色</d></i>".utf8))
         XCTAssertEqual(items.first?.color, 0xFF0000)
@@ -219,5 +288,15 @@ final class DanmakuNetworkSmokeTests: XCTestCase {
         let evidence = XCTAttachment(string: "roomID=\(room.roomID)\nconnected=\(model.connection == .connected)\nreceivedMessages=\(model.messages.count)")
         evidence.lifetime = .keepAlways
         add(evidence)
+    }
+}
+
+@MainActor
+private extension LiveDanmakuModel {
+    func handleFrame(_ data: Data) {
+        let stream = LiveDanmakuConnection()
+        stream.start(roomID: 0) { [weak self] in self?.receive($0) }
+        stream.handleFrame(data)
+        stream.stop()
     }
 }

@@ -30,6 +30,8 @@ struct WatchLaterView: View {
     }
 
     var body: some View {
+        let visibleItems = visibleItems
+        let paginationIDs = Set(visibleItems.suffix(5).map(\.id))
         Group {
             if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos) {
                 LoadingTaskAnchor()
@@ -53,7 +55,7 @@ struct WatchLaterView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ScrollingPageHeaderRow()
-                        ForEach(visibleItems) { item in row(item) }
+                        ForEach(visibleItems) { item in row(item, loadsNextPage: paginationIDs.contains(item.id)) }
                         if model.hasMore || model.errorMessage != nil {
                             paginationFooter
                         }
@@ -106,7 +108,7 @@ struct WatchLaterView: View {
         model.selectedIDs = []
     }
 
-    private func row(_ item: WatchLaterItem) -> some View {
+    private func row(_ item: WatchLaterItem, loadsNextPage: Bool) -> some View {
         let summary = item.asVideoSummary
 
         return Button {
@@ -174,6 +176,7 @@ struct WatchLaterView: View {
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
+            if loadsNextPage, !model.isSelecting, model.errorMessage == nil { await model.load() }
             if !model.isSelecting, let summary {
                 await VideoPreparationCache.shared.prefetchWhenSettled(
                     bvid: summary.bvid,

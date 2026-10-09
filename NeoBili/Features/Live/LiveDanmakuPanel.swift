@@ -10,6 +10,8 @@ struct LiveDanmakuFlowView: UIViewRepresentable {
     @AppStorage(DanmakuSettings.coloredEnabledKey) private var coloredEnabled = true
     let model: LiveDanmakuModel
 
+    func makeCoordinator() -> LiveDanmakuModel { model }
+
     func makeUIView(context: Context) -> DanmakuEngine {
         let engine = DanmakuEngine()
         engine.mode = .live
@@ -23,7 +25,8 @@ struct LiveDanmakuFlowView: UIViewRepresentable {
         engine.area = 0.5
     }
 
-    static func dismantleUIView(_ engine: DanmakuEngine, coordinator: ()) {
+    static func dismantleUIView(_ engine: DanmakuEngine, coordinator: LiveDanmakuModel) {
+        coordinator.detach(flowEngine: engine)
         engine.removeFromSuperview()
     }
 }
@@ -41,18 +44,7 @@ struct LiveDanmakuPanel: View {
                 superChatStrip
             }
             LiveDanmakuMessageList(model: model)
-                .overlay {
-                    if model.messages.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.title2)
-                            Text(model.connection == .connected ? "暂时没有弹幕" : "正在连接弹幕")
-                                .font(.subheadline)
-                        }
-                        .foregroundStyle(.secondary)
-                        .allowsHitTesting(false)
-                    }
-                }
+
         }
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -120,22 +112,34 @@ private struct LiveDanmakuMessageList: View {
 
     var body: some View {
         ScrollView {
-                LazyVStack(alignment: .leading, spacing: 7) {
-                    ForEach(model.messages) { message in
-                        DanmakuMessageRow(message: message)
-                            .id(message.id)
-                    }
+            LazyVStack(alignment: .leading, spacing: 7) {
+                ForEach(model.messages) { message in
+                    DanmakuMessageRow(message: message)
+                        .id(message.id)
                 }
-                .padding(.bottom, 6)
             }
-            .onChange(of: model.messages.last?.id) { _, _ in
-                scrollToLatest()
+            .padding(.bottom, 6)
+        }
+        .onChange(of: model.messages.last?.id) { _, _ in
+            scrollToLatest()
+        }
+        .onAppear { scrollToLatest() }
+        .onDisappear { scrollTask?.cancel(); scrollTask = nil }
+        .scrollPosition($position)
+        .defaultScrollAnchor(.bottom)
+        .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        .overlay {
+            if model.messages.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.title2)
+                    Text(model.connection == .connected ? "暂时没有弹幕" : "正在连接弹幕")
+                        .font(.subheadline)
+                }
+                .foregroundStyle(.secondary)
+                .allowsHitTesting(false)
             }
-            .onAppear { scrollToLatest() }
-            .onDisappear { scrollTask?.cancel(); scrollTask = nil }
-            .scrollPosition($position)
-            .defaultScrollAnchor(.bottom)
-            .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        }
     }
 
     /// 新消息始终跟随到底部；布局完成后执行，不因内容增长误判为用户离底。
@@ -292,17 +296,27 @@ struct SuperChatCard: View {
 struct SuperChatBanner: View {
     let item: LiveDanmakuModel.SuperChat
     var onClose: () -> Void
+    @State private var isVisible = true
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let now = context.date.timeIntervalSince1970
-            let displayEnd = min(item.end, now + 10)
-            guard displayEnd > now else { return AnyView(EmptyView()) }
-            return AnyView(
-                SuperChatCard(item: item, now: now, isCompact: false, onClose: onClose)
-                    .frame(width: 255)
-                    .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
-            )
+        Group {
+            if isVisible {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    if item.remaining(at: context.date.timeIntervalSince1970) > 0 {
+                        SuperChatCard(item: item, now: context.date.timeIntervalSince1970, isCompact: false, onClose: onClose)
+                            .frame(width: 255)
+                            .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
+                    }
+                }
+            }
+        }
+        .task(id: item.id) {
+            isVisible = true
+            // Freeze the deadline when this item appears. Recomputing now + 10
+            // on every timeline tick extends the banner indefinitely.
+            let duration = item.bannerDuration(at: Date().timeIntervalSince1970)
+            do { try await Task.sleep(for: .seconds(duration)) } catch { return }
+            isVisible = false
         }
     }
 }

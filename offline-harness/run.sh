@@ -12,69 +12,12 @@ ROOT="$(dirname "$HARNESS")"
 BUILD_DIR="$(mktemp -d /tmp/neobili-harness.XXXXXX)"
 trap "rm -rf $BUILD_DIR" EXIT
 
+python3 "$ROOT/scripts/check-architecture.py"
+python3 "$ROOT/scripts/check-doc-links.py"
+
 APP="$ROOT/NeoBili"
-cp "$APP/Core/Models/VideoDimension.swift" \
-   "$APP/Core/Models/VideoDurationFilterSettings.swift" \
-   "$APP/Core/Models/PortraitVideoStore.swift" \
-   "$APP/Core/Models/VideoDimensionProviders.swift" \
-   "$APP/Core/Models/VideoModels.swift" \
-   "$APP/Core/Models/LiveModels.swift" \
-   "$APP/Core/Models/UgcSeasonModels.swift" \
-   "$APP/Core/Models/FollowModels.swift" \
-   "$APP/Core/Models/DynamicModels.swift" \
-   "$APP/Core/Models/SearchModels.swift" \
-   "$APP/Core/Models/SpaceModels.swift" \
-   "$APP/Core/Models/AccountModels.swift" \
-   "$APP/Core/Models/DynamicVote.swift" \
-   "$APP/Core/Models/CommentModels.swift" \
-   "$APP/Core/Models/LenientDecoding.swift" \
-   "$APP/Core/Models/RecommendationFilter.swift" \
-   "$APP/Core/UI/AppLanguage.swift" \
-   "$APP/Core/Extensions/Int+BiliFormatting.swift" \
-   "$APP/Core/Networking/Transport/AppNetwork.swift" \
-   "$APP/Core/Networking/Reporting/RecommendationDiagnostics.swift" \
-   "$APP/Core/Networking/Transport/APIClient.swift" \
-   "$APP/Core/Networking/Transport/HTTPTransport.swift" \
-   "$APP/Core/Networking/Transport/AppRequestEncoding.swift" \
-   "$APP/Core/Networking/Identity/AppClientIdentity.swift" \
-   "$APP/Core/Networking/Transport/AppProto.swift" \
-   "$APP/Core/Networking/Transport/BiliHeaders.swift" \
-   "$APP/Core/Networking/Identity/AppDeviceProtocol.swift" \
-   "$APP/Core/Networking/Identity/AppDeviceMetadata.swift" \
-   "$APP/Features/Home/RecommendationExposurePolicy.swift" \
-   "$APP/Core/Networking/Recommendation/AppRecommendationProtocol.swift" \
-   "$APP/Core/Networking/Reporting/AppBehaviorEncoder.swift" \
-   "$APP/Core/Networking/Reporting/AppBehaviorReporter.swift" \
-   "$APP/Core/Networking/Identity/AppBuvid.swift" \
-   "$APP/Core/Networking/Identity/AppDeviceRegistration.swift" \
-   "$APP/Core/Networking/Identity/AppGuestRegistration.swift" \
-   "$APP/Core/Networking/Identity/AppTicketService.swift" \
-   "$APP/Core/Networking/Identity/AppNetworkMetadata.swift" \
-   "$APP/Core/Networking/Identity/PasswordCipher.swift" \
-   "$APP/Core/Networking/Endpoints/BiliAPI.swift" \
-   "$APP/Core/Networking/Endpoints/BiliAPI+Recommendation.swift" \
-   "$APP/Core/Networking/Endpoints/BiliAPI+VideoActions.swift" \
-   "$APP/Core/Networking/Recommendation/AppRecommendationSession.swift" \
-   "$APP/Core/Networking/Recommendation/AppRecommendationPage.swift" \
-   "$APP/Core/Networking/Recommendation/AppRelatedPage.swift" \
-   "$APP/Core/Networking/Reporting/RecommendationClick.swift" \
-   "$APP/Core/Networking/Recommendation/AppRecommendationDisplay.swift" \
-   "$APP/Core/Networking/Recommendation/WebRecommendationPage.swift" \
-   "$APP/Core/Networking/Identity/BiliPassport.swift" \
-   "$APP/Core/Networking/Identity/SMSPassport.swift" \
-   "$APP/Core/Networking/Identity/AppLoginRenewal.swift" \
-   "$APP/Core/Networking/Identity/WBISigner.swift" \
-   "$APP/Core/Networking/Identity/DeviceIdentity.swift" \
-   "$APP/Core/Networking/Identity/KeychainStore.swift" \
-   "$APP/Core/Networking/Identity/AppSigner.swift" \
-   "$APP/Core/Networking/Transport/URL+Bili.swift" \
-   "$APP/Core/UI/EnvironmentAction.swift" \
-   "$APP/Features/Danmaku/DanmakuModels.swift" \
-   "$APP/Features/Danmaku/DanmakuLoader.swift" \
-   "$APP/Features/Home/HomeViewModel.swift" \
-   "$HARNESS/src/Tests.swift" \
-   "$HARNESS/src/Stubs.swift" \
-   "$BUILD_DIR/"
+source "$HARNESS/sources.sh"
+cp "$HARNESS/src/Tests.swift" "$BUILD_DIR/"
 
 swiftc -D NEOBILI_REGRESSION -parse-as-library -o "$BUILD_DIR/harness" "$BUILD_DIR"/*.swift
 "$BUILD_DIR/harness"
@@ -88,14 +31,14 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 
 # 验证真实入场状态逻辑，不创建窗口或启动设备。
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Core/Models/VideoEntranceClock.swift" \
+    "$APP/Domain/Models/VideoEntranceClock.swift" \
     "$HARNESS/src/VideoEntranceRegression.swift" \
     -o "$BUILD_DIR/video-entrance"
 "$BUILD_DIR/video-entrance"
 
 # 续播存储和 mpv 事件顺序、内联画幅与固定渲染表面的真实逻辑。
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Features/Player/PlaybackProgressStore.swift" \
+    "$APP/Application/Player/PlaybackProgressStore.swift" \
     "$HARNESS/src/PlaybackResumeRegression.swift" \
     -o "$BUILD_DIR/playback-resume"
 "$BUILD_DIR/playback-resume"
@@ -103,6 +46,7 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 # 只有真实播放进度才能上传历史；seek、预载、缓冲、EOF 和慢网队列回归。
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
     "$APP/Features/Player/PlaybackWatchProgress.swift" \
+    "$APP/Domain/Models/PlaybackWatchReport.swift" \
     "$HARNESS/src/PlaybackWatchProgressRegression.swift" \
     -o "$BUILD_DIR/playback-watch-progress"
 "$BUILD_DIR/playback-watch-progress"
@@ -126,7 +70,7 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 "$BUILD_DIR/inline-video-collapse"
 
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Core/Models/CardAnimationSettings.swift" \
+    "$APP/Domain/Models/CardAnimationSettings.swift" \
     "$HARNESS/src/CardAnimationRegression.swift" \
     -o "$BUILD_DIR/card-animation"
 "$BUILD_DIR/card-animation"
@@ -139,29 +83,29 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 "$BUILD_DIR/player-surface-ownership"
 
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Core/Models/LiveModels.swift" \
-    "$APP/Features/Following/FollowedLiveDirectory.swift" \
+    "$APP/Domain/Models/LiveModels.swift" \
+    "$APP/Application/Following/FollowedLiveDirectory.swift" \
     "$HARNESS/src/FollowedLiveDirectoryRegression.swift" \
     -o "$BUILD_DIR/followed-live-directory"
 "$BUILD_DIR/followed-live-directory"
 
 # 直播弹幕 WebSocket 的二进制包编解码（真实生产代码，无依赖桩）。
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Features/Live/LivePacketCodec.swift" \
+    "$APP/Data/Networking/Transport/LivePacketCodec.swift" \
     "$HARNESS/src/LivePacketCodecRegression.swift" \
     -o "$BUILD_DIR/live-packet-codec"
 "$BUILD_DIR/live-packet-codec"
 
 # 直播关注直接编译生产状态模型；资料和写接口均为离线桩。
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Features/Live/LiveRoomFollowModel.swift" \
+    "$APP/Application/Live/LiveRoomFollowModel.swift" \
     "$HARNESS/src/LiveRoomFollowRegression.swift" \
     -o "$BUILD_DIR/live-room-follow"
 "$BUILD_DIR/live-room-follow"
 
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Core/Models/LiveModels.swift" \
-    "$APP/Features/Live/LiveFeedModel.swift" \
+    "$APP/Domain/Models/LiveModels.swift" \
+    "$APP/Application/Live/LiveFeedModel.swift" \
     "$HARNESS/src/LiveFeedRegression.swift" \
     -o "$BUILD_DIR/live-feed"
 "$BUILD_DIR/live-feed"

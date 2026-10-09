@@ -1,0 +1,111 @@
+# 搜索自动播放的 Universal 偏好消费
+
+[研究导航](../README.md) · [本主题目录](../../CLIENT_NETWORK_PROTOCOLS.md)
+
+本章保留对应样本的字段、调用链和证据限制。应用应实现的规则见[实现契约](../../CLIENT_API_IMPLEMENTATION_CONTRACT.md)，当前接入情况见[实现核查](../../RECOMMENDATION_IMPLEMENTATION_REVIEW.md)。静态分析结果不能单独证明当前服务器行为。
+
+## 搜索自动播放的 Universal 偏好消费
+
+SearchDeviceConfig.cached/upload0x114899778使用固定type URL
+bilibili.app.distribution.search.v1.SearchDeviceConfig，tag1=SearchAutoPlay；后者
+value1为Int64Value，affectedByServerSide2为BoolValue，复用前述Universal同步与diff。
+SearchInlineSetting.get0x10e3695fc先读UniversalSettingsSynchronizer.isMigrated，false
+用legacy autoPlaySettingFromSearch；true要求root/hasAutoPlay/hasValue，否则raw11，
+不回退legacy。PBvalue1/2/3分别对应禁自动播/仅WiFi/允许蜂窝；affected缺省false，
+为false时raw4/3/10，为true时raw2/1/11，未知value亦raw11。
+
+setter0x10e369764若输入属于server raw1/2/11且当前人工raw3/4/10，直接return；
+其他情况按同映射写PBvalue与affected，再Universal.upload；未迁移则只写legacy。
+无本段login/时间戳/相等检查。迁移分支不创建缺失root，nil消息可使本次没实际上传，
+仍发com.bilibili.search.settings.auto_play通知。autoCanPlay0x10e36998c对10/11为true，
+1/3仅Reachability.status==1，其余false；affected只区分来源优先级，不改变网络模式。
+legacy默认raw11。isMigrated0x104c73930读standard UserDefaults固定key
+bfc_universal_settings_uploaded，缺值/cast失败false，无所见MID后缀；读取来自Swift
+静态存储0x1204a7320所持String及默认Bool，而非按账号拼key。迁移写入链如下。
+
+onHomePageInitialized0x104c7437c先通过0x105130238读取另一个静态Bool，
+最低位为0才在0x104c743c8进入迁移body0x104c739d0；该Bool初始化
+0x105130148来自配置infra.ue.opt.gripper.runnable（defaultValue=false），
+不能省略这个外层开关。迁移body先检查
+use_new_config_system实验命中（presetHitValue=false），未命中或已迁移时走locator
+0x104c73578。命中且未迁移才收集可迁移设置；收集结果count=0的分支
+0x104c73e70→0x104c74164直接将该固定key写Bool true（0x104c741e0），
+没有setUserPreference请求。非空时构造BAPIAppDistributionSetUserPreferenceReq，
+逐项尝试GPBAny.initWithMessage:error:，打包失败的项跳过；0x104c740d0设
+preferenceArray，0x104c7414c调用setUserPreferenceWithRequest:handler:。
+收集结果非空不等于最终Any数组非空，不能将空数组都归入上述直接写入分支。
+
+handler桥0x104c74530保留输入reply/error并传给0x104c749d0；只有reply非nil、
+error为nil且当时isDirty最低位为0，才在0x104c74b0c写Bool true。isDirty由
+0x104c738ac读取进程内byte 0x121072cc8，0x104c738ec直接写入；它与持久迁移
+标记不是同一份状态，此回调也不清除isDirty。失败门槛不写迁移key，埋点statusCode
+按isDirty原始byte是否为0分为1/2；成功写入路径statusCode=0。两条路径均使用
+common.settings.migration.failure命令名，不能由埋点名字推断失败；之后均进入
+locator0x104c73578。本段没有显式synchronize、MID校验或立即重新请求，其他
+isDirty setter调用者及迁移触发全链仍需继续核对。
+
+其中Search迁移builder0x104c7448c创建新的SearchDeviceConfig/SearchAutoPlay，
+不先读cachedConfig；填充helper0x104c764d8直接打开固定Search legacy suite，
+取autoPlaySettingFromSearch并要求能cast为Int64。suite缺失、key缺失或cast失败
+返回false，builder释放新模型并返回nil，迁移收集跳过该类型；这里没有使用
+SearchInlineSetting运行时的默认raw11代替缺值。存在且cast成功时用
+0x104c747c8生成两个wrapper：raw1/3→value2、raw2/4→value1、raw10/11→value3；
+affected仅raw1/2/11为true，其他已知值false。未知raw仍返回新wrapper，value及
+affected保留新对象默认值，而不是跳过类型或强制value3。0x104c7660c/0x104c76628
+将wrapper写入SearchAutoPlay；builder随后设置autoPlay并加入迁移候选。
+这一来源校验与迁移后的getter fallback属于不同路径，不能混写成同一个默认策略。
+
+真实搜索完整设置列表UI由运行期页面构成，静态不可穷尽全部入口；已定位一个搜索结果页入口：
+ResultViewController.inline4GTipDidTapNotUse0x100a719fc→Swift body0x100a71810，
+明确取BBPhoneSearchInlineSetting.shared，0x100a71860以raw3调用上述setter，
+即人工“仅WiFi”；该写入在读取viewModels/后续展示处理之前完成，没有本段登录门槛。
+已有一条搜索广告卡片的物理按钮链：BBAdInlineSearchV2PanelView class
+0x12019d268的superclass明确为BBAdInlineBasePanelView 0x12019d0d8；继承的
+wwanTipView getter0x113be4a44创建BBAdInlineWwanTipView并在0x113be4c0c把
+weak panel closure0x113be4cb0赋给notUseWWANHanlder。tip.notUseControl getter
+0x113bf2930创建buttonWithType:0，0x113bf298c以control event原始0x40绑定
+clickNotUseWWAN；该handler0x113bf257c仅在closure非nil时调用block invoke。
+closure取weak panel后动态发wwanTipNotUseClick；SearchV2 override
+0x113bed1f8先调用super隐藏tips，再0x113bed244读BBSearchInlinePreferences.shared
+的inline4gOperationProxy、0x113bed254调用inline4GTipDidTapNotUse。
+
+该代理的来源也已定位：ResultViewController初始化body0x100a5b858中，设置
+search.search-result.0.0.pv的分支于0x100a5bf94把当前初始化后的controller注册为
+BBSearchInlinePreferences.shared.inline4gOperationProxy；setter0x1141a06d4使用
+objc_storeWeak，getter0x1141a06bc使用objc_loadWeakRetained。其他分类pv分支
+在0x100a5bf00已返回，不能将此注册推定为所有分类结果页都有。按钮→weak panel
+→当前shared weak proxy→上述raw3 setter构成所见链；并不是panel自行持有
+最初页面或发Universal请求。其他三种设置值入口由运行期UI构成，静态不可逐项穷尽；下一步
+query_index.py '*inline4G*' 30 与 '*SearchInlineSetting*' 30 列出全部候选caller，逐个
+排除Pegasus/Channel等非Search对象后才能替代Search调用证明。
+
+同一初始化分支还在0x100a5bfc4将controller注册为inlinePlaySettingProxy。
+BBAdSearchInlineTool.currentSearchInlineSetting0x113bd0c68通过该shared proxy调用
+searchInlinePlaySetting；ResultViewController实现0x100a71bfc取
+BBPhoneSearchInlineSetting.shared.autoPlaySetting。广告工具转换
+_convertAutoPlaySetting:0x113bd0cd4将raw10/11归10、1/3归3、2/4归4，其余也归10；
+这层抹去server/manual来源差异，但不写原设置。proxy为nil时Objective-C调用
+返回0，落入该转换的默认10；不能将这条局部消费的默认值替代前述PB getter、
+迁移或全局Search自动播放判断。实际广告请求/播放器是否最终采用该值属运行期装配，静态不可定；
+下一步 find_callers.py 0x113bd0cd4（_convertAutoPlaySetting调用点）枚举全部消费方核对。
+
+蜂窝临时放行也与全局autoPlaySetting分开：canAutoPlayWhenCellular0x10e369a0c
+仅对raw10/11为true；showCellularMask:0x10e369a2c用传入Int秒数减firstShowTime，
+转Double后依次除3600及24，结果>=7才为true；这里不是绝对差值。
+cellularMaskCanPlay0x10e369a78要求firstShowTime>=1，否则false；成立时读当前NSDate
+unix秒并截断为Int，返回!showCellularMask。这对应所见七天窗口计算，不能推断
+系统时钟回退防护。updateUserClickCellularMask:0x10e369a74直接尾调动态
+setFirstShowTime:，沿用输入时间而非内部读取now；defaultConfig0x10e369520给
+firstShowTime=0及legacy autoPlaySettingFromSearch=11。
+时间写入已找到InlineNetworkingPlugin捕获weak self的callback body0x100d57824：
+weak plugin仍存在时取BBPhoneSearchInlineSetting.shared，Date()当前unix秒经Swift
+有限值及Int范围检查、截断后，0x100d5792c调用updateUserClickCellularMask:。
+接着若weak delegate存在，调用其witness slot+8并带输入Bool false；未设置全局
+自动播放raw10/11，不能把七天临时放行视为改成“允许蜂窝”。该callback的
+遮罩按钮绑定已闭合：WWAN mask创建点0x100d575f0将
+0x100d5adb4→0x100d57824作为NetworkingMaskView的continueToPlay closure，
+constructor0x100d5abc0在0x100d5ac6c保存到continueToPlay ivar；
+绑定方法0x100d59a24取continueButton（0x100d5a4f8），使用control event原始0x40的
+reactive流订阅0x100d5a85c，并交disposeBag管理。该subscriber读取continueToPlay并
+执行保存的closure，构成继续播放按钮→当前秒缓存写入链。具体显示文本由SearchRes
+资源决定，未用方法名猜资源内容。

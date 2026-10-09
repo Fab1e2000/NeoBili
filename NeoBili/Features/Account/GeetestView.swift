@@ -28,12 +28,26 @@ struct GeetestView: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
+    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
+        coordinator.cancel()
+        view.stopLoading()
+        view.configuration.userContentController.removeScriptMessageHandler(forName: "geetest")
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(onFinish: onFinish)
     }
 
     final class Coordinator: NSObject, WKScriptMessageHandler {
         let onFinish: (Result?) -> Void
+        private var finished = false
+
+        func cancel() { finished = true }
+        func finish(_ result: Result?) {
+            guard !finished else { return }
+            finished = true
+            onFinish(result)
+        }
 
         init(onFinish: @escaping (Result?) -> Void) {
             self.onFinish = onFinish
@@ -46,10 +60,10 @@ struct GeetestView: UIViewRepresentable {
                   let validate = payload["validate"],
                   let seccode = payload["seccode"]
             else {
-                onFinish(nil)
+                finish(nil)
                 return
             }
-            onFinish(Result(challenge: challenge, validate: validate, seccode: seccode))
+            finish(Result(challenge: challenge, validate: validate, seccode: seccode))
         }
     }
 

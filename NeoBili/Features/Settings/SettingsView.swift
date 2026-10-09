@@ -1,8 +1,6 @@
 import SwiftUI
 
-/// 设置首页。按「外观 → 浏览 → 播放 → 高级 → 账号」排列：
-/// 越常调整、越影响整体观感的越靠前；动画开关、手势分区、控件位置这类细调收进「高级」。
-/// 每行右侧给出当前值，不必点进去就能看到。
+/// 设置目录只负责导航与摘要；存储键和默认值由各设置类型维护。
 struct SettingsView: View {
     @AppStorage(AppTheme.storageKey) private var themeID = AppTheme.defaultID
     @AppStorage(AppTextSize.storageKey) private var textSizeIndex = AppTextSize.defaultIndex
@@ -11,45 +9,29 @@ struct SettingsView: View {
     @AppStorage(MainTabSettings.hiddenKey) private var hiddenTabs: String?
     @TitleBarPreference private var titleBarStyle
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
+    @AppStorage(RecommendationFilter.minLikeRatioKey) private var minLikeRatio = 0
+    @AppStorage(RecommendationFilter.minDurationKey) private var minDuration = 0
+    @AppStorage(RecommendationFilter.minPlayKey) private var minPlay = 0
+    @AppStorage(RecommendationFilter.titleBanWordKey) private var titleKeywords = ""
+    @AppStorage(RecommendationFilter.zoneBanWordKey) private var zoneKeywords = ""
     @State private var durationFilter = VideoDurationFilterSettings.shared
     @AppStorage(AppLanguage.storageKey) private var language = AppLanguage.system
 
     var body: some View {
         Form {
-            Section("外观") {
-                row("主题色", value: AppTheme.selected(themeID).name, id: "theme") { ThemeSettingsView() }
-                row("文字大小", value: DisplaySettingsView.label(for: textSizeIndex), id: "display") { DisplaySettingsView() }
-                row("语言", value: language.title, id: "language") { LanguageSettingsView() }
-            }
-
-            Section("浏览") {
-                row("标签栏", value: MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs).map(\.title).joined(separator: " · "),
-                    id: "tabBar") { TabBarSettingsView() }
-                row("标题栏", value: titleBarStyle.title, id: "titleBar") { TitleBarSettingsView() }
-                row("内容过滤", value: contentFilterSummary, id: "contentFilter") { ContentFilterSettingsView() }
-                row("推荐流", id: "recommendation") { RecommendationSettingsView() }
-            }
-
-            Section("播放") {
-                row("播放与画质", id: "playback") { PlaybackSettingsView() }
-                row("弹幕", id: "danmaku") { DanmakuSettingsView() }
-            }
-
-            Section {
-                row("设备编号", id: "deviceIdentity") { DeviceIdentitySettingsView() }
-                row("动画", value: cardAnimationsEnabled ? String(localized: "开启") : String(localized: "setting.off", defaultValue: "关闭"), id: "cardAnimations") { CardAnimationSettingsView() }
-                row("播放器手势", id: "playerGestures") { PlayerGestureSettingsView() }
-                row("播放器控件位置", id: "playerChrome") { PlayerChromeSettingsView() }
-                row("滚动与防误触", id: "scrolling") { InteractionSettingsView() }
-            } header: {
-                Text("高级")
-            } footer: {
-                Text("动画开关、手势分区、控件位置和防误触的细调，一般保持默认即可。")
-            }
-
-            Section {
-                row("账号管理", id: "account") { AccountSettingsView() }
-                row("关于", id: "about") { AboutSettingsView() }
+            ForEach(SettingsCategory.allCases) { category in
+                Section(category.title) {
+                    ForEach(category.destinations) { destination in
+                        NavigationLink {
+                            destinationView(destination)
+                        } label: {
+                            if let summary = summary(for: destination) {
+                                LabeledContent(destination.title, value: summary)
+                            } else { Text(destination.title) }
+                        }
+                        .accessibilityIdentifier("settings.\(destination.rawValue)")
+                    }
+                }
             }
         }
         .leftEdgeTapDeadZone()
@@ -58,52 +40,46 @@ struct SettingsView: View {
     }
 
     private var contentFilterSummary: String {
-        let active = (hidesPortraitVideos ? 1 : 0) + (durationFilter.minimumMinutes > 0 ? 1 : 0)
+        let active = [hidesPortraitVideos, durationFilter.minimumMinutes > 0,
+                      minLikeRatio > 0, minDuration > 0, minPlay > 0,
+                      !titleKeywords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !zoneKeywords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty].filter { $0 }.count
         return active == 0 ? String(localized: "未开启") : String(localized: "\(active) 项")
     }
 
-    private func row<Destination: View>(_ title: LocalizedStringKey, value: String? = nil, id: String,
-                                        @ViewBuilder destination: @escaping () -> Destination) -> some View {
-        NavigationLink(destination: destination) {
-            if let value {
-                LabeledContent(title, value: value)
-            } else {
-                Text(title)
-            }
+    private func summary(for destination: SettingsDestination) -> String? {
+        switch destination {
+        case .theme: AppTheme.selected(themeID).name
+        case .display: DisplaySettingsView.label(for: textSizeIndex)
+        case .language: language.title
+        case .tabBar: MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs).map(\.title).joined(separator: " · ")
+        case .titleBar: titleBarStyle.title
+        case .contentFilter: contentFilterSummary
+        case .cardAnimations: cardAnimationsEnabled ? String(localized: "开启") : String(localized: "setting.off", defaultValue: "关闭")
+        default: nil
         }
-        .accessibilityIdentifier("settings.\(id)")
     }
-}
 
-
-struct DeviceIdentitySettingsView: View {
-    @AppStorage(AppBuvid.modeKey) private var storedMode = AppBuvid.launchMode.rawValue
-
-    private var selectedMode: AppBuvid.Mode { AppBuvid.Mode(rawValue: storedMode) ?? .system }
-
-    var body: some View {
-        Form {
-            Section {
-                Picker("编号生成方式", selection: Binding(get: { selectedMode.rawValue }, set: { storedMode = $0 })) {
-                    ForEach(AppBuvid.Mode.allCases) { mode in
-                        Text(mode.title).tag(mode.rawValue)
-                    }
-                }
-                .accessibilityIdentifier("settings.deviceIdentity.mode")
-                LabeledContent("当前生效", value: AppBuvid.launchMode.title)
-            } footer: {
-                Text("两种编号均在本机生成并保存。系统派生模式沿用原编号；随机模式首次生成后持续复用，不会每次刷新都更换。")
-            }
-            Section {
-                if selectedMode != AppBuvid.launchMode {
-                    Label("退出并重新打开 App 后生效", systemImage: "arrow.clockwise")
-                        .foregroundStyle(.secondary)
-                }
-                Text("切换会配套切换设备登记与票据，账号登录保持不变。可切回原模式恢复原编号。推荐结果可能变化，此功能用于兼容性测试。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+    @ViewBuilder
+    private func destinationView(_ destination: SettingsDestination) -> some View {
+        switch destination {
+        case .theme: ThemeSettingsView()
+        case .display: DisplaySettingsView()
+        case .language: LanguageSettingsView()
+        case .tabBar: TabBarSettingsView()
+        case .titleBar: TitleBarSettingsView()
+        case .contentFilter: ContentFilterSettingsView()
+        case .recommendation: RecommendationSettingsView()
+        case .playback: PlaybackSettingsView()
+        case .danmaku: DanmakuSettingsView()
+        case .deviceIdentity: DeviceIdentitySettingsView()
+        case .cardAnimations: CardAnimationSettingsView()
+        case .playerGestures: PlayerGestureSettingsView()
+        case .playerChrome: PlayerChromeSettingsView()
+        case .scrolling: InteractionSettingsView()
+        case .account: AccountSettingsView()
+        case .about: AboutSettingsView()
+        case .diagnostics: RecommendationDiagnosticsView()
         }
-        .settingsPage("设备编号")
     }
 }

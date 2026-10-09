@@ -82,7 +82,9 @@ struct HomeView: View {
                                                    set: { if !$0 { viewModel.pendingBlock = nil } }),
                    presenting: viewModel.pendingBlock) { owner in
                 Button("拉黑", role: .destructive) {
-                    Task { feedback.show(await viewModel.block(owner)) }
+                    Task {
+                        if let message = await viewModel.block(owner) { feedback.show(message) }
+                    }
                 }
                 Button("点错了", role: .cancel) {}
             } message: { owner in

@@ -72,6 +72,17 @@ Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用�
 脚本以模拟器 UDID 加锁；直接从 Xcode 运行时由操作者协调。残留锁报错会给出位置，
 核实记录的 PID 已退出后才移除。不要抹掉整个模拟器、卸载日常应用或清除正常账号来让测试通过。
 
+## 结构与文档检查
+
+`offline-harness/run.sh` 首先运行源码依赖边界和本地文档链接检查。也可以单独执行：
+
+```sh
+python3 scripts/check-architecture.py
+python3 scripts/check-doc-links.py
+```
+
+边界检查禁止页面/业务模型引用网络实现，也禁止网络层引用页面状态。它是单一 App target 中的维护约束，不代替 Swift 编译器或行为测试。文档检查验证本地目标文件存在，不联网检查外部站点。
+
 ## 修改后的检查
 
 - 逻辑或接口修改：运行相关离线/定向回归；阶段完成运行离线与完整模拟器回归。
@@ -79,7 +90,9 @@ Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用�
 - 性能修改：用可复现内容及相同配置比较耗时、内存、滚动或播放器生命周期；记录工具链、
   系统、机型、配置、场景及指标。宿主机确定性性能检查入口为 `zsh offline-harness/performance.sh`；
   上报身份缓存、事件序号迁移与凭据读取次数可单独运行 `zsh offline-harness/behavior-performance.sh`，
-  使用隔离偏好域和内存凭据，不访问真实账号。
+  使用隔离偏好域和内存凭据，不访问真实账号。宿主性能入口同时检查位图 LRU 的确定性
+  随机操作及日期格式化的语言/时区并发隔离，并输出日期列表格式化前后对照；这些是热点
+  操作的成本，不替代相同页面内容的帧率、内存或真机功耗验收。
 - Simulator 分析可使用 Instruments Time Profiler、Allocations 等；结果用于定位和回归。
   手机功耗、热状态、硬件解码和实际后台行为必须单独实机验证，不从模拟器数值推断。
 
@@ -124,7 +137,7 @@ Cookie 或原始值的持久化哈希。原始重放错误输出不转发。相�
 
 ## 本机协议校验
 
-研究契约的检查范围与边界见 [推荐实现核查](RECOMMENDATION_IMPLEMENTATION_REVIEW.md#本机校验范围与入口)。
+研究契约的检查范围与边界见 [推荐实现核查](research/implementation/validation.md#本机校验范围与入口)。
 `zsh offline-harness/protocol-check.sh` 使用当前生产编码器跑独立签名样本及首页操作参数检查。
 显式加 `--network` 才执行少量真实 GET；可用 `NEOBILI_PROBE_CONTEXT` 指向仓库外的私有上下文JSON。
 无上下文时只验证公共公钥和时间接口，个性化推荐标为未执行。不要将真实上下文加入源码或终端输出。

@@ -62,6 +62,10 @@ private struct DanmakuSettingsPreview: UIViewRepresentable {
         return engine
     }
     func updateUIView(_ engine: DanmakuEngine, context: Context) {
+        let appearance = Appearance(fontScale: fontScale, opacity: opacity,
+                                    blockTop: blockTop, blockBottom: blockBottom, colored: colored)
+        guard context.coordinator.appearance != appearance else { return }
+        context.coordinator.appearance = appearance
         engine.coloredEnabled = colored
         engine.applyAppearance(fontSize: 15 * fontScale, opacity: opacity, blockTop: blockTop, blockBottom: blockBottom)
         context.coordinator.restart()
@@ -71,7 +75,16 @@ private struct DanmakuSettingsPreview: UIViewRepresentable {
         coordinator.timer?.invalidate()
         engine.removeFromSuperview()
     }
+    struct Appearance: Equatable {
+        let fontScale: Double
+        let opacity: Double
+        let blockTop: Bool
+        let blockBottom: Bool
+        let colored: Bool
+    }
     @MainActor final class Coordinator {
+        var appearance: Appearance?
+
         weak var engine: DanmakuEngine?
         var timer: Timer?
         var time = 0.0
@@ -86,7 +99,6 @@ private struct DanmakuSettingsPreview: UIViewRepresentable {
         }
         func tick() {
             guard let engine, engine.window != nil, engine.bounds.width > 10 else { return }
-            if time == 0 { restart() }
             if time >= 7 { restart() }
             engine.update(currentTime: time)
             time += 0.1

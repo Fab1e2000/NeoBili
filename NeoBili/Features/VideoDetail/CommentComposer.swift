@@ -32,6 +32,7 @@ extension View {
 }
 
 private struct CommentComposerHost: ViewModifier {
+    @Environment(\.applicationServices) private var services
     let viewModel: CommentsViewModel
     let root: Comment?
     @Environment(AccountStore.self) private var account
@@ -157,7 +158,7 @@ private struct CommentComposerHost: ViewModifier {
         Task { @MainActor in
             defer { sending = false }
             do {
-                let result = try await BiliAPI.sendComment(oid: viewModel.oid, type: viewModel.type,
+                let result = try await services.comment.sendComment(oid: viewModel.oid, type: viewModel.type,
                     message: message, root: reply?.root ?? 0, parent: reply?.parent ?? 0)
                 guard session == account.sessionID else { return }
                 viewModel.acceptSubmission(result.reply, root: reply?.root)

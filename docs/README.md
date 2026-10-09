@@ -9,9 +9,11 @@
 | 添加设置与本地化 | [设置开发](SETTINGS.md) |
 | 了解用户可见行为 | [使用手册](USAGE.md) |
 | 贡献与 PR 约定 | [贡献指南](../CONTRIBUTING.md) |
-| 查看已发布版本与待发布说明 | [版本说明](releases/) |
+| 查看已发布版本与待发布说明 | [版本说明](releases) |
 
 ## 协议研究
+
+先读[研究阅读指南与术语](research/README.md)。长篇材料已拆分为主题章节，旧入口继续可用。
 
 这些材料按问题查阅；历史样本及推断不等于当前实现或服务端保证。
 
@@ -19,10 +21,11 @@
 | --- | --- |
 | 请求规则、证据版本及实现契约 | [客户端契约](CLIENT_API_IMPLEMENTATION_CONTRACT.md) |
 | 实现核查、已接入规则与剩余差异 | [推荐实现核查](RECOMMENDATION_IMPLEMENTATION_REVIEW.md) |
+| 社区已知协议、平台冲突与文档诊断 | [API-collect 对照](research/implementation/community.md#社区资料的辅助核查) |
 | 静态分析的原始协议与调用链依据 | [网络协议研究](CLIENT_NETWORK_PROTOCOLS.md) |
 | 已采集的操作与现象 | [推荐观察](RECOMMENDATION_OBSERVATIONS.md) |
 | 采集操作与动态验证范围 | [动态分析](DYNAMIC_ANALYSIS.md) |
-| 参数含义及已确定处理策略 | [参数记录](../NOTSURE.md) |
+| 参数含义及已确定处理策略 | [参数策略与待验证问题](research/recommendation-parameters.md) |
 
 原始采集、个人账号与设备凭据留在仓库外。构建和验证结果保存在忽略的
 `DerivedData/Validation/`，不能作为 fork 后必需的输入。

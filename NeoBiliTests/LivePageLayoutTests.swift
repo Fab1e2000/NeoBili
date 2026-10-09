@@ -8,6 +8,44 @@ import XCTest
 /// Keychain, remote account, stream player or HTTP endpoint is used.
 @MainActor
 final class LivePageLayoutTests: XCTestCase {
+    func testLiveCardExpandsForAccessibilityTextAtNarrowAndWideWidths() async throws {
+        let host = try LivePageSnapshotHost()
+        defer { host.close() }
+        let rooms = await makeRooms()
+        let room = try XCTUnwrap(rooms.first)
+        for width: CGFloat in [170, 320] {
+            var regularHeight: CGFloat = 0
+            for (name, size, scheme): (String, DynamicTypeSize, ColorScheme) in [
+                ("regular", .large, .light), ("accessibility", .accessibility3, .dark)
+            ] {
+                let measurement = LiveCardMeasurement()
+                try await host.show(
+                    ScrollView {
+                        LiveRoomCard(room: room)
+                            .frame(width: width)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measurement.height = $0 }
+                    }
+                    .dynamicTypeSize(size)
+                    .preferredColorScheme(scheme)
+                    .id("\(width)-\(name)")
+                )
+                XCTAssertGreaterThan(measurement.height, width * 9 / 16 + 70)
+                if name == "regular" { regularHeight = measurement.height }
+                else {
+                    XCTAssertGreaterThan(measurement.height, regularHeight + 40,
+                                         "Large text must grow the title/owner region instead of clipping in a fixed 81pt box")
+                }
+                let image = UIGraphicsImageRenderer(bounds: host.window.bounds).image { _ in
+                    host.window.drawHierarchy(in: host.window.bounds, afterScreenUpdates: true)
+                }
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "live-card-\(Int(width))-\(name)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
+    }
+
     func testLivePageRecommendationFollowingEmptyAndFailureLayoutsInForegroundWindow() async throws {
         let host = try LivePageSnapshotHost()
         defer { host.close() }
@@ -130,6 +168,11 @@ final class LivePageLayoutTests: XCTestCase {
     private func descendants(of view: UIView) -> [UIView] {
         [view] + view.subviews.flatMap { descendants(of: $0) }
     }
+}
+
+@MainActor
+private final class LiveCardMeasurement {
+    var height: CGFloat = 0
 }
 
 private enum LivePageFixtureError: LocalizedError {

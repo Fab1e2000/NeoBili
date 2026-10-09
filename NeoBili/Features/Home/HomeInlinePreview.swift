@@ -5,6 +5,7 @@ import Observation
 /// requests audio focus or treats manifest prefetch as watched playback.
 @MainActor @Observable
 final class HomeInlinePreview {
+    @ObservationIgnored private let telemetry: TelemetryService
     private(set) var videoID: String?
     private(set) var session: MPVPlayerSession?
     private(set) var hasFirstFrame = false
@@ -32,13 +33,14 @@ final class HomeInlinePreview {
     @ObservationIgnored private let openSource: @MainActor (MPVPlayerSession, PlaybackSource) async throws -> Void
     @ObservationIgnored private let makeSession: @MainActor (VideoPlaybackConfiguration) -> MPVPlayerSession
 
-    init(loader: @escaping @Sendable (VideoSummary, UUID, UUID) async throws -> (Int, PlaybackSource) = { video, owner, account in
-        guard !AppNetwork.isRegression else { throw CancellationError() }
+    init(telemetry: TelemetryService = ApplicationServices.live.telemetry, loader: @escaping @Sendable (VideoSummary, UUID, UUID) async throws -> (Int, PlaybackSource) = { video, owner, account in
+        guard !RuntimePolicy.isRegression else { throw CancellationError() }
         return try await HomeInlinePreview.loadPreviewSource(video, owner: owner, account: account)
     }, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          reporter: (@Sendable (PlaybackWatchReport) async -> Void)? = nil,
          opener: @escaping @MainActor (MPVPlayerSession, PlaybackSource) async throws -> Void = { try await $0.open(source: $1) },
          sessionFactory: @escaping @MainActor (VideoPlaybackConfiguration) -> MPVPlayerSession = { MPVPlayerSession(configuration: $0) }) {
+        self.telemetry = telemetry
         loadSource = loader; self.clock = clock; injectedReporter = reporter; openSource = opener
         makeSession = sessionFactory
     }
@@ -64,7 +66,7 @@ final class HomeInlinePreview {
 
     func select(_ video: VideoSummary) {
         guard video.isLargeRecommendationCard, video.recommendationTarget == nil else { stop(); return }
-        let account = DeviceIdentity.shared.loginSessionID
+        let account = ApplicationServices.live.session.currentID()
         guard video.playbackEntry.loginSessionID == nil || video.playbackEntry.loginSessionID == account else { stop(); return }
         if videoID == video.bvid, accountSession == account, current?.playbackEntry == video.playbackEntry { return }
         stop()
@@ -78,7 +80,7 @@ final class HomeInlinePreview {
                 try await Task.sleep(for: .milliseconds(250))
                 let (cid, source) = try await loader(video, owner, account)
                 try Task.checkCancellation()
-                guard let self, self.requestID == id, DeviceIdentity.shared.loginSessionID == account else { return }
+                guard let self, self.requestID == id, ApplicationServices.live.session.currentID() == account else { return }
                 // Publishing a session mounts PlayerSurface and initializes mpv,
                 // even before its first frame is visible. Keep that work behind
                 // both the dwell threshold and the cancellable manifest load.
@@ -95,7 +97,7 @@ final class HomeInlinePreview {
                 if let reporter = self.injectedReporter { self.reportSender = PlaybackWatchReportSender(report: reporter) }
                 else {
                     self.reportSender = .shared(loginSessionID: account, bvid: video.bvid, cid: cid, serverReport: { report in
-                        try? await BiliAPI.reportAppWatch(bvid: video.bvid, aid: video.aid, cid: cid, report: report, expectedSessionID: account)
+                        try? await ApplicationServices.live.library.reportAppWatch(bvid: video.bvid, aid: video.aid, cid: cid, report: report, expectedSessionID: account)
                     })
                 }
                 try await self.openSource(surface, source)
@@ -126,7 +128,7 @@ final class HomeInlinePreview {
     }
 
     private func handle(_ event: PlayerPlaybackEvent) {
-        guard !finished, accountSession == DeviceIdentity.shared.loginSessionID else { return }
+        guard !finished, accountSession == ApplicationServices.live.session.currentID() else { return }
         switch event {
         case .firstFrame: hasFirstFrame = true
         case .playing(let value):
@@ -174,7 +176,7 @@ final class HomeInlinePreview {
     }
 
     private func behavior(_ name: String) {
-        AppPlayerBehavior.record(name, aid: current?.aid ?? 0, cid: cid, position: progress,
+        telemetry.record(name, aid: current?.aid ?? 0, cid: cid, position: progress,
             playbackSession: playbackSession, source: ["from_spmid":"tm.recommend.0.0","track_id":current?.playbackEntry.trackID ?? ""],
             accountSession: accountSession, quality: nil, sequence: playerBehaviorSequence, inlinePreview: true)
         playerBehaviorSequence += 1

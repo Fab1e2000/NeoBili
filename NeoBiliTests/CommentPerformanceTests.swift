@@ -144,6 +144,45 @@ final class CommentPerformanceTests: XCTestCase {
         XCTAssertFalse(model.isLoadingReplies(root))
     }
 
+    func testEmptyInitialPageIsReusedWhenReturningToComments() async {
+        var requests = 0
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+            requests += 1
+            return CommentPage(page: .init(num: page, size: 20, count: 0), replies: [])
+        })
+        for _ in 0..<10 { await model.loadInitial() }
+        XCTAssertEqual(requests, 1)
+        XCTAssertFalse(model.hasMore)
+        XCTAssertFalse(model.isLoading)
+    }
+
+    func testSubmissionBeforeOpeningCommentsDoesNotHideServerComments() async throws {
+        let submitted = try comment(1), existing = try comment(2)
+        var requests = 0
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+            requests += 1
+            return CommentPage(page: .init(num: page, size: 20, count: 2), replies: [submitted, existing])
+        })
+        model.acceptSubmission(submitted, root: nil)
+        await model.loadInitial()
+        XCTAssertEqual(requests, 1)
+        XCTAssertEqual(model.comments.map(\.id), [1, 2])
+    }
+
+    func testCancelledInitialCommentsCanLoadOnNextAppearance() async {
+        var requests = 0
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+            requests += 1
+            if requests == 1 { throw CancellationError() }
+            return CommentPage(page: .init(num: page, size: 20, count: 0), replies: [])
+        })
+        await model.loadInitial()
+        await model.loadInitial()
+        await model.loadInitial()
+        XCTAssertEqual(requests, 2)
+        XCTAssertNil(model.errorMessage)
+    }
+
     private func comment(_ id: Int) throws -> Comment {
         let data = Data("""
         {"rpid":\(id),"ctime":1,"like":0,"rcount":2,"member":{"uname":"测试","avatar":""},"content":{"message":"正文"}}

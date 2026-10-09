@@ -36,7 +36,7 @@ struct PlaybackSettingsView: View {
             Section {
                 Toggle("滑过视频时预取播放地址", isOn: $prefetchesOnScroll)
             } footer: {
-                Text("打开后，在列表里停留过的视频点开会更快，但会以你的账号向 B 站请求这些没点开的视频，可能影响推荐。关闭时和 PiliPlus 一样，点开才请求。")
+                Text("开启后提前获取列表视频的播放地址，不下载媒体内容。可能缩短点开后的等待时间，也会增加接口请求；对推荐结果的影响尚未确认。")
             }
         }
         .settingsPage("播放与画质")

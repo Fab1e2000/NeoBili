@@ -119,28 +119,21 @@ when editing project configuration.
 ## Project layout
 
 ```text
-.
-├── NeoBili/
-│   ├── App/              # App entry, root view and tab settings
-│   ├── Core/
-│   │   ├── Models/       # Data models and settings
-│   │   ├── Networking/   # API client, request signing, endpoints
-│   │   ├── Platform/     # Orientation control
-│   │   ├── UI/           # Themes, glass components and shared views
-│   │   └── …             # Diagnostics and extensions
-│   ├── Features/         # Home, Following, Live, Search, Player, Danmaku,
-│   │                     # Video detail, Library, Mine, Settings and more
-│   └── Resources/        # 24 theme app icons, assets and localizations
-├── NeoBiliTests/         # Unit tests
-├── offline-harness/      # Offline logic tests that run directly on macOS
-├── design/               # App icon sources
-├── scripts/              # Icon generation and other scripts
-└── docs/                 # Architecture, user guide and release notes
+NeoBili/
+  App/              # Startup and production composition
+  Features/         # Screens and UI components
+  Application/      # State, tasks and use-case coordination
+  Domain/           # Shared values and service contracts
+  Data/             # Network, identity and media adapters
+  Platform/         # Player and system integration
+  Core/             # Shared UI, formatting and diagnostics
+NeoBiliTests/       # Simulator regression tests
+offline-harness/   # Host-side deterministic checks
+docs/              # Development guides and topic-based research
+scripts/           # Build, validation and deployment commands
 ```
 
-- **Architecture:** module map, data flow and state ownership in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- **Tests:** use the layered workflow in the [development guide](docs/DEVELOPMENT.md).
-- **Icon:** the extruded B icon's editable source is in [`design/app-icon-2026/`](design/app-icon-2026/). `scripts/generate-app-icons.py` generates all 24 theme variants.
+See [Architecture](docs/ARCHITECTURE.md) for ownership, dependency injection, and extension rules.
 
 ## Documentation
 

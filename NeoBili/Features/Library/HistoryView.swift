@@ -5,6 +5,7 @@ import SwiftUI
 /// 结构与首页保持同构（ScrollView + 卡片 Button + 转场源直接挂在
 /// Button 上），这样点开/退出视频页的 zoom 动效和首页完全一致。
 struct HistoryView: View {
+    @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
@@ -31,6 +32,8 @@ struct HistoryView: View {
     }
 
     var body: some View {
+        let visibleItems = visibleItems
+        let paginationIDs = Set(visibleItems.suffix(5).map(\.id))
         Group {
             if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos) {
                 LoadingTaskAnchor()
@@ -55,9 +58,9 @@ struct HistoryView: View {
                     LazyVStack(spacing: 0) {
                         ScrollingPageHeaderRow()
                         ForEach(visibleItems) { item in
-                            row(item)
+                            row(item, loadsNextPage: paginationIDs.contains(item.id))
                         }
-                        if visibleItems.isEmpty, hasMore, !isLoadingMore {
+                        if hasMore, !isLoadingMore {
                             Button("继续加载") { Task { await loadNextPage() } }
                                 .padding(.vertical, 12)
                                 .disabled(isLoading)
@@ -108,11 +111,15 @@ struct HistoryView: View {
             loadID = UUID()
             items = []; selectedIDs = []; isSelecting = false
             isLoading = false; isLoadingMore = false
+            isRemovingSelected = false
+            removals = ListRemovalState()
+            hasMore = true
+            errorMessage = nil
             Task { await reload() }
         }
     }
 
-    private func row(_ item: HistoryItem) -> some View {
+    private func row(_ item: HistoryItem, loadsNextPage: Bool) -> some View {
         let summary = item.asVideoSummary
 
         return Button {
@@ -175,7 +182,7 @@ struct HistoryView: View {
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
-            await loadMoreIfNeeded(current: item)
+            if loadsNextPage { await loadMoreIfNeeded() }
             if !isSelecting, let summary {
                 await VideoPreparationCache.shared.prefetchWhenSettled(
                     bvid: summary.bvid,
@@ -191,14 +198,15 @@ struct HistoryView: View {
         let targets = snapshot.filter { selectedIDs.contains($0.id) }
         guard !targets.isEmpty else { return }
         let owner = account.sessionID
-        let identitySession = DeviceIdentity.shared.loginSessionID
+        let identitySession = services.session.currentID()
         isRemovingSelected = true
         loadID = UUID()
         for target in targets { _ = removals.begin(target.id); removals.hide(target.id) }
         defer {
-            for target in targets { removals.finish(target.id) }
-            isRemovingSelected = false
-            if account.sessionID != owner { Task { await reload() } }
+            if account.sessionID == owner {
+                for target in targets { removals.finish(target.id) }
+                isRemovingSelected = false
+            }
         }
         let lookup = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let ids = Set(targets.map(\.id))
@@ -208,7 +216,7 @@ struct HistoryView: View {
             confirm: { await feedback.confirmRemoval(String(localized: "已移除历史记录")) },
             remove: { id in
                 guard let target = lookup[id] else { return }
-                try await BiliAPI.deleteHistory(kid: target.kidParam, expectedSessionID: identitySession)
+                try await services.library.deleteHistory(kid: target.kidParam, expectedSessionID: identitySession)
             })
         guard account.sessionID == owner else { return }
         items = snapshot.filter { !result.succeeded.contains($0.id) }
@@ -236,20 +244,17 @@ struct HistoryView: View {
         isLoadingMore = false
         defer { if loadID == requestID { isLoading = false } }
         do {
-            let payload = try await BiliAPI.historyPage(max: 0, viewAt: 0)
+            let payload = try await services.library.historyPage(max: 0, viewAt: 0)
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = payload.allItems.filter(\.isVideo)
             entranceGeneration += 1
-            items = incoming.filter { !removals.hiddenIDs.contains($0.id) }
+            items = LibraryPageRules.unique(incoming, excluding: removals.hiddenIDs)
             selectedIDs.formIntersection(Set(items.map(\.id)))
 
-            if let cursor = payload.cursor, let nextMax = cursor.max, nextMax > 0, !incoming.isEmpty {
-                cursorMax = nextMax
-                cursorViewAt = cursor.resolvedViewAt ?? 0
-                hasMore = true
-            } else {
-                hasMore = false
-            }
+            hasMore = LibraryPageRules.advancesHistory(max: payload.cursor?.max,
+                viewAt: payload.cursor?.resolvedViewAt, fromMax: 0, fromViewAt: 0)
+            cursorMax = payload.cursor?.max ?? 0
+            cursorViewAt = payload.cursor?.resolvedViewAt ?? 0
             errorMessage = nil
         } catch {
             guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
@@ -257,15 +262,14 @@ struct HistoryView: View {
         }
     }
 
-    private func loadMoreIfNeeded(current item: HistoryItem) async {
+    private func loadMoreIfNeeded() async {
         guard !isSelecting, hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
-        guard visibleItems.suffix(5).contains(where: { $0.id == item.id }) else { return }
         await loadNextPage()
     }
 
     private func loadNextPage() async {
         guard !removals.hasPending, !isRemovingSelected else { return }
-        guard !isLoadingMore, !isLoading else { return }
+        guard hasMore, !isLoadingMore, !isLoading else { return }
         let requestID = UUID()
         loadID = requestID
         let revision = removals.revision
@@ -279,21 +283,16 @@ struct HistoryView: View {
             }
         }
         do {
-            let payload = try await BiliAPI.historyPage(max: cursorMax, viewAt: cursorViewAt)
+            let payload = try await services.library.historyPage(max: cursorMax, viewAt: cursorViewAt)
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
             let incoming = payload.allItems.filter(\.isVideo)
             let existing = Set(items.map(\.id))
-            items.append(contentsOf: incoming.filter { !existing.contains($0.id) && !removals.hiddenIDs.contains($0.id) })
+            items.append(contentsOf: LibraryPageRules.unique(incoming, excluding: existing.union(removals.hiddenIDs)))
 
-            if let cursor = payload.cursor, let nextMax = cursor.max, nextMax > 0 {
-                cursorMax = nextMax
-                cursorViewAt = cursor.resolvedViewAt ?? 0
-            } else {
-                hasMore = false
-            }
-            if incoming.isEmpty {
-                hasMore = false
-            }
+            hasMore = LibraryPageRules.advancesHistory(max: payload.cursor?.max,
+                viewAt: payload.cursor?.resolvedViewAt, fromMax: cursorMax, fromViewAt: cursorViewAt)
+            cursorMax = payload.cursor?.max ?? 0
+            cursorViewAt = payload.cursor?.resolvedViewAt ?? 0
             errorMessage = nil
         } catch {
             guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
@@ -310,24 +309,26 @@ struct HistoryView: View {
     /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
     private func delete(_ item: HistoryItem) async {
         guard !isRemovingSelected, items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
-        defer { removals.finish(item.id) }
         let sessionID = account.sessionID
+        defer { if account.sessionID == sessionID { removals.finish(item.id) } }
+        let identitySession = services.session.currentID()
         var removedIndex: Int?
         do {
             removals.hide(item.id)
             removedIndex = removals.remove(item.id, from: &items)
             guard await feedback.confirmRemoval(String(localized: "已移除历史记录")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
-            try await BiliAPI.deleteHistory(kid: item.kidParam)
+            try await services.library.deleteHistory(kid: item.kidParam, expectedSessionID: identitySession)
+            guard account.sessionID == sessionID else { return }
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             items.removeAll { $0.id == item.id }
             selectedIDs.remove(item.id)
             if selectedIDs.isEmpty { isSelecting = false }
         } catch {
-            if let removedIndex {
+            if account.sessionID == sessionID, let removedIndex {
                 removals.restore(item, at: removedIndex, in: &items)
             }
-            if !error.isCancellation { feedback.show(error.localizedDescription) }
+            if account.sessionID == sessionID, !error.isCancellation { feedback.show(error.localizedDescription) }
         }
     }
 }

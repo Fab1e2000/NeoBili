@@ -179,3 +179,100 @@ private actor FollowingLivePageGate {
     func resolve(_ page: LiveRoomPage) { pending?.resume(returning: page); pending = nil }
     func cancelAll() { pending?.resume(throwing: CancellationError()); pending = nil }
 }
+
+@MainActor
+final class FollowingAllUpsPaginationTests: XCTestCase {
+    func testDeduplicatesWithinPageAndAcrossPagesAndStopsRepeatedPage() async throws {
+        let loader = AllUpsPages(pages: [
+            1: try page([1, 1, 2], total: 10),
+            2: try page([2, 3, 3], total: 10),
+            3: try page([2, 3, 3], total: 10)
+        ])
+        let model = FollowingAllUpsModel(mid: 42, loader: { _, page in try await loader.load(page) })
+        await model.loadInitial()
+        XCTAssertEqual(model.ups.map(\.mid), [1, 2])
+        await model.loadMore()
+        XCTAssertEqual(model.ups.map(\.mid), [1, 2, 3])
+        await model.loadMore()
+        XCTAssertFalse(model.hasMore)
+        await model.loadMore()
+        let calls = await loader.calls
+        XCTAssertEqual(calls, [1, 2, 3])
+    }
+
+    func testDuplicateOnlyBoundaryAutomaticallyAdvancesToNextPage() async throws {
+        let loader = AllUpsPages(pages: [
+            1: try page([1, 2, 3], total: 4),
+            2: try page([2, 3], total: 4),
+            3: try page([4], total: 4)
+        ])
+        let model = FollowingAllUpsModel(mid: 42, loader: { _, page in try await loader.load(page) })
+        await model.loadInitial()
+        await model.loadMore()
+        XCTAssertEqual(model.ups.map(\.mid), [1, 2, 3, 4])
+        XCTAssertFalse(model.hasMore)
+        let calls = await loader.calls
+        XCTAssertEqual(calls, [1, 2, 3])
+    }
+
+    func testFailedTailRequiresExplicitRetryAndRetriesSamePage() async throws {
+        let loader = AllUpsPages(pages: [1: try page([1], total: 2)])
+        let model = FollowingAllUpsModel(mid: 42, loader: { _, page in try await loader.load(page) })
+        await model.loadInitial()
+        let last = try XCTUnwrap(model.ups.last)
+        await model.loadMoreIfNeeded(current: last)
+        XCTAssertNotNil(model.errorMessage)
+        await model.loadMoreIfNeeded(current: last)
+        let callsBeforeRetry = await loader.calls
+        XCTAssertEqual(callsBeforeRetry, [1, 2])
+        await loader.set(try page([2], total: 2), at: 2)
+        await model.loadMore()
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.ups.map(\.mid), [1, 2])
+        let calls = await loader.calls
+        XCTAssertEqual(calls, [1, 2, 2])
+    }
+
+    func testCancellationDoesNotPublishIgnoredTransportResultOrConsumePage() async throws {
+        let gate = AllUpsPageGate()
+        let model = FollowingAllUpsModel(mid: 42, loader: { _, _ in await gate.load() })
+        let task = Task { await model.loadInitial() }
+        for _ in 0..<100 {
+            if await gate.isPending { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let pending = await gate.isPending
+        XCTAssertTrue(pending)
+        task.cancel()
+        await gate.resolve(try page([1], total: 1))
+        await task.value
+        XCTAssertTrue(model.ups.isEmpty)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.isLoading)
+        XCTAssertTrue(model.hasMore)
+    }
+
+    private func page(_ mids: [Int], total: Int) throws -> FollowingsPage {
+        let json: [String: Any] = ["list": mids.map { ["mid": $0, "uname": "UP \($0)"] }, "total": total]
+        return try JSONDecoder().decode(FollowingsPage.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+}
+
+private actor AllUpsPages {
+    private var pages: [Int: FollowingsPage]
+    private(set) var calls: [Int] = []
+    init(pages: [Int: FollowingsPage]) { self.pages = pages }
+    func set(_ result: FollowingsPage, at page: Int) { pages[page] = result }
+    func load(_ page: Int) throws -> FollowingsPage {
+        calls.append(page)
+        guard let result = pages[page] else { throw URLError(.notConnectedToInternet) }
+        return result
+    }
+}
+
+private actor AllUpsPageGate {
+    private var pending: CheckedContinuation<FollowingsPage, Never>?
+    var isPending: Bool { pending != nil }
+    func load() async -> FollowingsPage { await withCheckedContinuation { pending = $0 } }
+    func resolve(_ result: FollowingsPage) { pending?.resume(returning: result); pending = nil }
+}

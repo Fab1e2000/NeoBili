@@ -30,18 +30,14 @@ extension Int {
         let calendar = Calendar.current
         if calendar.isDateInYesterday(date) { return String(localized: "昨天") }
 
-        let formatter = DateFormatter()
-        formatter.locale = AppLanguage.locale
         let isThisYear = calendar.component(.year, from: date) == calendar.component(.year, from: Date())
-        formatter.setLocalizedDateFormatFromTemplate(isThisYear ? "MMMd" : "yMMMd")
-        return formatter.string(from: date)
+        return BiliDateFormatting.string(from: date, template: isThisYear ? "MMMd" : "yMMMd",
+                                         locale: AppLanguage.locale)
     }
 
     /// 稿件发布时间（秒级时间戳）的完整写法：2026年9月4日 09:00 / Sep 4, 2026 09:00。
     var biliPubdateText: String {
-        let formatter = DateFormatter()
-        formatter.locale = AppLanguage.locale
-        formatter.setLocalizedDateFormatFromTemplate("yMMMdHHmm")
-        return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(self)))
+        BiliDateFormatting.string(from: Date(timeIntervalSince1970: TimeInterval(self)),
+                                  template: "yMMMdHHmm", locale: AppLanguage.locale)
     }
 }

@@ -211,3 +211,12 @@ private actor ControlledRequests {
         detailWaiters.removeValue(forKey: index)?.resume(returning: VideoDetail(cid: cid))
     }
 }
+
+struct ApplicationServices: Sendable {
+    static let live = ApplicationServices()
+    var video: BiliAPI.Type { BiliAPI.self }
+    var session: Session { Session() }
+    struct Session: Sendable {
+        func currentID() -> UUID { DeviceIdentity.shared.loginSessionID }
+    }
+}

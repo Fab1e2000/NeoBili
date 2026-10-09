@@ -122,6 +122,50 @@ final class VideoStoryboardTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
+    @MainActor func testDraggingWithinOneTileReusesCroppedImage() async throws {
+        let board = retryBoard
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 9)).image {
+            $0.fill(CGRect(x: 0, y: 0, width: 16, height: 9))
+        }
+        let store = VideoStoryboardStore(metadataLoader: { _ in board }, imageLoader: { _ in image })
+        await store.load(VideoPreviewID(bvid: "cache", cid: 1))
+        await store.prepare(at: 0)
+        let first = try XCTUnwrap(store.frame(at: 0))
+        for time in 1...100 { XCTAssertTrue(store.frame(at: Double(time)) === first) }
+        await store.load(VideoPreviewID(bvid: "next", cid: 2))
+        XCTAssertNil(store.frame(at: 0), "切视频必须丢弃上一视频的裁剪帧")
+    }
+
+    @MainActor func testChangingVideoStopsOldNeighborPrefetch() async throws {
+        let oldBoard = VideoStoryboard(imgXLen: 1, imgYLen: 1, imgXSize: 16, imgYSize: 9,
+            image: ["https://example.com/old-first", "https://example.com/old-neighbor"], index: [0, 0, 10])
+        let newBoard = retryBoard
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 9)).image {
+            $0.fill(CGRect(x: 0, y: 0, width: 16, height: 9))
+        }
+        var pending: CheckedContinuation<UIImage, Never>?
+        var requested: [String] = []
+        let store = VideoStoryboardStore(metadataLoader: { $0.cid == 1 ? oldBoard : newBoard }, imageLoader: { url in
+            requested.append(url.absoluteString)
+            if url.lastPathComponent == "old-first" {
+                return await withCheckedContinuation { pending = $0 }
+            }
+            return image
+        })
+        await store.load(VideoPreviewID(bvid: "old", cid: 1))
+        let preparing = Task { await store.prepare(at: 0) }
+        for _ in 0..<10_000 {
+            if pending != nil { break }
+            await Task.yield()
+        }
+        let continuation = try XCTUnwrap(pending)
+        await store.load(VideoPreviewID(bvid: "new", cid: 2))
+        continuation.resume(returning: image)
+        await preparing.value
+        XCTAssertEqual(requested, ["https://example.com/old-first"])
+        XCTAssertTrue(store.sprites.isEmpty)
+    }
+
     private var retryBoard: VideoStoryboard {
         VideoStoryboard(imgXLen: 1, imgYLen: 1, imgXSize: 16, imgYSize: 9,
                         image: ["https://example.com/retry"], index: [0, 0])

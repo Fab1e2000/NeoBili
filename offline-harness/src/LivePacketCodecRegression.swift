@@ -24,6 +24,7 @@ struct LivePacketCodecRegression {
         testConcatenatedSplit()
         testZlibInflate()
         testMalformedTolerance()
+        testLargeBatchAndSlicedData()
 
         if failures == 0 {
             print("ALL PACKET CODEC CHECKS PASS")
@@ -121,5 +122,25 @@ struct LivePacketCodecRegression {
                "全 0xFF 垃圾流不产生帧也不崩溃")
         expect(LivePacketCodec.header(of: Data(repeating: 0, count: 16)) != nil, "全零包头可以解析（长度为 0）")
         expect(LivePacketCodec.packet(op: 5, protover: 3, seq: 1).count == 16, "未知协议版本照常编码（由分发端忽略）")
+    }
+
+    private static func testLargeBatchAndSlicedData() {
+        let packet = makeMessagePacket("batch")
+        var batch = Data([0xAA, 0xBB, 0xCC])
+        for _ in 0..<5_000 { batch.append(packet) }
+        let slice = batch.dropFirst(3)
+        let frames = LivePacketCodec.splitConcatenated(slice)
+        expect(frames.count == 5_000 && frames.allSatisfy { $0.body == Data("batch".utf8) },
+               "大批量与非零起始索引 Data 完整解包")
+        expect(LivePacketCodec.header(of: slice, offset: packet.count)?.totalLength == packet.count,
+               "从非零偏移直接解析下一包头")
+        expect(LivePacketCodec.header(of: slice, offset: -1) == nil &&
+               LivePacketCodec.header(of: slice, offset: Int.max) == nil &&
+               LivePacketCodec.header(of: slice, offset: slice.count - 15) == nil,
+               "非法偏移及尾部短包头安全拒绝")
+        var extended = LivePacketCodec.packet(op: 5, protover: 0, seq: 1, body: Data([0, 0, 0, 0, 42]))
+        extended[5] = 20
+        expect(LivePacketCodec.splitConcatenated(extended).first?.body == Data([42]),
+               "扩展包头不混入消息体")
     }
 }

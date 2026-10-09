@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct RecommendationDiagnosticsView: View {
-    @AppStorage(RecommendationExperiment.loggingKey) private var enabled = false
-    @AppStorage(RecommendationExperiment.buvidKey) private var override = ""
+    @Environment(\.applicationServices) private var services
+    @AppStorage(DiagnosticsPreferences.loggingKey) private var enabled = false
+    @AppStorage(DiagnosticsPreferences.buvidKey) private var override = ""
     @State private var exportURL: URL?
     @State private var exporting = false
     @State private var failed = false
@@ -24,7 +25,7 @@ struct RecommendationDiagnosticsView: View {
                 Button("准备导出日志") {
                     exporting = true; failed = false; exportURL = nil
                     Task {
-                        do { exportURL = try await RecommendationDiagnostics.shared.export() }
+                        do { exportURL = try await services.exportDiagnostics() }
                         catch { failed = true }
                         exporting = false
                     }

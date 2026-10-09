@@ -30,6 +30,7 @@ struct DynamicVoteCard: View {
 }
 
 private struct DynamicVoteSheet: View {
+    @Environment(\.applicationServices) private var services
     @Environment(\.appThemeColor) private var themeColor
     let vote: DynamicVote
     let dynamicID: String
@@ -101,7 +102,7 @@ private struct DynamicVoteSheet: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let result = try await BiliAPI.dynamicVoteInfo(id: vote.id)
+            let result = try await services.community.dynamicVoteInfo(id: vote.id)
             response = result
             if !submitted { selection = Set(result.myVotes) }
             message = nil
@@ -114,7 +115,7 @@ private struct DynamicVoteSheet: View {
         isSubmitting = true
         defer { isSubmitting = false }
         do {
-            try await BiliAPI.submitDynamicVote(id: vote.id, options: selection.sorted(), voterMID: mid, dynamicID: dynamicID)
+            try await services.community.submitDynamicVote(id: vote.id, options: selection.sorted(), voterMID: mid, dynamicID: dynamicID)
             submitted = true
             await load()
         } catch { message = error.localizedDescription }

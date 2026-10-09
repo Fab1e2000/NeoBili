@@ -25,7 +25,7 @@ final class DanmakuEngine: UIView {
     func applyAppearance(fontSize: CGFloat, opacity: Double, blockTop: Bool, blockBottom: Bool) {
         let size = min(40, max(8, fontSize.isFinite ? fontSize : 15))
         if self.fontSize != size || self.blockTop != blockTop || self.blockBottom != blockBottom {
-            clear(keepTimelineAt: max(0, injectedThrough))
+            clear(keepTimelineAt: max(0, suppressedTime ?? injectedThrough))
             self.fontSize = size
             self.blockTop = blockTop
             self.blockBottom = blockBottom
@@ -41,7 +41,17 @@ final class DanmakuEngine: UIView {
     private(set) var isTimelinePaused = false
     /// 画面收起成标题条时置位：不注入、不推进、不启动逐帧循环。
     var isSuppressed = false { didSet {
-        if isSuppressed { stopTicking() } else if activeCount > 0 { startTickingIfNeeded() }
+        guard oldValue != isSuppressed else { return }
+        if isSuppressed {
+            suppressedTime = nil
+            stopTicking()
+        } else if let time = suppressedTime {
+            // 播放继续而画面收起时，只同步游标；恢复不能补发整段历史弹幕。
+            suppressedTime = nil
+            clear(keepTimelineAt: time)
+        } else if activeCount > 0 {
+            startTickingIfNeeded()
+        }
     } }
 
     private var rowHeight: CGFloat { Self.rowHeight(for: fontSize) }
@@ -52,6 +62,7 @@ final class DanmakuEngine: UIView {
     private var items: [DanmakuItem] = []
     private var cursorIndex = 0
     private var injectedThrough = -1.0
+    private var suppressedTime: TimeInterval?
 
     // MARK: 活动图层
 
@@ -114,7 +125,11 @@ final class DanmakuEngine: UIView {
     }
 
     func update(currentTime: TimeInterval) {
-        guard mode == .video, !isTimelinePaused, !isSuppressed else { return }
+        guard mode == .video, currentTime.isFinite, !isTimelinePaused else { return }
+        if isSuppressed {
+            suppressedTime = currentTime
+            return
+        }
         guard currentTime >= injectedThrough else { return }
         while cursorIndex < items.count, items[cursorIndex].time <= currentTime {
             let item = items[cursorIndex]
@@ -131,13 +146,22 @@ final class DanmakuEngine: UIView {
 
     /// 清空画面并重置注入游标；`keepTimelineAt` 为 seek 后的新位置。
     func clear(keepTimelineAt time: TimeInterval) {
+        suppressedTime = nil
         for sublayer in self.layer.sublayers ?? [] { sublayer.removeFromSuperlayer() }
         scrollTracks = scrollTracks.map { _ in [] }
         staticTracks = staticTracks.map { _ in nil }
         activeCount = 0
         stopTicking()
         injectedThrough = time
-        cursorIndex = items.firstIndex { $0.time >= time } ?? items.count
+        // 时间轴已排序，长视频 seek 不必从开头扫描全部弹幕。
+        var lower = 0
+        var upper = items.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if items[middle].time < time { lower = middle + 1 }
+            else { upper = middle }
+        }
+        cursorIndex = lower
     }
 
     func setTimelinePaused(_ paused: Bool) {
