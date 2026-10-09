@@ -2,6 +2,86 @@
   "sourceLanguage": "zh-Hans",
   "strings": {
     "": {},
+    "%@ 内容异常": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unexpected content in %@"
+          }
+        }
+      }
+    },
+    "(根)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(root)"
+          }
+        }
+      }
+    },
+    "数据解析失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't parse the response: %@"
+          }
+        }
+      }
+    },
+    "显示可撤销的提示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Undoable Notice"
+          }
+        }
+      }
+    },
+    "显示提示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Notice"
+          }
+        }
+      }
+    },
+    "缺字段 %@.%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Missing field %1$@.%2$@"
+          }
+        }
+      }
+    },
+    "账号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account"
+          }
+        }
+      }
+    },
+    "首页推荐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Home Recommendations"
+          }
+        }
+      }
+    },
     "，正在直播": {
       "localizations": {
         "en": {
@@ -95,6 +175,12 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "new",
+            "value": "%1$@ +%2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
             "value": "%1$@ +%2$@"
           }
         }
@@ -394,7 +480,16 @@
         }
       }
     },
-    "%lld 秒": {},
+    "%lld 秒": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld s"
+          }
+        }
+      }
+    },
     "%lld 秒后重新获取": {
       "localizations": {
         "en": {
@@ -566,8 +661,26 @@
         }
       }
     },
-    "App 登录凭据": {},
-    "App 登录凭据已失效，请使用当前账号的短信验证码重新授权。网页登录状态已保留。": {},
+    "App 登录凭据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App Credential"
+          }
+        }
+      }
+    },
+    "App 登录凭据已失效，请使用当前账号的短信验证码重新授权。网页登录状态已保留。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The App credential has expired. Verify again by SMS with your current account. Your web sign-in is kept."
+          }
+        }
+      }
+    },
     "Bilibili 视频": {
       "localizations": {
         "en": {
@@ -982,7 +1095,16 @@
         }
       }
     },
-    "使用 | 隔开，如：尝试|测试。标题或分区名包含这些词的推荐会被隐藏；网页端推荐不提供分区名，分区关键词只对 App 端推荐生效。": {},
+    "使用 | 隔开，如：尝试|测试。标题或分区名包含这些词的推荐会被隐藏；网页端推荐不提供分区名，分区关键词只对 App 端推荐生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Separate keywords with |, for example: trial|test. Recommendations whose title or category contains these words are hidden. Web recommendations don't include category names, so category keywords apply only to App recommendations."
+          }
+        }
+      }
+    },
     "保存二维码": {
       "localizations": {
         "en": {
@@ -1113,7 +1235,16 @@
         }
       }
     },
-    "关键词过滤": {},
+    "关键词过滤": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keyword Filter"
+          }
+        }
+      }
+    },
     "关闭": {
       "localizations": {
         "en": {
@@ -1154,7 +1285,16 @@
         }
       }
     },
-    "关闭后改用网页端推荐。若网页端推荐不太符合预期，可切换回 App 端推荐。": {},
+    "关闭后改用网页端推荐。若网页端推荐不太符合预期，可切换回 App 端推荐。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When off, Home uses web recommendations. If those don't match what you expect, switch back to App recommendations."
+          }
+        }
+      }
+    },
     "关闭弹幕": {
       "localizations": {
         "en": {
@@ -1365,7 +1505,16 @@
         }
       }
     },
-    "分区关键词": {},
+    "分区关键词": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Category Keywords"
+          }
+        }
+      }
+    },
     "分辨率": {
       "localizations": {
         "en": {
@@ -1624,7 +1773,16 @@
         }
       }
     },
-    "反馈": {},
+    "反馈": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feedback"
+          }
+        }
+      }
+    },
     "发个友善的弹幕见证当下": {
       "localizations": {
         "en": {
@@ -1735,7 +1893,16 @@
         }
       }
     },
-    "取消踩": {},
+    "取消踩": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dislike removed"
+          }
+        }
+      }
+    },
     "可可棕": {
       "localizations": {
         "en": {
@@ -1945,7 +2112,16 @@
         }
       }
     },
-    "复制 %@": {},
+    "复制 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy %@"
+          }
+        }
+      }
+    },
     "外观": {
       "localizations": {
         "en": {
@@ -1956,7 +2132,16 @@
         }
       }
     },
-    "多选": {},
+    "多选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select"
+          }
+        }
+      }
+    },
     "大": {
       "localizations": {
         "en": {
@@ -2293,7 +2478,16 @@
         }
       }
     },
-    "已关注 UP 豁免推荐过滤": {},
+    "已关注 UP 豁免推荐过滤": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exempt Followed UPs"
+          }
+        }
+      }
+    },
     "已加入稍后再看": {
       "localizations": {
         "en": {
@@ -2324,7 +2518,16 @@
         }
       }
     },
-    "已复制": {},
+    "已复制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied"
+          }
+        }
+      }
+    },
     "已展开": {
       "localizations": {
         "en": {
@@ -2385,8 +2588,26 @@
         }
       }
     },
-    "已拉黑 %@": {},
-    "已提交": {},
+    "已拉黑 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blocked %@"
+          }
+        }
+      }
+    },
+    "已提交": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submitted"
+          }
+        }
+      }
+    },
     "已提交不感兴趣": {
       "extractionState": "stale",
       "localizations": {
@@ -2498,7 +2719,16 @@
         }
       }
     },
-    "已获取": {},
+    "已获取": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtained"
+          }
+        }
+      }
+    },
     "已选择 %lld 项": {
       "localizations": {
         "en": {
@@ -2782,7 +3012,16 @@
         }
       }
     },
-    "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。请使用当前账号的短信验证码重新授权。": {},
+    "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。请使用当前账号的短信验证码重新授权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This account has no App credential. App recommendations pause and ask for authorization instead of silently switching to guest mode. Verify by SMS with your current account."
+          }
+        }
+      }
+    },
     "彩色弹幕": {
       "localizations": {
         "en": {
@@ -2873,8 +3112,26 @@
         }
       }
     },
-    "成功": {},
-    "我不想看": {},
+    "成功": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
+    "我不想看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I Don't Want to See"
+          }
+        }
+      }
+    },
     "我的": {
       "localizations": {
         "en": {
@@ -3017,9 +3274,36 @@
         }
       }
     },
-    "拉黑": {},
-    "拉黑 UP 主": {},
-    "拉黑：%@": {},
+    "拉黑": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block"
+          }
+        }
+      }
+    },
+    "拉黑 UP 主": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block UP"
+          }
+        }
+      }
+    },
+    "拉黑：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block: %@"
+          }
+        }
+      }
+    },
     "拖动右侧的把手调整顺序，点红色按钮隐藏。标签栏最多 %lld 个（含固定在末尾的搜索），不会出现「更多」。": {
       "localizations": {
         "en": {
@@ -3120,7 +3404,16 @@
         }
       }
     },
-    "推荐流": {},
+    "推荐流": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recommendations"
+          }
+        }
+      }
+    },
     "推荐页": {
       "localizations": {
         "en": {
@@ -3317,7 +3610,16 @@
         }
       }
     },
-    "播放量": {},
+    "播放量": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Views"
+          }
+        }
+      }
+    },
     "收藏": {
       "localizations": {
         "en": {
@@ -3459,7 +3761,16 @@
         }
       }
     },
-    "无法打开这条动态": {},
+    "无法打开这条动态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't Open This Post"
+          }
+        }
+      }
+    },
     "无法播放": {
       "localizations": {
         "en": {
@@ -3550,7 +3861,16 @@
         }
       }
     },
-    "显示上次看到位置提示": {},
+    "显示上次看到位置提示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Where You Left Off"
+          }
+        }
+      }
+    },
     "显示的标签": {
       "localizations": {
         "en": {
@@ -3581,8 +3901,26 @@
         }
       }
     },
-    "暂不支持打开此链接": {},
-    "暂不支持这种动态": {},
+    "暂不支持打开此链接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This link can't be opened yet"
+          }
+        }
+      }
+    },
+    "暂不支持这种动态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This type of post isn't supported yet"
+          }
+        }
+      }
+    },
     "暂停": {
       "localizations": {
         "en": {
@@ -3734,8 +4072,26 @@
         }
       }
     },
-    "未知": {},
-    "未能获取 App 登录凭据": {},
+    "未知": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown"
+          }
+        }
+      }
+    },
+    "未能获取 App 登录凭据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't get the App credential"
+          }
+        }
+      }
+    },
     "本视频播完": {
       "localizations": {
         "en": {
@@ -3848,7 +4204,16 @@
         }
       }
     },
-    "标题关键词": {},
+    "标题关键词": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title Keywords"
+          }
+        }
+      }
+    },
     "标题栏": {
       "localizations": {
         "en": {
@@ -4119,7 +4484,16 @@
         }
       }
     },
-    "滑过视频时预取播放地址": {},
+    "滑过视频时预取播放地址": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prefetch Playback URLs While Scrolling"
+          }
+        }
+      }
+    },
     "滚动": {
       "localizations": {
         "en": {
@@ -4171,10 +4545,46 @@
         }
       }
     },
-    "点赞率": {},
-    "点踩": {},
-    "点踩成功": {},
-    "点错了": {},
+    "点赞率": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Like Ratio"
+          }
+        }
+      }
+    },
+    "点踩": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dislike"
+          }
+        }
+      }
+    },
+    "点踩成功": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disliked"
+          }
+        }
+      }
+    },
+    "点错了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Never Mind"
+          }
+        }
+      }
+    },
     "热搜": {
       "localizations": {
         "en": {
@@ -4682,6 +5092,12 @@
             "state": "new",
             "value": "确定拉黑 %1$@（%2$@）？\n拉黑后不会再收到他的推荐。可以在 B 站 App 或网页的黑名单管理中解除。"
           }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block %1$@ (%2$@)?\nYou won't get recommendations from this UP anymore. You can unblock them from the blacklist in the Bilibili app or website."
+          }
         }
       }
     },
@@ -4695,7 +5111,16 @@
         }
       }
     },
-    "确认登录失败": {},
+    "确认登录失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't confirm sign-in"
+          }
+        }
+      }
+    },
     "示例视频标题": {
       "localizations": {
         "en": {
@@ -4776,7 +5201,16 @@
         }
       }
     },
-    "视频时长": {},
+    "视频时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Length"
+          }
+        }
+      }
+    },
     "视频正在加载": {
       "localizations": {
         "en": {
@@ -5105,7 +5539,16 @@
         }
       }
     },
-    "网页端暂不支持精细选择": {},
+    "网页端暂不支持精细选择": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detailed Options Aren't Available for Web Recommendations"
+          }
+        }
+      }
+    },
     "翡翠绿": {
       "localizations": {
         "en": {
@@ -5156,7 +5599,16 @@
         }
       }
     },
-    "获取失败：%@": {},
+    "获取失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't get it: %@"
+          }
+        }
+      }
+    },
     "获取验证码": {
       "localizations": {
         "en": {
@@ -5227,7 +5679,16 @@
         }
       }
     },
-    "访问：%@": {},
+    "访问：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visit: %@"
+          }
+        }
+      }
+    },
     "评论": {
       "localizations": {
         "en": {
@@ -5400,7 +5861,16 @@
         }
       }
     },
-    "请退出账号后重新登录": {},
+    "请退出账号后重新登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign out and sign in again"
+          }
+        }
+      }
+    },
     "账号信息暂时无法加载，请重试": {
       "localizations": {
         "en": {
@@ -5441,7 +5911,16 @@
         }
       }
     },
-    "账号未登录": {},
+    "账号未登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not signed in"
+          }
+        }
+      }
+    },
     "账号管理": {
       "localizations": {
         "en": {
@@ -5502,7 +5981,16 @@
         }
       }
     },
-    "轻点查看动态，再次轻点进入主页；长按进入直播间": {},
+    "轻点查看动态，再次轻点进入主页；长按进入直播间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to view posts, tap again to open their Space; touch and hold to enter the live room"
+          }
+        }
+      }
+    },
     "较大": {
       "localizations": {
         "en": {
@@ -5553,7 +6041,16 @@
         }
       }
     },
-    "过滤": {},
+    "过滤": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filters"
+          }
+        }
+      }
+    },
     "返回": {
       "localizations": {
         "en": {
@@ -5655,7 +6152,16 @@
         }
       }
     },
-    "这位 UP 主当前未开播": {},
+    "这位 UP 主当前未开播": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This UP isn't live right now"
+          }
+        }
+      }
+    },
     "这位 UP 主还没有公开的视频稿件。": {
       "localizations": {
         "en": {
@@ -5686,7 +6192,16 @@
         }
       }
     },
-    "这条推荐没有提供不感兴趣选项": {},
+    "这条推荐没有提供不感兴趣选项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This recommendation doesn't offer a Not Interested option"
+          }
+        }
+      }
+    },
     "进入全屏": {
       "localizations": {
         "en": {
@@ -6007,7 +6522,16 @@
         }
       }
     },
-    "静音预览": {},
+    "静音预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muted Preview"
+          }
+        }
+      }
+    },
     "靛青色": {
       "localizations": {
         "en": {
@@ -6098,7 +6622,16 @@
         }
       }
     },
-    "首页使用 App 端推荐": {},
+    "首页使用 App 端推荐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use App Recommendations on Home"
+          }
+        }
+      }
+    },
     "验证码已发送，请在五分钟内填写。": {
       "localizations": {
         "en": {
