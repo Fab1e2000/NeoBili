@@ -182,12 +182,20 @@ struct VideoScrollCanvas<Content: View>: View {
     }
 }
 
+@MainActor @Observable
+private final class VideoCanvasState<Content: View> {
+    var content: Content
+    var values: EnvironmentValues
+    var size: CGSize
+    init(content: Content, values: EnvironmentValues, size: CGSize) {
+        self.content = content; self.values = values; self.size = size
+    }
+}
+
 private struct VideoCanvasContent<Content: View>: View {
-    let content: Content
-    let values: EnvironmentValues
-    let size: CGSize
+    let state: VideoCanvasState<Content>
     var body: some View {
-        content.environment(\.self, values).frame(width: size.width, height: size.height)
+        state.content.environment(\.self, state.values).frame(width: state.size.width, height: state.size.height)
     }
 }
 
@@ -195,11 +203,13 @@ private struct VideoCanvasViewport<Content: View>: UIViewControllerRepresentable
     let content: Content
     let canvasSize: CGSize
     func makeUIViewController(context: Context) -> CanvasController<Content> {
-        CanvasController(root: VideoCanvasContent(content: content, values: context.environment, size: canvasSize), size: canvasSize)
+        CanvasController(content: content, values: context.environment, size: canvasSize)
     }
     func updateUIViewController(_ controller: CanvasController<Content>, context: Context) {
         withTransaction(context.transaction) {
-            controller.host.rootView = VideoCanvasContent(content: content, values: context.environment, size: canvasSize)
+            controller.state.content = content
+            controller.state.values = context.environment
+            if controller.state.size != canvasSize { controller.state.size = canvasSize }
         }
         controller.canvasSize = canvasSize
         controller.layoutCanvas()
@@ -208,9 +218,12 @@ private struct VideoCanvasViewport<Content: View>: UIViewControllerRepresentable
 
 private final class CanvasController<Content: View>: UIViewController {
     let host: UIHostingController<VideoCanvasContent<Content>>
+    let state: VideoCanvasState<Content>
     var canvasSize: CGSize
-    init(root: VideoCanvasContent<Content>, size: CGSize) {
-        host = UIHostingController(rootView: root)
+    init(content: Content, values: EnvironmentValues, size: CGSize) {
+        let state = VideoCanvasState(content: content, values: values, size: size)
+        self.state = state
+        host = UIHostingController(rootView: VideoCanvasContent(state: state))
         canvasSize = size
         super.init(nibName: nil, bundle: nil)
         host.safeAreaRegions = []
