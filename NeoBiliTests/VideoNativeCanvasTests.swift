@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class VideoNativeCanvasTests: XCTestCase {
-    func testFixedCanvasAndPagingTransitionInExistingViewTree() async throws {
+    func testFixedCanvasKeepsScrollGeometryPagingAndPlayerTouches() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.keyWindow
         let model = CanvasFixtureState()

@@ -169,28 +169,71 @@ enum VideoScrollHandoff {
     }
 }
 
-/// Keep native list bounds constant while revealing it above its fixed bottom edge.
-/// This stays in the existing SwiftUI tree, including its paging transaction.
+/// Fixed list canvas inside a persistent native viewport. UIKit rejects touches
+/// outside the visible bounds even on runtimes where SwiftUI clipping only draws.
 struct VideoScrollCanvas<Content: View>: View {
     let height: CGFloat
     let content: Content
     var body: some View {
         GeometryReader { geometry in
-            content.frame(width: geometry.size.width, height: height)
-                .contentShape(.interaction, VideoCanvasInteractionShape(visibleHeight: geometry.size.height))
-                .offset(y: geometry.size.height - height)
+            VideoCanvasViewport(content: content, canvasSize: CGSize(width: geometry.size.width, height: height))
+                .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        // Clipping only limits rendering. The translated list must also stop
-        // receiving touches outside the currently visible content viewport.
-        .contentShape(Rectangle())
-        .clipped()
     }
 }
 
-private struct VideoCanvasInteractionShape: Shape {
-    let visibleHeight: CGFloat
-    func path(in rect: CGRect) -> Path {
-        let height = min(rect.height, max(0, visibleHeight))
-        return Path(CGRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height))
+private struct VideoCanvasContent<Content: View>: View {
+    let content: Content
+    let values: EnvironmentValues
+    let size: CGSize
+    var body: some View {
+        content.environment(\.self, values).frame(width: size.width, height: size.height)
+    }
+}
+
+private struct VideoCanvasViewport<Content: View>: UIViewControllerRepresentable {
+    let content: Content
+    let canvasSize: CGSize
+    func makeUIViewController(context: Context) -> CanvasController<Content> {
+        CanvasController(root: VideoCanvasContent(content: content, values: context.environment, size: canvasSize), size: canvasSize)
+    }
+    func updateUIViewController(_ controller: CanvasController<Content>, context: Context) {
+        withTransaction(context.transaction) {
+            controller.host.rootView = VideoCanvasContent(content: content, values: context.environment, size: canvasSize)
+        }
+        controller.canvasSize = canvasSize
+        controller.layoutCanvas()
+    }
+}
+
+private final class CanvasController<Content: View>: UIViewController {
+    let host: UIHostingController<VideoCanvasContent<Content>>
+    var canvasSize: CGSize
+    init(root: VideoCanvasContent<Content>, size: CGSize) {
+        host = UIHostingController(rootView: root)
+        canvasSize = size
+        super.init(nibName: nil, bundle: nil)
+        host.safeAreaRegions = []
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        view.clipsToBounds = true
+        addChild(host)
+        host.view.backgroundColor = .clear
+        view.addSubview(host.view)
+        host.didMove(toParent: self)
+        layoutCanvas()
+    }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        layoutCanvas()
+    }
+    func layoutCanvas() {
+        guard isViewLoaded else { return }
+        let frame = CGRect(x: 0, y: view.bounds.height - canvasSize.height,
+                           width: canvasSize.width, height: canvasSize.height)
+        if host.view.frame != frame { host.view.frame = frame }
     }
 }
