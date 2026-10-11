@@ -7,6 +7,15 @@ import XCTest
 /// injected by the tests below; no PlayerViewModel/MPV/network is needed.
 @MainActor
 final class PlayerGlassStyleTests: XCTestCase {
+    func testGeometryErrorCallbackCanRunOffMainQueue() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async {
+                OrientationController.geometryRequestFailed(NSError(domain: "orientation-fixture", code: 1))
+                continuation.resume()
+            }
+        }
+    }
+
     func testProgressUpdatesDoNotRebuildMenuContentInForegroundWindow() async throws {
         let host = try PlayerGlassSnapshotHost()
         defer { host.close() }
@@ -593,7 +602,7 @@ private final class PlayerGlassSnapshotHost {
         previousKeyWindow?.makeKey()
         OrientationLock.shared.request(previousOrientation)
         previousKeyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-        window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: previousOrientation)) { _ in }
+        window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: previousOrientation)) { @Sendable _ in }
     }
 }
 

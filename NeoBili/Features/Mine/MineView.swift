@@ -15,7 +15,7 @@ struct MineView: View {
 
     @State private var loginSheet: LoginSheet?
     @State private var serviceSheet: MineService?
-
+    @State private var confirmLogout = false
 
     var body: some View {
         NavigationStack {
@@ -32,7 +32,7 @@ struct MineView: View {
                     } actions: {
                         Button("重试") { Task { await account.refreshProfile() } }
                             .disabled(account.isRefreshingProfile)
-                        Button("退出登录", role: .destructive) { Task { await account.logout() } }
+                        Button("退出登录", role: .destructive) { confirmLogout = true }
                     }
                 } else {
                     loggedOutView
@@ -45,12 +45,18 @@ struct MineView: View {
             .navigationTitle("我的")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("系统设置", systemImage: "gearshape") { presentService(.settings) }
+                        .labelStyle(.iconOnly)
+                        .accessibilityIdentifier("mine.settings")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("关闭", systemImage: "xmark") { dismiss() }
                         .labelStyle(.iconOnly)
                 }
             }
         }
+        .accountLogoutConfirmation(isPresented: $confirmLogout)
         .sheet(item: $serviceSheet, onDismiss: {
             nowPlaying.isServiceSheetPresented = false
         }) { service in
@@ -134,15 +140,6 @@ struct MineView: View {
             } header: {
                 Text("我的服务")
             }
-
-            Section {
-                serviceRow(
-                    icon: "gearshape.fill",
-                    color: .gray,
-                    title: String(localized: "系统设置"),
-                    service: .settings
-                )
-            }
         }
     }
 
@@ -211,8 +208,7 @@ struct MineView: View {
         service: MineService
     ) -> some View {
         Button {
-            nowPlaying.isServiceSheetPresented = true
-            serviceSheet = service
+            presentService(service)
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: icon)
@@ -235,5 +231,10 @@ struct MineView: View {
         }
         .buttonStyle(.plain)
         .tint(.primary)
+    }
+
+    private func presentService(_ service: MineService) {
+        nowPlaying.isServiceSheetPresented = true
+        serviceSheet = service
     }
 }

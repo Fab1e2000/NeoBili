@@ -22,7 +22,6 @@ final class NowPlayingStore {
     private(set) var livePlayer: LivePlayerModel?
     private var hasRequestedPlayback = false
     var isWaitingForPlayback: Bool { route != nil && !hasRequestedPlayback }
-    private var liveLoadTask: Task<Void, Never>?
 
     var hasMedia: Bool { route != nil || livePlayer != nil }
     var activeSession: MPVPlayerSession? { livePlayer?.session ?? player?.session }
@@ -47,7 +46,7 @@ final class NowPlayingStore {
             close()
             let model = LivePlayerModel(room: room)
             livePlayer = model
-            liveLoadTask = Task { await model.load() }
+            model.requestLoad()
         }
         isVideoPageDismissalInProgress = false
         isVideoPageInteractionInProgress = false
@@ -121,13 +120,19 @@ final class NowPlayingStore {
     private var history: [VideoDetailRoute] = []
     private var loadTasks: [Task<Void, Never>] = []
     private var playerLoadTask: Task<Void, Never>?
+    private var detailLoadTask: Task<Void, Never>?
+    private let detailModelFactory: @MainActor (VideoDetailRoute) -> VideoDetailViewModel
 
     private let defaults: UserDefaults
 
-    init(configuration: VideoPlaybackConfiguration = .fastStart, defaults: UserDefaults = .standard) {
+    init(configuration: VideoPlaybackConfiguration = .fastStart, defaults: UserDefaults = .standard,
+         detailModelFactory: @escaping @MainActor (VideoDetailRoute) -> VideoDetailViewModel = {
+             VideoDetailViewModel(bvid: $0.bvid, aid: $0.aid ?? 0, playbackEntry: $0.playbackEntry)
+         }) {
         // configuration 形参保留给测试注入使用；线上路径每次都读 `.current`。
         _ = configuration
         self.defaults = defaults
+        self.detailModelFactory = detailModelFactory
     }
 
     /// 服务 sheet 打开期间，由它承载视频模态，根 TabView 暂停呈现。
@@ -165,14 +170,14 @@ final class NowPlayingStore {
             return
         }
         guard route?.bvid != newRoute.bvid else { return }
-        if let route { history.append(route) }
+        if let route { history.append(historySnapshot(route)) }
         start(newRoute)
     }
 
     /// 视频页里点相关视频：就地换掉当前视频，旧的压进历史。
     func openRelated(_ video: VideoSummary) {
         if let route {
-            history.append(route)
+            history.append(historySnapshot(route))
         }
         start(
             VideoDetailRoute(
@@ -190,7 +195,7 @@ final class NowPlayingStore {
     func openEpisode(_ episode: UgcSeasonEpisode) {
         guard let bvid = episode.bvid else { return }
         if let route {
-            history.append(route)
+            history.append(historySnapshot(route))
         }
         start(
             VideoDetailRoute(
@@ -288,8 +293,6 @@ final class NowPlayingStore {
         minimizeReleaseTask?.cancel()
         holdsTabBarMinimize = false
         pendingPresentationID = nil
-        liveLoadTask?.cancel()
-        liveLoadTask = nil
         livePlayer?.stop()
         livePlayer = nil
         cancelLoads()
@@ -361,30 +364,46 @@ final class NowPlayingStore {
         commentsScroll = ScrollPosition(edge: .top)
         commentsViewModel = nil
 
-        let viewModel = VideoDetailViewModel(bvid: newRoute.bvid, aid: newRoute.aid ?? 0, playbackEntry: newRoute.playbackEntry)
+        let viewModel = detailModelFactory(newRoute)
         detailViewModel = viewModel
 
-        loadTasks = [
-            Task { [weak self] in
-                guard !Task.isCancelled else { return }
-                await viewModel.load()
-                guard !Task.isCancelled, self?.detailViewModel === viewModel else { return }
-                self?.startPlayerIfPossible()
-                self?.refreshSystemMediaMetadata()
-                self?.buildCommentsIfNeeded()
-                // 标签、互动状态、UP 主名片都要用详情里的 aid / mid，
-                // 所以只能排在详情之后；三者内部仍然是并行发出的。
-                await viewModel.loadExtras()
-            },
-            // 相关视频和详情各自独立请求，互不等待。
-            Task {
-                guard !Task.isCancelled else { return }
-                await viewModel.loadRelated()
-            }
-        ]
+        loadDetail(viewModel)
+        // 相关视频和详情各自独立请求，互不等待。
+        loadTasks = [Task {
+            guard !Task.isCancelled else { return }
+            await viewModel.loadRelated()
+        }]
 
         // 自动播放且入口带了 cid 时直接取流；手动播放只加载页面数据。
         startPlayerIfPossible()
+    }
+
+    /// 页面退回小窗后仍由会话持有请求；重试补齐全部依赖详情的数据。
+    func retryDetail() {
+        guard let viewModel = detailViewModel, viewModel.detail == nil,
+              detailLoadTask == nil else { return }
+        loadDetail(viewModel)
+    }
+
+    private func loadDetail(_ viewModel: VideoDetailViewModel) {
+        detailLoadTask = Task { [weak self] in
+            await viewModel.load()
+            guard !Task.isCancelled, let self, self.detailViewModel === viewModel else { return }
+            defer {
+                if self.detailViewModel === viewModel { self.detailLoadTask = nil }
+            }
+            guard viewModel.detail != nil else { return }
+            self.startPlayerIfPossible()
+            self.refreshSystemMediaMetadata()
+            self.buildCommentsIfNeeded()
+            await viewModel.loadExtras()
+        }
+    }
+
+    private func historySnapshot(_ route: VideoDetailRoute) -> VideoDetailRoute {
+        var snapshot = route
+        snapshot.cid = activeCid ?? route.cid
+        return snapshot
     }
 
     private func startPlayerIfPossible() {
@@ -441,6 +460,8 @@ final class NowPlayingStore {
     }
 
     private func cancelLoads() {
+        detailLoadTask?.cancel()
+        detailLoadTask = nil
         playerLoadTask?.cancel()
         playerLoadTask = nil
         for task in loadTasks {

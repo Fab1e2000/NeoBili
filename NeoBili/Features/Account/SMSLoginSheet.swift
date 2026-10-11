@@ -50,10 +50,18 @@ struct SMSLoginSheet: View {
                     .disabled(!model.canLogin || model.credentials != nil)
                     .accessibilityIdentifier("sms.login")
                 }
-                if model.busy { Section { HStack { ProgressView(); Text("正在处理") } } }
+                if model.busy || model.isCompleting { Section { HStack { ProgressView(); Text("正在处理") } } }
                 if model.sent { Section { Text("验证码已发送，请在五分钟内填写。") } }
-                if let error = completionError ?? model.error {
+                if let error = completionError ?? model.completionError ?? model.error {
                     Section { Text(error).foregroundStyle(.red) }
+                }
+                if model.canRetryCompletion {
+                    Section {
+                        Button("重试完成登录") { model.retryCompletion() }
+                            .accessibilityIdentifier("sms.complete.retry")
+                        Button("重新验证手机号") { model.resetPhone(); completionError = nil }
+                            .accessibilityIdentifier("sms.complete.restart")
+                    }
                 }
                 if appAuthorizationOnly {
                     Section { Text("请使用当前账号绑定的手机号完成验证。") }
@@ -72,18 +80,18 @@ struct SMSLoginSheet: View {
             }
             .onChange(of: model.phone) { model.resetPhone(); completionError = nil }
             .onChange(of: model.country) { model.resetPhone(); completionError = nil }
-            .task(id: model.credentials) {
-                guard let value = model.credentials else { return }
-                do {
-                    guard account.sessionID == expectedSession,
-                          model.preparedAccountSession == services.session.currentID(), !Task.isCancelled else { throw CancellationError() }
-                    guard let identitySession = model.preparedAccountSession else { throw CancellationError() }
+            .task(id: model.completionAttemptID) {
+                guard model.credentials != nil else { return }
+                let completed = await model.completeLogin(
+                    expectedSession: expectedSession,
+                    currentSession: { account.sessionID },
+                    currentIdentitySession: { services.session.currentID() },
+                    authorizationAccountID: appAuthorizationOnly ? account.accountID : nil
+                ) { value, identitySession in
                     try await account.completeSMSLogin(value, expectedSessionID: expectedSession,
                         expectedIdentitySession: identitySession, authorizationOnly: appAuthorizationOnly)
-                    if !Task.isCancelled { dismiss() }
-                } catch {
-                    completionError = LoginModels.failureText(for: error)
                 }
+                if completed, !Task.isCancelled { dismiss() }
             }
             .sheet(item: $model.captcha) { challenge in
                 NavigationStack {

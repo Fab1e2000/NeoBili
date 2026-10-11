@@ -50,8 +50,8 @@ final class DeviceRegistrationTests: XCTestCase {
         XCTAssertEqual(requests.first?.value(forHTTPHeaderField:"Content-Type"),"text/plain")
         let query = URLComponents(url: requests.first!.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let params = Dictionary(uniqueKeysWithValues: query.map { ($0.name,$0.value ?? "") })
-        XCTAssertEqual(params["mobi_app"], "iphone")
-        XCTAssertEqual(params["build"], "91300100")
+        XCTAssertEqual(params["mobi_app"], AppClientIdentity.mobiApp)
+        XCTAssertEqual(params["build"], AppClientIdentity.build)
         XCTAssertEqual(params["platform"], "ios")
         XCTAssertFalse(params["sign"]?.isEmpty ?? true)
         XCTAssertNil(requests.first?.value(forHTTPHeaderField:"Cookie"))

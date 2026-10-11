@@ -183,6 +183,74 @@ final class CommentPerformanceTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
+    func testCommentMessageLayoutCost() throws {
+        let message = String(repeating: "中文 English 👨‍👩‍👧‍👦 混合正文 02:35 [表情] ", count: 40)
+        let data = try JSONSerialization.data(withJSONObject: [
+            "rpid": 88, "ctime": 1, "like": 0, "rcount": 0,
+            "member": ["uname": "测试", "avatar": ""],
+            "content": ["message": message, "emote": ["[表情]": ["url": "https://example.invalid/layout.png", "meta": ["size": 1]]]]
+        ])
+        let comment = try JSONDecoder().decode(Comment.self, from: data)
+        let bitmap = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { context in
+            UIColor.systemPink.setFill(); context.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+        }
+        CommentEmoteStore.shared.insertOriginalForTesting(bitmap, for: try XCTUnwrap(URL(string: "https://example.invalid/layout.png")))
+        for size in [DynamicTypeSize.large, .accessibility3] {
+            var durations: [Double] = []
+            for iteration in 0..<45 {
+                let start = CACurrentMediaTime()
+                let renderer = ImageRenderer(content: ExpandableCommentMessage(comment: comment)
+                    .frame(width: 316).environment(\.dynamicTypeSize, size))
+                renderer.scale = 3
+                XCTAssertGreaterThan(try XCTUnwrap(renderer.cgImage).height, 0)
+                if iteration >= 5 { durations.append((CACurrentMediaTime() - start) * 1000) }
+            }
+            durations.sort()
+            print("COMMENT_LAYOUT size=\(size) samples=\(durations.count) median_ms=\(durations[durations.count / 2]) p95_ms=\(durations[Int(Double(durations.count - 1) * 0.95)])")
+        }
+    }
+
+    func testCommentOverflowForegroundLayouts() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: AnyView(Color.clear))
+        host.safeAreaRegions = []
+        window.rootViewController = host
+        window.frame = scene.coordinateSpace.bounds
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        for (name, message, width, size, style) in [
+            ("short", "简短评论", CGFloat(316), DynamicTypeSize.large, UIUserInterfaceStyle.light),
+            ("six-lines", (1...6).map { "第\($0)行" }.joined(separator: "\n"), 316, .large, .light),
+            ("long", String(repeating: "中文 English 👨‍👩‍👧‍👦 02:35，完整评论内容。", count: 20), 316, .large, .light),
+            ("large-dark", String(repeating: "中文 English 👨‍👩‍👧‍👦 02:35，完整评论内容。", count: 20), 260, .accessibility3, .dark)
+        ] {
+            let data = try JSONSerialization.data(withJSONObject: [
+                "rpid": 99, "ctime": 1, "like": 0, "rcount": 0,
+                "member": ["uname": "测试", "avatar": ""], "content": ["message": message]
+            ])
+            let comment = try JSONDecoder().decode(Comment.self, from: data)
+            window.overrideUserInterfaceStyle = style
+            host.rootView = AnyView(ExpandableCommentMessage(comment: comment).id(name)
+                .environment(\.dynamicTypeSize, size)
+                .environment(\.commentTimeJump, EnvironmentAction { _ in })
+                .frame(width: width, alignment: .leading).padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color(uiColor: .systemBackground)))
+            try await Task.sleep(for: .milliseconds(250))
+            window.layoutIfNeeded()
+            XCTAssertTrue(host.view.window === window)
+            let attachment = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            })
+            attachment.name = "comment-overflow-\(name)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+
     private func comment(_ id: Int) throws -> Comment {
         let data = Data("""
         {"rpid":\(id),"ctime":1,"like":0,"rcount":2,"member":{"uname":"测试","avatar":""},"content":{"message":"正文"}}

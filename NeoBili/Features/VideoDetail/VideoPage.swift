@@ -49,6 +49,8 @@ struct VideoPage: View {
     @State private var collapseLayout = InlineVideoCollapseLayout(expandedHeight: 0, standardHeight: 0, allowsCompact: false)
     /// 同一段滚动距离先缩小竖屏画面，暂停后才继续将画面收进 56pt 标题栏。
     @State private var videoCollapseDistance: CGFloat = 0
+    @State private var sectionBarHeight: CGFloat = 44
+    @State private var detailErrorHeight: CGFloat = 0
     /// 内容区顶部的圆角半径（连续曲率），在预览页里调定。
     private let contentCornerRadius: CGFloat = 21
     @State private var isShowingSeason = false
@@ -143,11 +145,12 @@ struct VideoPage: View {
         ))
         .sheet(isPresented: $isShowingFavoriteFolders) {
             if let mid = account.profile?.mid, let aid = viewModel?.detail?.aid {
-                FavoriteFolderSheet(ownerMid: mid, videoAid: aid) { add, remove in
+                FavoriteFolderSheet(ownerMid: mid, videoAid: aid) { add, remove, willBeFavorited in
                     Task {
                         await viewModel?.updateFavorites(
                             add: add,
                             remove: remove,
+                            willBeFavorited: willBeFavorited,
                             isLoggedIn: account.isLoggedIn
                         )
                     }
@@ -207,16 +210,33 @@ struct VideoPage: View {
                 if !isFullScreen {
                     // 选择器固定在播放器下方，作为简介和评论两页的顶部栏：内容从它下面滑过，
                     // 由系统给出与主页一致的原生顶部模糊。
-                    sectionPages
-                        .environment(\.commentBottomInset, geometry.safeAreaInsets.bottom)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .safeAreaBar(edge: .top, spacing: 0) {
-                            VideoSectionBar(
-                                selection: $store.section,
-                                commentCount: viewModel?.detail?.stat.reply ?? 0,
-                                onSendDanmaku: sendDanmakuAction
-                            )
+                    if store.player != nil, let message = viewModel?.errorMessage {
+                        VStack(spacing: 8) {
+                            Text(message).font(.callout).foregroundStyle(.secondary)
+                            Button("重试", systemImage: "arrow.clockwise", action: store.retryDetail)
                         }
+                        .padding()
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { detailErrorHeight = $0 }
+                    }
+                    VStack(spacing: 0) {
+                        VideoSectionBar(selection: $store.section,
+                                        commentCount: viewModel?.detail?.stat.reply ?? 0,
+                                        onSendDanmaku: sendDanmakuAction)
+                            .background(.bar)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sectionBarHeight = $0 }
+                        let canvasHeight = max(0, geometry.size.height + geometry.safeAreaInsets.bottom
+                                               - layout.minimumHeight - sectionBarHeight
+                                               - (store.player != nil && viewModel?.errorMessage != nil ? detailErrorHeight : 0))
+                        VideoScrollCanvas(height: canvasHeight, content: sectionPages
+                            .environment(\.commentBottomInset, geometry.safeAreaInsets.bottom)
+                            .environment(\.videoScrollContext, VideoScrollContext(
+                                minimumContentHeight: max(0, canvasHeight - (layout.expandedHeight - layout.minimumHeight)
+                                                          + layout.maximumDistance(for: collapsePhase)),
+                                reservation: layout.expandedHeight - layout.minimumHeight,
+                                distance: { videoCollapseDistance },
+                                isActive: { store.section == $0 && canInteractWithVideoCollapse })))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(uiColor: .systemBackground))
                     .clipShape(UnevenRoundedRectangle(topLeadingRadius: contentCornerRadius,
                                                       topTrailingRadius: contentCornerRadius, style: .continuous))
@@ -342,11 +362,13 @@ struct VideoPage: View {
                 }
 
                 if let message = viewModel?.errorMessage {
-                    ContentUnavailableView(
-                        "加载失败",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(message)
-                    )
+                    ContentUnavailableView {
+                        Label("加载失败", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(message)
+                    } actions: {
+                        Button("重试", systemImage: "arrow.clockwise", action: store.retryDetail)
+                    }
                 }
                 if viewModel?.errorMessage == nil {
                     Color.clear.contentShape(Rectangle())
@@ -474,19 +496,7 @@ struct VideoPage: View {
                          canCollapse: canConsumeVideoScroll, collapseCanContinue: canContinueCollapseMomentum)
                 .environment(\.commentTimeJump, commentTimeJump)
         } else {
-            GeometryReader { geometry in
-                ScrollView {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: geometry.size.height)
-                        .background {
-                            PausedVideoCollapseScroll(consume: consumeVideoScroll, end: finishVideoCollapse,
-                                                      canConsume: canConsumeVideoScroll, canContinue: canContinueCollapseMomentum)
-                                .allowsHitTesting(false)
-                        }
-                }
-                .scrollBounceBehavior(.always, axes: .vertical)
-            }
+            VideoCommentsLoadingView(consume: consumeVideoScroll, canConsume: canConsumeVideoScroll)
         }
     }
 

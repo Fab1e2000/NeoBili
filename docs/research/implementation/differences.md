@@ -17,7 +17,7 @@
 按 pageIndex/isRefresh/isLayoutChange 生成 flush=0/6/8/2、pull=1/0 与自身游标。
 column=4、auto_refresh_state=4、login_event=0、inline_sound=1、inline_sound_cold_state=4、
 autoplay_card=10、video_mode=1、inline_danmu=1、client_attr=0、qn_policy=1、
-soft_fnval=2、teenagers_age=16、disable_rcmd=0 为当前策略；network/player_net 根据实际网络生成。
+soft_fnval=2、disable_rcmd=0 为当前策略；首页推荐省略 teenagers_age；network/player_net 根据实际网络生成。
 [BiliAPI+Recommendation](../../../NeoBili/Data/Networking/Endpoints/BiliAPI+Recommendation.swift) 合入自身
 启动状态与横幅后调用 getApp，最终由 AppRequestEncoder 添加凭据、时间戳与签名。
 
@@ -44,7 +44,7 @@ getApiOptions核查。以下是8.89函数体规则，不是9.13运行验收；�
 | player_net（preload） | helper0x114a0c368–0x114a0c430每次重写网络项，WiFi1/WWAN2/不可达3；底层status异步初始化为0，新API首建读取、同APIparams缓存 | 当前按network映射WiFi1/mobile2/其余3；network来自实际网络快照，旧包其它可达值不能直接外推 |
 | https_url_req | UI type10→0x10f31bb80保存本地httpsPlayurlEnabled，默认false；builder0x101a33398–0x101a33424在preload合并后读0/1，nil省键 | 固定0相容默认/关闭，用户打开可为1；服务器/账号其他写入仍待核对 |
 | guidance | BBPhonePegasusConfig本地两Bool默认false；builder0x101a33464–0x101a33548生成!(hasShownGuideTapCard && hasShownGuideLodeMore) | 固定1相容任一未展示或缺存值；两项都true才0，UI写入/清理与账号边界尚未闭合 |
-| teenagers_age（公共项） | 设置成功0x1159777d0及状态同步写Manager/账号Prefs.age；SignHelper0x11609cac4–0x11609cb00每次读age转字符串，无16常量；无存值且无先行写入时getter退0 | 固定16缺生成依据；选择器defaultIndex16对应年龄17，不能当年龄16。同步失败也可能写0；账号suite once重建/覆盖及9.13语义待验，不猜用户年龄 |
+| teenagers_age（公共项） | 设置成功0x1159777d0及状态同步写Manager/账号Prefs.age；SignHelper0x11609cac4–0x11609cb00每次读age转字符串，无16常量；无存值且无先行写入时getter退0 | 首页推荐已省略该字段，不填入无真实来源的16；选择器defaultIndex16对应年龄17，不能当年龄16。同步失败也可能写0；账号suite once重建/覆盖及9.13语义待验，不猜用户年龄 |
 | widgets / red_point（当前省略） | WidgetCenter成功按kind原顺序逗号拼接，nil省略/成功零组件空串/失败保留旧值；red_point读启动通知来源、bootBadge与首次成功消费标记 | widgets不等于player_widget；red_point不是实时角标。Neo未实现对应启动业务，不为了补字段虚构组件/推送状态；时机和重置仍待核对 |
 
 

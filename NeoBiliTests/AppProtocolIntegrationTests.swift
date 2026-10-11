@@ -21,7 +21,7 @@ final class AppProtocolIntegrationTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
         XCTAssertEqual(request.value(forHTTPHeaderField: "x-bili-mid"), "42")
         XCTAssertEqual(request.value(forHTTPHeaderField: "buvid"), "fixture-device")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Referer"), "https://example.test/")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Referer"))
     }
 
     func testFormUsesSameGoldenSignedBytesAndAPIHostWithoutBrowserAuthentication() throws {
@@ -44,8 +44,8 @@ final class AppProtocolIntegrationTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "authorization"), "identify_v1 fixture-access")
         let metadata = try AppProto(XCTUnwrap(Data(base64Encoded: XCTUnwrap(request.value(forHTTPHeaderField: "x-bili-metadata-bin")))))
         XCTAssertEqual(metadata.text(1), "fixture-access")
-        XCTAssertEqual(metadata.text(2), "iphone")
-        XCTAssertEqual(metadata.number(4), 91_300_100)
+        XCTAssertEqual(metadata.text(2), "iphone_i")
+        XCTAssertEqual(metadata.number(4), 91_300_300)
         XCTAssertEqual(metadata.text(6), "fixture-device")
         XCTAssertEqual(metadata.text(7), "ios")
         XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
@@ -60,7 +60,7 @@ final class AppProtocolIntegrationTests: XCTestCase {
         XCTAssertEqual(request.url?.absoluteString, "https://dataflow.biliapi.com/log/pbmobile/unrealtime?ios")
         XCTAssertEqual(request.httpBody, body)
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Encoding"), "gzip")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "app-key"), "iphone")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "app-key"), "iphone_i")
         XCTAssertNil(request.value(forHTTPHeaderField: "authorization"))
         XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
     }

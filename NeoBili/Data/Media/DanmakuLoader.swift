@@ -14,7 +14,10 @@ enum DanmakuLoader {
         request.setValue("https://www.bilibili.com/", forHTTPHeaderField: "Referer")
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
-        return Self.parse(data)
+        try Task.checkCancellation()
+        let items = Self.parse(data)
+        try Task.checkCancellation()
+        return items
     }
 
     /// list.so 返回 XML：<d p="时间,类型,字号,颜色,发送时间,池,哈希,弹幕id">文本</d>。
@@ -37,12 +40,14 @@ enum DanmakuLoader {
 
         func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
                     qualifiedName: String?, attributes: [String: String]) {
+            guard !Task.isCancelled else { parser.abortParsing(); return }
             guard elementName == "d" else { return }
             pendingAttributes = attributes
             text.removeAll(keepingCapacity: true)
         }
 
         func parser(_ parser: XMLParser, foundCharacters string: String) {
+            guard !Task.isCancelled else { parser.abortParsing(); return }
             if pendingAttributes != nil { text += string }
         }
 

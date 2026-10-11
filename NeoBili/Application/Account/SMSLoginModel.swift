@@ -32,6 +32,10 @@ final class SMSLoginModel {
     var verification: Verification?
     private(set) var credentials: SMSLoginModels.Credentials?
     private(set) var preparedAccountSession: UUID?
+    private(set) var completionAttemptID = UUID()
+    private(set) var completionError: String?
+    private(set) var isCompleting = false
+    var canRetryCompletion: Bool { credentials != nil && completionError != nil && !isCompleting }
     private var context: SMSLoginModels.Context?
     private var captchaKey: String?
     private var pendingCaptchaID: String?
@@ -61,9 +65,58 @@ final class SMSLoginModel {
         generation = UUID()
         context = nil; captchaKey = nil; pendingCaptchaID = nil; sent = false; credentials = nil
         preparedAccountSession = nil; captcha = nil; verification = nil; code = ""; error = nil; busy = false
+        completionError = nil; isCompleting = false
         // 倒计时不因修改号码或地区而绕过。
     }
     func cancel() { resetPhone() }
+
+    /// Retry only the credential commit; never send another SMS for a storage failure.
+    func retryCompletion() {
+        guard canRetryCompletion else { return }
+        completionError = nil
+        completionAttemptID = UUID()
+    }
+
+    /// Both account and request-identity sessions must still match the verification attempt.
+    /// A wrong account or stale session needs a new verification; transient commit failures
+    /// retain the confirmed credentials so users can retry without requesting another SMS.
+    func completeLogin(
+        expectedSession: UUID,
+        currentSession: () -> UUID,
+        currentIdentitySession: () -> UUID,
+        authorizationAccountID: Int? = nil,
+        complete: (SMSLoginModels.Credentials, UUID) async throws -> Void
+    ) async -> Bool {
+        guard let credentials, !isCompleting else { return false }
+        let current = generation
+        isCompleting = true; completionError = nil
+        defer { if generation == current { isCompleting = false } }
+        do {
+            guard currentSession() == expectedSession,
+                  let identitySession = preparedAccountSession,
+                  identitySession == currentIdentitySession(), !Task.isCancelled else {
+                throw CancellationError()
+            }
+            if let authorizationAccountID,
+               Int(credentials.cookies.dedeUserID) != authorizationAccountID {
+                resetPhone()
+                completionError = String(localized: "请使用当前账号的手机号授权")
+                return false
+            }
+            try await complete(credentials, identitySession)
+            guard generation == current, !Task.isCancelled else { return false }
+            return true
+        } catch {
+            guard generation == current, !Task.isCancelled else { return false }
+            if error.isCancellation {
+                resetPhone()
+                completionError = String(localized: "登录状态已变化，请关闭后重新验证")
+            } else {
+                completionError = LoginModels.failureText(for: error)
+            }
+            return false
+        }
+    }
     func sendCode(result: SMSLoginModels.ChallengeResult? = nil, challenge: SMSLoginModels.Captcha? = nil) async {
         guard validPhone, let dialingCode, !busy, Date() >= resendAt || challenge != nil else { return }
         if let challenge {
@@ -123,7 +176,9 @@ final class SMSLoginModel {
     }
     private func accept(_ outcome: SMSLoginModels.LoginOutcome) {
         switch outcome {
-        case .confirmed(let value): credentials = value; code = ""; captchaKey = nil
+        case .confirmed(let value):
+            credentials = value; code = ""; captchaKey = nil
+            completionError = nil; completionAttemptID = UUID()
         case .verification(let url):
             if let context { verification = Verification(url: url, context: context) }
         }

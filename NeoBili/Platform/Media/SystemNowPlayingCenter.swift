@@ -22,6 +22,8 @@ final class SystemNowPlayingCenter {
     private let commandCenter = MPRemoteCommandCenter.shared()
     private var commandTargets: [Any] = []
     private var interruptionObserver: NSObjectProtocol?
+    private var applicationObservers: [NSObjectProtocol] = []
+    private let idleTimer = PlaybackIdleTimer()
     private var activeSessionID: UUID?
     private var metadata: SystemMediaMetadata?
     private var duration: TimeInterval = 0
@@ -38,6 +40,14 @@ final class SystemNowPlayingCenter {
 
     private init() {
         setCommandsEnabled(false)
+        for (name, active) in [(UIApplication.didBecomeActiveNotification, true),
+                               (UIApplication.willResignActiveNotification, false)] {
+            applicationObservers.append(NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.idleTimer.setApplicationActive(active) }
+            })
+        }
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(),
@@ -95,6 +105,7 @@ final class SystemNowPlayingCenter {
             playbackRate = 0
             lastPublishedSecond = -1
             infoCenter.playbackState = .paused
+            idleTimer.update(isPlaying: false)
         }
         setCommandsEnabled(true)
         commandCenter.changePlaybackPositionCommand.isEnabled = !newMetadata.isLiveStream
@@ -133,12 +144,14 @@ final class SystemNowPlayingCenter {
     func updatePlaybackState(isPlaying: Bool, sessionID: UUID, rate: Double = 1) {
         guard activeSessionID == sessionID else { return }
         playbackRate = isPlaying ? Float(rate) : 0
+        idleTimer.update(isPlaying: isPlaying)
         infoCenter.playbackState = isPlaying ? .playing : .paused
         publish()
     }
 
     func deactivate(sessionID: UUID) {
         guard activeSessionID == sessionID else { return }
+        idleTimer.update(isPlaying: false)
         artworkTask?.cancel()
         artworkTask = nil
         activeSessionID = nil

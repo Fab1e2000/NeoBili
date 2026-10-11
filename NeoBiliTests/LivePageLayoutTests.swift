@@ -235,6 +235,6 @@ private final class LivePageSnapshotHost {
         previousKeyWindow?.makeKey()
         OrientationLock.shared.request(previousOrientation)
         previousKeyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-        window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: previousOrientation)) { _ in }
+        window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: previousOrientation)) { @Sendable _ in }
     }
 }

@@ -8,6 +8,7 @@ struct RecommendationFilterSettingsView: View {
     @AppStorage(RecommendationFilter.titleBanWordKey) private var titleBanWord = ""
     @AppStorage(RecommendationFilter.zoneBanWordKey) private var zoneBanWord = ""
     @AppStorage(RecommendationFilter.exemptFollowedKey) private var exemptsFollowed = true
+    @State private var blockedMids: [Int] = []
 
     var body: some View {
         Form {
@@ -34,8 +35,30 @@ struct RecommendationFilterSettingsView: View {
             }
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+
+            Section {
+                if blockedMids.isEmpty {
+                    Text("没有本地屏蔽的 UP 主").foregroundStyle(.secondary)
+                } else {
+                    ForEach(blockedMids, id: \.self) { mid in
+                        HStack {
+                            LabeledContent("UID", value: String(mid))
+                            Button("解除本地屏蔽") {
+                                RecommendationFilter.unblock(mid)
+                                blockedMids = RecommendationFilter.current().blockedMids.sorted()
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
+            } header: {
+                Text("本地屏蔽名单")
+            } footer: {
+                Text("解除后从下一次刷新推荐起生效。如果仍在哔哩哔哩的黑名单中，请先到哔哩哔哩 App 或网页解除拉黑。")
+            }
         }
         .settingsPage("推荐内容过滤")
+        .onAppear { blockedMids = RecommendationFilter.current().blockedMids.sorted() }
     }
 
     /// 档位与 PiliPlus 相同；0 表示不过滤。

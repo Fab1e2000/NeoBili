@@ -28,7 +28,7 @@ final class InteractionControlsVisualTests: XCTestCase {
             previousWindow?.makeKey()
             OrientationLock.shared.request(orientation)
             previousWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-            scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { _ in }
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { @Sendable _ in }
         }
         for _ in 0..<50 {
             if scene.interfaceOrientation.isPortrait { break }

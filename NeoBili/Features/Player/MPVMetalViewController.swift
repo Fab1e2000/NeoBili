@@ -128,12 +128,14 @@ final class MPVMetalViewController: UIViewController {
     func play() { engine.play() }
     func pause() { engine.pause() }
     /// 供退出手势的提交帧调用：不等内核锁，命令排队执行。
-    func pauseAsync() { engine.pauseAsync() }
+    func pauseAsync(afterPaused: (@MainActor @Sendable () -> Void)? = nil) {
+        engine.pauseAsync(afterPaused: afterPaused)
+    }
     func seek(to seconds: TimeInterval) { engine.seek(to: seconds) }
 
-    func stop() {
+    func stop(afterStopped: (@MainActor @Sendable () -> Void)? = nil) {
         NotificationCenter.default.removeObserver(self)
-        engine.stop()
+        engine.stop(afterStopped: afterStopped)
     }
 
     deinit {

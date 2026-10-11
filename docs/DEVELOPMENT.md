@@ -22,10 +22,27 @@
 ```sh
 bash scripts/simulator.sh list
 bash scripts/simulator.sh run
-bash scripts/simulator.sh test
-bash scripts/simulator.sh test AccountSessionTests
-zsh offline-harness/run.sh
+bash scripts/verify.sh quick
+bash scripts/verify.sh targeted AccountSessionTests
+bash scripts/verify.sh full
 ```
+
+验证统一使用 `scripts/verify.sh`，底层离线与 Simulator 脚本继续可单独调用：
+
+| 模式 | 执行内容 | 使用时机 |
+| --- | --- | --- |
+| `quick` | 源码依赖边界、本地文档链接、已暂存与未暂存差异格式、工作流脚本回归 | 开发中快速检查、每次推送；不编译 Swift、不启动 Simulator |
+| `offline` | 宿主机离线回归（含源码边界与文档检查） | 纯逻辑修改后的验证 |
+| `targeted TestClass[/testMethod] ...` | 指定 Simulator 测试，可传多个选择器 | 开发中验证受影响行为；必须指定测试 |
+| `full` | 工作流脚本回归、离线回归、完整确定性 Simulator 回归 | 任务完成、提交 PR 前及 PR CI |
+| `network` | 显式联网 Simulator 验收 | 需要验证真实接口时 |
+| `performance` | 宿主机确定性性能检查 | 性能改动的相关验证 |
+
+`full` 中某一步失败仍继续收集其余步骤的结果，任一步失败则整体失败。每次调用生成独立的
+`DerivedData/Validation/*-verify-模式/`，包含环境、逐步日志和 `summary.tsv`；
+Simulator 的环境、`.xcresult` 与测试数量摘要由底层脚本保存在另一个独立运行目录，路径见
+验证入口的 Simulator 日志。通过 `quick` 或 `targeted` 不代表完整回归通过；`full` 不执行
+联网、性能或真机专项。底层日志中的跳过项仍需在交付时说明。
 
 本地推送检查使用仓库中的 `.githooks/pre-push`，每个克隆启用一次：
 
@@ -33,9 +50,11 @@ zsh offline-harness/run.sh
 git config --local core.hooksPath .githooks
 ```
 
-启用后，每次 `git push` 依次执行离线检查和完整 Simulator 回归；任一步失败都会阻止推送，
-日志保存在 `DerivedData/Validation/`。检查使用当前工作区、当前 Xcode 和下述模拟器选择，
-推送前应先提交修改并检出要推送的版本。它不安装或切换工具链，也不替代 CI 的多版本验证。
+启用后，每次 `git push` 只执行 `bash scripts/verify.sh quick`；任一步失败都会阻止推送，
+日志保存在 `DerivedData/Validation/`。hook 不启动 Simulator，不重复任务完成阶段的完整回归。
+检查使用当前工作区，推送前应先提交修改并检出要推送的版本；它不验证其他待推送 ref，
+也不替代完整回归或 CI。任务完成时及提交 PR 前，对最终代码执行一次 `full`；同一份代码已在
+完成阶段验证后，不必因推送重复执行。后续代码或相关配置变化后，应重新验证。
 
 脚本默认选择唯一可用的 `iPhone 18 Pro`。用 `NEOBILI_SIMULATOR_ID` 指定 UDID，或用
 `NEOBILI_SIMULATOR_NAME` 与 `NEOBILI_SIMULATOR_RUNTIME`（例如 `iOS-27-0`）指定机型和系统。
@@ -45,9 +64,9 @@ git config --local core.hooksPath .githooks
 
 | 层级 | 入口 | 数据与用途 |
 | --- | --- | --- |
-| 宿主机离线 | `zsh offline-harness/run.sh` | 生产纯逻辑、受控请求响应，无需启动模拟器 |
-| 确定性回归 | `bash scripts/simulator.sh test` / `⌘U` | 隔离存储、假身份、注入数据；包括 UIKit/SwiftUI 窗口测试 |
-| 联网验收 | `bash scripts/simulator.sh network` / `NeoBili-Network` scheme | 显式开启推荐接口与直播弹幕检查，可在 Simulator 运行 |
+| 宿主机离线 | `bash scripts/verify.sh offline` | 生产纯逻辑、受控请求响应，无需启动模拟器 |
+| 确定性回归 | `bash scripts/verify.sh full`（含离线） / `⌘U`（仅 Simulator） | 隔离存储、假身份、注入数据；包括 UIKit/SwiftUI 窗口测试 |
+| 联网验收 | `bash scripts/verify.sh network` / `NeoBili-Network` scheme | 显式开启推荐接口与直播弹幕检查，可在 Simulator 运行 |
 | 真机专项 | `NeoBili-Device` scheme | 显式开启直播播放和授权 4K 解码验收 |
 
 `Config/*.xctestplan` 是测试选择的共同来源。默认回归排除联网与硬件专项，不把它们计为已通过。
@@ -85,10 +104,11 @@ python3 scripts/check-doc-links.py
 
 ## 修改后的检查
 
-- 逻辑或接口修改：运行相关离线/定向回归；阶段完成运行离线与完整模拟器回归。
+- 开发中使用 `quick`，逻辑或接口修改运行 `offline` 或相关 `targeted` 回归；任务完成运行一次
+  `full`，提交 PR 前确认结果对应最终代码。推送 hook 只做快速检查，PR CI 独立执行完整验证。
 - 界面修改：补受影响操作、布局截图、相关深浅色/字号/方向验证，确认前台窗口和显示缩放。
 - 性能修改：用可复现内容及相同配置比较耗时、内存、滚动或播放器生命周期；记录工具链、
-  系统、机型、配置、场景及指标。宿主机确定性性能检查入口为 `zsh offline-harness/performance.sh`；
+  系统、机型、配置、场景及指标。宿主机确定性性能检查入口为 `bash scripts/verify.sh performance`；
   上报身份缓存、事件序号迁移与凭据读取次数可单独运行 `zsh offline-harness/behavior-performance.sh`，
   使用隔离偏好域和内存凭据，不访问真实账号。宿主性能入口同时检查位图 LRU 的确定性
   随机操作及日期格式化的语言/时区并发隔离，并输出日期列表格式化前后对照；这些是热点
@@ -116,10 +136,7 @@ python3 scripts/check-doc-links.py
 时间和播放位置、播放 session 和 App 请求头会话；不得复制官方 token、ticket 或会话。设备编号默认使用自身编号；经设备所有者明确授权的本地 Debug 对照实验可通过启动环境注入官方编号，保存在独立实验设置中，可恢复自身编号，禁止硬编码或进入分发构建。
 移动心跳成功仅代表接口接受，兴趣是否更新必须用真实播放后刷新进行验收。
 
-设备编号可在“设置 → 高级 → 设备编号”切换，重启后生效，普通构建默认沿用系统派生编号。
-旧实验产物的 Swift 条件 `NEOBILI_RANDOM_BUVID_EXPERIMENT` 仅决定未设置偏好时的默认模式。实验版用随机 UUID 作为种子，保持 iPhone BUVID 格式；编号首次生成后保存并复用，
-不携带预制编号、不覆盖原 `neobili.appBuvid`。实验的访客登记、fingerprint 和 ticket 使用独立存储，
-账号登录凭据继续复用。切回系统派生模式恢复原编号与其登记缓存，之后仍按原有有效期和作用域校验。
+设备编号可在“设置 → 高级 → 设备编号”填写并保存自己的 BUVID，重启后生效；留空则使用首次生成后保存的随机编号。普通构建不再提供系统派生/随机模式选择。自定义编号按 BUVID 隔离访客登记、fingerprint 和 ticket，登录凭据继续复用；清空后恢复原随机编号及其缓存。既有系统编号保留但不作为普通应用默认身份。私人官方编号不写入源码或分发包。
 Regression 不自动启用实验，测试通过注入策略使用隔离存储。不要将实验宏加入正式 Release workflow。
 
 ```sh
@@ -144,7 +161,8 @@ Cookie 或原始值的持久化哈希。原始重放错误输出不转发。相�
 
 ## CI
 
-每次 PR 或手动运行 Build 在 Xcode 26.2、26.6 编译模拟器目标；26.6 单独执行离线与确定性模拟器回归。
+每次 PR 或手动运行 Build 在 Xcode 26.2、26.6 编译模拟器目标；26.6 使用
+`bash scripts/verify.sh full` 执行工作流脚本、离线与确定性模拟器回归，与本地使用同一入口。
 CI 固定选择 iOS 26.5 runtime 的 iPhone，记录选中的设备；缺少工具链/runtime 时失败，
 不自动改用其他版本。结果作为 Actions artifact 上传。CI 不配置真实账号或签名凭据。
 工具链可用性以 [runner 官方清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md)

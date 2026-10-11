@@ -30,6 +30,7 @@ final class AccountStore {
     private(set) var isRestoringSession = true
     private(set) var isRefreshingProfile = false
     private(set) var sessionError: String?
+    private(set) var sessionExpired = false
     private(set) var sessionID = UUID()
 
     private let client: AccountSessionClient
@@ -96,6 +97,7 @@ final class AccountStore {
         guard sessionID == session, isLoggedIn, accountID == snapshot.accountID else { return }
         hasAppCredential = snapshot.hasAppCredential
         needsAppReauthorization = snapshot.needsAppReauthorization
+        if snapshot.needsAppReauthorization { await refreshProfile() }
     }
 
     func retrySessionIfNeeded() async {
@@ -114,7 +116,7 @@ final class AccountStore {
             let payload = try await client.profile()
             guard sessionID == session, refreshID == request, !Task.isCancelled else { return }
             if payload.isLogin == false {
-                await logout()
+                await expireSession()
             } else if payload.isLogin == true, let mid = payload.mid, let name = payload.uname {
                 guard accountID == nil || accountID == mid else {
                     sessionError = String(localized: "账号信息暂未同步，请重试")
@@ -133,7 +135,7 @@ final class AccountStore {
         } catch {
             guard sessionID == session, refreshID == request, !error.isCancellation else { return }
             if case BiliAPIError.apiError(let code, _) = error, code == -101 {
-                await logout()
+                await expireSession()
             } else {
                 sessionError = String(localized: "暂时无法连接，登录信息已保留")
             }
@@ -216,6 +218,14 @@ final class AccountStore {
         await client.clear()
     }
 
+    private func expireSession() async {
+        beginSessionChange()
+        let expiredSession = sessionID
+        await client.clear()
+        guard sessionID == expiredSession else { return }
+        sessionExpired = true
+    }
+
     private func beginSessionChange() {
         sessionID = UUID()
         refreshID = UUID()
@@ -229,6 +239,7 @@ final class AccountStore {
         isExchangingAppCredential = false
         profile = nil
         sessionError = nil
+        sessionExpired = false
         defaults.removeObject(forKey: Self.profileKey)
         likeStore.resetSession()
     }

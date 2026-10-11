@@ -20,6 +20,20 @@
 | 8) 证据等级与版本 | 8.89 静态（0x1167cbe68 及取值链地址）；当前源码；另有既有样本 36 字符 Y/Z 值符合结构的形状证据。 |
 | 9) 残余不确定项 | 底层查询与删除已静态闭合：BFCKeychain→UICKeyChainStore，generic-password/service、可选accessGroup、account键，SecItemCopyMatching同步读取、-25300返回nil；clearAll/removeItem→SecItemDelete，成功或-25300为true。所选wrapper没有自行切队列，BUVID调用方另调main队列不等于全部Keychain操作都主线程。实际重装保留、entitlement及OS返回值属于运行边界（root-static-session/device-boundaries.md）。 |
 
+#### 生成格式与设备身份的边界
+
+旧版生成函数的正常分支只取 IDFA/IDFV、去连字符、抽取第 2/12/22 个零起始字符并拼接，
+没有 MD5、RSA、网络登记或服务端换号步骤。日期仅用于两种来源均不可用的进程内兜底。
+有效持久化编号优先于当前系统标识，因此既有编号也不能证明当前 IDFV 的取值。
+
+当前国际版授权对照样本的 BUVID 为 36 字符 Y 形态，32 字符主体及三个前缀字符符合上述
+结构；这是线级形状证据，不证明 9.13 的首次生成函数与 8.89 完全相同。原值留在仓库外。
+[Apple 的 IDFV 文档](https://developer.apple.com/documentation/uikit/uidevice/identifierforvendor)
+说明同一设备上不同厂商应用的 IDFV 不同，开发安装的厂商判定涉及 bundle ID。
+NeoBili 自身 IDFV 的 Y 分支只对齐生成格式，不能据此取得官方 App 的身份或推荐状态。
+自身编号与官方编号的推荐差异不能单独归因于算法错误；当前版本来源、持久化历史与
+服务端对具体编号的关联仍需分别核验。
+
 ### DEV-02 设备资料登记（54 项指纹 payload）
 
 | 字段 | 内容 |

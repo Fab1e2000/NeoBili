@@ -293,9 +293,9 @@ struct NetworkLoadingRegression {
                 let params = Dictionary(uniqueKeysWithValues: URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
                     .queryItems!.map { ($0.name, $0.value ?? "") })
                 expect(params["appkey"] == AppSigner.appKey, "Feedback uses the login signing identity")
-                expect(params["mobi_app"] == "iphone" && params["build"] == "91300100"
+                expect(params["mobi_app"] == "iphone_i" && params["build"] == "91300300"
                        && params["platform"] == "ios", "Feedback parameters identify iPhone")
-                expect(request.value(forHTTPHeaderField: "app-key") == "iphone"
+                expect(request.value(forHTTPHeaderField: "app-key") == "iphone_i"
                        && request.value(forHTTPHeaderField: "User-Agent") == AppClientIdentity.userAgent,
                        "Feedback headers match parameters and signature")
                 expect(params["sign"] == AppSigner.signed(params, timestamp: Int(params["ts"]!)!)["sign"],

@@ -234,6 +234,8 @@ final class PlayerViewModel {
     /// 菜单上当前选中的选项，给高亮对勾用。
     private(set) var selectedSleepOption: SleepOption?
     private var sleepTask: Task<Void, Never>?
+    @ObservationIgnored private let sleepWaiter: @Sendable (TimeInterval) async throws -> Void
+    @ObservationIgnored private let danmakuLoader: @Sendable (Int) async throws -> [DanmakuItem]
 
     var isSleepTimerActive: Bool {
         sleepDeadline != nil || sleepsAfterVideoEnd
@@ -245,8 +247,9 @@ final class PlayerViewModel {
         switch option {
         case .minutes(let minutes):
             sleepDeadline = Date.now.addingTimeInterval(TimeInterval(minutes) * 60)
+            let waiter = sleepWaiter
             sleepTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(TimeInterval(minutes) * 60))
+                try? await waiter(TimeInterval(minutes) * 60)
                 guard !Task.isCancelled else { return }
                 self?.enterSleep()
             }
@@ -266,9 +269,8 @@ final class PlayerViewModel {
     /// 休眠时刻到了：清掉定时状态并暂停播放。
     private func enterSleep() {
         cancelSleepTimer()
-        if isPlaying {
-            pause()
-        }
+        // 取流或重建内核期间也要留下暂停意图，阻止迟到的自动播放。
+        pause()
     }
 
     init(telemetry: TelemetryService = ApplicationServices.live.telemetry,
@@ -284,6 +286,10 @@ final class PlayerViewModel {
         watchReportReporter: (@Sendable (PlaybackWatchReport) async -> Void)? = nil,
         progressStore: PlaybackProgressStore = .shared,
         watchProgressClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        sleepWaiter: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
+            try await Task.sleep(for: .seconds(seconds))
+        },
+        danmakuLoader: @escaping @Sendable (Int) async throws -> [DanmakuItem] = ApplicationServices.loadDanmaku,
         sourceOpener: @escaping PlaybackSourceOpener = { session, source, position in
             try await session.open(source: source, startTime: position)
         }
@@ -303,6 +309,8 @@ final class PlayerViewModel {
         }
         self.qualityPlaybackURLLoader = qualityPlaybackURLLoader
         self.sourceOpener = sourceOpener
+        self.sleepWaiter = sleepWaiter
+        self.danmakuLoader = danmakuLoader
         self.watchProgressClock = watchProgressClock
         self.playbackEntry = playbackEntry
         self.watchStartTimestamp = nil
@@ -348,6 +356,8 @@ final class PlayerViewModel {
             watchProgressSender?.enqueue(watchProgress.checkpoint())
             finishWatchReport()
             SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
+            danmaku?.shutdown()
+            sleepTask?.cancel()
             session.stop()
         }
     }
@@ -521,6 +531,7 @@ final class PlayerViewModel {
         recoveryTask?.cancel()
         recoveryTask = nil
         cancelSleepTimer()
+        disableDanmaku()
         Task {
             await VideoPreparationCache.shared.cancelPlaybackURL(bvid: bvid, cid: cid,
                 ownerID: playbackRequestOwnerID, sessionID: loginSessionID)
@@ -538,7 +549,7 @@ final class PlayerViewModel {
     /// 弹幕开关打开时创建控制器并开始拉取弹幕；已创建就跳过。
     func ensureDanmaku() {
         guard danmaku == nil, !isStopped else { return }
-        let controller = DanmakuController(bvid: bvid, cid: cid)
+        let controller = DanmakuController(bvid: bvid, cid: cid, loader: danmakuLoader)
         danmaku = controller
         controller.load()
         controller.setPaused(!isPlaying)
@@ -690,9 +701,7 @@ final class PlayerViewModel {
                 isPlaying = playing
                 qualityPlaybackIntent = nil
             }
-            // mpv 的音频输出已经建好，这里是重试音频会话激活的安全窗口：
-            // 启动时那次可能失败，失败的会话不会出现在系统的「正在播放」里。
-            if isPlaying { PlaybackAudioSession.activateOnce() }
+            if isPlaying { session.refreshAudioFocusIfNeeded() }
             startPlayerBehaviorIfReady()
         case .playing(let playing):
             if hasSentPlayerStart, lastLoggedPlaying != playing {

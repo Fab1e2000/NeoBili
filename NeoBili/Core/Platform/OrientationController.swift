@@ -41,11 +41,13 @@ enum OrientationController {
             controller.setNeedsUpdateOfSupportedInterfaceOrientations()
         }
 
-        scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { error in
-            // Keep the desired mask. A rejected or delayed request must never restore
-            // an old portrait mask after a newer fullscreen request has taken effect.
-            NSLog("Orientation geometry request failed: %@", error.localizedDescription)
-        }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation), errorHandler: geometryRequestFailed)
+    }
+
+    // UIKit may deliver this callback from a worker queue. Logging must not
+    // inherit this enum's MainActor isolation or change the newer desired mask.
+    nonisolated static func geometryRequestFailed(_ error: Error) {
+        NSLog("Orientation geometry request failed: %@", error.localizedDescription)
     }
 
     private static func presentationChain(of scene: UIWindowScene) -> [UIViewController] {

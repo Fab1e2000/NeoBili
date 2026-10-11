@@ -79,10 +79,6 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         c.collapse.consume = consume
         c.collapse.end = end
         c.collapse.canConsume = canConsume
-        c.collapse.canContinue = canContinue
-        if !canContinue() { c.collapse.cancelMomentum() }
-        if !canConsume(1), !canConsume(-1) { c.collapse.releaseScroll() }
-        c.collapse.attach()
         let stateChanged = c.scrollState !== scrollState
         c.scrollState = scrollState
         let typeSizeChanged = c.typeSize != context.environment.dynamicTypeSize
@@ -140,6 +136,8 @@ struct VideoDescriptionCollection: UIViewRepresentable {
                 }
             }
         }
+        c.collapse.configure(context.environment.videoScrollContext, page: .description, ownsInsets: true)
+        c.collapse.attach()
     }
 
     static func dismantleUIView(_ view: UICollectionView, coordinator: Coordinator) {
@@ -211,7 +209,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             }.margins(.all, 0).minSize(height: 0)
         }
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            scrollState?.offset = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
+            scrollState?.offset = collapse.logicalOffset(for: scrollView)
         }
         func collectionView(_ view: UICollectionView, prefetchItemsAt paths: [IndexPath]) {
             for path in paths where path.section == 1 && path.item < videos.count {

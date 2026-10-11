@@ -33,6 +33,7 @@ final class LivePlayerModel {
     private var isStopped = false
     private var wantsPlayback = true
     private var recovering = false
+    private var loadTask: Task<Void, Never>?
     private var metadataTask: Task<Void, Never>?
     private var recoveryTask: Task<Void, Never>?
     private var canUsePreparedSession = true
@@ -60,12 +61,23 @@ final class LivePlayerModel {
 
     deinit {
         MainActor.assumeIsolated {
+            loadTask?.cancel()
             metadataTask?.cancel()
             recoveryTask?.cancel()
             timeoutTask?.cancel()
             session.onEvent = nil
             session.stop()
             if publishesSystemMedia { SystemNowPlayingCenter.shared.deactivate(sessionID: mediaSessionID) }
+        }
+    }
+
+    /// 取流属于播放会话，不随直播页面退出或重建而取消。
+    func requestLoad(quality: Int? = nil) {
+        guard !isStopped else { return }
+        loadTask?.cancel()
+        loadTask = Task { [weak self] in
+            guard !Task.isCancelled, let self else { return }
+            await self.load(quality: quality)
         }
     }
 
@@ -149,6 +161,8 @@ final class LivePlayerModel {
     func stop() {
         guard !isStopped else { return }
         isStopped = true
+        loadTask?.cancel()
+        loadTask = nil
         generation += 1
         timeoutTask?.cancel()
         metadataTask?.cancel()

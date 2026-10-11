@@ -11,8 +11,21 @@ final class SpaceViewModel {
     let dynamics: DynamicFeedModel
 
     private(set) var card: SpaceCard?
-    /// 关注状态单独存一份：点了关注按钮要立刻变，不能等名片接口重拉。
-    private(set) var isFollowing = false
+    struct FollowContext: Hashable {
+        let sessionID: UUID
+        let isLoggedIn: Bool
+        let accountID: Int?
+    }
+
+    /// nil 表示关系尚未确认，不能把它当成“未关注”来选择写入方向。
+    private(set) var isFollowing: Bool?
+    private(set) var followError: String?
+    private(set) var isLoadingCard = false
+    private(set) var isTogglingFollow = false
+    private var followContext: FollowContext?
+    private var cardRequestID = UUID()
+    private var relationRevision = UUID()
+    private var followWriteID = UUID()
 
     private(set) var videosGeneration = 0
     private(set) var videos: [SpaceVideo] = []
@@ -20,9 +33,9 @@ final class SpaceViewModel {
     private(set) var isLoadingMoreVideos = false
     private(set) var videosError: String?
 
+    private var videosRequestID = UUID()
     private var page = 1
     private var hasMoreVideos = true
-    private var isTogglingFollow = false
 
     init(mid: Int, services: ApplicationServices = .live) {
         self.services = services
@@ -30,39 +43,68 @@ final class SpaceViewModel {
         dynamics = DynamicFeedModel(source: .space(hostMid: mid), services: services)
     }
 
-    /// 进页面时先把名片和投稿一起要回来。动态那一栏等用户真的切过去再加载。
-    func loadInitial() async {
-        async let profile: Void = loadCardIfNeeded()
-        await loadVideosIfNeeded()
-        await profile
-    }
-
     // MARK: - 名片
 
-    private func loadCardIfNeeded() async {
-        guard card == nil else { return }
-        await loadCard()
+    func setFollowContext(_ next: FollowContext) {
+        guard followContext != next else { return }
+        followContext = next
+        cardRequestID = UUID()
+        relationRevision = UUID()
+        followWriteID = UUID()
+        isFollowing = nil
+        followError = nil
+        isLoadingCard = false
+        isTogglingFollow = false
     }
 
-    func loadCard() async {
-        guard let card = try? await services.community.spaceProfile(mid: mid), !Task.isCancelled else { return }
-        self.card = card
-        isFollowing = card.isFollowing
+    func isOwnAccount(_ context: FollowContext) -> Bool {
+        context.isLoggedIn && context.accountID == mid
     }
 
-    /// 关注 / 取消关注。界面先变，失败再改回去并把接口原话交给调用方提示。
-    func toggleFollow(isLoggedIn: Bool) async -> String? {
-        guard isLoggedIn else { return String(localized: "请先登录") }
+    func loadCard(_ context: FollowContext) async {
+        setFollowContext(context)
+        guard !isTogglingFollow else { return }
+        let request = UUID()
+        let revision = relationRevision
+        cardRequestID = request
+        isLoadingCard = true
+        followError = nil
+        defer { if cardRequestID == request { isLoadingCard = false } }
+        do {
+            let card = try await services.community.spaceProfile(mid: mid)
+            guard followContext == context, cardRequestID == request, !Task.isCancelled else { return }
+            self.card = card
+            // 旧名片可以更新公开资料，但不能覆盖读取之后刚完成的关注操作。
+            if relationRevision == revision {
+                isFollowing = context.isLoggedIn ? card.isFollowing : false
+            }
+        } catch {
+            guard followContext == context, cardRequestID == request,
+                  relationRevision == revision, !Task.isCancelled, !error.isCancellation else { return }
+            followError = error.localizedDescription
+        }
+    }
+
+    /// 仅对已知关系写入。失败回滚；旧登录会话的回调不能更新当前会话。
+    func toggleFollow(_ context: FollowContext) async -> String? {
+        guard context.isLoggedIn else { return String(localized: "请先登录") }
+        guard !isOwnAccount(context) else { return String(localized: "不能关注自己") }
+        guard followContext == context, let wasFollowing = isFollowing else {
+            return String(localized: "关注状态尚未加载，请重试")
+        }
         guard !isTogglingFollow else { return nil }
+        relationRevision = UUID()
+        let request = UUID()
+        followWriteID = request
         isTogglingFollow = true
-        defer { isTogglingFollow = false }
-
-        let wasFollowing = isFollowing
         isFollowing = !wasFollowing
+        defer { if followWriteID == request { isTogglingFollow = false } }
         do {
             try await services.video.modifyRelation(mid: mid, follow: !wasFollowing)
+            guard followContext == context, followWriteID == request, !Task.isCancelled else { return nil }
             return wasFollowing ? String(localized: "已取消关注") : String(localized: "toast.followed", defaultValue: "已关注")
         } catch {
+            guard followContext == context, followWriteID == request else { return nil }
             isFollowing = wasFollowing
             return error.isCancellation ? nil : error.localizedDescription
         }
@@ -70,27 +112,31 @@ final class SpaceViewModel {
 
     // MARK: - 投稿
 
-    private func loadVideosIfNeeded() async {
+    func loadVideosIfNeeded() async {
         guard videos.isEmpty else { return }
         await reloadVideos()
     }
 
     func reloadVideos() async {
+        guard !isLoadingVideos else { return }
+        let request = UUID()
+        videosRequestID = request
+        isLoadingMoreVideos = false
         isLoadingVideos = true
         videosError = nil
         defer { isLoadingVideos = false }
 
         do {
             let result = try await services.community.spaceVideos(mid: mid, page: 1)
-            guard !Task.isCancelled else { return }
+            guard videosRequestID == request, !Task.isCancelled else { return }
             videosGeneration += 1
             videos = Self.removingDuplicates(result.videos)
             page = 1
             hasMoreVideos = result.hasMore(after: videos.count)
         } catch {
             guard !Task.isCancelled, !error.isCancellation else { return }
-            videos = []
-            hasMoreVideos = false
+            // 刷新失败保留已可读的投稿和分页游标；首屏失败仍展示错误页。
+            if videos.isEmpty { hasMoreVideos = false }
             videosError = error.localizedDescription
         }
     }
@@ -110,12 +156,13 @@ final class SpaceViewModel {
 
     func loadReplacementPage() async {
         guard hasMoreVideos, !isLoadingVideos, !isLoadingMoreVideos else { return }
+        let request = videosRequestID
         isLoadingMoreVideos = true
-        defer { isLoadingMoreVideos = false }
+        defer { if videosRequestID == request { isLoadingMoreVideos = false } }
 
         do {
             let result = try await services.community.spaceVideos(mid: mid, page: page + 1)
-            guard !Task.isCancelled else { return }
+            guard videosRequestID == request, !Task.isCancelled else { return }
             page += 1
             let existing = Set(videos.map(\.bvid))
             videos.append(contentsOf: Self.removingDuplicates(result.videos).filter { !existing.contains($0.bvid) })

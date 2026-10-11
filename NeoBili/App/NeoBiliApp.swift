@@ -4,8 +4,21 @@ import SwiftUI
 struct NeoBiliApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    private let identityResetFailed: Bool
 
     init() {
+        #if DEBUG && NEOBILI_IDENTITY_RESET_DIAGNOSTIC && !targetEnvironment(simulator)
+        do {
+            if !AppNetwork.isRegression {
+                try IdentityResetDiagnostic.resetOnce(defaults: .standard, credentials: .keychain,
+                    sequenceDefaults: UserDefaults(suiteName: "com.elsterlee.NeoBili.behavior-sequence") ?? .standard,
+                    clearNetworking: IdentityResetDiagnostic.clearNetworkingCaches)
+            }
+            identityResetFailed = false
+        } catch { identityResetFailed = true }
+        #else
+        identityResetFailed = false
+        #endif
         // 保留系统下拉刷新手势，隐藏其加载指示器。
         UIRefreshControl.appearance().tintColor = .clear
         // stdout is fully buffered off a terminal, so `print()` debug logs
@@ -23,27 +36,31 @@ struct NeoBiliApp: App {
 
         // 设备标识和 WBI 签名密钥是每个接口都要用的前置条件。
         // 启动时先在后台取好，第一批推荐和第一个视频就不用排在它们后面。
-        if !isTestHost {
+        if !isTestHost, !identityResetFailed, !capturedDeviceUnavailable {
             RecommendationExperiment.configure(environment: ProcessInfo.processInfo.environment)
             DeviceIdentity.shared.warmUp()
             WBISigner.shared.warmUp()
         }
 
-        // 音频分类要在主线程上激活，而且必须早于第一次打开视频——mpv 自己
-        // 初始化音频输出时如果这一步还没做完，两边同时碰 `AVAudioSession`
-        // 的全局状态容易出问题（见 `PlaybackAudioSession` 的说明）。
-        Task { @MainActor in
-            PlaybackAudioSession.activateOnce()
-        }
     }
 
     private var isTestHost: Bool {
         AppNetwork.isRegression || ProcessInfo.processInfo.environment["NEOBILI_TEST_HOST"] == "1"
     }
 
+    private var capturedDeviceUnavailable: Bool {
+        !isTestHost && CapturedDeviceDiagnostic.isEnabled && CapturedDeviceDiagnostic.configuration == nil
+    }
+
     var body: some Scene {
         WindowGroup {
-            if isTestHost {
+            if capturedDeviceUnavailable {
+                ContentUnavailableView("设备对照信息未准备", systemImage: "exclamationmark.triangle",
+                    description: Text("请安装包含本机对照信息的测试版本。"))
+            } else if identityResetFailed {
+                ContentUnavailableView("身份重置未完成", systemImage: "exclamationmark.triangle",
+                    description: Text("请解锁手机后重新打开 NeoBili。原有登录不会继续使用。"))
+            } else if isTestHost {
                 Color.clear
             } else {
                 RootView()
@@ -56,7 +73,7 @@ struct NeoBiliApp: App {
                             AppRecommendationSession.shared.didBecomeActive()
                             Task {
                                 await AppBehaviorReporter.shared.setBackground(false)
-                                await DeviceIdentity.shared.refreshAppServices()
+                                await DeviceIdentity.shared.refreshAppServices(validateCredential: true)
                             }
                         }
                     }
