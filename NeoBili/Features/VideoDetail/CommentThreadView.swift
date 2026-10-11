@@ -114,7 +114,8 @@ struct CommentThreadView: View {
     }
 
     private var sectionHeader: some View {
-        Text(root.rcount > 0 ? String(localized: "全部回复 \(root.rcount)") : String(localized: "全部回复"))
+        let count = viewModel.replyCount(for: root)
+        return Text(count > 0 ? String(localized: "全部回复 \(count)") : String(localized: "全部回复"))
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, CommentLayout.pageHorizontalInset)

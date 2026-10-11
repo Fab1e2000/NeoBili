@@ -4,142 +4,126 @@ import XCTest
 
 @MainActor
 final class VideoScrollHandoffTests: XCTestCase {
-    func testDownwardDragFirstScrollsContentThenExpandsWithinSameGesture() {
-        let rig = Rig(collapse: 200, offset: 50)
-        rig.begin(downward: true)
-        rig.drag(translation: 40, nativeOffset: 10)
-        XCTAssertEqual(rig.collapse, 200)
-        XCTAssertEqual(rig.scroll.contentOffset.y, 10)
-        rig.drag(translation: 100, nativeOffset: -40)
-        // Top is -30: of the next 60pt, 40 scrolls content and 20 expands.
-        XCTAssertEqual(rig.collapse, 180)
-        XCTAssertEqual(rig.scroll.contentOffset.y, -30)
+    func testNativeOffsetConsumesHeaderThenListWithoutRewritingScroll() {
+        let rig = Rig()
+        rig.scroll.draggingForTest = true
+        rig.move(120)
+        XCTAssertEqual(rig.distance, 120)
+        XCTAssertEqual(rig.observer.readingOffset, 0)
+        XCTAssertEqual(rig.scroll.contentOffset.y, -180)
+        rig.move(280)
+        XCTAssertEqual(rig.distance, 200)
+        XCTAssertEqual(rig.observer.readingOffset, 80)
+        XCTAssertEqual(rig.scroll.contentOffset.y, -20)
     }
 
-    func testFullyCollapsedStripCanExpandFromTopWithoutPlaying() {
-        let rig = Rig(collapse: 200, offset: -30)
-        rig.begin(downward: true)
-        rig.drag(translation: 60, nativeOffset: -50)
-        XCTAssertEqual(rig.collapse, 140)
-        XCTAssertEqual(rig.scroll.contentOffset.y, -30)
+    func testReturnScrollReachesListTopBeforeExpanding() {
+        let rig = Rig(); rig.scroll.draggingForTest = true
+        rig.move(400)
+        rig.move(250)
+        XCTAssertEqual(rig.distance, 200)
+        XCTAssertEqual(rig.observer.readingOffset, 50)
+        rig.move(150)
+        XCTAssertEqual(rig.distance, 150)
+        XCTAssertEqual(rig.observer.readingOffset, 0)
     }
 
-    func testPartialCollapseCanFullyExpandAndReleaseTheScroll() {
-        let rig = Rig(collapse: 40, offset: -30)
-        rig.begin(downward: true)
-        rig.drag(translation: 70, nativeOffset: -55)
-        XCTAssertEqual(rig.collapse, 0)
-        XCTAssertEqual(rig.scroll.contentOffset.y, -30)
-        rig.scroll.contentOffset.y = -45
-        XCTAssertEqual(rig.scroll.contentOffset.y, -45, "Native overscroll is no longer locked")
+    func testPauseChangesRangeWithoutCancellingNativeInertia() {
+        let rig = Rig(); rig.scroll.deceleratingForTest = true
+        rig.move(300)
+        let writes = rig.scroll.writes
+        rig.maximum = 300 // Playing -> paused allows the control strip.
+        rig.observer.configure(rig.geometry, page: .comments, ownsInsets: true)
+        XCTAssertEqual(rig.scroll.writes, writes)
+        rig.move(340)
+        XCTAssertEqual(rig.distance, 240)
+        XCTAssertEqual(rig.observer.readingOffset, 100)
     }
 
-    func testUpwardCollapseStillHandsRemainderToContent() {
-        let rig = Rig(collapse: 180, offset: -30)
-        rig.begin(downward: false)
-        rig.drag(translation: -50, nativeOffset: 20)
-        XCTAssertEqual(rig.collapse, 200)
-        XCTAssertEqual(rig.scroll.contentOffset.y, 0)
+    func testInactivePageRestoresReadingPositionWhenSelected() {
+        let rig = Rig(); rig.scroll.draggingForTest = true
+        rig.move(400)
+        rig.active = false
+        rig.distance = 80
+        rig.observer.configure(rig.geometry, page: .comments, ownsInsets: true)
+        XCTAssertEqual(rig.scroll.contentOffset.y, 100)
+        rig.active = true
+        rig.observer.configure(rig.geometry, page: .comments, ownsInsets: true)
+        XCTAssertEqual(rig.scroll.contentOffset.y, -20)
+        XCTAssertEqual(rig.observer.readingOffset, 200)
     }
 
-    func testReversingAtTopUsesTheSameGesture() {
-        let rig = Rig(collapse: 100, offset: -30)
-        rig.begin(downward: false)
-        rig.drag(translation: -40, nativeOffset: 10)
-        XCTAssertEqual(rig.collapse, 140)
-        rig.drag(translation: 10, nativeOffset: -60)
-        XCTAssertEqual(rig.collapse, 90)
-        XCTAssertEqual(rig.scroll.contentOffset.y, -30)
+    func testTopBounceDoesNotCollapseAndInsetNeverAccumulates() {
+        let rig = Rig(); rig.scroll.deceleratingForTest = true
+        rig.move(-40); rig.move(-20)
+        XCTAssertEqual(rig.distance, 0)
+        let writes = rig.scroll.writes
+        for _ in 0..<10 { rig.observer.configure(rig.geometry, page: .comments, ownsInsets: true) }
+        XCTAssertEqual(rig.scroll.writes, writes, "Layout updates must not interrupt native top bounce")
+        XCTAssertEqual(rig.scroll.contentOffset.y, -320)
+        XCTAssertEqual(rig.scroll.contentInset.top, 300)
+        rig.observer.detach()
+        XCTAssertEqual(rig.scroll.contentInset.top, 0)
     }
 
-    func testHorizontalPagingDoesNotResizePlayer() {
-        let rig = Rig(collapse: 100, offset: -30)
-        rig.observer.handlePan(state: .began, translation: .zero, velocity: CGPoint(x: 300, y: 20))
-        rig.drag(translation: 30, nativeOffset: -40)
-        XCTAssertEqual(rig.collapse, 100)
+    func testShortListPaddingTracksAsynchronousContentSize() {
+        let rig = Rig()
+        rig.scroll.contentSize.height = 100
+        XCTAssertEqual(rig.scroll.contentInset.bottom, 400)
+        rig.scroll.contentSize.height = 1200
+        XCTAssertEqual(rig.scroll.contentInset.bottom, 0, "Loaded rows must remove short-list padding")
+        rig.scroll.contentSize.height = 200
+        XCTAssertEqual(rig.scroll.contentInset.bottom, 300)
     }
 
-    func testFlingReleasedBeforeTopContinuesIntoPlayerExpansion() {
-        let rig = Rig(collapse: 200, offset: 150)
-        rig.begin(downward: true)
-        rig.drag(translation: 40, nativeOffset: 110)
-        defer { rig.observer.detach() }
-        rig.end(velocity: 1000)
-        rig.observer.advanceMomentum(elapsed: 1.0 / 60)
-        XCTAssertEqual(rig.collapse, 200, "列表未回顶前不能展开播放器")
-        XCTAssertLessThan(rig.scroll.contentOffset.y, 110)
-        for _ in 0..<120 { rig.observer.advanceMomentum(elapsed: 1.0 / 60) }
-        XCTAssertEqual(rig.collapse, 0, accuracy: 0.01, "一次惯性完成回顶和展开，无需第二次手势")
-        XCTAssertEqual(rig.scroll.contentOffset.y, -30, accuracy: 0.01)
-    }
-
-    func testWeakFlingStopsInContentWithoutPrematureExpansion() {
-        let rig = Rig(collapse: 200, offset: 300)
-        rig.begin(downward: true)
-        defer { rig.observer.detach() }
-        rig.end(velocity: 100)
-        for _ in 0..<180 { rig.observer.advanceMomentum(elapsed: 1.0 / 60) }
-        XCTAssertEqual(rig.collapse, 200)
-        XCTAssertGreaterThan(rig.scroll.contentOffset.y, -30)
-        XCTAssertLessThan(rig.scroll.contentOffset.y, 300)
-    }
-
-    func testCollapseMomentumContinuesIntoContentAtTheOtherEnd() {
-        let rig = Rig(collapse: 100, offset: -30)
-        rig.begin(downward: false)
-        rig.drag(translation: -20, nativeOffset: -10)
-        defer { rig.observer.detach() }
-        rig.end(velocity: -800)
-        for _ in 0..<120 { rig.observer.advanceMomentum(elapsed: 1.0 / 60) }
-        XCTAssertEqual(rig.collapse, 200)
-        XCTAssertGreaterThan(rig.scroll.contentOffset.y, 0)
-    }
-
-    func testNewTouchStopsPreviousExpansionMomentum() {
-        let rig = Rig(collapse: 200, offset: 100)
-        rig.begin(downward: true)
-        defer { rig.observer.detach() }
-        rig.end(velocity: 1000)
-        rig.observer.advanceMomentum(elapsed: 1.0 / 60)
-        let offset = rig.scroll.contentOffset.y
-        rig.begin(downward: false)
-        rig.observer.advanceMomentum(elapsed: 1.0 / 60)
-        XCTAssertEqual(rig.scroll.contentOffset.y, offset)
-        XCTAssertEqual(rig.collapse, 200)
+    func testHorizontalDragAndDecelerationDoNotMovePlayer() {
+        let rig = Rig()
+        let pager = TestScroll()
+        pager.frame = rig.scroll.frame
+        pager.contentSize = CGSize(width: 400, height: 500)
+        pager.addSubview(rig.scroll)
+        rig.scroll.deceleratingForTest = true
+        pager.draggingForTest = true
+        rig.move(100)
+        XCTAssertEqual(rig.distance, 0)
+        pager.draggingForTest = false
+        pager.deceleratingForTest = true
+        rig.move(140)
+        XCTAssertEqual(rig.distance, 0)
+        pager.deceleratingForTest = false
+        rig.move(180)
+        XCTAssertEqual(rig.distance, 40)
     }
 
     private final class Rig {
-        let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 400, height: 500))
+        let scroll = TestScroll()
         let observer = PausedVideoCollapseScroll.Observer()
-        var collapse: CGFloat
-        init(collapse: CGFloat, offset: CGFloat) {
-            self.collapse = collapse
-            scroll.contentInsetAdjustmentBehavior = .never
-            scroll.contentInset.top = 30
-            scroll.contentSize = CGSize(width: 400, height: 1500)
-            scroll.contentOffset.y = offset
-            observer.canConsume = { [weak self] delta in
-                guard let self else { return false }
-                return delta < 0 ? self.collapse > 0 : self.collapse < 200
+        var distance: CGFloat = 0
+        var maximum: CGFloat = 200
+        var active = true
+        var geometry: VideoScrollContext {
+            .init(minimumContentHeight: 500, reservation: 300, distance: { [unowned self] in distance }, isActive: { [unowned self] _ in active })
+        }
+        init() {
+            scroll.frame = CGRect(x: 0, y: 0, width: 200, height: 500)
+            scroll.contentSize = CGSize(width: 200, height: 3000)
+            observer.consume = { [unowned self] delta in
+                let old = distance; distance = min(max(0, distance + delta), maximum); return distance - old
             }
-            observer.consume = { [weak self] delta in
-                guard let self else { return 0 }
-                let old = self.collapse
-                self.collapse = min(200, max(0, old + delta))
-                return self.collapse - old
-            }
+            observer.canConsume = { [unowned self] delta in delta > 0 ? distance < maximum : distance > 0 }
+            observer.configure(geometry, page: .comments, ownsInsets: true)
             scroll.addSubview(observer)
         }
-        func begin(downward: Bool) {
-            observer.handlePan(state: .began, translation: .zero,
-                               velocity: CGPoint(x: 0, y: downward ? 100 : -100))
-        }
-        func drag(translation: CGFloat, nativeOffset: CGFloat) {
-            scroll.contentOffset.y = nativeOffset
-            observer.handlePan(state: .changed, translation: CGPoint(x: 0, y: translation), velocity: .zero)
-        }
-        func end(velocity: CGFloat) {
-            observer.handlePan(state: .ended, translation: .zero, velocity: CGPoint(x: 0, y: velocity))
+        func move(_ normalized: CGFloat) { scroll.contentOffset.y = normalized - scroll.adjustedContentInset.top }
+    }
+    private final class TestScroll: UIScrollView {
+        var draggingForTest = false
+        var deceleratingForTest = false
+        var writes = 0
+        override var isDragging: Bool { draggingForTest }
+        override var isDecelerating: Bool { deceleratingForTest }
+        override func setContentOffset(_ contentOffset: CGPoint, animated: Bool) {
+            writes += 1; super.setContentOffset(contentOffset, animated: animated)
         }
     }
 }

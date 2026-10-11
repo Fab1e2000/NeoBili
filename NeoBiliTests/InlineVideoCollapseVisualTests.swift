@@ -286,6 +286,6 @@ private final class CollapseVisualWindow {
         previousWindow?.makeKey()
         OrientationLock.shared.request(previousOrientation)
         previousWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-        window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: previousOrientation)) { _ in }
+        window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: previousOrientation)) { @Sendable _ in }
     }
 }

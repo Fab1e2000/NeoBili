@@ -5,37 +5,125 @@ import CryptoKit
 actor ImageFileCache {
     static let shared = ImageFileCache()
 
+    typealias Download = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     private let directory: URL
-    /// 同一张图并发请求时只下载一次。
+    private let byteLimit: Int
+    private let maxAge: TimeInterval
+    private let now: @Sendable () -> Date
+    private let downloadData: Download
     private var inFlight: [URL: Task<URL, Error>] = [:]
-
-    /// QuickLook 靠扩展名认格式，所以按字节头判断真实格式，不信 URL 上的后缀
-    /// ——B 站的图片地址常带 `@1e_1c.webp` 这类后缀，和实际内容未必一致。
+    private var owners: [UUID: Set<String>] = [:]
+    private struct Entry { let bytes: Int; var accessed: Date }
+    private var entries: [URL: Entry] = [:]
+    private var currentFiles: [String: URL] = [:]
+    private var totalBytes = 0
+    private var indexed = false
+    private var lastExpirySweep: Date?
     private static let knownExtensions = ["jpg", "png", "gif", "webp", "heic"]
 
-    init() {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        directory = caches.appending(path: "ImageViewer", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    // 文件缓存独立于 URLCache。活动查看器持有所有已请求文件（含分享面板），
+    // 释放后按最近访问顺序回到预算；仅在访问/写入/释放时清理，不后台轮询。
+    init(directory: URL? = nil, byteLimit: Int = 256 * 1024 * 1024,
+         maxAge: TimeInterval = 30 * 24 * 60 * 60,
+         now: @escaping @Sendable () -> Date = { Date() },
+         download: @escaping Download = { try await AppNetwork.session.data(for: $0) }) {
+        self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appending(path: "ImageViewer", directoryHint: .isDirectory)
+        self.byteLimit = max(0, byteLimit)
+        self.maxAge = max(0, maxAge)
+        self.now = now
+        self.downloadData = download
     }
 
-    func localFile(for remote: URL) async throws -> URL {
-        if let cached = cachedFile(for: remote) { return cached }
-
+    func localFile(for remote: URL, owner: UUID? = nil) async throws -> URL {
+        indexIfNeeded()
+        if let owner { owners[owner, default: []].insert(Self.digest(of: remote)) }
+        if let cached = cachedFile(for: remote) {
+            touch(cached)
+            return cached
+        }
         if let existing = inFlight[remote] { return try await existing.value }
-
+        trim()
         let task = Task<URL, Error> { try await download(remote) }
         inFlight[remote] = task
         defer { inFlight[remote] = nil }
         return try await task.value
     }
 
-    private func cachedFile(for remote: URL) -> URL? {
-        let name = Self.digest(of: remote)
-        for ext in Self.knownExtensions {
-            let candidate = directory.appending(path: "\(name).\(ext)")
-            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+    func release(owner: UUID) {
+        owners[owner] = nil
+        trim()
+    }
+
+    /// 每次下载使用独立版本 URL，迟到的旧解码失败只能删除旧版本。
+    func invalidate(_ remote: URL, file: URL) {
+        guard file.deletingLastPathComponent().standardizedFileURL.path == directory.standardizedFileURL.path,
+              Self.key(for: file) == Self.digest(of: remote) else { return }
+        try? FileManager.default.removeItem(at: file)
+        removeEntry(file)
+    }
+
+    private func removeEntry(_ file: URL) {
+        if let entry = entries.removeValue(forKey: file) { totalBytes -= entry.bytes }
+        let key = Self.key(for: file)
+        if currentFiles[key] == file { currentFiles[key] = nil }
+    }
+
+    private static func key(for file: URL) -> String {
+        // 同时识别升级前的 digest.ext 文件。
+        String(file.deletingPathExtension().lastPathComponent.split(separator: "-", maxSplits: 1)[0])
+    }
+
+    private func indexIfNeeded() {
+        guard !indexed else { return }
+        indexed = true
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey])) ?? []
+        for file in files where Self.knownExtensions.contains(file.pathExtension) {
+            guard let values = try? file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey]),
+                  values.isRegularFile == true else { continue }
+            entries[file] = Entry(bytes: values.fileSize ?? 0, accessed: values.contentModificationDate ?? .distantPast)
+            totalBytes += values.fileSize ?? 0
+            let key = Self.key(for: file)
+            if let current = currentFiles[key], let currentEntry = entries[current],
+               currentEntry.accessed > (values.contentModificationDate ?? .distantPast) { continue }
+            currentFiles[key] = file
         }
+    }
+
+    private func touch(_ file: URL) {
+        let date = now()
+        entries[file]?.accessed = date
+        try? FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
+    }
+
+    private func trim(protecting files: Set<URL> = []) {
+        var bytes = totalBytes
+        let date = now()
+        // 预算内的连续下载不重复排序；过期扫描最多随访问每分钟触发一次。
+        let expiryDue = lastExpirySweep.map { date.timeIntervalSince($0) >= min(maxAge, 60) } ?? true
+        guard bytes > byteLimit || expiryDue else { return }
+        if expiryDue { lastExpirySweep = date }
+        let protected = owners.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+            .union(inFlight.keys.map(Self.digest))
+        let cutoff = date.addingTimeInterval(-maxAge)
+        for (file, entry) in entries.sorted(by: { $0.value.accessed < $1.value.accessed }) {
+            guard !files.contains(file), !protected.contains(Self.key(for: file)),
+                  bytes > byteLimit || entry.accessed < cutoff else { continue }
+            do {
+                try FileManager.default.removeItem(at: file)
+                removeEntry(file)
+                bytes -= entry.bytes
+            } catch { /* Keep accounting for files that could not be removed. */ }
+        }
+    }
+
+    private func cachedFile(for remote: URL) -> URL? {
+        let key = Self.digest(of: remote)
+        guard let file = currentFiles[key] else { return nil }
+        if entries[file] != nil, FileManager.default.fileExists(atPath: file.path) { return file }
+        removeEntry(file)
         return nil
     }
 
@@ -44,17 +132,21 @@ actor ImageFileCache {
         request.timeoutInterval = 15
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-
-        let (data, response) = try await AppNetwork.session.data(for: request)
+        let (data, response) = try await downloadData(request)
         guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) else {
             throw URLError(.badServerResponse)
         }
         guard !data.isEmpty,
               let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               CGImageSourceGetCount(source) > 0 else { throw URLError(.cannotDecodeContentData) }
-
-        let file = directory.appending(path: "\(Self.digest(of: remote)).\(Self.fileExtension(of: data))")
+        let file = directory.appending(path: "\(Self.digest(of: remote))-\(UUID().uuidString).\(Self.fileExtension(of: data))")
         try data.write(to: file, options: .atomic)
+        removeEntry(file)
+        entries[file] = Entry(bytes: data.count, accessed: now())
+        currentFiles[Self.digest(of: remote)] = file
+        totalBytes += data.count
+        touch(file)
+        trim(protecting: [file])
         return file
     }
 
@@ -68,7 +160,7 @@ actor ImageFileCache {
     }
 
     /// 按字节头认格式。认不出就当 JPEG——B 站的图绝大多数是 JPEG，
-    /// 而且 QuickLook 自己还会再嗅一次，扩展名只是给它的第一个提示。
+    /// 实际解码仍由 ImageIO 根据文件内容识别。
     private static func fileExtension(of data: Data) -> String {
         let head = [UInt8](data.prefix(12))
         guard head.count >= 12 else { return "jpg" }

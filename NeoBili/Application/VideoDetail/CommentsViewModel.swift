@@ -36,6 +36,10 @@ final class CommentsViewModel {
 
     @ObservationIgnored private var commentIDs: Set<Int> = []
     @ObservationIgnored private var replyIDs: [Int: Set<Int>] = [:]
+    // 展示列表包含本地提交和预览；分页覆盖量只包含分页接口实际返回的 ID。
+    @ObservationIgnored private var serverCommentIDs: Set<Int> = []
+    @ObservationIgnored private var serverReplyIDs: [Int: Set<Int>] = [:]
+    private var serverReplyCounts: [Int: Int] = [:]
     @ObservationIgnored private var hasLoadedInitialPage = false
     private var nextPage = 1
     private let fetchReplies: @MainActor (Int, Int, Int, Int) async throws -> CommentReplyPage
@@ -164,7 +168,15 @@ final class CommentsViewModel {
     }
 
     func shouldShowAllReplies(_ comment: Comment) -> Bool {
-        replyErrors[comment.id] != nil || comment.rcount > replies(for: comment).count
+        replyErrors[comment.id] != nil || replyCount(for: comment) > replies(for: comment).count
+    }
+
+    /// 接口根评论是不可变快照；已确认的新回复应立即反映在标题和展开入口。
+    func replyCount(for comment: Comment) -> Int {
+        let previewIDs = Set((comment.replies ?? []).map(\.id))
+        let added = (submittedReplies[comment.id] ?? []).filter { !previewIDs.contains($0.id) }.count
+        return max(max(comment.rcount + added, serverReplyCounts[comment.id] ?? 0),
+                   allReplies(for: comment).count)
     }
 
     /// 单独页面用的完整回复列表。
@@ -201,7 +213,14 @@ final class CommentsViewModel {
             loadedReplies[rootId] = all
             replyNextPage[rootId] = page + 1
 
-            if incoming.isEmpty || all.count >= result.page.count {
+            var serverIDs = serverReplyIDs[rootId] ?? []
+            let previousServerCount = serverIDs.count
+            serverIDs.formUnion(incoming.map(\.id))
+            serverReplyIDs[rootId] = serverIDs
+            serverReplyCounts[rootId] = result.page.count
+            if incoming.isEmpty || (result.page.size <= 0 && serverIDs.count == previousServerCount)
+                || serverIDs.count >= result.page.count
+                || Self.reachedLastPage(page: page, info: result.page) {
                 moreRepliesIDs.remove(rootId)
             } else {
                 moreRepliesIDs.insert(rootId)
@@ -234,6 +253,13 @@ final class CommentsViewModel {
         }
     }
 
+    /// 不以混合展示数量判断末页；页码边界同时保证重叠页不会无限翻页。
+    private static func reachedLastPage(page: Int, info: CommentPageInfo) -> Bool {
+        guard info.size > 0 else { return false }
+        let lastPage = info.count / info.size + (info.count % info.size == 0 ? 0 : 1)
+        return page >= lastPage
+    }
+
     private func loadNextPage() async {
         do {
             let page = try await fetchComments(oid, type, nextPage)
@@ -249,7 +275,11 @@ final class CommentsViewModel {
             // 热门排序下相邻两页偶尔会返回同一条评论，重复的会让 ForEach 的 id 冲突。
             comments.append(contentsOf: newComments.filter { commentIDs.insert($0.id).inserted })
             nextPage += 1
-            if comments.count >= totalCount {
+            let previousServerCount = serverCommentIDs.count
+            serverCommentIDs.formUnion(newComments.map(\.id))
+            if (page.page.size <= 0 && serverCommentIDs.count == previousServerCount)
+                || serverCommentIDs.count >= page.page.count
+                || Self.reachedLastPage(page: nextPage - 1, info: page.page) {
                 hasMore = false
             }
         } catch {

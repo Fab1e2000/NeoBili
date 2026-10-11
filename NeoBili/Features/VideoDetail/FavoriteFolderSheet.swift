@@ -11,8 +11,8 @@ struct FavoriteFolderSheet: View {
     let ownerMid: Int
     /// 要收藏的稿件 avid。
     let videoAid: Int
-    /// 确认时回调：分别是要加入和要移出的收藏夹 id。
-    let onConfirm: ([Int], [Int]) -> Void
+    /// 确认时回调：增删差集，以及最终是否仍在任意收藏夹中。
+    let onConfirm: ([Int], [Int], Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -56,7 +56,8 @@ struct FavoriteFolderSheet: View {
                     Button("完成") {
                         onConfirm(
                             Array(selection.subtracting(originalSelection)),
-                            Array(originalSelection.subtracting(selection))
+                            Array(originalSelection.subtracting(selection)),
+                            !selection.isEmpty
                         )
                         dismiss()
                     }

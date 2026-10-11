@@ -309,6 +309,7 @@ final class VideoDetailViewModel {
 
             apply(
                 like: result.didLike ? true : nil,
+                dislike: result.didLike ? false : nil,
                 favorite: result.didFavorite ? true : nil,
                 coin: totalCoins > 0 ? totalCoins : nil
             )
@@ -349,8 +350,8 @@ final class VideoDetailViewModel {
         }
     }
 
-    /// 收藏夹弹窗确认后调用。两个列表分别是要加入和要移出的收藏夹。
-    func updateFavorites(add: [Int], remove: [Int], isLoggedIn: Bool) async {
+    /// 收藏夹弹窗确认后调用。差集用于请求，最终选择用于整个视频的收藏状态。
+    func updateFavorites(add: [Int], remove: [Int], willBeFavorited: Bool, isLoggedIn: Bool) async {
         guard let detail, await checkReady(.favorite, isLoggedIn: isLoggedIn) else { return }
         defer { busyActions.remove(.favorite) }
 
@@ -358,7 +359,6 @@ final class VideoDetailViewModel {
 
         let wasFavorited = relation?.isFavorited ?? false
         let previousCount = favoriteCount
-        let willBeFavorited = !add.isEmpty
         apply(favorite: willBeFavorited)
         // 收藏进多个收藏夹在计数上仍然只算一次收藏。
         if willBeFavorited, !wasFavorited {
@@ -371,8 +371,10 @@ final class VideoDetailViewModel {
             try await services.video.updateFavorites(
                 aid: detail.aid,
                 addFolderIDs: add,
-                removeFolderIDs: remove
+                removeFolderIDs: remove,
+                expectedSessionID: appAccountSessionID
             )
+            guard likeStore.sessionID == sessionID, session.currentID() == appAccountSessionID else { return }
             actionMessage = willBeFavorited ? String(localized: "已收藏") : String(localized: "已取消收藏")
         } catch {
             guard likeStore.sessionID == sessionID, session.currentID() == appAccountSessionID else { return }

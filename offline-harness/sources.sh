@@ -39,6 +39,7 @@ cp \
     "$APP/Data/Networking/Reporting/AppBehaviorEncoder.swift" \
     "$APP/Data/Networking/Reporting/AppBehaviorReporter.swift" \
     "$APP/Data/Networking/Identity/AppBuvid.swift" \
+    "$APP/Data/Networking/Identity/CapturedDeviceDiagnostic.swift" \
     "$APP/Domain/Models/DeviceIdentityPreferences.swift" \
     "$APP/Data/Networking/Identity/AppDeviceRegistration.swift" \
     "$APP/Data/Networking/Identity/AppGuestRegistration.swift" \

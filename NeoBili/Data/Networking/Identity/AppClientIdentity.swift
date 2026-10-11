@@ -4,11 +4,16 @@ import Darwin
 /// 与实测官方 iPhone 9.13.0 请求配套的身份；所有 App 通道共用。
 /// build 是协议兼容版本，不是 NeoBili 自己的发布版本。
 enum AppClientIdentity {
-    static let mobiApp = "iphone"
-    static let build = "91300100"
+    // Shared production profile, matching the device-validated international build.
+    static let isInternationalProfile = true
+    static let mobiApp = isInternationalProfile ? "iphone_i" : "iphone"
+    static let build = isInternationalProfile ? "91300300" : "91300100"
     static let version = "9.13.0"
     static let credentialScope = "ios-27eb53fc-v1"
-    static let statistics = #"{"appId":1,"version":"9.13.0","abtest":"","platform":1}"#
+    // Captured statistics version is independent of the build's 9.13.0 version.
+    static let statistics = isInternationalProfile
+        ? #"{"appId":14,"version":"6.6.0","abtest":"","platform":1}"#
+        : #"{"appId":1,"version":"9.13.0","abtest":"","platform":1}"#
     static let parameters = ["mobi_app": mobiApp, "build": build, "platform": "ios", "device": "phone"]
 
     // Hardware model and OS identity are fixed for the lifetime of this process.
@@ -24,7 +29,7 @@ enum AppClientIdentity {
     static let userAgent: String = {
         let os = ProcessInfo.processInfo.operatingSystemVersion
         let osVersion = "\(os.majorVersion).\(os.minorVersion)" + (os.patchVersion > 0 ? ".\(os.patchVersion)" : "")
-        return "bili-universal/\(build) CFNetwork/1.0 Darwin/\(systemValue("kern.osrelease")) os/ios model/\(deviceName) mobi_app/iphone build/\(build) osVer/\(osVersion) channel/pink_overseas"
+        return "bili-universal/\(build) CFNetwork/1.0 Darwin/\(systemValue("kern.osrelease")) os/ios model/\(deviceName) mobi_app/\(mobiApp) build/\(build) osVer/\(osVersion) channel/pink_overseas"
     }()
 
     private static func systemValue(_ name: String) -> String {

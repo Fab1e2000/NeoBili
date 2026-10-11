@@ -14,7 +14,9 @@ extension Notification.Name {
 /// 拿到之后所有接口——推荐、评论、收藏、历史——不需要任何额外改动就能获得
 /// 登录态。凭据本体存 Keychain（见 `KeychainStore`），重启 App 后自动恢复。
 actor DeviceIdentity {
-    static let shared = DeviceIdentity(randomBuvidExperiment: !AppNetwork.isRegression && AppBuvid.launchMode == .random, credentials: AppNetwork.isRegression ? .memory() : .keychain,
+    static let shared = DeviceIdentity(randomBuvidExperiment: !AppNetwork.isRegression && DeviceIdentityPreferences.launchCustomBuvid == nil,
+                                       customBuvid: AppNetwork.isRegression ? nil : DeviceIdentityPreferences.launchCustomBuvid,
+                                       credentials: AppNetwork.isRegression ? .memory() : .keychain,
                                        allowsNetwork: !AppNetwork.isRegression,
                                        eventSerialDefaults: AppNetwork.isRegression ? nil :
                                         UserDefaults(suiteName: "com.elsterlee.NeoBili.behavior-sequence"))
@@ -58,6 +60,7 @@ actor DeviceIdentity {
     private var fetchTask: Task<Void, Never>?
     private var transientAppBuvid: String?
     private let experimentalBuvid: String?
+    private let customBuvid: String?
     private let vendorIdentifier: @Sendable () async -> String?
     private let deviceRegistration: AppDeviceRegistration?
     private let guestRegistration: AppGuestRegistration?
@@ -92,6 +95,7 @@ actor DeviceIdentity {
 
     init(defaults: UserDefaults = .standard,
          randomBuvidExperiment: Bool = false,
+         customBuvid: String? = nil,
          credentials: CredentialStorage = AppNetwork.isRegression ? .memory() : .keychain,
          allowsNetwork: Bool = !AppNetwork.isRegression,
          eventSerialDefaults: UserDefaults? = nil,
@@ -112,14 +116,19 @@ actor DeviceIdentity {
             eventSerialDefaults.set(defaults.integer(forKey: serialKey), forKey: serialKey)
         }
         self.credentials = credentials
+        self.customBuvid = customBuvid.flatMap(DeviceIdentityPreferences.normalizedCustomBuvid)
         self.experimentalBuvid = randomBuvidExperiment
             ? AppBuvid.randomExperimentIdentifier(defaults: defaults, credentials: credentials) : nil
-        let registrationCredentials = randomBuvidExperiment
-            ? AppBuvid.experimentRegistrationStorage(credentials) : credentials
+        let ownRegistrationCredentials = self.customBuvid.map { AppBuvid.customRegistrationStorage(credentials, buvid: $0) }
+            ?? (randomBuvidExperiment ? AppBuvid.experimentRegistrationStorage(credentials) : credentials)
+        let capturedDevice = CapturedDeviceDiagnostic.configuration
+        let registrationCredentials = capturedDevice.map { CapturedDeviceDiagnostic.isolatedStorage(credentials, configuration: $0) }
+            ?? ownRegistrationCredentials
         self.allowsNetwork = allowsNetwork
         self.vendorIdentifier = vendorIdentifier
         self.deviceRegistration = deviceRegistration ?? (allowsNetwork ? AppDeviceRegistration(credentials: registrationCredentials) : nil)
-        self.guestRegistration = guestRegistration ?? (allowsNetwork ? AppGuestRegistration(credentials: registrationCredentials) : nil)
+        self.guestRegistration = guestRegistration ?? (allowsNetwork ? AppGuestRegistration(credentials: registrationCredentials,
+            capturedGuestID: capturedDevice?.parsedGuestID) : nil)
         self.ticketService = ticketService ?? (allowsNetwork ? AppTicketService(credentials: registrationCredentials) : nil)
         self.purgeCookies = purgeCookies
         cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
@@ -201,6 +210,8 @@ actor DeviceIdentity {
 
     /// Own local identity, separate from server device_id and web buvid3.
     func appBuvid() async -> String {
+        if let captured = CapturedDeviceDiagnostic.configuration { return captured.buvid }
+        if let customBuvid { return customBuvid }
         if let experimentalBuvid { return experimentalBuvid }
         #if DEBUG
         if !AppNetwork.isRegression, let override = defaults.string(forKey: RecommendationExperiment.buvidKey), !override.isEmpty { return override }
@@ -292,7 +303,7 @@ actor DeviceIdentity {
     }
 
     /// Guest identity is loaded at startup/activation, never on every feed refresh.
-    func refreshAppServices() async {
+    func refreshAppServices(validateCredential: Bool = false) async {
         guard allowsNetwork else { return }
         let session = loginSessionID
         let buvid = await appBuvid()
@@ -301,7 +312,7 @@ actor DeviceIdentity {
         _ = await guestRegistration?.load(buvid: buvid, headers: base)
         guard session == loginSessionID else { return }
         _ = try? await appRequestHeaders(expectedSessionID: session)
-        await renewLoginIfNeeded()
+        await renewLoginIfNeeded(forceValidation: validateCredential)
     }
 
     /// Cookie header value carrying whatever device identity we currently have.
@@ -469,12 +480,19 @@ actor DeviceIdentity {
     /// are local resource policy, not a claimed official schedule. No timer is created.
     func renewLoginIfNeeded(transport: AppLoginRenewal.Transport? = nil,
                             now: TimeInterval = Date().timeIntervalSince1970,
-                            device suppliedDevice: AppLoginRenewal.Device? = nil) async {
+                            device suppliedDevice: AppLoginRenewal.Device? = nil,
+                            forceValidation: Bool = false) async {
         guard allowsNetwork || transport != nil else { return }
+        guard !appCredentialRejected else { return }
         if let renewalTask { await renewalTask.value; return }
-        guard now >= nextRenewalCheck else { return }
-        guard let old = renewableLogin, old.refreshToken?.isEmpty == false else {
-            renewalState = "needs-login"; return
+        guard forceValidation || now >= nextRenewalCheck else { return }
+        let old: SMSLoginModels.Credentials
+        if let saved = renewableLogin { old = saved }
+        else if let cookies = loginCookies(), let key = accessKey, !key.isEmpty {
+            // Legacy/QR authorization can still be validated without inventing a refresh token.
+            old = .init(cookies: cookies, accessKey: key)
+        } else {
+            return
         }
         let snapshot = AppLoginRenewal.Snapshot(session: loginSessionID, credentials: old)
         let id = UUID(); renewalTaskID = id
@@ -486,7 +504,9 @@ actor DeviceIdentity {
     }
 
     private func isCurrent(_ snapshot: AppLoginRenewal.Snapshot) -> Bool {
-        loginSessionID == snapshot.session && renewableLogin == snapshot.credentials
+        guard loginSessionID == snapshot.session else { return false }
+        if let renewableLogin { return renewableLogin == snapshot.credentials }
+        return cachedAccessKey == snapshot.credentials.accessKey && loginCookies() == snapshot.credentials.cookies
     }
 
     private func performRenewal(_ snapshot: AppLoginRenewal.Snapshot, transport: AppLoginRenewal.Transport,
@@ -499,6 +519,9 @@ actor DeviceIdentity {
             let info = try await AppLoginRenewal.info(old: snapshot.credentials, device: device, transport: transport)
             guard isCurrent(snapshot) else { return }
             guard info.refresh else { nextRenewalCheck = now + 1800; renewalState = "valid"; return }
+            guard snapshot.credentials.refreshToken?.isEmpty == false else {
+                nextRenewalCheck = now + 1800; renewalState = "needs-login"; return
+            }
             let sts = await AppLoginRenewal.serverTime(old: snapshot.credentials, device: device, transport: transport)
             guard isCurrent(snapshot) else { return }
             let fresh = try await AppLoginRenewal.refresh(old: snapshot.credentials, device: device, sts: sts, transport: transport)

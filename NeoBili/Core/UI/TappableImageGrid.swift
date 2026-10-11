@@ -27,7 +27,7 @@ struct TappableImageGrid: View {
     }
 
     private func thumbnail(at position: Int, url: URL?, aspectRatio: CGFloat) -> some View {
-        CoverThumbnail(url: url, aspectRatio: aspectRatio)
+        CoverThumbnail(url: ViewerImage(url: url).previewURL, aspectRatio: aspectRatio)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             // 卡片整体也挂着"点进详情"的手势，这里的手势在内层，优先响应。
             .contentShape(Rectangle())

@@ -96,7 +96,8 @@ final class LoginRenewalTests: XCTestCase {
         await identity.saveLogin(login().cookies, accessKey: login().accessKey)
         let transport: AppLoginRenewal.Transport = { _ in count.withLock { $0 += 1 }; throw URLError(.notConnectedToInternet) }
         await identity.renewLoginIfNeeded(transport: transport, now: 1, device: device)
-        XCTAssertEqual(count.withLock { $0 }, 0)
+        XCTAssertEqual(count.withLock { $0 }, 1, "Legacy token validity is checked even without a refresh token")
+        count.withLock { $0 = 0 }
         try await identity.saveSMSLogin(login(), expectedSessionID: identity.loginSessionID, authorizationOnly: false)
         for time in [100.0, 101, 130, 159] { await identity.renewLoginIfNeeded(transport: transport, now: time, device: device) }
         XCTAssertEqual(count.withLock { $0 }, 1)
@@ -189,6 +190,33 @@ final class LoginRenewalTests: XCTestCase {
         XCTAssertEqual(values["sign"], "7ce6d6e66aceaf55027979d699f1b46c")
         let encoded = AppSigner.queryString(from: values, nativeEncoding: true)
         XCTAssertTrue(encoded.contains("a%21%27%28%29%2A~%20%2B"))
+    }
+
+    func testForegroundValidationDetectsRevocationInsideCacheForLegacyAndRenewableTokens() async throws {
+        for legacy in [false, true] {
+            let identity = identity(), old = login(), calls = Mutex(0)
+            if legacy { await identity.saveLogin(old.cookies, accessKey: old.accessKey) }
+            else { try await identity.saveSMSLogin(old, expectedSessionID: identity.loginSessionID, authorizationOnly: false) }
+            await identity.renewLoginIfNeeded(transport: { request in
+                calls.withLock { $0 += 1 }
+                return try self.response(request, ["code":0,"data":["mid":42,"expires_in":3600,"refresh":false]])
+            }, now: 100, device: device)
+            let rejected: AppLoginRenewal.Transport = { request in
+                calls.withLock { $0 += 1 }
+                XCTAssertEqual(request.url?.lastPathComponent, "info", "Revoked authorization must not rotate tokens")
+                return try self.response(request, ["code":61000])
+            }
+            await identity.renewLoginIfNeeded(transport: rejected, now: 101, device: device)
+            XCTAssertEqual(calls.withLock { $0 }, 1)
+            await identity.renewLoginIfNeeded(transport: rejected, now: 102, device: device, forceValidation: true)
+            XCTAssertEqual(calls.withLock { $0 }, 2)
+            let snapshot = await identity.accountSnapshot()
+            XCTAssertTrue(snapshot.hasCredentials)
+            XCTAssertFalse(snapshot.hasAppCredential)
+            XCTAssertTrue(snapshot.needsAppReauthorization)
+            let cookies = await identity.loginCookies()
+            XCTAssertEqual(cookies, old.cookies)
+        }
     }
 
     func testExpiredTokenRequiresLoginWithoutDeletingCookiesOrRepeatingRequests() async throws {

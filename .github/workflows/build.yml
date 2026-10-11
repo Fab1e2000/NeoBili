@@ -65,15 +65,9 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a") as target:
               target.write("NEOBILI_SIMULATOR_ID=" + device["udid"] + "\n")
           PYTHON
-      - name: Offline regression
-        shell: bash
-        run: |
-          mkdir -p DerivedData/Validation
-          set -o pipefail
-          zsh offline-harness/run.sh 2>&1 | tee DerivedData/Validation/offline.log
-      - name: Simulator regression
+      - name: Full validation
         if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
-        run: bash scripts/simulator.sh test
+        run: bash scripts/verify.sh full
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v7

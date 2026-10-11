@@ -2,6 +2,7 @@ import Foundation
 
 extension ApplicationServices {
     static let live = Self(
+        currentAppBuvid: { await DeviceIdentity.shared.appBuvid() },
         exportDiagnostics: { try await RecommendationDiagnostics.shared.export() },
         telemetry: .live,
         authentication: .live,

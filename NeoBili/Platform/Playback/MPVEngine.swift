@@ -136,11 +136,13 @@ final class MPVEngine: @unchecked Sendable {
     /// 手势退出的提交帧不能同步等内核拿锁（暂停期间渲染线程可能正持有着
     /// 核心锁），命令排进事件队列异步执行。mpv 指针的读写本来就约定只发生
     /// 在这条队列上（见 `stop()`），这里沿用同一份约束，与销毁天然串行。
-    func pauseAsync() {
+    func pauseAsync(afterPaused: (@MainActor @Sendable () -> Void)? = nil) {
         eventQueue.async { [weak self] in
-            guard let self, let mpv = self.mpv else { return }
-            var flag: Int32 = 1
-            mpv_set_property(mpv, "pause", MPV_FORMAT_FLAG, &flag)
+            if let mpv = self?.mpv {
+                var flag: Int32 = 1
+                mpv_set_property(mpv, "pause", MPV_FORMAT_FLAG, &flag)
+            }
+            if let afterPaused { DispatchQueue.main.async { afterPaused() } }
         }
     }
 
@@ -157,10 +159,18 @@ final class MPVEngine: @unchecked Sendable {
         sendCommand(mpv, ["seek", String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), seconds), "absolute+exact"])
     }
 
-    func stop() {
-        guard !isStopped else { return }
+    func stop(afterStopped: (@MainActor @Sendable () -> Void)? = nil) {
+        guard !isStopped else {
+            if let afterStopped {
+                eventQueue.async { DispatchQueue.main.async { afterStopped() } }
+            }
+            return
+        }
         isStopped = true
-        guard let mpv else { return }
+        guard let mpv else {
+            if let afterStopped { DispatchQueue.main.async { afterStopped() } }
+            return
+        }
 
         // wakeup 回调是裸 C 函数指针 + `Unmanaged...unretained`，不受 Swift
         // 的 weak 引用保护——先同步取消注册，保证这个对象接下来无论什么
@@ -179,6 +189,7 @@ final class MPVEngine: @unchecked Sendable {
             mpv_terminate_destroy(mpv)
             self.mpv = nil
             _ = layer
+            if let afterStopped { DispatchQueue.main.async { afterStopped() } }
         }
     }
 

@@ -16,9 +16,6 @@ struct AccountSettingsView: View {
             }
         }
         .settingsPage("账号管理")
-        .confirmationDialog("确定退出登录？", isPresented: $confirmLogout, titleVisibility: .visible) {
-            Button("退出登录", role: .destructive) { Task { await account.logout() } }
-            Button("取消", role: .cancel, action: {})
-        }
+        .accountLogoutConfirmation(isPresented: $confirmLogout)
     }
 }
