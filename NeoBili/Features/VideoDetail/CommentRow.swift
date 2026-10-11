@@ -11,7 +11,8 @@ struct CommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: CommentLayout.avatarTextSpacing) {
-            BiliImage(url: comment.member.secureAvatarURL)
+            BiliImage(url: comment.member.secureAvatarURL,
+                      targetSize: CGSize(width: CommentLayout.avatarSize, height: CommentLayout.avatarSize))
                 .aspectRatio(contentMode: .fill)
                 .frame(width: CommentLayout.avatarSize, height: CommentLayout.avatarSize)
                 .clipShape(Circle())
@@ -122,6 +123,9 @@ struct ExpandableCommentMessage: View {
                 .foregroundStyle(.primary)
                 .lineLimit(isMessageExpanded ? nil : CommentLayout.collapsedMessageLines)
                 .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                    if !isMessageExpanded { collapsedMessageHeight = $0 }
+                }
                 .background { messageMeasurements }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -155,13 +159,17 @@ struct ExpandableCommentMessage: View {
     private var messageMeasurements: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
-                measuredMessageBody
-                    .lineLimit(CommentLayout.collapsedMessageLines)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(width: geometry.size.width, alignment: .leading)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                        collapsedMessageHeight = $0
-                    }
+                // 收起时直接使用可见正文的高度，避免每条评论再排一份六行正文。
+                // 展开后才补这个探针，字号或宽度变化时仍能正确判断能否收起。
+                if isMessageExpanded {
+                    measuredMessageBody
+                        .lineLimit(CommentLayout.collapsedMessageLines)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: geometry.size.width, alignment: .leading)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                            collapsedMessageHeight = $0
+                        }
+                }
                 measuredMessageBody
                     .lineLimit(CommentLayout.collapsedMessageLines + 1)
                     .fixedSize(horizontal: false, vertical: true)
@@ -177,7 +185,7 @@ struct ExpandableCommentMessage: View {
     }
 
     private var canExpandMessage: Bool {
-        overflowMessageHeight > collapsedMessageHeight + 0.5
+        collapsedMessageHeight > 0 && overflowMessageHeight > collapsedMessageHeight + 0.5
     }
 
 }
@@ -243,7 +251,7 @@ private struct CommentReplyPreview: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-#if DEBUG
+#if NEOBILI_REGRESSION
         .anchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { [.content: $0] }
 #endif
         .padding(CommentLayout.replyPadding)
@@ -251,7 +259,7 @@ private struct CommentReplyPreview: View {
             Color(uiColor: .tertiarySystemFill),
             in: RoundedRectangle(cornerRadius: CommentLayout.replyCornerRadius, style: .continuous)
         )
-#if DEBUG
+#if NEOBILI_REGRESSION
         .transformAnchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { values, anchor in
             values[.block] = anchor
         }

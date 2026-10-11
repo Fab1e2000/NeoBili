@@ -211,7 +211,7 @@ final class AppRecommendationTests: XCTestCase {
 
     func testAppRecommendationUsesSigningClientInHeaders() {
         let headers = AppDeviceProtocol.headers(buvid: "b")
-        XCTAssertEqual(headers["app-key"], "iphone")
+        XCTAssertEqual(headers["app-key"], AppClientIdentity.mobiApp)
         XCTAssertTrue(headers["User-Agent"]?.contains("mobi_app/iphone") == true)
         XCTAssertNil(headers["bili-http-engine"])
     }
@@ -219,7 +219,7 @@ final class AppRecommendationTests: XCTestCase {
     func testAuroraEIDMatchesPiliPlus() {
         XCTAssertEqual(BiliHeaders.auroraEID(mid: 1), "UA")
         XCTAssertNil(BiliHeaders.appAccountHeaders(mid: nil)["x-bili-mid"])
-        XCTAssertEqual(BiliHeaders.appAccountHeaders(mid: 42)["app-key"], "iphone")
+        XCTAssertEqual(BiliHeaders.appAccountHeaders(mid: 42)["app-key"], AppClientIdentity.mobiApp)
     }
 
     func testStringIDsAndProvidedBVIDAreSupported() throws {
@@ -235,7 +235,7 @@ final class AppRecommendationTests: XCTestCase {
     func testAppParametersPreserveExistingCursor() {
         let params = AppRecommendationProtocol.parameters(for: RecommendationRequest(source: .app, pageIndex: 1, appCursor: 123))
         XCTAssertEqual(params["idx"], "123")
-        XCTAssertEqual(params["mobi_app"], "iphone")
+        XCTAssertEqual(params["mobi_app"], AppClientIdentity.mobiApp)
         XCTAssertEqual(params["platform"], "ios")
         XCTAssertNil(AppDeviceProtocol.headers(buvid: "b")["fp_local"])
         XCTAssertEqual(AppDeviceProtocol.traceID().split(separator: ":").map(\.count), [32, 16, 1, 1])
@@ -251,7 +251,7 @@ final class AppRecommendationTests: XCTestCase {
         let refresh = RecommendationRequest(source: .app, isRefresh: true)
         let requests = [initial, refresh, refresh.next(appCursor: 456)]
         let params = requests.map { AppRecommendationProtocol.parameters(for: $0) }
-        XCTAssertEqual(params.map { $0["flush"] }, ["0", "6", "8"])
+        XCTAssertEqual(params.map { $0["flush"] }, ["0", AppClientIdentity.isInternationalFeedDiagnostic ? "14" : "6", "8"])
         XCTAssertEqual(params.map { $0["pull"] }, ["1", "1", "0"])
         XCTAssertEqual(params.map { $0["idx"] }, ["0", "0", "456"])
         for value in params {
@@ -259,9 +259,9 @@ final class AppRecommendationTests: XCTestCase {
             XCTAssertEqual(value["actionKey"], "appkey")
             XCTAssertEqual(value["c_locale"], "zh-Hans_CN")
             XCTAssertEqual(value["s_locale"], "zh-Hans_CN")
-            XCTAssertEqual(value["fnval"], "84948", "Recommendation comparison policy, separate from playback capabilities")
+            XCTAssertEqual(value["fnval"], AppClientIdentity.isInternationalFeedDiagnostic ? "17364" : "84948", "Recommendation comparison policy, separate from playback capabilities")
             XCTAssertEqual(value["device_name"], AppClientIdentity.deviceName)
-            for field in ["player_extra_content", "ad_extra", "access_key", "widgets"] {
+            for field in ["player_extra_content", "ad_extra", "access_key"] {
                 XCTAssertNil(value[field], "Do not fabricate or copy dynamic state: \(field)")
             }
         }

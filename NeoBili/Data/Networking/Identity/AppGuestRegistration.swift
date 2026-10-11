@@ -90,9 +90,11 @@ actor AppGuestRegistration {
              #else
              return nil
              #endif
-         }, clock: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 }) {
+         }, clock: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 },
+         capturedGuestID: Int64? = nil) {
         self.credentials = credentials; self.transport = transport; self.vendorIdentifier = vendorIdentifier; self.clock = clock
         if let raw = credentials.read(Self.storageKey), let parsed = Int64(raw), Self.isValid(parsed) { id = parsed }
+        if let capturedGuestID, Self.isValid(capturedGuestID) { id = capturedGuestID }
         if let raw = credentials.read(Self.firstRunKey), let parsed = Int64(raw), parsed != 0 {
             firstRunMilliseconds = parsed
         } else {

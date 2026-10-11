@@ -18,6 +18,7 @@ final class DanmakuController {
     let cid: Int
     private var items: [DanmakuItem] = []
     private var loadTask: Task<Void, Never>?
+    private var isShutdown = false
     /// 最近一次已知播放位置：弹幕异步加载完成时从这里开始注入，
     /// 续播/中途打开时不会把之前的历史弹幕一次性灌满屏幕。
     private var lastTime: Double = 0
@@ -34,23 +35,27 @@ final class DanmakuController {
     }
 
     func load() {
-        guard state == .idle else { return }
+        guard !isShutdown, state == .idle else { return }
         state = .loading
         let cid = cid
-        loadTask = Task {
+        let loader = loader
+        loadTask = Task { [weak self] in
             let loaded = (try? await loader(cid)) ?? []
-            guard !Task.isCancelled else { return }
-            items = loaded
-            state = .ready
-            if let engine {
+            guard !Task.isCancelled, let self, !self.isShutdown else { return }
+            self.items = loaded
+            self.state = .ready
+            if let engine = self.engine {
                 engine.prepare(items: loaded)
-                engine.seek(to: lastTime)
-                engine.setTimelinePaused(isPaused)
+                engine.seek(to: self.lastTime)
+                engine.setTimelinePaused(self.isPaused)
             }
         }
     }
 
+    deinit { MainActor.assumeIsolated { loadTask?.cancel() } }
+
     func attach(_ engine: DanmakuEngine) {
+        guard !isShutdown else { return }
         self.engine = engine
         if state == .ready {
             engine.prepare(items: items)
@@ -88,6 +93,8 @@ final class DanmakuController {
     }
 
     func shutdown() {
+        isShutdown = true
+        state = .idle
         loadTask?.cancel()
         loadTask = nil
         engine = nil

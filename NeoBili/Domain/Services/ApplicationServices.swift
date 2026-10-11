@@ -3,6 +3,7 @@ import Foundation
 /// Immutable-by-convention dependency graph. Tests create local copies and replace
 /// only the operations they exercise; no process-wide override is necessary.
 struct ApplicationServices: Sendable {
+    var currentAppBuvid: @Sendable () async -> String = { "" }
     var exportDiagnostics: @Sendable () async throws -> URL = { throw ServiceError.unconfigured("exportDiagnostics") }
     var telemetry = TelemetryService()
     var authentication = AuthenticationService()

@@ -77,7 +77,7 @@ struct HomeView: View {
                     RecommendedSpaceSheet(up: up)
                 }
             }
-            // 照 PiliPlus：拉黑前先确认一次。NeoBili 没有黑名单管理，解除要去 B 站 App 或网页。
+            // The official blacklist and local recommendation filter have separate removal paths.
             .alert("拉黑 UP 主", isPresented: Binding(get: { viewModel.pendingBlock != nil },
                                                    set: { if !$0 { viewModel.pendingBlock = nil } }),
                    presenting: viewModel.pendingBlock) { owner in
@@ -88,7 +88,7 @@ struct HomeView: View {
                 }
                 Button("点错了", role: .cancel) {}
             } message: { owner in
-                Text("确定拉黑 \(owner.name)（\(String(owner.mid))）？\n拉黑后不会再收到他的推荐。可以在 B 站 App 或网页的黑名单管理中解除。")
+                Text("确定拉黑 \(owner.name)（\(String(owner.mid))）？\n拉黑后不会再收到他的推荐。在 B 站 App 或网页解除后，还需到本应用的推荐内容过滤中解除本地屏蔽。")
             }
             .resolvePortraitVideos(viewModel.videos, batchID: landingGeneration) {
                 await viewModel.loadReplacementPage()

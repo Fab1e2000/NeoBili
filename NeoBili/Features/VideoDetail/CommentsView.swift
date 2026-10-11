@@ -60,6 +60,7 @@ struct CommentsView: View {
     let viewModel: CommentsViewModel
     /// 切换简介和评论时保留评论列表的滚动位置。
     @Binding var scrollPosition: ScrollPosition
+    @Environment(\.videoScrollContext) private var geometry
     var collapseConsume: ((CGFloat) -> CGFloat)? = nil
     var collapseEnd: (() -> Void)? = nil
     var canCollapse: ((CGFloat) -> Bool)? = nil
@@ -68,6 +69,7 @@ struct CommentsView: View {
     var body: some View {
         ScrollView {
             CommentsList(viewModel: viewModel)
+                .frame(minHeight: geometry?.minimumContentHeight ?? 0, alignment: .top)
                 .background {
                     if let collapseConsume {
                         PausedVideoCollapseScroll(consume: collapseConsume, end: { collapseEnd?() },
@@ -77,13 +79,48 @@ struct CommentsView: View {
                     }
                 }
         }
+        .contentMargins(.top, geometry?.reservation ?? 0, for: .scrollContent)
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollPosition($scrollPosition)
         .overlay {
-            CommentsPlaceholder(viewModel: viewModel)
+            GeometryReader { proxy in
+                let hiddenTop = max(0, (geometry?.reservation ?? 0) - (geometry?.distance() ?? 0))
+                CommentsPlaceholder(viewModel: viewModel)
+                    .frame(width: proxy.size.width, height: max(0, proxy.size.height - hiddenTop))
+                    .offset(y: hiddenTop)
+            }
+            .allowsHitTesting(viewModel.comments.isEmpty)
         }
         .task { await viewModel.loadInitial() }
         .commentComposer(viewModel: viewModel)
+    }
+}
+
+/// 评论模型尚未建立时，也使用同一份顶部预留与可见窗口。
+struct VideoCommentsLoadingView: View {
+    let consume: (CGFloat) -> CGFloat
+    let canConsume: (CGFloat) -> Bool
+    @Environment(\.videoScrollContext) private var geometry
+
+    var body: some View {
+        ScrollView {
+            Color.clear
+                .frame(minHeight: geometry?.minimumContentHeight ?? 0)
+                .background {
+                    PausedVideoCollapseScroll(consume: consume, end: {}, canConsume: canConsume)
+                        .allowsHitTesting(false)
+                }
+        }
+        .contentMargins(.top, geometry?.reservation ?? 0, for: .scrollContent)
+        .scrollBounceBehavior(.always, axes: .vertical)
+        .overlay {
+            GeometryReader { proxy in
+                let hiddenTop = max(0, (geometry?.reservation ?? 0) - (geometry?.distance() ?? 0))
+                ProgressView()
+                    .frame(width: proxy.size.width, height: max(0, proxy.size.height - hiddenTop))
+                    .offset(y: hiddenTop)
+            }.allowsHitTesting(false)
+        }
     }
 }
 

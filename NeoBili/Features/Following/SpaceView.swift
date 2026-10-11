@@ -93,7 +93,9 @@ struct SpaceView: View {
         // 进了 UP 主页就把底部标签栏收起来，整屏都留给他的内容。
         .toolbarVisibility(.hidden, for: .tabBar)
         .imageViewerHost()
-        .task { await viewModel.loadInitial() }
+        .task { await viewModel.loadVideosIfNeeded() }
+        .task(id: followContext) { await viewModel.loadCard(followContext) }
+        .onChange(of: followContext) { _, context in viewModel.setFollowContext(context) }
         .task(id: tab) {
             // 切到动态那一栏才去加载它，进页面时不白跑一次请求。
             if tab == .dynamics {
@@ -161,6 +163,10 @@ struct SpaceView: View {
         }
         .onAppear {
             if pageTab != tab { synchronizeHeader(in: pageTab) }
+        }
+        .refreshable {
+            if pageTab == .videos { await viewModel.reloadVideos() }
+            else { await viewModel.dynamics.refresh() }
         }
         .leftEdgeTapDeadZone()
     }
@@ -301,22 +307,46 @@ struct SpaceView: View {
         }
     }
 
+    private var followContext: SpaceViewModel.FollowContext {
+        .init(sessionID: account.sessionID, isLoggedIn: account.isLoggedIn, accountID: account.accountID)
+    }
+
+    @ViewBuilder
     private var followButton: some View {
-        glassFollowStyle(
-            Button {
-                Task {
-                    if let message = await viewModel.toggleFollow(isLoggedIn: account.isLoggedIn) {
-                        feedback.show(message)
+        if !viewModel.isOwnAccount(followContext) {
+            if viewModel.isFollowing == nil && account.isLoggedIn {
+                if viewModel.isLoadingCard {
+                    ProgressView().controlSize(.small)
+                } else {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Button("重试") { Task { await viewModel.loadCard(followContext) } }
+                            .controlSize(.small)
+                            .accessibilityLabel("关注状态尚未加载，请重试")
+                        if let error = viewModel.followError {
+                            Text(error).font(.caption2).foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                     }
                 }
-            } label: {
-                Text(viewModel.isFollowing ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
-                    .font(.footnote.weight(.medium))
-                    .frame(minWidth: 56)
-            },
-            isActive: viewModel.isFollowing
-        )
-        .controlSize(.small)
+            } else {
+                glassFollowStyle(
+                    Button {
+                        Task {
+                            if let message = await viewModel.toggleFollow(followContext) {
+                                feedback.show(message)
+                            }
+                        }
+                    } label: {
+                        Text(viewModel.isFollowing == true ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
+                            .font(.footnote.weight(.medium))
+                            .frame(minWidth: 56)
+                    },
+                    isActive: viewModel.isFollowing == true
+                )
+                .controlSize(.small)
+                .disabled(viewModel.isTogglingFollow)
+            }
+        }
     }
 
     /// 关注按钮用系统液态玻璃样式：未关注是实底玻璃（吸引点击），已关注退成
@@ -337,13 +367,34 @@ struct SpaceView: View {
     private var videoList: some View {
         let visibleVideos = viewModel.videos.hidingKnownPortraitVideos(hidesPortraitVideos)
 
+        if let message = viewModel.videosError, !viewModel.videos.isEmpty {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("加载失败", systemImage: "wifi.slash")
+                    Text(message).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button("重试") { Task { await viewModel.reloadVideos() } }
+                    .disabled(viewModel.isLoadingVideos)
+            }
+            .font(.footnote)
+            .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
+            .padding(.vertical, 12)
+        }
+
         if visibleVideos.isEmpty, viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos) {
             LoadingTaskAnchor().padding(.vertical, 40)
         } else if viewModel.isLoadingVideos, viewModel.videos.isEmpty {
             LoadingTaskAnchor().padding(.vertical, 40)
         } else if let message = viewModel.videosError, viewModel.videos.isEmpty {
-            ContentUnavailableView("加载失败", systemImage: "wifi.slash", description: Text(message))
-                .padding(.vertical, 20)
+            ContentUnavailableView {
+                Label("加载失败", systemImage: "wifi.slash")
+            } description: {
+                Text(message)
+            } actions: {
+                Button("重试") { Task { await viewModel.reloadVideos() } }
+            }
+            .padding(.vertical, 20)
         } else if visibleVideos.isEmpty {
             ContentUnavailableView(
                 viewModel.videos.isEmpty ? "没有投稿" : "没有可显示的视频",
@@ -410,8 +461,14 @@ struct SpaceView: View {
         if feed.isLoading, feed.entries.isEmpty {
             LoadingTaskAnchor().padding(.vertical, 40)
         } else if let message = feed.errorMessage, feed.entries.isEmpty {
-            ContentUnavailableView("加载失败", systemImage: "wifi.slash", description: Text(message))
-                .padding(.vertical, 20)
+            ContentUnavailableView {
+                Label("加载失败", systemImage: "wifi.slash")
+            } description: {
+                Text(message)
+            } actions: {
+                Button("重试") { Task { await feed.refresh() } }
+            }
+            .padding(.vertical, 20)
         } else if feed.entries.isEmpty {
             ContentUnavailableView("还没有动态", systemImage: "bell.slash", description: Text("这位 UP 主还没有发过动态。"))
                 .padding(.vertical, 20)

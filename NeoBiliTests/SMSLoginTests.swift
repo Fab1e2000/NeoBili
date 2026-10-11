@@ -28,7 +28,7 @@ final class SMSLoginTests: XCTestCase {
             XCTAssertEqual(fields["local_id"], "own-buvid")
             XCTAssertEqual(fields["device_id"], "server-device")
             XCTAssertEqual(fields["device_tourist_id"], "12345")
-            XCTAssertEqual(fields["mobi_app"], "iphone")
+            XCTAssertEqual(fields["mobi_app"], AppClientIdentity.mobiApp)
             XCTAssertEqual(fields["device_name"], "iPhone")
             XCTAssertEqual(fields["code"], "001234")
             XCTAssertEqual(request.value(forHTTPHeaderField: "buvid"), "own-buvid")

@@ -16,7 +16,6 @@ struct LiveRoomView: View {
     @State private var orientationOwner = UUID()
     @State private var controlsVisible = false
     @State private var controlsSafeArea = EdgeInsets()
-    @State private var reloadID = 0
     @State private var requestedQuality: Int?
     @State private var hideTask: Task<Void, Never>?
     @State private var keepsControlsForMenu = false
@@ -74,10 +73,8 @@ struct LiveRoomView: View {
         .ignoresSafeArea(isFullScreen ? .all : [], edges: .all)
         .statusBarHidden(isFullScreen)
         .background { PlayerSafeAreaReader { controlsSafeArea = $0 }.allowsHitTesting(false) }
-        .task(id: reloadID) {
-            if !keepsPlaybackOnDismiss || reloadID > 0 {
-                await player.load(quality: requestedQuality)
-            }
+        .onAppear {
+            if !keepsPlaybackOnDismiss { player.requestLoad(quality: requestedQuality) }
         }
         .task(id: followContext) { await following.load(followContext) }
         // 真实房间号在播放地址返回后才更新；跟着它（重）连弹幕服务器。
@@ -247,7 +244,7 @@ struct LiveRoomView: View {
     private func reconnect() {
         keepsControlsForMenu = false
         controlsVisible = true
-        reloadID += 1
+        player.requestLoad(quality: requestedQuality)
     }
 
     private func toggleFullScreen() {

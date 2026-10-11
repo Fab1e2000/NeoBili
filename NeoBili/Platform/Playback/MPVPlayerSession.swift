@@ -14,21 +14,46 @@ final class MPVPlayerSession {
         }
     }
     var onEvent: ((PlayerPlaybackEvent) -> Void)? {
-        didSet { viewController.onEvent = onEvent }
+        didSet {
+            guard onEvent != nil else { viewController.onEvent = nil; return }
+            viewController.onEvent = { [weak self] event in
+                guard let self else { return }
+                switch event {
+                case .playing(let playing):
+                    if playing { refreshAudioFocusIfNeeded() }
+                    else { audioSession.release(audioOwner) }
+                case .ended, .error:
+                    releaseAudioFocus()
+                default: break
+                }
+                onEvent?(event)
+            }
+        }
     }
 
     private(set) var playbackRate: Double = 1
     private var isStopped = false
     private let activatesAudio: Bool
+    private let audioSession: PlaybackAudioSession
+    private let audioOwner = UUID()
+    private var requestsAudio = false
 
-    init(configuration: VideoPlaybackConfiguration) {
+    init(configuration: VideoPlaybackConfiguration, audioSession: PlaybackAudioSession = .shared) {
         activatesAudio = !configuration.silentPreview
-        if activatesAudio { PlaybackAudioSession.activateOnce() }
+        self.audioSession = audioSession
         viewController = MPVMetalViewController(configuration: configuration)
+    }
+
+    deinit {
+        MainActor.assumeIsolated {
+            let audioSession = audioSession, owner = audioOwner
+            viewController.stop { audioSession.release(owner) }
+        }
     }
 
     func open(source: PlaybackSource, startTime: TimeInterval = 0) async throws {
         guard !isStopped else { return }
+        requestAudioFocus()
         // mpv 只有在 `viewDidLoad` 跑过之后才存在（`engine.start` 在那里调用）。
         // SwiftUI 什么时候真正把 viewController 挂进窗口是不确定的——如果
         // playURL 命中缓存、`load()` 里的 await 几乎立刻返回，这里可能跑在
@@ -46,19 +71,24 @@ final class MPVPlayerSession {
 
     func play() {
         guard !isStopped else { return }
-        if activatesAudio { PlaybackAudioSession.activateOnce() }
+        requestAudioFocus()
         viewController.play()
     }
 
     func pause() {
         viewController.pause()
+        releaseAudioFocus()
     }
 
     /// 退出手势的提交帧上异步暂停：UIKit 的 zoom 退出动画正要开始，这里
     /// 不能让主线程同步等内核锁。
     func pauseAsync() {
         guard !isStopped else { return }
-        viewController.pauseAsync()
+        requestsAudio = false
+        viewController.pauseAsync { [weak self] in
+            guard let self, !requestsAudio else { return }
+            audioSession.release(audioOwner)
+        }
     }
 
     func seek(to seconds: TimeInterval) async {
@@ -68,6 +98,23 @@ final class MPVPlayerSession {
     func stop() {
         guard !isStopped else { return }
         isStopped = true
-        viewController.stop()
+        requestsAudio = false
+        let audioSession = audioSession, owner = audioOwner
+        viewController.stop { audioSession.release(owner) }
+    }
+
+    func refreshAudioFocusIfNeeded() {
+        if requestsAudio, !isStopped { audioSession.acquire(audioOwner) }
+    }
+
+    private func requestAudioFocus() {
+        guard activatesAudio else { return }
+        requestsAudio = true
+        audioSession.acquire(audioOwner)
+    }
+
+    private func releaseAudioFocus() {
+        requestsAudio = false
+        audioSession.release(audioOwner)
     }
 }

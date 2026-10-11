@@ -1,7 +1,7 @@
 import SwiftUI
 
 #if DEBUG
-/// Geometry-only diagnostics. Production views publish anchors without drawing
+/// Geometry-only diagnostics. Regression views publish anchors without drawing
 /// markers; the comment spacing tests supply their own rendering overlay.
 struct CommentReplyLayoutBoundsKey: PreferenceKey {
     enum Region: Hashable { case content, block, divider }

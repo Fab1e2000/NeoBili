@@ -1,65 +1,92 @@
 import SwiftUI
 import UIKit
 
-/// 只消费原生滚动中的一段距离，余下距离和惯性仍交给 UIScrollView。
+/// Shared geometry only. Each native list retains its own scroll position and clock.
+struct VideoScrollContext {
+    let minimumContentHeight: CGFloat
+    let reservation: CGFloat
+    let distance: @MainActor () -> CGFloat
+    let isActive: @MainActor (VideoPageSection) -> Bool
+}
+
+extension EnvironmentValues {
+    @Entry var videoScrollContext: VideoScrollContext?
+}
+
 struct PausedVideoCollapseScroll: UIViewRepresentable {
     let consume: (CGFloat) -> CGFloat
     let end: () -> Void
     let canConsume: (CGFloat) -> Bool
     var canContinue: () -> Bool = { true }
+    var section: VideoPageSection = .comments
+    @Environment(\.videoScrollContext) private var geometry
 
     func makeUIView(context: Context) -> Observer { Observer() }
     func updateUIView(_ view: Observer, context: Context) {
-        view.consume = consume
-        view.end = end
-        view.canContinue = canContinue
-        if !canContinue() { view.cancelMomentum() }
-        view.canConsume = canConsume
-        if !canConsume(1), !canConsume(-1) { view.releaseScroll() }
+        view.consume = consume; view.end = end; view.canConsume = canConsume
+        view.configure(geometry, page: section, ownsInsets: false)
         view.attach()
+        DispatchQueue.main.async { [weak view] in view?.attach() }
     }
     static func dismantleUIView(_ view: Observer, coordinator: ()) { view.detach() }
 
+    /// Like a smooth pager, the selected UIScrollView owns drag and deceleration.
+    /// Reading its offset never locks it or creates another animation clock.
     final class Observer: UIView {
         var consume: ((CGFloat) -> CGFloat)?
         var end: (() -> Void)?
         var canConsume: ((CGFloat) -> Bool)?
-        var canContinue: (() -> Bool)?
         private weak var scroll: UIScrollView?
-        private var observation: NSKeyValueObservation?
+        private var geometry: VideoScrollContext?
+        private var page = VideoPageSection.comments
+        private var ownsInsets = false
+        private var originalInsets = UIEdgeInsets.zero
+        private var appliedInsets = UIEdgeInsets.zero
+        private var offsetObservation: NSKeyValueObservation?
+        private var insetObservation: NSKeyValueObservation?
+        private var sizeObservation: NSKeyValueObservation?
         private var correcting = false
-        private var consumed = false
-        private var blocking = false
-        private var lockedOffset = CGPoint.zero
-        private var lastTranslation: CGFloat = 0
-        private var lastOffset = CGPoint.zero
-        private var verticalDrag = false
-        private var displayLink: CADisplayLink?
-        private var lastTimestamp: CFTimeInterval = 0
-        private var momentum: CGFloat = 0
-        private lazy var ticker = WeakTicker(owner: self)
+        private var representedDistance: CGFloat = 0
+        private var lastOffset: CGFloat = 0
+        private(set) var readingOffset: CGFloat = 0
 
-        @MainActor
-        private final class WeakTicker: NSObject {
-            weak var owner: Observer?
-            init(owner: Observer) { self.owner = owner }
-            @objc func tick(_ link: CADisplayLink) { owner?.tick(link) }
+        func configure(_ geometry: VideoScrollContext?, page: VideoPageSection, ownsInsets: Bool) {
+            self.geometry = geometry; self.page = page; self.ownsInsets = ownsInsets
+            synchronize()
         }
-
         override func didMoveToWindow() { super.didMoveToWindow(); attach() }
         override func didMoveToSuperview() { super.didMoveToSuperview(); attach() }
+        override func layoutSubviews() { super.layoutSubviews(); attach() }
 
         func attach() {
             var ancestor = superview
             while let view = ancestor {
                 if let target = view as? UIScrollView {
-                    guard scroll !== target else { return }
+                    guard scroll !== target else { synchronize(); return }
                     detach()
-                    scroll = target
-                    target.panGestureRecognizer.addTarget(self, action: #selector(panned(_:)))
-                    observation = target.observe(\.contentOffset, options: [.old, .new]) { [weak self] scroll, change in
+                    scroll = target; originalInsets = target.contentInset
+                    readingOffset = max(0, target.contentOffset.y + target.adjustedContentInset.top)
+                    lastOffset = target.contentOffset.y + target.adjustedContentInset.top
+                    synchronize()
+                    offsetObservation = target.observe(\.contentOffset, options: [.new]) { [weak self] target, _ in
+                        MainActor.assumeIsolated { self?.moved(target) }
+                    }
+                    insetObservation = target.observe(\.contentInset, options: [.old, .new]) { [weak self] target, change in
                         MainActor.assumeIsolated {
-                            self?.moved(scroll, old: change.oldValue ?? scroll.contentOffset)
+                            guard let self, !self.correcting else { return }
+                            if self.ownsInsets {
+                                var native = target.contentInset
+                                if native.top == self.appliedInsets.top { native.top = self.originalInsets.top }
+                                if native.bottom == self.appliedInsets.bottom { native.bottom = self.originalInsets.bottom }
+                                self.originalInsets = native
+                            }
+                            self.synchronize()
+                        }
+                    }
+                    sizeObservation = target.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
+                        MainActor.assumeIsolated {
+                            guard let self, self.ownsInsets, !self.correcting else { return }
+                            self.synchronize()
                         }
                     }
                     return
@@ -68,161 +95,93 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
             }
         }
 
-        private func moved(_ scroll: UIScrollView, old: CGPoint) {
-            // 布局扩高也会改变 contentOffset，这里只固定列表，不从它计算手指距离。
-            guard !correcting, blocking else { return }
+        private func synchronize() {
+            guard let scroll, let geometry else { return }
             correcting = true
-            scroll.contentOffset = lockedOffset
+            if ownsInsets {
+                var inset = originalInsets; inset.top += geometry.reservation
+                inset.bottom += max(0, geometry.minimumContentHeight - scroll.contentSize.height - originalInsets.bottom)
+                appliedInsets = inset
+                if scroll.contentInset != inset { scroll.contentInset = inset }
+            }
+            if geometry.isActive(page) {
+                let nextDistance = geometry.distance()
+                let target = readingOffset + nextDistance - scroll.adjustedContentInset.top
+                let normalized = scroll.contentOffset.y + scroll.adjustedContentInset.top
+                let isTopBounce = (scroll.isDragging || scroll.isDecelerating)
+                    && normalized < nextDistance && readingOffset == 0
+                    && nextDistance == representedDistance
+                // Identical offset writes also cancel UIScrollView deceleration.
+                if !isTopBounce, abs(target - scroll.contentOffset.y) > 0.5 {
+                    scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: target), animated: false)
+                }
+                representedDistance = nextDistance
+            }
+            lastOffset = scroll.contentOffset.y + scroll.adjustedContentInset.top
             correcting = false
         }
 
-        @objc private func panned(_ gesture: UIPanGestureRecognizer) {
-            handlePan(state: gesture.state, translation: gesture.translation(in: scroll?.window),
-                      velocity: gesture.velocity(in: scroll?.window))
-        }
-
-        func handlePan(state: UIGestureRecognizer.State, translation: CGPoint, velocity: CGPoint) {
-            guard let scroll else { return }
-            switch state {
-            case .began:
-                stopMomentum()
-                consumed = false
-                blocking = false
-                lastTranslation = translation.y
-                lastOffset = scroll.contentOffset
-                verticalDrag = abs(velocity.y) > abs(velocity.x)
-            case .changed:
-                let delta = lastTranslation - translation.y
-                lastTranslation = translation.y
-                defer { lastOffset = scroll.contentOffset }
-                guard verticalDrag, abs(delta) > 0.001 else { return }
-                let minimum = -scroll.adjustedContentInset.top
-                let previousOffset = blocking ? lockedOffset : lastOffset
-                // 下拉先让列表回顶，只有跨过顶部的剩余手指距离用于展开。
-                let requested = VideoScrollHandoff.playerDelta(delta, offset: previousOffset.y, minimum: minimum)
-                guard abs(requested) > 0.001, canConsume?(requested) == true else {
-                    if blocking {
-                        blocking = false
-                        scroll.contentOffset.y = max(minimum, previousOffset.y + delta)
-                    }
-                    return
+        private func moved(_ target: UIScrollView) {
+            guard !correcting, let geometry else { return }
+            let offset = target.contentOffset.y + target.adjustedContentInset.top
+            let delta = offset - lastOffset
+            lastOffset = offset
+            let userDriven = target.isDragging || target.isDecelerating
+            if geometry.isActive(page), userDriven, !horizontalPagerIsMoving() {
+                let distance = geometry.distance()
+                let requested = delta > 0 ? min(delta, max(0, offset - distance)) : min(0, offset - distance)
+                if abs(requested) > 0.001, canConsume?(requested) == true {
+                    _ = consume?(requested)
                 }
-                blocking = true
-                lockedOffset = CGPoint(x: previousOffset.x, y: delta < 0 ? minimum : previousOffset.y)
-                let used = consume?(requested) ?? 0
-                consumed = consumed || abs(used) > 0
-                if canConsume?(requested) != true || abs(used - requested) > 0.01 {
-                    blocking = false
-                    // 到达任一端点后，剩余位移归还给原生列表。
-                    scroll.contentOffset.y = max(minimum, lockedOffset.y + requested - used)
-                } else {
-                    moved(scroll, old: lockedOffset)
-                }
-            case .ended:
-                // 松手时列表可能尚未回顶。此时也要接管朝顶部的惯性，
-                // 否则原生减速到顶后无法将剩余位移交给播放器。
-                let returnsToPlayer = verticalDrag && velocity.y > 0 && canConsume?(-1) == true
-                if (blocking && consumed) || returnsToPlayer {
-                    if !blocking {
-                        lockedOffset = scroll.contentOffset
-                        lockedOffset.y = max(lockedOffset.y, -scroll.adjustedContentInset.top)
-                    }
-                    blocking = true
-                    momentum = -velocity.y
-                    lastTimestamp = 0
-                    let link = CADisplayLink(target: ticker, selector: #selector(WeakTicker.tick(_:)))
-                    displayLink = link
-                    link.add(to: .main, forMode: .common)
-                }
-                if consumed { end?() }
-                consumed = false
-            case .cancelled, .failed:
-                stopMomentum()
-                blocking = false
-                consumed = false
-            default: break
+                representedDistance = geometry.distance()
             }
+            readingOffset = max(0, offset - representedDistance)
         }
 
-        func releaseScroll() {
-            // 收缩终点仍需承接同一段惯性，不能在视图刷新时将它截断。
-            if displayLink == nil { blocking = false }
+        private func horizontalPagerIsMoving() -> Bool {
+            var parent = scroll?.superview
+            while let view = parent {
+                if let pager = view as? UIScrollView, pager.contentSize.width > pager.bounds.width + 1,
+                   pager.isDragging || pager.isDecelerating { return true }
+                parent = view.superview
+            }
+            return false
         }
 
-        private func tick(_ link: CADisplayLink) {
-            guard let scroll, window != nil, canContinue?() == true else {
-                cancelMomentum()
-                return
-            }
-            guard lastTimestamp > 0 else { lastTimestamp = link.timestamp; return }
-            let dt = min(link.timestamp - lastTimestamp, 1.0 / 30)
-            lastTimestamp = link.timestamp
-            advanceMomentum(elapsed: dt)
-        }
-
-        /// 手指位移与惯性使用相同的交接顺序；拆出时间步以验证松手后的行为。
-        func advanceMomentum(elapsed dt: TimeInterval) {
-            guard let scroll, displayLink != nil, blocking, dt.isFinite, dt > 0 else { return }
-            // UIScrollView 的 decelerationRate 是每毫秒速度保留比例。
-            let rate = Double(scroll.decelerationRate.rawValue)
-            let decay = pow(rate, dt * 1000)
-            let distance = momentum * CGFloat((decay - 1) / (1000 * log(rate)))
-            momentum *= CGFloat(decay)
-            let minimum = -scroll.adjustedContentInset.top
-            let requested = VideoScrollHandoff.playerDelta(distance, offset: lockedOffset.y, minimum: minimum)
-            let used = canConsume?(requested) == true ? (consume?(requested) ?? 0) : 0
-            let remainder = distance - used
-            if abs(remainder) > 0.01 {
-                let maximum = max(minimum, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
-                let proposed = lockedOffset.y + remainder
-                lockedOffset.y = min(max(proposed, minimum), maximum)
-                if abs(proposed - lockedOffset.y) > 0.01 { momentum = 0 }
-            }
-            moved(scroll, old: lockedOffset)
-            if abs(momentum) < 5 {
-                // 清掉原列表尚未结束的减速，避免释放锁定后突然跳动。
-                correcting = true
-                scroll.setContentOffset(lockedOffset, animated: false)
-                correcting = false
-                stopMomentum()
-                blocking = false
-            }
-        }
-
-        func cancelMomentum() {
-            guard displayLink != nil else { return }
-            stopMomentum()
-            if let scroll {
-                correcting = true
-                scroll.setContentOffset(lockedOffset, animated: false)
-                correcting = false
-            }
-            blocking = false
-        }
-
-        private func stopMomentum() {
-            displayLink?.invalidate()
-            displayLink = nil
-            lastTimestamp = 0
-            momentum = 0
+        func logicalOffset(for target: UIScrollView) -> CGFloat {
+            correcting ? readingOffset : max(0, target.contentOffset.y + target.adjustedContentInset.top - representedDistance)
         }
 
         func detach() {
-            stopMomentum()
-            observation?.invalidate()
-            observation = nil
-            scroll?.panGestureRecognizer.removeTarget(self, action: #selector(panned(_:)))
-            scroll = nil
-            blocking = false
-            consumed = false
+            offsetObservation?.invalidate(); insetObservation?.invalidate(); sizeObservation?.invalidate()
+            offsetObservation = nil; insetObservation = nil; sizeObservation = nil
+            if ownsInsets, let scroll { scroll.contentInset = originalInsets }
+            scroll = nil; representedDistance = 0
         }
     }
 }
 
-/// 正值上滑收缩；负值下拉只有越过列表顶部的部分才能展开播放器。
+/// Positive travel collapses the header; negative travel expands only at the list top.
 enum VideoScrollHandoff {
     static func playerDelta(_ delta: CGFloat, offset: CGFloat, minimum: CGFloat) -> CGFloat {
         guard delta.isFinite, offset.isFinite, minimum.isFinite else { return 0 }
         return delta < 0 ? min(0, delta + max(0, offset - minimum)) : delta
+    }
+}
+
+/// Keep native list bounds constant while revealing it above its fixed bottom edge.
+/// This stays in the existing SwiftUI tree, including its paging transaction.
+struct VideoScrollCanvas<Content: View>: View {
+    let height: CGFloat
+    let content: Content
+    var body: some View {
+        GeometryReader { geometry in
+            content.frame(width: geometry.size.width, height: height)
+                .offset(y: geometry.size.height - height)
+        }
+        // Clipping only limits rendering. The translated list must also stop
+        // receiving touches outside the currently visible content viewport.
+        .contentShape(Rectangle())
+        .clipped()
     }
 }

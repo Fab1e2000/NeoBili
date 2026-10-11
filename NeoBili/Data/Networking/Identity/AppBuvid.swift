@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -30,6 +31,12 @@ enum AppBuvid {
         let prefix = "neobili.experiment.randomBuvid.v1."
         return CredentialStorage(read: { base.read(prefix + $0) },
                                  write: { value, key in base.write(value, prefix + key) })
+    }
+
+    static func customRegistrationStorage(_ base: CredentialStorage, buvid: String) -> CredentialStorage {
+        let digest = SHA256.hash(data: Data(buvid.utf8)).map { String(format: "%02x", $0) }.joined()
+        let prefix = "neobili.customBuvid.v1." + digest + "."
+        return CredentialStorage(read: { base.read(prefix + $0) }, write: { base.write($0, prefix + $1) })
     }
 
     static func generate(idfa: String? = nil, idfv: String?) -> String? {

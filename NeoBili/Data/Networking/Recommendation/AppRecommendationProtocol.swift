@@ -18,11 +18,32 @@ enum AppRecommendationProtocol {
             "auto_refresh_state": "4", "login_event": "0", "open_event": openEvent,
             "inline_sound": "1", "inline_sound_cold_state": "4", "autoplay_card": "10",
             "video_mode": "1", "inline_danmu": "1", "client_attr": "0", "qn_policy": "1",
-            "network": network, "player_net": network == "mobile" ? "2" : (network == "wifi" ? "1" : "3"), "soft_fnval": "2", "teenagers_age": "16",
+            "network": network, "player_net": network == "mobile" ? "2" : (network == "wifi" ? "1" : "3"), "soft_fnval": "2",
             "banner_hash": bannerHash, "splash_ids": "", "splash_creative_id": ""
         ]) { _, value in value }
+        if AppClientIdentity.isInternationalFeedDiagnostic {
+            // Observed international refresh on this device; not a claim about
+            // all cold-start, layout-change or pagination operations.
+            params.merge(["column": "2", "fnval": "17364", "soft_fnval": "0",
+                "auto_refresh_state": "1", "autoplay_card": "11", "inline_danmu": "2",
+                "inline_sound_cold_state": "2", "voice_balance": "1", "widgets": ""]) { _, value in value }
+            if request.isRefresh && pull && !request.isLayoutChange { params["flush"] = "14" }
+        }
         if let display { params["player_extra_content"] = display.playerExtraContent }
         return params
+    }
+
+    static func alignDiagnosticHeaders(_ request: inout URLRequest) {
+        guard AppClientIdentity.isInternationalFeedDiagnostic,
+              request.url?.path == "/x/v2/feed/index" else { return }
+        // Only this observed feed header profile, after all common headers merge.
+        for name in ["Referer", "x-bili-aurora-zone", "x-bili-device-bin"] {
+            request.setValue(nil, forHTTPHeaderField: name)
+        }
+        // Controlled comparison on the same CN network; no copied recent-region blob.
+        request.setValue("CN", forHTTPHeaderField: "x-bili-metadata-ip-region")
+        request.setValue("CN", forHTTPHeaderField: "x-bili-metadata-legal-region")
+        request.setValue("1", forHTTPHeaderField: "x-bili-redirect")
     }
 
 }
