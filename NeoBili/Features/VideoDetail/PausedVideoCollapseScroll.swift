@@ -177,11 +177,20 @@ struct VideoScrollCanvas<Content: View>: View {
     var body: some View {
         GeometryReader { geometry in
             content.frame(width: geometry.size.width, height: height)
+                .contentShape(.interaction, VideoCanvasInteractionShape(visibleHeight: geometry.size.height))
                 .offset(y: geometry.size.height - height)
         }
         // Clipping only limits rendering. The translated list must also stop
         // receiving touches outside the currently visible content viewport.
         .contentShape(Rectangle())
         .clipped()
+    }
+}
+
+private struct VideoCanvasInteractionShape: Shape {
+    let visibleHeight: CGFloat
+    func path(in rect: CGRect) -> Path {
+        let height = min(rect.height, max(0, visibleHeight))
+        return Path(CGRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height))
     }
 }

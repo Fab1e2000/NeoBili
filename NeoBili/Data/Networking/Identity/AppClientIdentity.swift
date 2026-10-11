@@ -4,17 +4,14 @@ import Darwin
 /// 与实测官方 iPhone 9.13.0 请求配套的身份；所有 App 通道共用。
 /// build 是协议兼容版本，不是 NeoBili 自己的发布版本。
 enum AppClientIdentity {
-    #if DEBUG && NEOBILI_INTERNATIONAL_FEED_DIAGNOSTIC
-    static let isInternationalFeedDiagnostic = true
-    #else
-    static let isInternationalFeedDiagnostic = false
-    #endif
-    static let mobiApp = isInternationalFeedDiagnostic ? "iphone_i" : "iphone"
-    static let build = isInternationalFeedDiagnostic ? "91300300" : "91300100"
+    // Shared production profile, matching the device-validated international build.
+    static let isInternationalProfile = true
+    static let mobiApp = isInternationalProfile ? "iphone_i" : "iphone"
+    static let build = isInternationalProfile ? "91300300" : "91300100"
     static let version = "9.13.0"
     static let credentialScope = "ios-27eb53fc-v1"
     // Captured statistics version is independent of the build's 9.13.0 version.
-    static let statistics = isInternationalFeedDiagnostic
+    static let statistics = isInternationalProfile
         ? #"{"appId":14,"version":"6.6.0","abtest":"","platform":1}"#
         : #"{"appId":1,"version":"9.13.0","abtest":"","platform":1}"#
     static let parameters = ["mobi_app": mobiApp, "build": build, "platform": "ios", "device": "phone"]

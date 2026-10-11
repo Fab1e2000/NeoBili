@@ -18,6 +18,14 @@ class ValidationWorkflowTests(unittest.TestCase):
             (self.root / folder).mkdir(parents=True)
         for file in ("scripts/verify.sh", ".githooks/pre-push"):
             shutil.copyfile(ROOT / file, self.root / file)
+        # Python 3.14 treats empty unittest discovery as a failure. The nested
+        # quick fixture needs one inert test, rather than depending on that exit code.
+        (self.root / "scripts/tests/test_verify.py").write_text(
+            "import unittest\n"
+            "class FixtureSmokeTest(unittest.TestCase):\n"
+            "    def test_fixture(self):\n"
+            "        pass\n"
+        )
         self.env = dict(os.environ, CALL_LOG=str(self.root / "calls"))
         self.env["PATH"] = str(self.root / "bin") + os.pathsep + self.env["PATH"]
         # The fixture has no Swift or Xcode dependency; only orchestration runs.

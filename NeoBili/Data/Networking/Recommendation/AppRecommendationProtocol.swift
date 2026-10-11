@@ -21,7 +21,7 @@ enum AppRecommendationProtocol {
             "network": network, "player_net": network == "mobile" ? "2" : (network == "wifi" ? "1" : "3"), "soft_fnval": "2",
             "banner_hash": bannerHash, "splash_ids": "", "splash_creative_id": ""
         ]) { _, value in value }
-        if AppClientIdentity.isInternationalFeedDiagnostic {
+        if AppClientIdentity.isInternationalProfile {
             // Observed international refresh on this device; not a claim about
             // all cold-start, layout-change or pagination operations.
             params.merge(["column": "2", "fnval": "17364", "soft_fnval": "0",
@@ -33,8 +33,8 @@ enum AppRecommendationProtocol {
         return params
     }
 
-    static func alignDiagnosticHeaders(_ request: inout URLRequest) {
-        guard AppClientIdentity.isInternationalFeedDiagnostic,
+    static func alignFeedHeaders(_ request: inout URLRequest) {
+        guard AppClientIdentity.isInternationalProfile,
               request.url?.path == "/x/v2/feed/index" else { return }
         // Only this observed feed header profile, after all common headers merge.
         for name in ["Referer", "x-bili-aurora-zone", "x-bili-device-bin"] {

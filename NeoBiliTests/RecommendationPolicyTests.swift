@@ -71,7 +71,7 @@ final class RecommendationPolicyTests: XCTestCase {
                      "network":"", "player_net":"3", "guidance":"1", "soft_fnval":"2", "fnval":"84948",
                      "fnver":"0", "force_host":"0", "https_url_req":"0", "qn":"32", "voice_balance":"0",
                      "disable_rcmd":"0", "recsys_mode":"0", "fourk":"1", "column":"4"]
-        if AppClientIdentity.isInternationalFeedDiagnostic {
+        if AppClientIdentity.isInternationalProfile {
             fixed.merge(["auto_refresh_state":"1", "autoplay_card":"11", "inline_danmu":"2",
                 "inline_sound_cold_state":"2", "voice_balance":"1", "column":"2", "fnval":"17364", "soft_fnval":"0"]) { _, value in value }
         }
@@ -82,7 +82,7 @@ final class RecommendationPolicyTests: XCTestCase {
             XCTAssertEqual(params["banner_hash"], "own-banner")
             for key in ["splash_id", "splash_ids", "splash_creative_id"] { XCTAssertEqual(params[key], "") }
             for key in ["ad_extra", "access_key", "teenagers_age"] { XCTAssertNil(params[key]) }
-            XCTAssertEqual(params["widgets"], AppClientIdentity.isInternationalFeedDiagnostic ? "" : nil)
+            XCTAssertEqual(params["widgets"], AppClientIdentity.isInternationalProfile ? "" : nil)
         }
         XCTAssertEqual(AppRecommendationProtocol.parameters(for: .init(source: .app, isLayoutChange: true))["flush"], "2")
         XCTAssertEqual(PlaybackEntry.history.parameters()["from"], "64")
@@ -104,11 +104,19 @@ final class RecommendationPolicyTests: XCTestCase {
         XCTAssertEqual(batch.exposurePolicy?.durationEndRatio, 0.7)
         XCTAssertEqual(batch.exposurePolicy?.minimumDurationMilliseconds, 500)
     }
-    func testChinaLocaleContainsOnlyKnownFields() throws {
+    func testInternationalLocaleContainsOnlyKnownFields() throws {
         let data = try XCTUnwrap(Data(base64Encoded: AppDeviceLocale.header))
         let locale = Data([10,2]) + Data("zh".utf8) + Data([18,4]) + Data("Hans".utf8) + Data([26,2]) + Data("CN".utf8)
-        let expected = Data([10,14]) + locale + Data([18,14]) + locale + Data([34,13]) + Data("Asia/Shanghai".utf8)
+        let appLocale = Data([10, 2, 122, 104, 18, 4, 72, 97, 110, 115, 26, 2, 85, 83])
+        var expected = Data([10, 14])
+        expected.append(locale)
+        expected.append(contentsOf: [18, 14])
+        expected.append(appLocale)
+        expected.append(contentsOf: [34, 13])
+        expected.append(Data("Asia/Shanghai".utf8))
+        expected.append(contentsOf: [66, 3])
+        expected.append(Data("USA".utf8))
         XCTAssertEqual(data, expected)
-        XCTAssertFalse(data.contains(Data("USA".utf8)))
+        XCTAssertTrue(data.contains(Data("USA".utf8)))
     }
 }

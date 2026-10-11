@@ -2,8 +2,7 @@
 import XCTest
 @testable import NeoBili
 
-final class InternationalFeedDiagnosticTests: XCTestCase {
-    #if NEOBILI_INTERNATIONAL_FEED_DIAGNOSTIC
+final class InternationalFeedProfileTests: XCTestCase {
     func testEncodedFeedUsesCapturedProfileAndOwnDynamicIdentity() throws {
         let account = AppAccountSnapshot(accessKey: "own-token", mid: 42, sessionID: UUID())
         let headers = ["buvid":"own-device", "session_id":"own-session", "x-bili-ticket":"own-ticket",
@@ -39,16 +38,10 @@ final class InternationalFeedDiagnosticTests: XCTestCase {
         XCTAssertEqual(other.value(forHTTPHeaderField: "x-bili-device-bin"), "own-metadata")
         XCTAssertNil(other.value(forHTTPHeaderField: "x-bili-metadata-ip-region"))
     }
-    #else
-    func testOrdinaryBuildKeepsItsExistingProfile() {
-        XCTAssertFalse(AppClientIdentity.isInternationalFeedDiagnostic)
-        XCTAssertEqual(AppClientIdentity.mobiApp, "iphone")
-        XCTAssertEqual(AppClientIdentity.build, "91300100")
-        let params = AppRecommendationProtocol.parameters(for: .init(source: .app, isRefresh: true))
-        XCTAssertEqual(params["flush"], "6")
-        XCTAssertEqual(params["column"], "4")
-        XCTAssertNil(params["widgets"])
+    func testDefaultBuildUsesTheValidatedInternationalProfile() {
+        XCTAssertTrue(AppClientIdentity.isInternationalProfile)
+        XCTAssertEqual(AppClientIdentity.mobiApp, "iphone_i")
+        XCTAssertEqual(AppClientIdentity.build, "91300300")
     }
-    #endif
 }
 #endif

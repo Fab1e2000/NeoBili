@@ -36,7 +36,7 @@ final class AppRelatedTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
         let metadata = try AppProto(XCTUnwrap(Data(base64Encoded: XCTUnwrap(request.value(forHTTPHeaderField: "x-bili-metadata-bin")))))
         XCTAssertEqual(metadata.text(1), "own-fixture")
-        XCTAssertEqual(metadata.text(2), "iphone")
+        XCTAssertEqual(metadata.text(2), "iphone_i")
         XCTAssertEqual(metadata.text(6), "own-device")
         do {
             _ = try await client.appGRPC(path: "bilibili.app.viewunite.v1.View/View", payload: Data(),

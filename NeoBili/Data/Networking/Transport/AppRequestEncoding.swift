@@ -64,7 +64,7 @@ struct AppRequestEncoder: AppRequestEncoding {
             request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
             // Endpoint headers have always overridden the defaults, including Referer.
             apply(context.headers, to: &request)
-            AppRecommendationProtocol.alignDiagnosticHeaders(&request)
+            AppRecommendationProtocol.alignFeedHeaders(&request)
             return request
         case let .form(path, parameters, usesAPIHost):
             guard let key else { throw BiliAPIError.missingAccessKey }

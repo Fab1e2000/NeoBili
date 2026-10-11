@@ -41,7 +41,7 @@ enum AppDeviceLocale {
             return Data([number << 3 | 2, UInt8(bytes.count)]) + bytes
         }
         let locale = field(1, Data("zh".utf8)) + field(2, Data("Hans".utf8)) + field(3, Data("CN".utf8))
-        if AppClientIdentity.isInternationalFeedDiagnostic {
+        if AppClientIdentity.isInternationalProfile {
             let appLocale = field(1, Data("zh".utf8)) + field(2, Data("Hans".utf8)) + field(3, Data("US".utf8))
             return (field(1, locale) + field(2, appLocale) + field(4, Data("Asia/Shanghai".utf8))
                     + field(8, Data("USA".utf8))).base64EncodedString()

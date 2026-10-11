@@ -251,7 +251,7 @@ final class AppRecommendationTests: XCTestCase {
         let refresh = RecommendationRequest(source: .app, isRefresh: true)
         let requests = [initial, refresh, refresh.next(appCursor: 456)]
         let params = requests.map { AppRecommendationProtocol.parameters(for: $0) }
-        XCTAssertEqual(params.map { $0["flush"] }, ["0", AppClientIdentity.isInternationalFeedDiagnostic ? "14" : "6", "8"])
+        XCTAssertEqual(params.map { $0["flush"] }, ["0", AppClientIdentity.isInternationalProfile ? "14" : "6", "8"])
         XCTAssertEqual(params.map { $0["pull"] }, ["1", "1", "0"])
         XCTAssertEqual(params.map { $0["idx"] }, ["0", "0", "456"])
         for value in params {
@@ -259,7 +259,7 @@ final class AppRecommendationTests: XCTestCase {
             XCTAssertEqual(value["actionKey"], "appkey")
             XCTAssertEqual(value["c_locale"], "zh-Hans_CN")
             XCTAssertEqual(value["s_locale"], "zh-Hans_CN")
-            XCTAssertEqual(value["fnval"], AppClientIdentity.isInternationalFeedDiagnostic ? "17364" : "84948", "Recommendation comparison policy, separate from playback capabilities")
+            XCTAssertEqual(value["fnval"], AppClientIdentity.isInternationalProfile ? "17364" : "84948", "Recommendation comparison policy, separate from playback capabilities")
             XCTAssertEqual(value["device_name"], AppClientIdentity.deviceName)
             for field in ["player_extra_content", "ad_extra", "access_key"] {
                 XCTAssertNil(value[field], "Do not fabricate or copy dynamic state: \(field)")

@@ -40,13 +40,14 @@ SMS/兑换获得的 Cookie、access token、refresh token、expires_in 成组保
 完成标记防止后续启动再次清理，新登录仍需用户完成。普通构建、Release 和 Simulator
 不会自动执行该清理；不表示服务器一定接受新登记或新设备推荐一定改善。
 
-`NEOBILI_INTERNATIONAL_FEED_DIAGNOSTIC` 是独立的 Debug 国际版对照构建，不执行身份清理。
-App 身份统一使用 `iphone_i/91300300`，statistics 按国际版样本使用 appId 14/version 6.6.0。
-首页手动刷新使用已捕获的 flush 14，播放/布局设置参数与该样本对齐；冷启动、布局切换、
-翻页保留此前规则，不以单次刷新推定其他操作。推荐请求头采用该次 CN 网络和语言/商店
-地区对照配置，移除样本中未发送的 device-bin、aurora-zone 和 Referer；其他 App 接口
-保留自身设备元数据。账号、BUVID、票据、游标及时间戳仍来自自身状态，年龄继续省略，
-不复制广告数据、近期地区记录或未知字段。普通构建与 Release 维持原有请求策略。
+普通 Debug 与 Release 共用已在设备对照中确认的国际版请求配置，不依赖诊断编译开关。
+App 身份统一使用 `iphone_i/91300300`，statistics 使用 appId 14/version 6.6.0。
+首页手动刷新使用 flush 14，播放/布局设置参数与该样本对齐；冷启动、布局切换、翻页
+保留此前规则，不以单次刷新推定其他操作。推荐请求头采用该次 CN 网络和语言/商店
+地区配置，移除样本中未发送的 device-bin、aurora-zone 和 Referer；其他 App 接口
+保留自身设备元数据。账号、用户选择的 BUVID、票据、游标及时间戳仍来自自身状态，
+年龄继续省略，不复制广告数据、近期地区记录或未知字段。模板来自该次国际版样本，
+不表示所有地区或所有用户的官方参数均相同，也不承诺普遍改善推荐。
 
 另行授权的 `NEOBILI_CAPTURED_DEVICE_DIAGNOSTIC` 在本机 Debug 产物中读取私有
 `DeviceIdentityComparison.json`，临时采用本人官方客户端样本的 BUVID/guestid。
