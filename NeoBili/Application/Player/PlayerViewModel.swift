@@ -22,6 +22,21 @@ final class PlayerViewModel {
     private(set) var isPlaying = false
     private(set) var playbackRate: Double = 1
 
+    private var rateBeforeLongPress: Double?
+
+    func beginTemporaryDoubleSpeed() {
+        guard isPlaying, hasRenderedFirstFrame, !isLoading, errorMessage == nil,
+              !isStopped, rateBeforeLongPress == nil else { return }
+        rateBeforeLongPress = playbackRate
+        selectPlaybackRate(2)
+    }
+
+    func endTemporaryDoubleSpeed() {
+        guard let rate = rateBeforeLongPress else { return }
+        rateBeforeLongPress = nil
+        selectPlaybackRate(rate)
+    }
+
     func selectPlaybackRate(_ rate: Double) {
         guard !isStopped, PlaybackSpeed.options.contains(rate), playbackRate != rate else { return }
         watchProgress.setPlaybackRate(rate, at: watchProgressClock())
@@ -519,6 +534,7 @@ final class PlayerViewModel {
 
     /// 真正离开视频页时立即释放播放器、观察器和网络缓冲，保证声音立刻停止。
     func stop() {
+        endTemporaryDoubleSpeed()
         guard !isStopped else { return }
         savePlaybackProgress()
         isStopped = true
@@ -564,6 +580,7 @@ final class PlayerViewModel {
 
     /// 被另一个视频页盖住时调用。只停声音和画面，不释放播放项目。
     func pause() {
+        endTemporaryDoubleSpeed()
         savePlaybackProgress()
         danmaku?.setPaused(true)
         guard !isStopped else { return }

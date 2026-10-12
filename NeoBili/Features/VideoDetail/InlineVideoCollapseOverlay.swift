@@ -6,7 +6,7 @@ struct InlineVideoCollapseOverlay: View {
     let progress: Double
     let videoHeight: CGFloat
     let topInset: CGFloat
-    let isCollapsed: Bool
+    private var capturesPlaybackInput: Bool { progress > 0 }
     let player: PlayerViewModel?
     let onBack: () -> Void
     let onExpand: () -> Void
@@ -18,6 +18,16 @@ struct InlineVideoCollapseOverlay: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            // Only the paused collapse below the compact video size owns taps.
+            // Expanded-to-compact resizing keeps normal player interaction.
+            Button(action: onExpand) {
+                Color.clear
+                    .frame(height: videoHeight)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("展开视频并\(playTitle)")
+
             themeColor
                 .frame(height: videoHeight + topInset)
                 .offset(y: -topInset)
@@ -33,14 +43,11 @@ struct InlineVideoCollapseOverlay: View {
                 }
                 .accessibilityLabel("返回")
 
-                Button(action: onExpand) {
-                    Label(playTitle, systemImage: player?.isPlaybackCompleted == true ? "arrow.counterclockwise" : "play.fill")
-                        .font(.subheadline.weight(.medium))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("展开视频并\(playTitle)")
+                Label(playTitle, systemImage: player?.isPlaybackCompleted == true ? "arrow.counterclockwise" : "play.fill")
+                    .font(.subheadline.weight(.medium))
+                    .frame(maxWidth: .infinity)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
 
                 Color.clear.frame(width: 44, height: 44)
                     .allowsHitTesting(false)
@@ -52,9 +59,11 @@ struct InlineVideoCollapseOverlay: View {
             .frame(height: videoHeight)
             .buttonStyle(.plain)
             .opacity(progress)
-            .allowsHitTesting(isCollapsed)
-            .accessibilityHidden(!isCollapsed)
+            .allowsHitTesting(capturesPlaybackInput)
+            .accessibilityHidden(!capturesPlaybackInput)
         }
         .frame(maxWidth: .infinity, alignment: .top)
+        .allowsHitTesting(capturesPlaybackInput)
+        .accessibilityHidden(!capturesPlaybackInput)
     }
 }
