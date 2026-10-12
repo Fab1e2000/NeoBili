@@ -80,6 +80,10 @@ final class PlayerGestureInputTests: XCTestCase {
         }
         XCTAssertTrue(input.hold.isEnabled)
         PlayerGestureInput.dismantleUIView(input, coordinator: ())
+        XCTAssertEqual(cancellations, 0, "Dismantling must not write SwiftUI state during graph teardown")
+        for _ in 0..<100 where cancellations == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         XCTAssertEqual(cancellations, 1)
     }
 }

@@ -30,7 +30,7 @@ struct PlayerGestureInput: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: PlayerGestureInputView, coordinator: ()) {
-        view.cancelInteraction()
+        view.dismantleInteraction()
     }
 }
 
@@ -89,6 +89,25 @@ final class PlayerGestureInputView: UIView, UIGestureRecognizerDelegate {
                    recognizer.state == .ended)
         case .cancelled, .failed: onCancel()
         default: break
+        }
+    }
+
+    /// SwiftUI holds an exclusive graph access while dismantling representables.
+    /// Cancel recognition immediately, then notify state owners after teardown.
+    func dismantleInteraction() {
+        tap.cancelPendingTap()
+        let wasHolding = holding
+        holding = false
+        let notifyHold = onLongPressChanged
+        let notifyCancel = onCancel
+        onTap = {}
+        onDoubleTap = {}
+        onLongPressChanged = { _ in }
+        onDrag = { _, _ in }
+        onCancel = {}
+        Task { @MainActor in
+            if wasHolding { notifyHold(false) }
+            notifyCancel()
         }
     }
 
