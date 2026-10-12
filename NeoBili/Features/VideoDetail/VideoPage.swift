@@ -194,8 +194,8 @@ struct VideoPage: View {
                     videoArea(isVideoHidden: hidesVideo)
                         .frame(width: geometry.size.width,
                                height: videoHeight)
-                        .allowsHitTesting(!hidesVideo)
-                        .accessibilityHidden(hidesVideo)
+                        .allowsHitTesting(collapseProgress == 0)
+                        .accessibilityHidden(collapseProgress > 0)
 
                 }
                 .frame(width: geometry.size.width,
@@ -269,7 +269,6 @@ struct VideoPage: View {
                 if !isFullScreen {
                     InlineVideoCollapseOverlay(progress: collapseProgress, videoHeight: videoHeight,
                                                topInset: geometry.safeAreaInsets.top,
-                                               isCollapsed: hidesVideo,
                                                player: store.player, onBack: store.goBack) {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             videoCollapseDistance = 0
@@ -306,11 +305,7 @@ struct VideoPage: View {
                 clampVideoCollapse()
             } else {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    if phase == .playing {
-                        videoCollapseDistance = 0
-                    } else {
-                        clampVideoCollapse()
-                    }
+                    videoCollapseDistance = collapseLayout.distanceAfterPlaybackChange(videoCollapseDistance, to: phase)
                 }
             }
         }

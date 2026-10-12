@@ -7,6 +7,20 @@ final class InlineVideoCollapseTests: XCTestCase {
         expandedHeight: 554, standardHeight: 221, allowsCompact: true
     )
 
+    func testPlaybackTogglesPreservePortraitResizeUntilTheControlStripStage() {
+        for phase: InlineVideoPlaybackPhase in [.paused, .playing, .loading] {
+            for distance: CGFloat in [0, 1, 166.5, 332.9, 333] {
+                XCTAssertEqual(portrait.distanceAfterPlaybackChange(distance, to: phase), distance,
+                               "Normal resizing and the compact endpoint must survive playback changes")
+            }
+        }
+        for distance: CGFloat in [333.01, 400, 498] {
+            XCTAssertEqual(portrait.distanceAfterPlaybackChange(distance, to: .playing), 0)
+            XCTAssertEqual(portrait.distanceAfterPlaybackChange(distance, to: .paused), distance)
+            XCTAssertEqual(portrait.distanceAfterPlaybackChange(distance, to: .loading), 333)
+        }
+    }
+
     func testLoadingCannotBeMistakenForPausedOrForEarlyPlayingSignal() {
         for playing in [false, true] {
             for loading in [false, true] {
@@ -141,7 +155,7 @@ final class InlineVideoCollapseTests: XCTestCase {
         XCTAssertEqual(disallowedPortrait.maximumDistance(for: .playing), 0)
     }
 
-    func testVideoInteractionRemainsAvailableUntilTheStripIsFullyOpaque() {
+    func testVideoRemainsVisibleUntilTheStripIsFullyOpaque() {
         for distance: CGFloat in [0, 333, 333.5, 333.6, 400, 497.9] {
             XCTAssertFalse(portrait.hidesVideo(for: distance))
             XCTAssertLessThan(portrait.visualProgress(for: distance, phase: .paused), 1)

@@ -28,6 +28,37 @@ final class PlayerQualityTests: XCTestCase {
         XCTAssertFalse(player.isPlaying, "Changing speed must not resume paused playback")
     }
 
+    func testTemporaryDoubleSpeedRestoresSelectedRateAndPauseCancelsIt() async throws {
+        let payload = try Self.payload(quality: 80)
+        let player = try makePlayer(payload: payload, loader: { _, _, _ in payload })
+        defer { player.stop() }
+        player.selectPlaybackRate(1.25)
+        player.beginTemporaryDoubleSpeed()
+        XCTAssertEqual(player.playbackRate, 1.25, "Loading cannot begin a speed hold")
+        await player.load()
+        ready(player, position: 37)
+        player.beginTemporaryDoubleSpeed()
+        player.beginTemporaryDoubleSpeed()
+        XCTAssertEqual(player.playbackRate, 2)
+        XCTAssertEqual(player.session.playbackRate, 2)
+        player.endTemporaryDoubleSpeed()
+        player.endTemporaryDoubleSpeed()
+        XCTAssertEqual(player.playbackRate, 1.25, "Repeated callbacks must preserve the original rate")
+        XCTAssertTrue(player.isPlaying)
+        player.beginTemporaryDoubleSpeed()
+        player.pause()
+        XCTAssertEqual(player.session.playbackRate, 1.25)
+        player.beginTemporaryDoubleSpeed()
+        XCTAssertEqual(player.playbackRate, 1.25)
+        XCTAssertFalse(player.isPlaying, "A hold must not start paused playback")
+        player.togglePlayPause()
+        XCTAssertTrue(player.isPlaying)
+        player.beginTemporaryDoubleSpeed()
+        player.stop()
+        player.endTemporaryDoubleSpeed()
+        XCTAssertEqual(player.playbackRate, 1.25)
+    }
+
     func testDeclared4KIsNotMistakenForAnAlreadyAuthorizedStream() throws {
         let payload = try Self.payload(quality: 80)
         XCTAssertEqual(payload.declaredVideoQualities, [120, 80, 64])

@@ -48,7 +48,13 @@ struct PlayerControlsOverlay: View {
             if viewModel.errorMessage == nil {
                 PlayerProgressGestureLayer(
                     progressSource: progressSource, isFullScreen: isFullScreen, canSeek: canControlPlayback,
+                    canLongPress: canControlPlayback && viewModel.isPlaying,
                     feedbackTopInset: controlsSafeAreaInsets.top,
+                    onDoubleTap: togglePlayback,
+                    onLongPressChanged: { active in
+                        if active { viewModel.beginTemporaryDoubleSpeed() }
+                        else { viewModel.endTemporaryDoubleSpeed() }
+                    },
                     onTap: toggleControls, onToggleFullScreen: onToggleFullScreen,
                     onSeekChanged: { time in
                         guard canControlPlayback else { return }
@@ -63,6 +69,7 @@ struct PlayerControlsOverlay: View {
                         cancelScrub()
                     }
                 )
+                .id(ObjectIdentifier(viewModel))
             }
             if isWaiting, !showsControls {
                 ProgressView().tint(.white)
@@ -96,7 +103,7 @@ struct PlayerControlsOverlay: View {
             await viewModel.storyboardStore.load(VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid))
             await viewModel.storyboardStore.prepare(at: viewModel.currentTime)
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: showsControls)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: showsControls)
         .onChange(of: isFullScreen) { scheduleAutoHide(afterInteraction: false) }
         .onChange(of: viewModel.isPlaying) { scheduleAutoHide(afterInteraction: false) }
         .onDisappear {
