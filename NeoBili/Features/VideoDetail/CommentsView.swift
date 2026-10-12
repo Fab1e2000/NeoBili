@@ -78,8 +78,10 @@ struct CommentsView: View {
                             .allowsHitTesting(false)
                     }
                 }
+                // Keep the reservation inside the content: a scroll margin also
+                // clips the list independently of the moving native viewport.
+                .padding(.top, geometry?.reservation ?? 0)
         }
-        .contentMargins(.top, geometry?.reservation ?? 0, for: .scrollContent)
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollPosition($scrollPosition)
         .overlay {
@@ -110,8 +112,10 @@ struct VideoCommentsLoadingView: View {
                     PausedVideoCollapseScroll(consume: consume, end: {}, canConsume: canConsume)
                         .allowsHitTesting(false)
                 }
+                // Keep the reservation inside the content: a scroll margin also
+                // clips the list independently of the moving native viewport.
+                .padding(.top, geometry?.reservation ?? 0)
         }
-        .contentMargins(.top, geometry?.reservation ?? 0, for: .scrollContent)
         .scrollBounceBehavior(.always, axes: .vertical)
         .overlay {
             GeometryReader { proxy in

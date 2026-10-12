@@ -10,7 +10,10 @@ struct PlayerVerticalGestureLayer: View {
     let currentTime: Double
     let duration: Double
     var canSeek = true
+    var canLongPress = false
     var feedbackTopInset: CGFloat = 0
+    var onDoubleTap: () -> Void = {}
+    var onLongPressChanged: (Bool) -> Void = { _ in }
     let onTap: () -> Void
     let onToggleFullScreen: () -> Void
     let onSeekChanged: (Double) -> Void
@@ -19,6 +22,7 @@ struct PlayerVerticalGestureLayer: View {
     @AppStorage(PlayerGestureSettings.leftKey) private var left = 0.33
     @AppStorage(PlayerGestureSettings.rightKey) private var right = 0.67
     @AppStorage(PlayerGestureSettings.reverseKey) private var reversed = false
+    @Environment(\.scenePhase) private var scenePhase
     @State private var output = PlayerGestureOutput()
     @State private var zone: Zone?
     @State private var value: CGFloat = 0
@@ -28,24 +32,30 @@ struct PlayerVerticalGestureLayer: View {
     @State private var beganFullscreen = false
     @State private var seek: PlayerSeekGestureState?
     @State private var lastVolumeUpdate: TimeInterval = 0
-    @GestureState private var dragging = false
+    @State private var isLongPressActive = false
 
     private enum Zone { case brightness, volume, fullscreen, seek }
 
     var body: some View {
         GeometryReader { geometry in
-            Color.clear
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 18, coordinateSpace: .local)
-                        .updating($dragging) { _, active, _ in active = true }
-                        .onChanged { drag in update(drag, size: geometry.size) }
-                        .onEnded { drag in
-                            if zone != nil { update(drag, size: geometry.size) }
-                            finish(cancelled: false)
-                        }
-                        .exclusively(before: TapGesture().onEnded(onTap))
-                )
+            PlayerGestureInput(
+                canLongPress: canLongPress,
+                onTap: onTap,
+                onDoubleTap: { if canSeek { onDoubleTap() } },
+                onLongPressChanged: { active in
+                    if active {
+                        isLongPressActive = true
+                        onLongPressChanged(true)
+                    } else {
+                        endLongPress()
+                    }
+                },
+                onDrag: { drag, ended in
+                    update(drag, size: geometry.size)
+                    if ended { finish(cancelled: false) }
+                },
+                onCancel: { finish(cancelled: true) }
+            )
                 .overlay(alignment: .top) {
                     feedback
                         .environment(\.colorScheme, .dark)
@@ -56,7 +66,7 @@ struct PlayerVerticalGestureLayer: View {
                         .accessibilityHidden(true)
                 }
                 .background {
-                    SystemGestureVolumeView(output: output)
+                    PlayerGestureOutputView(output: output)
                         .frame(width: 1, height: 1)
                         .clipped()
                         .opacity(0.001)
@@ -64,22 +74,23 @@ struct PlayerVerticalGestureLayer: View {
                         .accessibilityHidden(true)
                 }
         }
-        .onChange(of: dragging) { _, active in
-            // SwiftUI 取消手势时不会调用 onEnded，仍要清理预览状态。
-            if !active, zone != nil { finish(cancelled: true) }
-        }
+        .onChange(of: canLongPress) { _, enabled in if !enabled { endLongPress() } }
         .onChange(of: canSeek) { _, enabled in if !enabled { finish(cancelled: true) } }
         .onChange(of: isFullScreen) { finish(cancelled: true) }
-        .onAppear { output.startObservingVolume() }
-        .onDisappear {
-            finish(cancelled: true)
-            output.stopObservingVolume()
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { finish(cancelled: true) }
         }
+        .onDisappear { finish(cancelled: true) }
     }
 
     @ViewBuilder
     private var feedback: some View {
-        if let seek, zone == .seek {
+        if isLongPressActive {
+            Label("2×", systemImage: "forward.fill")
+                .font(.callout.monospacedDigit())
+                .padding(12)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
+        } else if let seek, zone == .seek {
             VStack(spacing: 6) {
                 Label(seek.isCancelled ? "松开取消跳转" : (seek.delta >= 0 ? "快进" : "后退"),
                       systemImage: seek.isCancelled ? "xmark" : (seek.delta >= 0 ? "forward.fill" : "backward.fill"))
@@ -92,19 +103,19 @@ struct PlayerVerticalGestureLayer: View {
             .font(.subheadline)
             .padding(12)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
-        } else if zone == .brightness || zone == .volume || (zone == nil && output.externalVolume != nil) {
-            let displayedValue = zone == nil ? (output.externalVolume ?? output.volume) : value
-            Label("\(Int((displayedValue * 100).rounded()))%", systemImage: zone == .brightness ? "sun.max.fill" : "speaker.wave.2.fill")
+        } else if zone == .brightness || zone == .volume {
+            Label("\(Int((value * 100).rounded()))%", systemImage: zone == .brightness ? "sun.max.fill" : "speaker.wave.2.fill")
                 .font(.callout.monospacedDigit())
                 .padding(12)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
-    private func update(_ drag: DragGesture.Value, size: CGSize) {
+    private func update(_ drag: PlayerGestureDrag, size: CGSize) {
         if zone == nil {
             let dx = abs(drag.translation.width)
             let dy = abs(drag.translation.height)
+            guard max(dx, dy) >= 18 else { return }
             if dx > 2 * dy {
                 guard canSeek, let state = PlayerSeekGestureState(
                     position: currentTime, duration: duration, width: size.width,
@@ -118,6 +129,7 @@ struct PlayerVerticalGestureLayer: View {
                 let x = drag.startLocation.x / max(size.width, 1)
                 zone = x < bounds.0 ? .brightness : (x > bounds.1 ? .volume : .fullscreen)
                 value = zone == .brightness ? output.brightness : output.volume
+                if zone == .volume { output.beginVolumeGesture() }
             } else {
                 return
             }
@@ -156,11 +168,19 @@ struct PlayerVerticalGestureLayer: View {
         }
     }
 
+    private func endLongPress() {
+        guard isLongPressActive else { return }
+        isLongPressActive = false
+        onLongPressChanged(false)
+    }
+
     private func finish(cancelled: Bool) {
+        endLongPress()
         let completedZone = zone
         zone = nil
         fired = false
         if completedZone == .volume { output.setVolume(value) }
+        output.endVolumeGesture()
         if completedZone == .seek, let seek {
             if cancelled || seek.isCancelled { onSeekCancelled() }
             else { onSeekEnded(seek.target) }
@@ -169,66 +189,50 @@ struct PlayerVerticalGestureLayer: View {
     }
 }
 
+/// The ordinary host supplies the scene for brightness. A volume view is only
+/// in the window while a volume gesture owns the feedback; idle hardware keys
+/// therefore use the system HUD.
 @MainActor
-@Observable
-private final class PlayerGestureOutput {
-    @ObservationIgnored weak var view: MPVolumeView?
-    private(set) var externalVolume: CGFloat?
-    @ObservationIgnored private var volumeObservation: NSKeyValueObservation?
-    @ObservationIgnored private var hideVolumeTask: Task<Void, Never>?
-    @ObservationIgnored private var observationID: UUID?
-    @ObservationIgnored private var suppressVolumeEventsUntil: TimeInterval = 0
+final class PlayerGestureOutput {
+    weak var view: UIView?
+    private var volumeView: MPVolumeView?
 
-    func startObservingVolume() {
-        guard volumeObservation == nil else { return }
-        let id = UUID()
-        observationID = id
-        volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] session, _ in
-            let volume = CGFloat(session.outputVolume)
-            let eventTime = ProcessInfo.processInfo.systemUptime
-            Task { @MainActor [weak self] in
-                guard let self, self.observationID == id,
-                      eventTime >= self.suppressVolumeEventsUntil else { return }
-                self.externalVolume = volume
-                self.hideVolumeTask?.cancel()
-                self.hideVolumeTask = Task { @MainActor [weak self] in
-                    do { try await Task.sleep(for: .milliseconds(800)) }
-                    catch { return }
-                    self?.externalVolume = nil
-                }
-            }
-        }
-    }
-
-    func stopObservingVolume() {
-        observationID = nil
-        volumeObservation?.invalidate()
-        volumeObservation = nil
-        hideVolumeTask?.cancel()
-        hideVolumeTask = nil
-        externalVolume = nil
-    }
     var brightness: CGFloat { view?.window?.windowScene?.screen.brightness ?? 0.5 }
     var volume: CGFloat { CGFloat(AVAudioSession.sharedInstance().outputVolume) }
     func setBrightness(_ value: CGFloat) { view?.window?.windowScene?.screen.brightness = value }
+
+    func beginVolumeGesture() {
+        guard volumeView == nil, let view, view.window != nil else { return }
+        let control = MPVolumeView(frame: view.bounds)
+        control.isUserInteractionEnabled = false
+        control.accessibilityElementsHidden = true
+        view.addSubview(control)
+        volumeView = control
+    }
+
     func setVolume(_ value: CGFloat) {
-        guard let slider = view?.subviews.compactMap({ $0 as? UISlider }).first else { return }
-        // 手势写入也会产生系统音量通知；短暂忽略回声，避免松手后重复弹出提示。
-        suppressVolumeEventsUntil = ProcessInfo.processInfo.systemUptime + 0.2
-        hideVolumeTask?.cancel()
-        externalVolume = nil
+        guard let slider = volumeView?.subviews.compactMap({ $0 as? UISlider }).first else { return }
         slider.setValue(Float(value), animated: false)
         slider.sendActions(for: .valueChanged)
     }
+
+    func endVolumeGesture() {
+        volumeView?.removeFromSuperview()
+        volumeView = nil
+    }
 }
 
-private struct SystemGestureVolumeView: UIViewRepresentable {
+struct PlayerGestureOutputView: UIViewRepresentable {
     let output: PlayerGestureOutput
-    func makeUIView(context: Context) -> MPVolumeView {
-        let view = MPVolumeView(frame: .zero)
+    func makeCoordinator() -> PlayerGestureOutput { output }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
         output.view = view
         return view
     }
-    func updateUIView(_ view: MPVolumeView, context: Context) { output.view = view }
-    static func dismantleUIView(_ view: MPVolumeView, coordinator: ()) { }
+    func updateUIView(_ view: UIView, context: Context) { output.view = view }
+    static func dismantleUIView(_ view: UIView, coordinator: PlayerGestureOutput) {
+        coordinator.endVolumeGesture()
+        coordinator.view = nil
+    }
 }

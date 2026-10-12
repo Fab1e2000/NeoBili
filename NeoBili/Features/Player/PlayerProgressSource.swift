@@ -18,7 +18,10 @@ struct PlayerProgressGestureLayer: View {
     let progressSource: PlayerProgressSource
     let isFullScreen: Bool
     var canSeek = true
+    var canLongPress = false
     var feedbackTopInset: CGFloat = 0
+    var onDoubleTap: () -> Void = {}
+    var onLongPressChanged: (Bool) -> Void = { _ in }
     let onTap: () -> Void
     let onToggleFullScreen: () -> Void
     let onSeekChanged: (Double) -> Void
@@ -28,8 +31,9 @@ struct PlayerProgressGestureLayer: View {
     var body: some View {
         let progress = progressSource.read()
         PlayerVerticalGestureLayer(
-            isFullScreen: isFullScreen, currentTime: progress.position, duration: progress.duration, canSeek: canSeek,
+            isFullScreen: isFullScreen, currentTime: progress.position, duration: progress.duration, canSeek: canSeek, canLongPress: canLongPress,
             feedbackTopInset: feedbackTopInset,
+            onDoubleTap: onDoubleTap, onLongPressChanged: onLongPressChanged,
             onTap: onTap, onToggleFullScreen: onToggleFullScreen,
             onSeekChanged: onSeekChanged, onSeekEnded: onSeekEnded, onSeekCancelled: onSeekCancelled
         )

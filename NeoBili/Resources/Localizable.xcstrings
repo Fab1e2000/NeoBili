@@ -1,117 +1,9 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
-    "重试完成登录" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Retry Completing Sign-In"
-          }
-        }
-      }
+    "" : {
+
     },
-    "重新验证手机号" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verify Phone Number Again"
-          }
-        }
-      }
-    },
-    "登录状态已变化，请关闭后重新验证" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Your sign-in session has changed. Close this sheet and verify again."
-          }
-        }
-      }
-    },
-    "没有本地屏蔽的 UP 主" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Locally Hidden Creators"
-          }
-        }
-      }
-    },
-    "解除本地屏蔽" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remove Local Filter"
-          }
-        }
-      }
-    },
-    "本地屏蔽名单" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Locally Hidden Creators"
-          }
-        }
-      }
-    },
-    "解除后从下一次刷新推荐起生效。如果仍在哔哩哔哩的黑名单中，请先到哔哩哔哩 App 或网页解除拉黑。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Changes apply the next time recommendations refresh. If the creator is still blocked on Bilibili, unblock them in the Bilibili app or website first."
-          }
-        }
-      }
-    },
-    "确定拉黑 %@（%@）？\n拉黑后不会再收到他的推荐。在 B 站 App 或网页解除后，还需到本应用的推荐内容过滤中解除本地屏蔽。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Block %@ (%@)?\nYou will no longer receive their recommendations. After unblocking them in the Bilibili app or website, also remove their local filter in this app’s recommendation filtering settings."
-          }
-        }
-      }
-    },
-    "原图加载失败" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Original image failed to load"
-          }
-        }
-      }
-    },
-    "正在加载原图" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loading original image"
-          }
-        }
-      }
-    },
-    "查看原图" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "View Original"
-          }
-        }
-      }
-    },
-    "" : {},
     "，正在直播" : {
       "localizations" : {
         "en" : {
@@ -733,12 +625,28 @@
         }
       }
     },
+    "App 登录授权已失效" : {
+
+    },
+    "App 登录授权已失效，请使用当前账号的短信验证码重新授权。网页登录状态已保留。" : {
+
+    },
     "Bilibili 视频" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bilibili Video"
+          }
+        }
+      }
+    },
+    "BUVID 需为 16–128 位字母、数字或连字符" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BUVID must contain 16–128 letters, digits, or hyphens"
           }
         }
       }
@@ -1008,6 +916,7 @@
       }
     },
     "两种编号均在本机生成并保存。系统派生模式沿用原编号；随机模式首次生成后持续复用，不会每次刷新都更换。" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1156,6 +1065,9 @@
           }
         }
       }
+    },
+    "保存" : {
+
     },
     "保存二维码" : {
       "localizations" : {
@@ -1579,6 +1491,7 @@
       }
     },
     "切换会配套切换设备登记与票据，账号登录保持不变。可切回原模式恢复原编号。推荐结果可能变化，此功能用于兼容性测试。" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1803,6 +1716,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fade In Place"
+          }
+        }
+      }
+    },
+    "原图加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original image failed to load"
           }
         }
       }
@@ -2166,6 +2089,16 @@
         }
       }
     },
+    "填写后保存并持续使用。留空时随机生成一次，之后复用。保存后退出并重新打开 App 生效。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save a BUVID to keep using it. Leave blank to create a persistent random ID. Quit and reopen the app after saving."
+          }
+        }
+      }
+    },
     "复制 %@" : {
       "localizations" : {
         "en" : {
@@ -2215,6 +2148,9 @@
           }
         }
       }
+    },
+    "好" : {
+
     },
     "字体尺寸" : {
       "localizations" : {
@@ -2518,6 +2454,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Left-Edge Dead Zone Width"
+          }
+        }
+      }
+    },
+    "已保存" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved"
           }
         }
       }
@@ -2985,6 +2931,16 @@
         }
       }
     },
+    "当前使用的 BUVID" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current BUVID"
+          }
+        }
+      }
+    },
     "当前加载的投稿都被内容过滤设置隐藏了。" : {
       "localizations" : {
         "en" : {
@@ -3016,6 +2972,7 @@
       }
     },
     "当前生效" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4198,6 +4155,16 @@
         }
       }
     },
+    "本地屏蔽名单" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locally Hidden Creators"
+          }
+        }
+      }
+    },
     "本视频播完" : {
       "localizations" : {
         "en" : {
@@ -4276,6 +4243,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "View All Replies"
+          }
+        }
+      }
+    },
+    "查看原图" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View Original"
           }
         }
       }
@@ -4380,8 +4357,17 @@
         }
       }
     },
+    "正在加载原图" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading original image"
+          }
+        }
+      }
+    },
     "正在加载图片" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4507,6 +4493,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No Folders"
+          }
+        }
+      }
+    },
+    "没有本地屏蔽的 UP 主" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Locally Hidden Creators"
           }
         }
       }
@@ -4902,6 +4898,12 @@
         }
       }
     },
+    "登录已失效" : {
+
+    },
+    "登录已失效，请重新登录。" : {
+
+    },
     "登录成功" : {
       "localizations" : {
         "en" : {
@@ -4938,6 +4940,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sign-in service error"
+          }
+        }
+      }
+    },
+    "登录状态已变化，请关闭后重新验证" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your sign-in session has changed. Close this sheet and verify again."
           }
         }
       }
@@ -5203,6 +5215,7 @@
       }
     },
     "确定拉黑 %@（%@）？\n拉黑后不会再收到他的推荐。可以在 B 站 App 或网页的黑名单管理中解除。" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5214,6 +5227,16 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "确定拉黑 %1$@（%2$@）？\n拉黑后不会再收到他的推荐。可以在 B 站 App 或网页的黑名单管理中解除。"
+          }
+        }
+      }
+    },
+    "确定拉黑 %@（%@）？\n拉黑后不会再收到他的推荐。在 B 站 App 或网页解除后，还需到本应用的推荐内容过滤中解除本地屏蔽。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Block %@ (%@)?\nYou will no longer receive their recommendations. After unblocking them in the Bilibili app or website, also remove their local filter in this app’s recommendation filtering settings."
           }
         }
       }
@@ -5387,6 +5410,9 @@
           }
         }
       }
+    },
+    "稍后" : {
+
     },
     "稍后下拉刷新。" : {
       "localizations" : {
@@ -5607,6 +5633,7 @@
       }
     },
     "编号生成方式" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -5777,6 +5804,26 @@
         }
       }
     },
+    "解除后从下一次刷新推荐起生效。如果仍在哔哩哔哩的黑名单中，请先到哔哩哔哩 App 或网页解除拉黑。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changes apply the next time recommendations refresh. If the creator is still blocked on Bilibili, unblock them in the Bilibili app or website first."
+          }
+        }
+      }
+    },
+    "解除本地屏蔽" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Local Filter"
+          }
+        }
+      }
+    },
     "记录推荐与观看日志" : {
       "localizations" : {
         "en" : {
@@ -5796,6 +5843,9 @@
           }
         }
       }
+    },
+    "设备对照信息未准备" : {
+
     },
     "设备编号" : {
       "localizations" : {
@@ -5979,6 +6029,9 @@
         }
       }
     },
+    "请安装包含本机对照信息的测试版本。" : {
+
+    },
     "请求被 B 站风控拦截，请稍后重试" : {
       "localizations" : {
         "en" : {
@@ -5988,6 +6041,9 @@
           }
         }
       }
+    },
+    "请解锁手机后重新打开 NeoBili。原有登录不会继续使用。" : {
+
     },
     "请退出账号后重新登录" : {
       "localizations" : {
@@ -6109,6 +6165,9 @@
         }
       }
     },
+    "身份重置未完成" : {
+
+    },
     "转发" : {
       "localizations" : {
         "en" : {
@@ -6145,6 +6204,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Smaller"
+          }
+        }
+      }
+    },
+    "输入 BUVID，留空使用随机编号" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter BUVID, or leave blank for a random ID"
           }
         }
       }
@@ -6470,6 +6539,9 @@
         }
       }
     },
+    "重新授权" : {
+
+    },
     "重新播放" : {
       "localizations" : {
         "en" : {
@@ -6480,12 +6552,25 @@
         }
       }
     },
+    "重新登录" : {
+
+    },
     "重新连接" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reconnect"
+          }
+        }
+      }
+    },
+    "重新验证手机号" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verify Phone Number Again"
           }
         }
       }
@@ -6516,6 +6601,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Retry Loading Comments"
+          }
+        }
+      }
+    },
+    "重试完成登录" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry Completing Sign-In"
           }
         }
       }
@@ -6836,56 +6931,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Default Quality"
-          }
-        }
-      }
-    },
-    "输入 BUVID，留空使用随机编号" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enter BUVID, or leave blank for a random ID"
-          }
-        }
-      }
-    },
-    "BUVID 需为 16–128 位字母、数字或连字符" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "BUVID must contain 16–128 letters, digits, or hyphens"
-          }
-        }
-      }
-    },
-    "填写后保存并持续使用。留空时随机生成一次，之后复用。保存后退出并重新打开 App 生效。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Save a BUVID to keep using it. Leave blank to create a persistent random ID. Quit and reopen the app after saving."
-          }
-        }
-      }
-    },
-    "当前使用的 BUVID" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Current BUVID"
-          }
-        }
-      }
-    },
-    "已保存" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Saved"
           }
         }
       }

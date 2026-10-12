@@ -10,15 +10,19 @@ final class InlineVideoCollapseVisualTests: XCTestCase {
     func testContinuousHeaderTintAndTouchPassthroughInForegroundWindow() async throws {
         let host = try CollapseVisualWindow()
         defer { host.close() }
-        let cases: [(String, InlineVideoPlaybackPhase, CGFloat)] = [
-            ("paused-000", .paused, 0), ("paused-025", .paused, 0.25),
-            ("paused-050", .paused, 0.5), ("paused-075", .paused, 0.75),
-            ("paused-100", .paused, 1), ("playing-clamped", .playing, 1),
-            ("loading-clamped", .loading, 1)
+        let cases: [(String, InlineVideoPlaybackPhase, CGFloat, Bool)] = [
+            ("expanded", .paused, -1, true), ("first-pixel", .paused, -0.5, true),
+            ("paused-resize-half", .paused, -0.25, true),
+            ("playing-resize-half", .playing, -0.25, true),
+            ("loading-resize-half", .loading, -0.25, true),
+            ("paused-000", .paused, 0, true), ("paused-001", .paused, 0.01, false),
+            ("paused-025", .paused, 0.25, false), ("paused-050", .paused, 0.5, false),
+            ("paused-075", .paused, 0.75, false), ("paused-100", .paused, 1, false),
+            ("playing-clamped", .playing, 1, true), ("loading-clamped", .loading, 1, true)
         ]
         var previousPausedTint = -1
 
-        for (name, phase, fraction) in cases {
+        for (name, phase, fraction, expectsPlayerInput) in cases {
             let recorder = CollapseVisualRecorder()
             try await host.show(CollapseVisualFixture(phase: phase, fraction: fraction, recorder: recorder).id(name))
             let metrics = try XCTUnwrap(recorder.metrics, name)
@@ -31,15 +35,15 @@ final class InlineVideoCollapseVisualTests: XCTestCase {
             XCTAssertEqual(video.minY, host.window.safeAreaInsets.top, accuracy: 0.5, name)
             XCTAssertEqual(video.height, metrics.height, accuracy: 0.5, name)
             XCTAssertEqual(comments.minY, video.maxY, accuracy: 0.5, name)
-            XCTAssertEqual(metrics.progress, phase == .paused ? Double(fraction) : 0, accuracy: 0.0001, name)
+            XCTAssertEqual(metrics.progress, phase == .paused ? Double(max(0, fraction)) : 0, accuracy: 0.0001, name)
 
             let buttonCenter = underlyingButton.convert(
                 CGPoint(x: underlyingButton.bounds.midX, y: underlyingButton.bounds.midY), to: host.window
             )
             let hit = host.window.hitTest(buttonCenter, with: nil)
             let reachesUnderlyingButton = hit === underlyingButton || hit?.isDescendant(of: underlyingButton) == true
-            XCTAssertEqual(reachesUnderlyingButton, !metrics.isCollapsed,
-                           "Only the completed compact strip takes over input; tint/probes must pass it through: \(name)")
+            XCTAssertEqual(reachesUnderlyingButton, expectsPlayerInput,
+                           "Only the paused compact-to-strip stage takes over input: \(name)")
 
             let screenshot = UIGraphicsImageRenderer(bounds: host.window.bounds).image { _ in
                 host.window.drawHierarchy(in: host.window.bounds, afterScreenUpdates: true)
@@ -68,7 +72,7 @@ final class InlineVideoCollapseVisualTests: XCTestCase {
                 }
             }
             let tint = samples[0].reduce(0, +)
-            if phase == .paused {
+            if phase == .paused && fraction >= 0 {
                 XCTAssertGreaterThan(tint, previousPausedTint, "Tint must advance continuously with distance: \(name)")
                 previousPausedTint = tint
             } else {
@@ -111,11 +115,13 @@ private struct CollapseVisualFixture: View {
                 expandedHeight: InlineVideoLayout.height(for: fullSize, aspectRatio: 9.0 / 16),
                 standardHeight: InlineVideoLayout.height(for: fullSize), allowsCompact: true
             )
-            let requestedDistance = layout.compactTravel + (layout.compactHeight - layout.minimumHeight) * fraction
+            let requestedDistance: CGFloat = fraction == -1 ? 0 : (fraction == -0.5 ? 1
+                : (fraction == -0.25 ? layout.compactTravel / 2
+                   : layout.compactTravel + (layout.compactHeight - layout.minimumHeight) * fraction))
             let distance = layout.constrainedDistance(requestedDistance, for: phase)
             let height = layout.containerHeight(for: distance)
             let progress = layout.visualProgress(for: distance, phase: phase)
-            let isCollapsed = layout.hidesVideo(for: distance)
+            let isCollapsed = progress > 0
             let metrics = CollapseVisualMetrics(height: height, topInset: geometry.safeAreaInsets.top,
                                                 progress: progress, isCollapsed: isCollapsed)
 
@@ -166,7 +172,7 @@ private struct CollapseVisualFixture: View {
                    height: geometry.size.height + geometry.safeAreaInsets.bottom, alignment: .top)
             .overlay(alignment: .top) {
                 InlineVideoCollapseOverlay(progress: progress, videoHeight: height,
-                                           topInset: geometry.safeAreaInsets.top, isCollapsed: isCollapsed,
+                                           topInset: geometry.safeAreaInsets.top,
                                            player: nil, onBack: {}) {}
             }
         }

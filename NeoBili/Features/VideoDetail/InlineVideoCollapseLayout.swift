@@ -48,6 +48,13 @@ struct InlineVideoCollapseLayout: Equatable {
         min(clampedDistance(distance), maximumDistance(for: phase))
     }
 
+    /// Normal portrait resizing survives playback toggles. Only resuming from
+    /// the compact-to-strip stage expands back to the full player.
+    func distanceAfterPlaybackChange(_ distance: CGFloat, to phase: InlineVideoPlaybackPhase) -> CGFloat {
+        if phase == .playing, clampedDistance(distance) > compactTravel { return 0 }
+        return constrainedDistance(distance, for: phase)
+    }
+
     /// 元数据或窗口尺寸变化时保留可见高度；已经缩至标准尺寸则继续停在新的标准尺寸。
     func rebasedDistance(_ distance: CGFloat, from previous: Self, for phase: InlineVideoPlaybackPhase) -> CGFloat {
         guard distance > 0, previous.expandedHeight > 0 else { return 0 }
@@ -85,8 +92,8 @@ struct InlineVideoCollapseLayout: Equatable {
     }
 
     func hidesVideo(for distance: CGFloat) -> Bool {
-        // Intermediate paused frames remain visible and interactive; only the
-        // fully opaque, minimum-height strip takes over their interaction.
+        // Intermediate frames remain visible. Taps expand only after entering
+        // the tinted collapse below compactHeight, before this visibility cutoff.
         visualProgress(for: distance, phase: .paused) == 1
     }
 
