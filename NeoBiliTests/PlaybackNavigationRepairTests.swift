@@ -85,6 +85,23 @@ final class PlaybackNavigationRepairTests: XCTestCase {
         XCTAssertNil(store.player)
     }
 
+    func testLateDetailPreservesLatestSelectedPartOfSameVideo() async throws {
+        let gate = NavigationDetailGate()
+        let store = try makeStore(loader: { _ in try await gate.load() })
+        defer { store.close(); gate.cancelAll() }
+        store.open(VideoDetailRoute(bvid: "BVParts"), from: "search")
+        try await waitUntil { gate.pending[1] != nil }
+        store.selectPart(cid: 11)
+        store.selectPart(cid: 12)
+        store.selectPart(cid: 13)
+        gate.resolve(1, value: detail(bvid: "BVParts", aid: 7, cid: 11))
+        try await waitUntil { store.commentsViewModel?.oid == 7 }
+        XCTAssertEqual(store.activeCid, 13)
+        XCTAssertNil(store.player)
+        store.requestPlayback()
+        XCTAssertEqual(store.player?.cid, 13)
+    }
+
     private func makeStore(loader: @escaping @MainActor (String) async throws -> VideoDetail = { _ in
         throw URLError(.notConnectedToInternet)
     }) throws -> NowPlayingStore {

@@ -297,6 +297,28 @@ final class HomeFeedLayoutTests: XCTestCase {
         XCTAssertEqual(RecommendationFilter.current(defaults).blockedMids, [42])
     }
 
+    func testRefreshRetentionBoundaryAndDuplicateCardsPreserveOrder() async {
+        for oldCount in [200, 201] {
+            let suite = "home-retention.\(UUID())"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            defaults.set(true, forKey: RecommendationFilter.keepLastDataKey)
+            defaults.set(true, forKey: RecommendationFilter.lastSeenTipKey)
+            var calls = 0
+            let model = HomeViewModel(defaults: defaults, fetchRecommendations: { request in
+                calls += 1
+                let values = calls == 1 ? (1...oldCount).map { self.video($0) }
+                    : [self.video(999), self.video(1), self.video(999)]
+                return RecommendationBatch(videos: values, nextRequest: request.next(appCursor: calls))
+            })
+            await model.loadInitial()
+            await model.refresh()
+            let kept = oldCount > 200 ? 50 : oldCount
+            XCTAssertEqual(model.videos.map(\.aid), [999, 1] + Array(2...kept))
+            XCTAssertEqual(model.lastRefreshAt, 2)
+        }
+    }
+
     func testRefreshWithoutKeepingLastDataReplacesFeed() async {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         defaults.set(false, forKey: RecommendationFilter.keepLastDataKey)
