@@ -103,7 +103,7 @@ actor AppDeviceRegistration {
         if let cache, cache.buvid == buvid, cache.expiry > clock() { return cache.id }
         if let pending {
             guard pendingBuvid == buvid else { return cachedID(buvid: buvid) }
-            return await pending.value
+            return await pending.value ?? cachedID(buvid: buvid)
         }
         guard clock() >= retryAfter else { return cachedID(buvid: buvid) }
         retryAfter = clock() + 120

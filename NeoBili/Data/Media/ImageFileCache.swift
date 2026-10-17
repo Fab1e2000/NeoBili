@@ -46,7 +46,11 @@ actor ImageFileCache {
         trim()
         let task = Task<URL, Error> { try await download(remote) }
         inFlight[remote] = task
-        defer { inFlight[remote] = nil }
+        defer {
+            inFlight[remote] = nil
+            // An unowned caller still needs its returned file. A released viewer does not.
+            if let owner, owners[owner] == nil { trim() }
+        }
         return try await task.value
     }
 
