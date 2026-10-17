@@ -29,7 +29,7 @@ extension ApplicationServices {
 }
 
 extension ApplicationServices {
-    @MainActor static func recordExposure(_ event: RecommendationExposureEvent) { LiveExposureReporting.record(event) }
+    @MainActor static func recordExposure(_ event: RecommendationExposureEvent) { LiveExposureReporting.record(event, currentSessionID: live.session.currentID(), reporter: .shared) }
     static func loadDanmaku(cid: Int) async throws -> [DanmakuItem] { try await DanmakuLoader.load(cid: cid) }
 }
 

@@ -56,10 +56,10 @@ actor RecommendationClickReporter {
     }
 
     /// UI calls this only from the actual video Button action, never a preload.
-    @MainActor static func record(_ video: VideoSummary) {
-        let session = DeviceIdentity.shared.loginSessionID
+    @MainActor static func record(_ video: VideoSummary, identity: DeviceIdentity = .shared, reporter: RecommendationClickReporter = .shared) {
+        let session = identity.loginSessionID
         let time = Int(Date().timeIntervalSince1970 * 1000)
-        Task { await shared.record(video, session: session, timestamp: time) }
+        Task { await reporter.record(video, session: session, timestamp: time) }
     }
     func record(_ video: VideoSummary, session: UUID, timestamp: Int) async {
         guard let context = try? await identity.nextBehaviorSnapshot(expectedSessionID: session),

@@ -3,6 +3,14 @@ import Foundation
 /// Owns one room connection, authentication, heartbeats and reconnect cancellation.
 @MainActor
 final class LiveDanmakuConnection: LiveDanmakuStreaming {
+    private let identity: DeviceIdentity
+    private let client: APIClient
+
+    init(identity: DeviceIdentity = .shared, client: APIClient = .shared) {
+        self.identity = identity
+        self.client = client
+    }
+
     private var roomID = 0
     private var socket: URLSessionWebSocketTask?
     private var session: URLSession?
@@ -36,12 +44,12 @@ final class LiveDanmakuConnection: LiveDanmakuStreaming {
         let generation = connectGeneration
         connection = .connecting
         // 服务器列表逐个尝试；每个候选 8 秒内没完成认证就换下一个。
-        guard let info = try? await LiveAPI.danmuInfo(roomID: roomID), !info.hosts.isEmpty else {
+        guard let info = try? await LiveAPI.danmuInfo(roomID: roomID, client: client), !info.hosts.isEmpty else {
             scheduleReconnect(generation: generation)
             return
         }
         guard generation == connectGeneration else { return }
-        let identity = await DeviceIdentity.shared.accountSnapshot()
+        let account = await identity.accountSnapshot()
         guard generation == connectGeneration else { return }
         ensureSession()
         for host in info.hosts {
@@ -64,7 +72,7 @@ final class LiveDanmakuConnection: LiveDanmakuStreaming {
             defer { timeout.cancel() }
 
             let auth: [String: Any] = [
-                "uid": identity.accountID ?? 0, "roomid": roomID, "protover": 2,
+                "uid": account.accountID ?? 0, "roomid": roomID, "protover": 2,
                 "platform": "web", "type": 2, "key": info.token
             ]
             send(packet: LivePacketCodec.packet(op: 7, protover: 1, seq: 1, body: Self.jsonData(auth)))
