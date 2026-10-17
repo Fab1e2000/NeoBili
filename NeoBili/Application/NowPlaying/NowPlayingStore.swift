@@ -44,7 +44,11 @@ final class NowPlayingStore {
     func openLive(_ room: LiveRoom, from sourceID: String) {
         if livePlayer?.room.roomID != room.roomID {
             close()
-            let model = LivePlayerModel(room: room)
+            let services = dependencies.services
+            let model = LivePlayerModel(room: room,
+                roomLoader: { try await services.streaming.roomInfo(roomID: $0) },
+                playbackLoader: { try await services.streaming.playback(roomID: $0, quality: $1) },
+                systemMedia: dependencies.systemMedia)
             livePlayer = model
             model.requestLoad()
         }
@@ -123,16 +127,21 @@ final class NowPlayingStore {
     private var detailLoadTask: Task<Void, Never>?
     private let detailModelFactory: @MainActor (VideoDetailRoute) -> VideoDetailViewModel
 
+    private let dependencies: PlaybackDependencies
     private let defaults: UserDefaults
 
     init(configuration: VideoPlaybackConfiguration = .fastStart, defaults: UserDefaults = .standard,
-         detailModelFactory: @escaping @MainActor (VideoDetailRoute) -> VideoDetailViewModel = {
-             VideoDetailViewModel(bvid: $0.bvid, aid: $0.aid ?? 0, playbackEntry: $0.playbackEntry)
-         }) {
+         detailModelFactory: (@MainActor (VideoDetailRoute) -> VideoDetailViewModel)? = nil,
+         dependencies: PlaybackDependencies = .live) {
         // configuration 形参保留给测试注入使用；线上路径每次都读 `.current`。
         _ = configuration
         self.defaults = defaults
-        self.detailModelFactory = detailModelFactory
+        self.dependencies = dependencies
+        self.detailModelFactory = detailModelFactory ?? { route in
+            VideoDetailViewModel(bvid: route.bvid, aid: route.aid ?? 0, playbackEntry: route.playbackEntry,
+                likeStore: dependencies.likes, services: dependencies.services,
+                fetchDetail: { try await dependencies.preparation.detail(for: $0) })
+        }
     }
 
     /// 服务 sheet 打开期间，由它承载视频模态，根 TabView 暂停呈现。
@@ -421,7 +430,7 @@ final class NowPlayingStore {
             bvid: route.bvid,
             cid: cid,
             aid: route.aid ?? detailViewModel?.detail?.aid ?? 0, playbackEntry: route.playbackEntry,
-            configuration: playbackConfiguration
+            configuration: playbackConfiguration, dependencies: dependencies
         )
         newPlayer.session.surfacePresentation = isMiniPlayerPresented && !isVideoPageDismissalInProgress ? .mini : .page
         player = newPlayer
@@ -455,7 +464,7 @@ final class NowPlayingStore {
         guard let aid = detailViewModel?.detail?.aid else { return }
         // 评论接口要用 av 号，所以只能等详情回来才能建这个视图模型。
         if commentsViewModel?.oid != aid {
-            commentsViewModel = CommentsViewModel(aid: aid)
+            commentsViewModel = CommentsViewModel(oid: aid, type: 1, services: dependencies.services)
         }
     }
 

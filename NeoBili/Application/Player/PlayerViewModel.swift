@@ -8,6 +8,7 @@ typealias PlaybackSourceOpener = @MainActor (MPVPlayerSession, PlaybackSource, T
 @MainActor
 @Observable
 final class PlayerViewModel {
+    @ObservationIgnored private let dependencies: PlaybackDependencies
     @ObservationIgnored private let telemetry: TelemetryService
     let storyboardStore = VideoStoryboardStore()
     let bvid: String
@@ -42,8 +43,8 @@ final class PlayerViewModel {
         watchProgress.setPlaybackRate(rate, at: watchProgressClock())
         playbackRate = rate
         session.setPlaybackRate(rate)
-        SystemNowPlayingCenter.shared.updateElapsed(currentTime, sessionID: systemMediaSessionID, force: true)
-        SystemNowPlayingCenter.shared.updatePlaybackState(isPlaying: isPlaying,
+        dependencies.systemMedia.updateElapsed(currentTime, sessionID: systemMediaSessionID, force: true)
+        dependencies.systemMedia.updatePlaybackState(isPlaying: isPlaying,
             sessionID: systemMediaSessionID, rate: rate)
     }
 
@@ -288,18 +289,16 @@ final class PlayerViewModel {
         pause()
     }
 
-    init(telemetry: TelemetryService = ApplicationServices.live.telemetry,
+    init(telemetry: TelemetryService? = nil,
         bvid: String,
         cid: Int,
         aid: Int = 0, playbackEntry: PlaybackEntry = .other, playbackSession: String? = nil,
         configuration: VideoPlaybackConfiguration = .fastStart,
         playbackURLLoader: PlaybackURLLoader? = nil,
-        qualityPlaybackURLLoader: @escaping QualityPlaybackURLLoader = { bvid, cid, quality in
-            try await ApplicationServices.live.video.playURL(bvid: bvid, cid: cid, quality: quality)
-        },
+        qualityPlaybackURLLoader: QualityPlaybackURLLoader? = nil,
         watchProgressReporter: (@Sendable (String, Int, Double) async -> Void)? = nil,
         watchReportReporter: (@Sendable (PlaybackWatchReport) async -> Void)? = nil,
-        progressStore: PlaybackProgressStore = .shared,
+        progressStore: PlaybackProgressStore? = nil,
         watchProgressClock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         sleepWaiter: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(for: .seconds(seconds))
@@ -307,22 +306,28 @@ final class PlayerViewModel {
         danmakuLoader: @escaping @Sendable (Int) async throws -> [DanmakuItem] = ApplicationServices.loadDanmaku,
         sourceOpener: @escaping PlaybackSourceOpener = { session, source, position in
             try await session.open(source: source, startTime: position)
-        }
+        },
+        dependencies: PlaybackDependencies = .live
     ) {
-        self.telemetry = telemetry
+        self.dependencies = dependencies
+        self.telemetry = telemetry ?? dependencies.services.telemetry
+        let progressStore = progressStore ?? dependencies.progress
+        let services = dependencies.services
         self.watchPlaybackSession = playbackSession ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         self.bvid = bvid
         self.cid = cid
         self.configuration = configuration
         let playbackRequestOwnerID = UUID()
-        let loginSessionID = ApplicationServices.live.session.currentID()
+        let loginSessionID = services.session.currentID()
         self.playbackRequestOwnerID = playbackRequestOwnerID
         self.loginSessionID = loginSessionID
         self.playbackURLLoader = playbackURLLoader ?? { bvid, cid in
-            try await VideoPreparationCache.shared.playbackURL(bvid: bvid, cid: cid,
+            try await dependencies.preparation.playbackURL(bvid: bvid, cid: cid,
                 ownerID: playbackRequestOwnerID, expectedSessionID: loginSessionID)
         }
-        self.qualityPlaybackURLLoader = qualityPlaybackURLLoader
+        self.qualityPlaybackURLLoader = qualityPlaybackURLLoader ?? { bvid, cid, quality in
+            try await services.video.playURL(bvid: bvid, cid: cid, quality: quality)
+        }
         self.sourceOpener = sourceOpener
         self.sleepWaiter = sleepWaiter
         self.danmakuLoader = danmakuLoader
@@ -344,11 +349,11 @@ final class PlayerViewModel {
             self.watchProgressSender = nil
             self.watchReportSender = .shared(loginSessionID: loginSessionID, bvid: bvid, cid: cid, serverReport: { report in
                 if report.aid > 0 {
-                    return try? await ApplicationServices.live.library.reportAppWatch(bvid: bvid, aid: report.aid, cid: cid, report: report,
+                    return try? await services.library.reportAppWatch(bvid: bvid, aid: report.aid, cid: cid, report: report,
                                                      expectedSessionID: loginSessionID)
                 } else {
                     guard report.delivery != .start else { return nil }
-                    try? await ApplicationServices.live.library.reportWatchProgress(bvid: bvid, cid: cid, playedTime: report.position,
+                    try? await services.library.reportWatchProgress(bvid: bvid, cid: cid, playedTime: report.position,
                                                           expectedSessionID: loginSessionID)
                     return nil
                 }
@@ -370,7 +375,7 @@ final class PlayerViewModel {
             savePlaybackProgress()
             watchProgressSender?.enqueue(watchProgress.checkpoint())
             finishWatchReport()
-            SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
+            dependencies.systemMedia.deactivate(sessionID: systemMediaSessionID)
             danmaku?.shutdown()
             sleepTask?.cancel()
             session.stop()
@@ -379,7 +384,7 @@ final class PlayerViewModel {
 
     func updateSystemMediaMetadata(title: String, artist: String, artworkURL: URL?) {
         metadata = SystemMediaMetadata(identifier: bvid, title: title, artist: artist, artworkURL: artworkURL)
-        SystemNowPlayingCenter.shared.activate(
+        dependencies.systemMedia.activate(
             sessionID: systemMediaSessionID,
             metadata: SystemMediaMetadata(
                 identifier: bvid,
@@ -447,7 +452,7 @@ final class PlayerViewModel {
         recoveryTask?.cancel()
         recoveryTask = nil
         replaceSession()
-        await VideoPreparationCache.shared.invalidatePlaybackURL(bvid: bvid, cid: cid,
+        await dependencies.preparation.invalidatePlaybackURL(bvid: bvid, cid: cid,
                                                                  expectedSessionID: loginSessionID)
         guard !isStopped, !Task.isCancelled else { isLoading = false; return }
         if let metadata {
@@ -493,7 +498,7 @@ final class PlayerViewModel {
         isPlaying = false
         isLoading = false
         isBuffering = false
-        SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
+        dependencies.systemMedia.deactivate(sessionID: systemMediaSessionID)
     }
 
     private func recoverFromSourceFailure(_ message: String) {
@@ -549,7 +554,7 @@ final class PlayerViewModel {
         cancelSleepTimer()
         disableDanmaku()
         Task {
-            await VideoPreparationCache.shared.cancelPlaybackURL(bvid: bvid, cid: cid,
+            await dependencies.preparation.cancelPlaybackURL(bvid: bvid, cid: cid,
                 ownerID: playbackRequestOwnerID, sessionID: loginSessionID)
         }
         watchProgressSender?.enqueue(watchProgress.checkpoint())
@@ -557,7 +562,7 @@ final class PlayerViewModel {
         finishWatchReport()
         watchProgress.interrupt()
         session.stop()
-        SystemNowPlayingCenter.shared.deactivate(sessionID: systemMediaSessionID)
+        dependencies.systemMedia.deactivate(sessionID: systemMediaSessionID)
         isPlaying = false
         isLoading = false
     }
@@ -590,7 +595,7 @@ final class PlayerViewModel {
         isPlaying = false
         checkpointWatchProgress()
         watchProgress.interrupt()
-        SystemNowPlayingCenter.shared.updatePlaybackState(
+        dependencies.systemMedia.updatePlaybackState(
             isPlaying: false,
             sessionID: systemMediaSessionID, rate: playbackRate
         )
@@ -634,7 +639,7 @@ final class PlayerViewModel {
             session.play()
         }
         isPlaying = true
-        SystemNowPlayingCenter.shared.updatePlaybackState(
+        dependencies.systemMedia.updatePlaybackState(
             isPlaying: true,
             sessionID: systemMediaSessionID, rate: playbackRate
         )
@@ -659,7 +664,7 @@ final class PlayerViewModel {
         resumeState.seek(to: target)
         danmaku?.seek(to: target)
         savePlaybackProgress()
-        SystemNowPlayingCenter.shared.updateElapsed(
+        dependencies.systemMedia.updateElapsed(
             target,
             sessionID: systemMediaSessionID,
             force: true
@@ -740,7 +745,7 @@ final class PlayerViewModel {
                 checkpointWatchProgress()
                 watchProgress.interrupt()
             }
-            SystemNowPlayingCenter.shared.updatePlaybackState(
+            dependencies.systemMedia.updatePlaybackState(
                 isPlaying: playing,
                 sessionID: systemMediaSessionID, rate: playbackRate
             )
@@ -763,7 +768,7 @@ final class PlayerViewModel {
             )
             startWatchReportIfReady()
             enqueueWatchReport(checkpoint)
-            SystemNowPlayingCenter.shared.updateElapsed(
+            dependencies.systemMedia.updateElapsed(
                 position,
                 sessionID: systemMediaSessionID
             )
@@ -774,11 +779,11 @@ final class PlayerViewModel {
             // Decoding the requested frame confirms a seek, not watched time.
             watchProgress.interrupt()
             savePlaybackProgress()
-            SystemNowPlayingCenter.shared.updateElapsed(position, sessionID: systemMediaSessionID, force: true)
+            dependencies.systemMedia.updateElapsed(position, sessionID: systemMediaSessionID, force: true)
         case .duration(let duration):
             if duration.isFinite, duration > 0 {
                 self.duration = duration
-                SystemNowPlayingCenter.shared.updateDuration(
+                dependencies.systemMedia.updateDuration(
                     duration,
                     sessionID: systemMediaSessionID
                 )
@@ -814,7 +819,7 @@ final class PlayerViewModel {
             if sleepsAfterVideoEnd {
                 enterSleep()
             }
-            SystemNowPlayingCenter.shared.updatePlaybackState(
+            dependencies.systemMedia.updatePlaybackState(
                 isPlaying: false,
                 sessionID: systemMediaSessionID, rate: playbackRate
             )

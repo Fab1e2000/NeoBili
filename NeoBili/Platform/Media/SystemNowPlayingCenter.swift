@@ -2,20 +2,12 @@ import AVFAudio
 import MediaPlayer
 import UIKit
 
-struct SystemMediaMetadata: Equatable, Sendable {
-    let identifier: String
-    let title: String
-    let artist: String
-    let artworkURL: URL?
-    var isLiveStream: Bool = false
-}
-
 /// 把 mpv 的播放状态桥接到锁屏、控制中心、耳机和车载系统。
 ///
 /// `MPNowPlayingInfoCenter` 和 `MPRemoteCommandCenter` 都是进程级单例，因此这里
 /// 用 sessionID 拒绝旧播放器迟到的事件，防止切换视频时旧页面清掉新媒体卡片。
 @MainActor
-final class SystemNowPlayingCenter {
+final class SystemNowPlayingCenter: SystemMediaControlling {
     static let shared = SystemNowPlayingCenter()
 
     private let infoCenter = MPNowPlayingInfoCenter.default()

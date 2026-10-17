@@ -35,3 +35,30 @@ extension ApplicationServices {
 extension ApplicationServices {
     static func imageData(_ url: URL) async throws -> Data { try await BiliImageDataLoader.data(for: url) }
 }
+
+
+extension PlaybackDependencies {
+    @MainActor static let live = Self(
+        services: .live,
+        preparation: ApplicationServices.playbackPreparation,
+        progress: PlaybackProgressStore(),
+        likes: .shared,
+        systemMedia: SystemNowPlayingCenter.shared
+    )
+}
+
+extension ApplicationServices {
+    static let playbackPreparation = VideoPreparationCache(
+            detailLoader: { try await ApplicationServices.live.video.videoDetail(bvid: $0) },
+            playbackLoader: { try await ApplicationServices.live.video.playURL(bvid: $0, cid: $1) },
+            sessionProvider: { ApplicationServices.live.session.currentID() }
+        )
+}
+
+// Compatibility entry points resolve to the same production graph.
+extension PlaybackProgressStore {
+    static var shared: PlaybackProgressStore { PlaybackDependencies.live.progress }
+}
+extension VideoPreparationCache {
+    static var shared: VideoPreparationCache { ApplicationServices.playbackPreparation }
+}

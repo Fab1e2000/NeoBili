@@ -241,18 +241,14 @@ final class MiniPlayerTests: XCTestCase {
     }
 
     func testDismissalAndExpansionReusePlayerSessionAndPlaybackState() throws {
-        let store = NowPlayingStore(defaults: try makeDefaults())
+        let defaults = try makeDefaults()
+        let store = NowPlayingStore(defaults: defaults, dependencies: .isolated(defaults: defaults))
         defer { store.close() }
         let video = route()
         store.openAndMount(video, from: "test-card")
         let player = try XCTUnwrap(store.player)
         let session = player.session
         XCTAssertEqual(session.surfacePresentation, .page)
-        defer {
-            // Avoid a watch-history report or a persisted test progress entry.
-            session.onEvent?(.seekCompleted(0))
-            PlaybackProgressStore.shared.remove(bvid: video.bvid, cid: 1)
-        }
         session.onEvent?(.firstFrame)
         session.onEvent?(.duration(300))
         session.onEvent?(.position(37.25))

@@ -108,3 +108,10 @@ param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 Recor
 ## 无独立音轨的视频
 
 播放接口可能返回 `dash.audio: null`。解码时将缺失或 `null` 音轨视为空列表；结构错误的音轨仍报告解析失败。DASH 视频没有独立音轨时直接打开视频流，不要求构造双轨 EDL。播放源单独保存是否为 DASH，画质和画幅从实际视频轨道读取，不能通过 `audio == nil` 推断它是合并流。该规则也适用于没有独立音轨的竖屏视频。
+
+## 播放依赖组装
+
+`PlaybackDependencies` 持有当前播放图的服务、详情与播放地址缓存、观看进度、点赞差量和系统媒体契约。
+生产实例由 `App/ApplicationServices+Live.swift` 组装；`NowPlayingStore` 将同一图传给视频播放器、
+直播播放器、详情和评论模型。加载、失效与取消使用同一个准备缓存，避免跨实例取消失效。
+测试可注入独立偏好域、缓存和 `SystemMediaControlling`，无需清理共享观看进度或写入系统媒体中心。
