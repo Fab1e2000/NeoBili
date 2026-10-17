@@ -21,7 +21,6 @@ enum RecommendationExperiment {
 
 /// Stores only explicitly selected diagnostic fields. Credentials and raw payloads never reach disk.
 actor RecommendationDiagnostics {
-    static let shared = RecommendationDiagnostics()
     private let directory: URL
     private let limit: Int
     private let enabled: @Sendable () -> Bool

@@ -3,7 +3,6 @@ import ImageIO
 import CryptoKit
 
 actor ImageFileCache {
-    static let shared = ImageFileCache()
 
     typealias Download = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     private let directory: URL

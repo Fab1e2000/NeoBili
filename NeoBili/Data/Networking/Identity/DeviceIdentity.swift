@@ -14,12 +14,6 @@ extension Notification.Name {
 /// 拿到之后所有接口——推荐、评论、收藏、历史——不需要任何额外改动就能获得
 /// 登录态。凭据本体存 Keychain（见 `KeychainStore`），重启 App 后自动恢复。
 actor DeviceIdentity {
-    static let shared = DeviceIdentity(randomBuvidExperiment: !AppNetwork.isRegression && DeviceIdentityPreferences.launchCustomBuvid == nil,
-                                       customBuvid: AppNetwork.isRegression ? nil : DeviceIdentityPreferences.launchCustomBuvid,
-                                       credentials: AppNetwork.isRegression ? .memory() : .keychain,
-                                       allowsNetwork: !AppNetwork.isRegression,
-                                       eventSerialDefaults: AppNetwork.isRegression ? nil :
-                                        UserDefaults(suiteName: "com.elsterlee.NeoBili.behavior-sequence"))
 
     private let defaults: UserDefaults
     private let eventSerialDefaults: UserDefaults

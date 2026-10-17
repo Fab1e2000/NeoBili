@@ -39,7 +39,6 @@ struct AppNetworkMetadataSnapshot: Equatable, Sendable {
 /// The first request may precede the first path callback and truthfully omit the
 /// binary header. Regression instances never start a system monitor.
 final class AppNetworkMetadata: @unchecked Sendable {
-    static let shared = AppNetworkMetadata(monitoring: !AppNetwork.isRegression)
 
     private let lock = NSLock()
     private var current = AppNetworkMetadataSnapshot(connection: .unknown)

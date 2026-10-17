@@ -3,7 +3,6 @@ import Synchronization
 
 /// 生命周期标记与横幅缓存独立于分页游标；账号切换后的旧响应不能写入新会话。
 final class AppRecommendationSession: Sendable {
-    static let shared = AppRecommendationSession()
     struct Context: Sendable {
         let epoch: UUID
         let openEvent: String

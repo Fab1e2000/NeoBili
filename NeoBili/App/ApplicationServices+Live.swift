@@ -45,7 +45,8 @@ extension ApplicationServices {
 }
 
 extension ApplicationServices {
-    static func imageData(_ url: URL) async throws -> Data { try await BiliImageDataLoader.data(for: url) }
+    private static let imageDataLoader = BiliImageDataLoader(session: AppNetwork.session)
+    static func imageData(_ url: URL) async throws -> Data { try await imageDataLoader.data(for: url) }
 }
 
 
@@ -144,4 +145,49 @@ extension PlaybackAudioSession {
 }
 extension PlayerChromePreferences {
     @MainActor static let shared = PlayerChromePreferences()
+}
+
+extension AppRecommendationSession {
+    static let shared = AppRecommendationSession()
+}
+
+extension RecommendationClickReporter {
+    static let shared = RecommendationClickReporter(directory: AppNetwork.isRegression ? nil :
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("RecommendationClickQueue", isDirectory: true))
+}
+
+extension RecommendationDiagnostics {
+    static let shared = RecommendationDiagnostics()
+}
+
+extension AppBehaviorReporter {
+    static let shared = AppBehaviorReporter(directory: AppNetwork.isRegression ? nil :
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("BehaviorQueue", isDirectory: true))
+}
+
+extension APIClient {
+    static let shared = APIClient()
+}
+
+extension WBISigner {
+    static let shared = WBISigner()
+}
+
+extension AppNetworkMetadata {
+    static let shared = AppNetworkMetadata(monitoring: !AppNetwork.isRegression)
+}
+
+extension DeviceIdentity {
+    static let shared = DeviceIdentity(randomBuvidExperiment: !AppNetwork.isRegression && DeviceIdentityPreferences.launchCustomBuvid == nil,
+                                       customBuvid: AppNetwork.isRegression ? nil : DeviceIdentityPreferences.launchCustomBuvid,
+                                       credentials: AppNetwork.isRegression ? .memory() : .keychain,
+                                       allowsNetwork: !AppNetwork.isRegression,
+                                       eventSerialDefaults: AppNetwork.isRegression ? nil :
+                                        UserDefaults(suiteName: "com.elsterlee.NeoBili.behavior-sequence"))
+}
+
+extension ImageFileCache {
+    static let shared = ImageFileCache()
 }

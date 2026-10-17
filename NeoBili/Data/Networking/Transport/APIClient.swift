@@ -20,7 +20,6 @@ struct BiliResponse<T: Decodable>: Decodable {
 /// Thin async wrapper around URLSession for talking to Bilibili's public web
 /// endpoints as an anonymous (logged-out) client.
 struct APIClient {
-    static let shared = APIClient()
 
     private static let baseURL = URL(string: "https://api.bilibili.com")!
     let signWebParameters: @Sendable ([String: String]) async throws -> [String: String]

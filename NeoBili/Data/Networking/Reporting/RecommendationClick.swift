@@ -35,9 +35,6 @@ struct RecommendationClick: Codable, Sendable {
 }
 
 actor RecommendationClickReporter {
-    static let shared = RecommendationClickReporter(directory: AppNetwork.isRegression ? nil :
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("RecommendationClickQueue", isDirectory: true))
     private let directory: URL?
     private let identity: DeviceIdentity
     private let client: APIClient

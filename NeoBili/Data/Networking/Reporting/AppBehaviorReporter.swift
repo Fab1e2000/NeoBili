@@ -17,9 +17,6 @@ struct AppBehaviorEvent: Codable, Sendable {
 }
 
 actor AppBehaviorReporter {
-    static let shared = AppBehaviorReporter(directory: AppNetwork.isRegression ? nil :
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("BehaviorQueue", isDirectory: true))
     typealias Sender = @Sendable ([AppBehaviorEvent]) async throws -> Void
     private let identity: DeviceIdentity
     private let client: APIClient

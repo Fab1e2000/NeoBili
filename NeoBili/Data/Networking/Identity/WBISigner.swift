@@ -10,7 +10,6 @@ import CryptoKit
 /// Endpoints under `.../wbi/...` reject requests that don't carry a valid
 /// `wts`/`w_rid` pair.
 actor WBISigner {
-    static let shared = WBISigner()
 
     private static let mixinKeyEncTab: [Int] = [
         46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,

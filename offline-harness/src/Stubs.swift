@@ -58,3 +58,32 @@ extension VideoFilterDependencies {
                     }))
     }()
 }
+
+private enum HostNetworking {
+    static let defaults = UserDefaults(suiteName: "neobili.offline.networking.\(UUID().uuidString)")!
+}
+extension DeviceIdentity {
+    static let shared = DeviceIdentity(defaults: HostNetworking.defaults, credentials: .memory(),
+                                       allowsNetwork: false, purgeCookies: {})
+}
+extension AppNetworkMetadata {
+    static let shared = AppNetworkMetadata(monitoring: false)
+}
+extension WBISigner {
+    static let shared = WBISigner(defaults: HostNetworking.defaults)
+}
+extension RecommendationDiagnostics {
+    static let shared = RecommendationDiagnostics(enabled: { false })
+}
+extension APIClient {
+    static let shared = APIClient()
+}
+extension AppRecommendationSession {
+    static let shared = AppRecommendationSession()
+}
+extension AppBehaviorReporter {
+    static let shared = AppBehaviorReporter(identity: .shared, client: .shared, automaticScheduling: false)
+}
+extension RecommendationClickReporter {
+    static let shared = RecommendationClickReporter(identity: .shared, client: .shared)
+}
