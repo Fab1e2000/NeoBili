@@ -48,7 +48,7 @@ private struct PlayerChromeSliders: View {
     /// 全屏「跟随系统」时的横屏安全区宽度。
     let automaticSideInset: CGFloat
 
-    private var preferences: PlayerChromePreferences { .shared }
+    @Environment(\.playerChromePreferences) private var preferences
     private var values: PlayerChromeSettings.Values { preferences.values(for: mode) }
     private var defaults: PlayerChromeSettings.Values { PlayerChromeSettings.defaults(for: mode) }
 

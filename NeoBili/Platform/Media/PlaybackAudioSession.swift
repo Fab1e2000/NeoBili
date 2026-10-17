@@ -45,7 +45,6 @@ final class PlaybackAudioSession {
         }
     }
 
-    static let shared = PlaybackAudioSession(endpoint: .live)
     private enum State { case inactive, activating, active, deactivating }
     private var state: State = .inactive
     private var owners: Set<UUID> = []

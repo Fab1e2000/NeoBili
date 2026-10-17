@@ -95,7 +95,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     @ViewBuilder var menuContent: () -> MenuContent
     @ScaledMetric(relativeTo: .body) private var textScale: CGFloat = 1
     /// 控件位置设置，全屏横屏与非全屏各一组。
-    private var chromePreferences: PlayerChromePreferences { .shared }
+    @Environment(\.playerChromePreferences) private var chromePreferences
 
     var body: some View {
         // 边距和间距来自设置页（PlayerChromePreferences）。在 body 里读取，

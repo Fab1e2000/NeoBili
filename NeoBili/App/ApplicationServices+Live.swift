@@ -133,3 +133,15 @@ extension VideoDurationFilterSettings {
 extension PortraitVideoStore {
     static var shared: PortraitVideoStore { VideoFilterDependencies.live.metadata }
 }
+
+extension OwnerAvatarCache {
+    static let shared = OwnerAvatarCache(loader: { mid in
+        try await ApplicationServices.live.community.spaceCard(mid: mid).secureAvatarURL
+    })
+}
+extension PlaybackAudioSession {
+    @MainActor static let shared = PlaybackAudioSession(endpoint: .live)
+}
+extension PlayerChromePreferences {
+    @MainActor static let shared = PlayerChromePreferences()
+}

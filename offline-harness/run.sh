@@ -120,7 +120,8 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 
 # 播放器控件位置设置对象：沿用旧键、只写入改动项、恢复默认。
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Features/Player/PlayerChromeSettings.swift" \
+    "$APP/Domain/Models/PlayerChromeSettings.swift" \
+    "$APP/Application/Settings/PlayerChromePreferences.swift" \
     "$HARNESS/src/PlayerChromePreferencesRegression.swift" \
     -o "$BUILD_DIR/player-chrome-preferences"
 "$BUILD_DIR/player-chrome-preferences"

@@ -3,7 +3,6 @@ import Foundation
 /// App recommendations omit avatars. Resolve by UP ID, coalesce duplicates and
 /// keep at most two metadata requests active instead of fetching every video detail.
 actor OwnerAvatarCache {
-    static let shared = OwnerAvatarCache()
     private struct Entry {
         let url: URL?
         let expiresAt: Date
@@ -14,9 +13,7 @@ actor OwnerAvatarCache {
     private var nextLane = 0
     private let loader: @Sendable (Int) async throws -> URL?
 
-    init(loader: @escaping @Sendable (Int) async throws -> URL? = { mid in
-        try await ApplicationServices.live.community.spaceCard(mid: mid).secureAvatarURL
-    }) { self.loader = loader }
+    init(loader: @escaping @Sendable (Int) async throws -> URL?) { self.loader = loader }
 
     func url(for mid: Int) async -> URL? {
         guard mid > 0, !Task.isCancelled else { return nil }
