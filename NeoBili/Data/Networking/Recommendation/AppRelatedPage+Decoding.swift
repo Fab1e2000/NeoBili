@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 extension AppRelatedPage {
@@ -42,9 +45,7 @@ extension AppRelatedPage {
             cards = response.messages(1); cursor = response.data(2)
             more = cursor.flatMap { try? AppProto($0).text(2) }?.isEmpty == false
         }
-        hasRelatedModule = foundModule
-        pagination = cursor; canLoadMore = more
-        videos = cards.compactMap { card in
+        let videos: [VideoSummary] = cards.compactMap { card in
             guard card.number(1) == 1, let basic = card.messages(12).first, let av = card.messages(2).first,
                   let title = basic.text(1), let cover = basic.text(3), basic.number(12) > 0,
                   let bvid = AppRecommendationPage.bvid(aid: basic.number(12)) else { return nil }
@@ -61,5 +62,6 @@ extension AppRelatedPage {
             video.playbackEntry = PlaybackEntry(source: .related, trackID: basic.text(5), reportFlowData: basic.text(15), loginSessionID: accountSession)
             return video
         }
+        self.init(videos: videos, pagination: cursor, canLoadMore: more, hasRelatedModule: foundModule)
     }
 }

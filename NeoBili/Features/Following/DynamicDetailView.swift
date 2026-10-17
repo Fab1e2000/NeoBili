@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 动态详情页。点文字/图文动态本身，或者点任意动态的评论按钮进来。

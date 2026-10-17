@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 简介里的合集入口：折叠成一行，点开才列出全部分集。

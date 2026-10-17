@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// UP 主空间页。头图 + 名片在上，下面用分段控件在「投稿」和「动态」之间切换。

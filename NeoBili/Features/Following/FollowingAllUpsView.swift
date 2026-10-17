@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 所有关注的 UP 主，每行五个头像、下方名字；轻点进入个人主页。

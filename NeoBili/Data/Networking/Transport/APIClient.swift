@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 struct BiliResponse<T: Decodable>: Decodable {

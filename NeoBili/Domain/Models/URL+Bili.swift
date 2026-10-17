@@ -4,7 +4,7 @@ extension URL {
     /// Bilibili image/API responses mix `http://`, `https://` and protocol-relative
     /// (`//i0.hdslb.com/...`) URLs depending on the endpoint. Normalize all three
     /// to a valid `https://` URL.
-    static func biliSecure(_ raw: String) -> URL? {
+    public static func biliSecure(_ raw: String) -> URL? {
         var string = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !string.isEmpty else { return nil }
         if string.hasPrefix("//") {

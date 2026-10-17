@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// Immutable event-time facts. Credentials are acquired only when sending.

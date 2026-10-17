@@ -47,7 +47,7 @@ struct ApplicationServices {
 extension HomeFeedAccount {
     static func current() async -> Self { await ApplicationServices.live.session.homeAccount() }
 }
-enum ServiceError: Error { case unconfigured(String) }
+public enum ServiceError: Error { case unconfigured(String) }
 
 extension VideoFilterDependencies {
     @MainActor static let live: Self = {

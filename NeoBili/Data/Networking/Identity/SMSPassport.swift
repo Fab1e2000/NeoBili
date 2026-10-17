@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// App 短信登录。登录尝试使用自己的设备身份，写请求不自动重试。

@@ -1,8 +1,8 @@
 import Foundation
 
-enum VideoDuration {
+public enum VideoDuration {
     /// 接口的时长文本使用 M:SS 或 H:MM:SS；无法解析时交给详情补查。
-    static func seconds(from text: String) -> Int? {
+    public static func seconds(from text: String) -> Int? {
         let parts = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ":", omittingEmptySubsequences: false)
         guard (1...3).contains(parts.count) else { return nil }
         var total = 0

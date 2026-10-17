@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 设置目录只负责导航与摘要；存储键和默认值由各设置类型维护。

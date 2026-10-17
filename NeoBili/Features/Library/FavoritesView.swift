@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 收藏夹列表（账号创建的全部收藏夹，含默认收藏夹）。

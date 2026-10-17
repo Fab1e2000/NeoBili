@@ -1,16 +1,30 @@
 import Foundation
 
-struct SystemMediaMetadata: Equatable, Sendable {
-    let identifier: String
-    let title: String
-    let artist: String
-    let artworkURL: URL?
-    var isLiveStream: Bool = false
+public struct SystemMediaMetadata: Equatable, Sendable {
+    public let identifier: String
+    public let title: String
+    public let artist: String
+    public let artworkURL: URL?
+    public var isLiveStream: Bool = false
+
+    public init(
+        identifier: String,
+        title: String,
+        artist: String,
+        artworkURL: URL? = nil,
+        isLiveStream: Bool = false
+    ) {
+        self.identifier = identifier
+        self.title = title
+        self.artist = artist
+        self.artworkURL = artworkURL
+        self.isLiveStream = isLiveStream
+    }
 }
 
 /// Playback coordination depends on operations, not system media framework objects.
 @MainActor
-protocol SystemMediaControlling: AnyObject {
+public protocol SystemMediaControlling: AnyObject {
     func activate(sessionID: UUID, metadata: SystemMediaMetadata,
                   onPlay: @escaping () -> Void, onPause: @escaping () -> Void,
                   onToggle: @escaping () -> Void, onSeek: @escaping (TimeInterval) -> Void)
@@ -21,10 +35,10 @@ protocol SystemMediaControlling: AnyObject {
 }
 
 extension SystemMediaControlling {
-    func updateElapsed(_ value: TimeInterval, sessionID: UUID) {
+    public func updateElapsed(_ value: TimeInterval, sessionID: UUID) {
         updateElapsed(value, sessionID: sessionID, force: false)
     }
-    func updatePlaybackState(isPlaying: Bool, sessionID: UUID) {
+    public func updatePlaybackState(isPlaying: Bool, sessionID: UUID) {
         updatePlaybackState(isPlaying: isPlaying, sessionID: sessionID, rate: 1)
     }
 }

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 import XCTest

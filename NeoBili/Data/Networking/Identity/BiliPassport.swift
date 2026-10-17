@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// passport.bilibili.com 上的登录端点（扫码 / 账号密码）。

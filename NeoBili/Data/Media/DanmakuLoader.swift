@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 拉取整段弹幕历史。XML 端点一次返回全部弹幕，不需要 WBI 签名；

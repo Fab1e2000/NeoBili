@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// @Entry 的默认值在每次读取时都会求值，类类型会因此被反复分配；

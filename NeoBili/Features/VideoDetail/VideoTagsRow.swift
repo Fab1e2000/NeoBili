@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 稿件标签，横向一排浅灰填充的胶囊（内容里的按钮不用玻璃）。

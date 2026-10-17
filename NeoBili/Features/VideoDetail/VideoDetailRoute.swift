@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 首页和搜索页都使用同一种视频路由，避免不同入口给详情页带入不同的导航样式。

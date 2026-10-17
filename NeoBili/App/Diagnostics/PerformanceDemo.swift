@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 #if PERFORMANCE_DEMO
 import SwiftUI
 import UIKit

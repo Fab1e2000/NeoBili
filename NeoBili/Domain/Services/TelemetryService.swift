@@ -1,28 +1,36 @@
 import Foundation
 
-struct PlaybackTelemetryEvent: Sendable {
-    let name: String
-    let aid: Int
-    let cid: Int
-    let position: Double
-    let playbackSession: String
-    let source: [String: String]
-    let accountSession: UUID
-    let quality: Int?
-    let playbackRate: Double
-    let sequence: Int
-    let inlinePreview: Bool
+public struct PlaybackTelemetryEvent: Sendable {
+    public let name: String
+    public let aid: Int
+    public let cid: Int
+    public let position: Double
+    public let playbackSession: String
+    public let source: [String: String]
+    public let accountSession: UUID
+    public let quality: Int?
+    public let playbackRate: Double
+    public let sequence: Int
+    public let inlinePreview: Bool
 }
 
-struct TelemetryService: Sendable {
-    var playback: @MainActor @Sendable (PlaybackTelemetryEvent) -> Void = { _ in }
-    var click: @MainActor @Sendable (VideoSummary) -> Void = { _ in }
+public struct TelemetryService: Sendable {
+    public var playback: @MainActor @Sendable (PlaybackTelemetryEvent) -> Void = { _ in }
+    public var click: @MainActor @Sendable (VideoSummary) -> Void = { _ in }
 
-    @MainActor func record(_ name: String, aid: Int, cid: Int, position: Double, playbackSession: String,
+    @MainActor public func record(_ name: String, aid: Int, cid: Int, position: Double, playbackSession: String,
                           source: [String: String], accountSession: UUID, quality: Int?,
                           playbackRate: Double = 1, sequence: Int, inlinePreview: Bool = false) {
         playback(.init(name: name, aid: aid, cid: cid, position: position, playbackSession: playbackSession,
                        source: source, accountSession: accountSession, quality: quality, playbackRate: playbackRate,
                        sequence: sequence, inlinePreview: inlinePreview))
+    }
+
+    public init(
+        playback: @escaping @MainActor @Sendable (PlaybackTelemetryEvent) -> Void = { _ in },
+        click: @escaping @MainActor @Sendable (VideoSummary) -> Void = { _ in }
+    ) {
+        self.playback = playback
+        self.click = click
     }
 }

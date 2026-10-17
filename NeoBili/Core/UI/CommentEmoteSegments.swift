@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 只缓存文本分段，不缓存 Text 或表情图片，图片加载和字号变化仍由视图独立观察。

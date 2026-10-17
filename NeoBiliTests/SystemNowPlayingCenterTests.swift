@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import AVFAudio
 import MediaPlayer
 import UIKit

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 账号密码登录。B 站网页端登录必须先过一次极验滑块，所以流程是：

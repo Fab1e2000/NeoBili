@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import UIKit
 
 /// Owns prefetch consumers as they transfer from index paths to visible cells.

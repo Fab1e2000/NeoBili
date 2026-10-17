@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 「我的」页面，由推荐页头像以卡片形式打开。未登录时给登录入口，

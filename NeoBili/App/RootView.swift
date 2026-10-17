@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 列表卡片需要用同一个命名空间登记自己是 zoom 转场的起点，

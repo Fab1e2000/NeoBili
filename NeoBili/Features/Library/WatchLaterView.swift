@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 按官方 v2 游标分页加载；批量操作只覆盖明确选中的条目。

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// A captured-at-click snapshot. No access key, Cookie or ticket is stored here.

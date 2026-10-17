@@ -42,7 +42,7 @@ def main():
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"Architecture boundaries passed ({len(files)} Swift files). This source check supplements compilation; it is not a Swift module boundary.")
+    print(f"Architecture boundaries passed ({len(files)} Swift files). Domain is a compiled module; this check also enforces source-layer and UI/transport restrictions.")
     return 0
 
 

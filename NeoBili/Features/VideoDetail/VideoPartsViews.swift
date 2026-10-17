@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 简介里的分P入口。和合集（`UgcSeasonRow`）同一套显示与交互：

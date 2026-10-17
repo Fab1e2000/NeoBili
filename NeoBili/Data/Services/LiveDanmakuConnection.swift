@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// Owns one room connection, authentication, heartbeats and reconnect cancellation.

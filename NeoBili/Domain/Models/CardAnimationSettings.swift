@@ -1,19 +1,19 @@
 import Foundation
 
-enum CardAnimationCategory: String, CaseIterable, Sendable {
+public enum CardAnimationCategory: String, CaseIterable, Sendable {
     case video, dynamic, page
 }
 
-enum CardAnimationPhase: String, Sendable {
+public enum CardAnimationPhase: String, Sendable {
     case enter, exit
 }
 
-enum VideoCardAnimationSource: String, CaseIterable, Identifiable, Sendable {
+public enum VideoCardAnimationSource: String, CaseIterable, Identifiable, Sendable {
     case recommendation, relatedVideos, search, space, favorites, history, watchLater, collection, live
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
-    var supportedPhases: [CardAnimationPhase] {
+    public var supportedPhases: [CardAnimationPhase] {
         switch self {
         case .recommendation, .live: [.enter, .exit]
         case .search: [.enter]
@@ -24,7 +24,7 @@ enum VideoCardAnimationSource: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    var title: String {
+    public var title: String {
         switch self {
         case .recommendation: String(localized: "推荐页")
         case .relatedVideos: String(localized: "视频详情页")
@@ -41,23 +41,23 @@ enum VideoCardAnimationSource: String, CaseIterable, Identifiable, Sendable {
 
 /// Only app-authored card effects use these preferences. System navigation,
 /// menus and other native control interactions keep their normal behavior.
-enum CardAnimationSettings {
-    static let masterKey = "neobili.cardAnimationsEnabled"
-    static let videoEnterKey = "neobili.videoCardEnterAnimation"
-    static let videoExitKey = "neobili.videoCardExitAnimation"
-    static let dynamicEnterKey = "neobili.dynamicCardEnterAnimation"
-    static let dynamicExitKey = "neobili.dynamicCardExitAnimation"
+public enum CardAnimationSettings {
+    public static let masterKey = "neobili.cardAnimationsEnabled"
+    public static let videoEnterKey = "neobili.videoCardEnterAnimation"
+    public static let videoExitKey = "neobili.videoCardExitAnimation"
+    public static let dynamicEnterKey = "neobili.dynamicCardEnterAnimation"
+    public static let dynamicExitKey = "neobili.dynamicCardExitAnimation"
     /// 关注页刷新完成后整列淡入。与已下线的单卡进入动画（dynamicEnterKey）分开存，旧值不影响它。
-    static let dynamicRefreshEnterKey = "neobili.dynamicRefreshEnterAnimation"
-    static let pageEnterKey = "neobili.pageEnterAnimation"
-    static let defaultValue = true
-    static let didChangeNotification = Notification.Name("neobili.cardAnimationsDidChange")
+    public static let dynamicRefreshEnterKey = "neobili.dynamicRefreshEnterAnimation"
+    public static let pageEnterKey = "neobili.pageEnterAnimation"
+    public static let defaultValue = true
+    public static let didChangeNotification = Notification.Name("neobili.cardAnimationsDidChange")
 
-    static func storageKey(source: VideoCardAnimationSource, phase: CardAnimationPhase) -> String {
+    public static func storageKey(source: VideoCardAnimationSource, phase: CardAnimationPhase) -> String {
         "neobili.videoCardAnimation.\(source.rawValue).\(phase.rawValue)"
     }
 
-    static func storageKey(category: CardAnimationCategory, phase: CardAnimationPhase) -> String {
+    public static func storageKey(category: CardAnimationCategory, phase: CardAnimationPhase) -> String {
         switch (category, phase) {
         case (.video, .enter): videoEnterKey
         case (.video, .exit): videoExitKey
@@ -69,7 +69,7 @@ enum CardAnimationSettings {
 
     /// Entrance effects are a page capability, not a preference. Old saved
     /// overrides cannot re-enable them on pages where the effect was removed.
-    static func supports(category: CardAnimationCategory, phase: CardAnimationPhase,
+    public static func supports(category: CardAnimationCategory, phase: CardAnimationPhase,
                          source: VideoCardAnimationSource?) -> Bool {
         switch category {
         case .video: return source?.supportedPhases.contains(phase) == true

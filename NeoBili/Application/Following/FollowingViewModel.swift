@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 关注页头像条中的一个筛选目标：全部动态，或某一位 UP 主。

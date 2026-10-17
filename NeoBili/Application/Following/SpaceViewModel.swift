@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// UP 主空间页的数据：头部名片、投稿列表，以及他自己的动态流。

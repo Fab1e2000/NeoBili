@@ -22,11 +22,24 @@ targets:
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      # syncedFolder：Xcode 直接跟踪整个 NeoBili 文件夹。
-      # 以后新增 .swift 文件会被自动编译，不需要再手动登记或重新生成项目。
-      - path: NeoBili
+      # 每层自动同步；Domain 由独立模块编译。
+      - path: NeoBili/App
+        type: syncedFolder
+      - path: NeoBili/Application
+        type: syncedFolder
+      - path: NeoBili/Core
+        type: syncedFolder
+      - path: NeoBili/Data
+        type: syncedFolder
+      - path: NeoBili/Features
+        type: syncedFolder
+      - path: NeoBili/Platform
+        type: syncedFolder
+      - path: NeoBili/Resources
         type: syncedFolder
     dependencies:
+      - target: NeoBiliDomain
+        embed: false
       - package: MPVKit
         product: MPVKit
     info:
@@ -70,6 +83,24 @@ targets:
         CODE_SIGN_IDENTITY: "$(NEOBILI_CODE_SIGN_IDENTITY)"
         PROVISIONING_PROFILE_SPECIFIER: "$(NEOBILI_PROVISIONING_PROFILE)"
 
+  NeoBiliDomain:
+    type: framework
+    platform: iOS
+    sources:
+      - path: NeoBili/Domain
+        type: syncedFolder
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACH_O_TYPE: staticlib
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+      configs:
+        Regression:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG NEOBILI_REGRESSION"
+
   NeoBiliTests:
     type: bundle.unit-test
     platform: iOS
@@ -79,6 +110,8 @@ targets:
         type: syncedFolder
     dependencies:
       - target: NeoBili
+      - target: NeoBiliDomain
+        embed: false
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

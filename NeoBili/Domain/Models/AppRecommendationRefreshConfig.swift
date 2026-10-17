@@ -1,10 +1,10 @@
 import Foundation
 
-struct AppRecommendationRefreshConfig: Decodable, Equatable, Sendable {
-    enum Trigger { case active, appear, behavior }
-    let active: TimeInterval?
-    let appear: TimeInterval?
-    let behavior: TimeInterval?
+public struct AppRecommendationRefreshConfig: Decodable, Equatable, Sendable {
+    public enum Trigger { case active, appear, behavior }
+    public let active: TimeInterval?
+    public let appear: TimeInterval?
+    public let behavior: TimeInterval?
 
     private enum Keys: String, CodingKey {
         case legacy = "auto_refresh_time"
@@ -13,7 +13,7 @@ struct AppRecommendationRefreshConfig: Decodable, Equatable, Sendable {
         case behavior = "auto_refresh_time_by_behavior"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         func interval(_ key: Keys) -> TimeInterval? {
             let value = (try? c.decode(Int.self, forKey: c.contains(key) ? key : .legacy)) ?? (try? c.decode(String.self, forKey: c.contains(key) ? key : .legacy)).flatMap(Int.init)
@@ -24,7 +24,7 @@ struct AppRecommendationRefreshConfig: Decodable, Equatable, Sendable {
         behavior = interval(.behavior)
     }
 
-    func interval(for trigger: Trigger) -> TimeInterval? {
+    public func interval(for trigger: Trigger) -> TimeInterval? {
         switch trigger {
         case .active: active
         case .appear: appear

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 界面语言：跟随系统、简体中文或 English。系统的本地化在启动时确定，改动下次打开 App 生效。

@@ -1,6 +1,6 @@
 import Foundation
 
-enum PlayerPlaybackEvent: Sendable {
+public enum PlayerPlaybackEvent: Sendable {
     case firstFrame
     case playing(Bool)
     case buffering(Bool)
@@ -14,11 +14,11 @@ enum PlayerPlaybackEvent: Sendable {
     case error(String)
 }
 
-enum PlayerSessionError: LocalizedError {
+public enum PlayerSessionError: LocalizedError {
     case invalidSource
     case playbackFailed(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidSource: return String(localized: "视频地址无效")
         case .playbackFailed(let detail): return String(localized: "视频加载失败：\(detail)")

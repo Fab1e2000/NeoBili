@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 仅包含浏览和播放接口；复用现有网页身份与 App 登录，不在风控后切换身份重试。

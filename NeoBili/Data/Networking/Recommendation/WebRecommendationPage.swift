@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 网页推荐接口的一页，规则照 PiliPlus `VideoHttp.rcmdVideoList`：

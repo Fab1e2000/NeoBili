@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 头像条红点以服务端 portal 的 `has_update` 为准（与 PiliPlus 一致）。

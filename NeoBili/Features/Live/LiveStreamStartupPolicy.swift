@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 使用服务端原地址。直连 FLV 避免等待 HLS 的播放列表和分片，AVC 保持硬解兼容。

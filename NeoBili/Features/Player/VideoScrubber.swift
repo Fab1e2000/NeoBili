@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 播放时间的统一写法（`分:秒`），进度条和时间文字共用，避免两处显示不一致。

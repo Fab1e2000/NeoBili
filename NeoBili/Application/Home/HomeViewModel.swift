@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 首页网格中可能出现普通视频，也可能出现“上次看到这里”提示卡。

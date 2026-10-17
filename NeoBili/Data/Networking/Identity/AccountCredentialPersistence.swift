@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// Synchronous persistence keeps write/read-back verification inside the identity actor's transaction.

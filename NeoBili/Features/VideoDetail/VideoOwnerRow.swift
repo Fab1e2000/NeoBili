@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 简介顶部的 UP 主行，平铺在页面上，不再套灰色圆角底。
