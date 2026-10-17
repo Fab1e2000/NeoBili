@@ -20,6 +20,7 @@ struct HomeFeedCellView: View {
     let onOpenLastSeen: () -> Void
     var preview: HomeInlinePreview? = nil
 
+    @Environment(\.applicationServices) private var services
     @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
@@ -61,7 +62,7 @@ struct HomeFeedCellView: View {
             case .dynamic(let id):
                 viewModel.sheet = .dynamic(id: id)
             case nil:
-                ApplicationServices.live.telemetry.click(video)
+                services.telemetry.click(video)
                 nowPlaying.open(
                     VideoDetailRoute(bvid: video.bvid, cid: video.cid > 0 ? video.cid : nil, cover: video.pic,
                                      title: video.title, artist: video.owner.name, aid: video.aid, playbackEntry: video.playbackEntry),

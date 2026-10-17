@@ -202,3 +202,30 @@ extension BiliImageCache {
 @MainActor extension CommentEmoteStore {
     static let shared = CommentEmoteStore()
 }
+
+@MainActor extension OrientationLock {
+    static let shared = OrientationLock()
+}
+#if DEBUG
+@MainActor extension SearchLatencyProbe {
+    static let shared = SearchLatencyProbe()
+}
+#endif
+#if PERFORMANCE_DEMO
+extension PerformanceFeedSource {
+    static let shared = PerformanceFeedSource(loader: ApplicationServices.live.recommendation.recommendFeed)
+}
+@MainActor extension PerformanceDemo {
+    static let shared = PerformanceDemo()
+}
+#endif
+extension ApplicationServices {
+    static var homeRecommendations: @Sendable (RecommendationRequest) async throws -> RecommendationBatch {
+        #if PERFORMANCE_DEMO
+        if ProcessInfo.processInfo.arguments.contains("--feed-record") || ProcessInfo.processInfo.arguments.contains("--feed-replay") {
+            return { try await PerformanceFeedSource.shared.fetch($0) }
+        }
+        #endif
+        return live.recommendation.recommendFeed
+    }
+}

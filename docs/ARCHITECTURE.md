@@ -18,7 +18,7 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 | `Data/Media` | 图片传输与缓存、弹幕下载 | 页面导航 |
 | `Platform` | mpv、系统媒体控制等平台适配 | 业务页面 |
 | `Core/UI`、`Core/Extensions` | 共享组件、主题、格式化和交互工具 | 业务接口调用 |
-| `Core/Diagnostics` | 显式启用的诊断与回放工具 | 默认后台探测 |
+| `App/Diagnostics`、`Core/Diagnostics` | 显式启用的业务诊断/回放与通用滚动测量 | 默认后台探测 |
 
 通常的请求路径是：`View → Application model → Domain service → Data adapter → APIClient`。简单的一次性操作可以由 View 使用环境中的服务完成；分页、重试和长任务由状态模型持有。
 
@@ -58,3 +58,5 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 播放器事件、画质与手势设置值属于 Domain；mpv 加载和渲染宿主、窗口方向属于 Platform。观看上报、列表删除/入场状态以及设置持久化属于 Application。Domain 不持有 UserDefaults；设备偏好的读取适配位于 Data，纯 URL 归一化位于 Domain。
 
 空间页资料头部和关注动态内容使用独立展示组件；滚动协调、导航和刷新任务仍由父页面持有。全部关注分页状态由 Application 的 `FollowingAllUpsModel` 管理。首页图片预取消费者由 `HomeFeedImagePrefetcher` 在索引路径与显示中的 cell 之间转交，并沿用快照切换和离屏取消入口。
+
+显式启用的性能演示和搜索诊断属于 App 诊断组装。首页模型始终使用传入的 loader，App 根据演示启动参数选择生产默认 loader；诊断模式不会覆盖调用方注入的数据源。窗口方向锁仍是 AppDelegate 与窗口适配共用的进程级系统状态，由 App 创建。

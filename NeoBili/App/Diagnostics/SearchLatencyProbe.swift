@@ -7,7 +7,6 @@ import os
 /// Opt-in physical-device probe. Normal launches do not install observers or timers.
 @MainActor
 final class SearchLatencyProbe: NSObject {
-    static let shared = SearchLatencyProbe()
     static let enabled = ProcessInfo.processInfo.arguments.contains("--search-latency-probe")
         || ProcessInfo.processInfo.arguments.contains("--search-appearance-probe")
         || ProcessInfo.processInfo.arguments.contains("--search-interaction-only")

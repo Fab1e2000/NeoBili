@@ -138,6 +138,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         var namespace: Namespace.ID?
         var animationSource: VideoCardAnimationSource?
         var animationOverrides = VideoCardAnimationOverrides()
+        var services: ApplicationServices = .live
         var imagePipeline: BiliImagePipeline = .live
         var hidesPortraitVideos = false
 
@@ -278,6 +279,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 namespace: values.videoTransitionNamespace,
                 animationSource: values.videoCardAnimationSource,
                 animationOverrides: values.videoCardAnimationOverrides,
+                services: values.applicationServices,
                 imagePipeline: values.imagePipeline,
                 hidesPortraitVideos: hidesPortraitVideos
             )
@@ -450,6 +452,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 .environment(\.videoCardAnimationOverrides, environment.animationOverrides)
                 .environment(\.hidesPortraitVideos, environment.hidesPortraitVideos)
                 .environment(\.imagePipeline, environment.imagePipeline)
+                .environment(\.applicationServices, environment.services)
                 .appTextSize()
             if let cell = cell as? PersistentFeedHostingCell {
                 cell.setContent(AnyView(content))

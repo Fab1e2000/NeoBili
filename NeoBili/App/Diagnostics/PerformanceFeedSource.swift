@@ -4,7 +4,12 @@ import Foundation
 /// Saves only public card metadata for same-content rendering comparisons.
 /// Recording/replay is explicitly requested by launch argument, never in normal builds.
 actor PerformanceFeedSource {
-    static let shared = PerformanceFeedSource()
+    private let loader: @Sendable (RecommendationRequest) async throws -> RecommendationBatch
+
+    init(loader: @escaping @Sendable (RecommendationRequest) async throws -> RecommendationBatch) {
+        self.loader = loader
+    }
+
     private var recordedPages: [String: [[String: Any]]] = [:]
     private var replayPages: [String: [VideoSummary]]?
     private let url = URL.documentsDirectory.appending(path: "Performance/feed-fixture.json")
@@ -20,7 +25,7 @@ actor PerformanceFeedSource {
             let videos = replayPages?[String(index)] ?? []
             return RecommendationBatch(videos: videos, nextRequest: videos.isEmpty ? nil : request.next())
         }
-        let batch = try await BiliAPI.recommendFeed(request: request)
+        let batch = try await loader(request)
         let videos = batch.videos
         if ProcessInfo.processInfo.arguments.contains("--feed-record") {
             if index == 0 { recordedPages = [:] }

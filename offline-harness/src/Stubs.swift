@@ -87,3 +87,9 @@ extension AppBehaviorReporter {
 extension RecommendationClickReporter {
     static let shared = RecommendationClickReporter(identity: .shared, client: .shared)
 }
+
+extension ApplicationServices {
+    static var homeRecommendations: @Sendable (RecommendationRequest) async throws -> RecommendationBatch {
+        live.recommendation.recommendFeed
+    }
+}

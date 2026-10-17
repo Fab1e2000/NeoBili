@@ -10,7 +10,6 @@ import UIKit
 /// animate in the wrong coordinate space.
 @MainActor
 final class OrientationLock {
-    static let shared = OrientationLock()
     private(set) var supportedOrientations: UIInterfaceOrientationMask = .portrait
     private(set) var playbackOwner: UUID?
 

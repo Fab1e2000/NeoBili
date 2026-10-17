@@ -266,7 +266,7 @@ final class HomeViewModel {
          currentSessionID: @escaping () -> UUID = { ApplicationServices.live.session.currentID() },
          feedbackService: RecommendationService = ApplicationServices.live.recommendation,
          videoService: VideoService = ApplicationServices.live.video,
-         fetchRecommendations: @escaping (RecommendationRequest) async throws -> RecommendationBatch = ApplicationServices.live.recommendation.recommendFeed) {
+         fetchRecommendations: @escaping (RecommendationRequest) async throws -> RecommendationBatch = ApplicationServices.homeRecommendations) {
         self.filtering = filtering ?? .live
         self.feedbackService = feedbackService
         self.defaults = defaults
@@ -293,15 +293,7 @@ final class HomeViewModel {
         self.blockUser = blockUser
         self.currentAccount = currentAccount
         self.currentSessionID = currentSessionID
-        #if PERFORMANCE_DEMO
-        if ProcessInfo.processInfo.arguments.contains("--feed-record") || ProcessInfo.processInfo.arguments.contains("--feed-replay") {
-            self.fetchRecommendations = { try await PerformanceFeedSource.shared.fetch($0) }
-        } else {
-            self.fetchRecommendations = fetchRecommendations
-        }
-        #else
         self.fetchRecommendations = fetchRecommendations
-        #endif
     }
 
     func loadInitial() async {

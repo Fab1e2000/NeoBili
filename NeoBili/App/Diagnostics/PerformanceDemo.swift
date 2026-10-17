@@ -40,7 +40,6 @@ struct PerformanceRecording: Codable, Sendable {
 
 @MainActor @Observable
 final class PerformanceDemo {
-    static let shared = PerformanceDemo()
     private(set) var stage = "未开始"
     private(set) var recording = false
     private(set) var automatic = false
