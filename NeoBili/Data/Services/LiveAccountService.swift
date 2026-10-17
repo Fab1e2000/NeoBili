@@ -4,7 +4,7 @@ extension AccountService {
     static func live(client: APIClient = .shared) -> Self {
         Self(
             myProfileOperation: {
-                try await BiliAPI.myProfile()
+                try await BiliAPI.myProfile(client: client)
             }
         )
     }

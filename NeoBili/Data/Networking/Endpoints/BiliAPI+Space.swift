@@ -30,7 +30,7 @@ extension BiliAPI {
     ///
     /// 走 WBI 签名，并且要带上和取流同一组浏览器指纹参数：缺了它们，
     /// 连续翻几页之后就会被风控挡下（-352）。
-    static func spaceVideos(mid: Int, page: Int) async throws -> SpaceVideoPage {
+    static func spaceVideos(mid: Int, page: Int, client: APIClient = .shared) async throws -> SpaceVideoPage {
         var params = [
             "mid": String(mid),
             "pn": String(page),
@@ -42,7 +42,7 @@ extension BiliAPI {
             "web_location": "1550101"
         ]
         params.merge(fingerprintParams()) { current, _ in current }
-        return try await APIClient.shared.get(
+        return try await client.get(
             path: "x/space/wbi/arc/search",
             params: params,
             requiresWBI: true,

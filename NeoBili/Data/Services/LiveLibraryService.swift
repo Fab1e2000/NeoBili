@@ -4,7 +4,7 @@ extension LibraryService {
     static func live(client: APIClient = .shared) -> Self {
         Self(
             historyPageOperation: { max, viewAt in
-                try await BiliAPI.historyPage(max: max, viewAt: viewAt)
+                try await BiliAPI.historyPage(max: max, viewAt: viewAt, client: client)
             },
             reportWatchProgressOperation: { bvid, cid, playedTime, expectedSessionID in
                 try await BiliAPI.reportWatchProgress(bvid: bvid, cid: cid, playedTime: playedTime, expectedSessionID: expectedSessionID, client: client)
@@ -16,10 +16,10 @@ extension LibraryService {
                 try await BiliAPI.reportAppWatch(bvid: bvid, aid: aid, cid: cid, report: report, expectedSessionID: expectedSessionID, client: client)
             },
             favoriteFoldersOperation: { ownerMid, videoAid in
-                try await BiliAPI.favoriteFolders(ownerMid: ownerMid, videoAid: videoAid)
+                try await BiliAPI.favoriteFolders(ownerMid: ownerMid, videoAid: videoAid, client: client)
             },
             favoriteVideosOperation: { folderID, page in
-                try await BiliAPI.favoriteVideos(folderID: folderID, page: page)
+                try await BiliAPI.favoriteVideos(folderID: folderID, page: page, client: client)
             },
             removeFavoriteOperation: { folderID, aid, expectedSessionID in
                 try await BiliAPI.removeFavorite(folderID: folderID, aid: aid, expectedSessionID: expectedSessionID)

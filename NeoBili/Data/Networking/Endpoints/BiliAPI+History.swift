@@ -2,8 +2,8 @@ import Foundation
 
 extension BiliAPI {
     /// 观看历史按游标翻页：首页 max=0 / view_at=0，之后带上上一页返回的游标。
-    static func historyPage(max: Int, viewAt: Int) async throws -> HistoryCursorPage {
-        try await APIClient.shared.get(
+    static func historyPage(max: Int, viewAt: Int, client: APIClient = .shared) async throws -> HistoryCursorPage {
+        try await client.get(
             path: "x/web-interface/history/cursor",
             params: [
                 "type": "archive",

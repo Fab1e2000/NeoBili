@@ -10,8 +10,8 @@ extension BiliAPI {
         try await APIClient.shared.post(path: "x/v2/history/toview/add", form: form)
     }
 
-    static func watchLaterList() async throws -> WatchLaterPage {
-        try await APIClient.shared.get(path: "x/v2/history/toview")
+    static func watchLaterList(client: APIClient = .shared) async throws -> WatchLaterPage {
+        try await client.get(path: "x/v2/history/toview")
     }
 
     static func watchLaterPage(startKey: String, splitKey: String, expectedSessionID: UUID, client: APIClient = .shared) async throws -> WatchLaterListPage {

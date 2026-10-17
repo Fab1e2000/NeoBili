@@ -10,19 +10,19 @@ extension VideoService {
                 try await BiliAPI.playURL(bvid: bvid, cid: cid, quality: quality)
             },
             videoDetailOperation: { bvid in
-                try await BiliAPI.videoDetail(bvid: bvid)
+                try await BiliAPI.videoDetail(bvid: bvid, client: client)
             },
             appRelatedPageOperation: { bvid, aid, entry, playbackSession, expectedSessionID, pagination in
                 try await BiliAPI.appRelatedPage(bvid: bvid, aid: aid, entry: entry, playbackSession: playbackSession, expectedSessionID: expectedSessionID, pagination: pagination, client: client, identity: identity)
             },
             videoTagsOperation: { aid in
-                try await BiliAPI.videoTags(aid: aid)
+                try await BiliAPI.videoTags(aid: aid, client: client)
             },
             videoRelationOperation: { aid, bvid in
-                try await BiliAPI.videoRelation(aid: aid, bvid: bvid)
+                try await BiliAPI.videoRelation(aid: aid, bvid: bvid, client: client)
             },
             memberCardOperation: { mid in
-                try await BiliAPI.memberCard(mid: mid)
+                try await BiliAPI.memberCard(mid: mid, client: client)
             },
             likeVideoOperation: { aid, like in
                 try await BiliAPI.likeVideo(aid: aid, like: like)

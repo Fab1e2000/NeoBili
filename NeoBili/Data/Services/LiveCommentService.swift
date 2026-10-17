@@ -7,13 +7,13 @@ extension CommentService {
                 try await BiliAPI.shootDanmaku(cid: cid, bvid: bvid, message: message, progress: progress, mode: mode)
             },
             commentsOperation: { oid, type, page in
-                try await BiliAPI.comments(oid: oid, type: type, page: page)
+                try await BiliAPI.comments(oid: oid, type: type, page: page, client: client)
             },
             sendCommentOperation: { oid, type, message, root, parent in
                 try await BiliAPI.sendComment(oid: oid, type: type, message: message, root: root, parent: parent)
             },
             commentRepliesOperation: { oid, type, rootId, page in
-                try await BiliAPI.commentReplies(oid: oid, type: type, rootId: rootId, page: page)
+                try await BiliAPI.commentReplies(oid: oid, type: type, rootId: rootId, page: page, client: client)
             },
             likeCommentOperation: { oid, type, rpid, like in
                 try await BiliAPI.likeComment(oid: oid, type: type, rpid: rpid, like: like)

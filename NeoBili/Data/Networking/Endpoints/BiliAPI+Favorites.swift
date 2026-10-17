@@ -6,21 +6,21 @@ extension BiliAPI {
     ///
     /// 传了 `videoAid` 时每个收藏夹会多带一个 `fav_state`，表示它里面有没有
     /// 这个视频——收藏夹选择弹窗靠它决定默认勾选哪几项，不必逐个收藏夹去查。
-    static func favoriteFolders(ownerMid: Int, videoAid: Int? = nil) async throws -> [FavFolder] {
+    static func favoriteFolders(ownerMid: Int, videoAid: Int? = nil, client: APIClient = .shared) async throws -> [FavFolder] {
         var params = ["up_mid": String(ownerMid)]
         if let videoAid {
             params["type"] = "2"
             params["rid"] = String(videoAid)
         }
-        let payload: FavFolderList = try await APIClient.shared.get(
+        let payload: FavFolderList = try await client.get(
             path: "x/v3/fav/folder/created/list-all",
             params: params
         )
         return payload.list ?? []
     }
 
-    static func favoriteVideos(folderID: Int, page: Int) async throws -> FavResourceList {
-        try await APIClient.shared.get(
+    static func favoriteVideos(folderID: Int, page: Int, client: APIClient = .shared) async throws -> FavResourceList {
+        try await client.get(
             path: "x/v3/fav/resource/list",
             params: [
                 "media_id": String(folderID),

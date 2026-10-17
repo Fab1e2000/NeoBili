@@ -11,10 +11,10 @@ extension SearchService {
             return payload.list
         },
             searchVideosOperation: { keyword, page in
-                try await BiliAPI.searchVideos(keyword: keyword, page: page)
+                try await BiliAPI.searchVideos(keyword: keyword, page: page, client: client)
             },
             searchSuggestionsOperation: { term in
-                try await BiliAPI.searchSuggestions(term: term)
+                try await BiliAPI.searchSuggestions(term: term, client: client)
             }
         )
     }
