@@ -44,9 +44,10 @@ struct SpaceView: View {
         var storage: [Tab: CGFloat] = [:]
     }
 
-    init(up: FollowedUp, filtering: VideoFilterDependencies = .live) {
+    init(up: FollowedUp, filtering: VideoFilterDependencies = .live,
+         services: ApplicationServices = .live, likeStore: VideoLikeStore = .shared) {
         self.up = up
-        _viewModel = State(initialValue: SpaceViewModel(mid: up.mid, filtering: filtering))
+        _viewModel = State(initialValue: SpaceViewModel(mid: up.mid, services: services, filtering: filtering, likeStore: likeStore))
     }
 
     var body: some View {

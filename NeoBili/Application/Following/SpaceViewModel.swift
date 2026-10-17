@@ -41,11 +41,12 @@ final class SpaceViewModel {
     private var page = 1
     private var hasMoreVideos = true
 
-    init(mid: Int, services: ApplicationServices = .live, filtering: VideoFilterDependencies = .live) {
+    init(mid: Int, services: ApplicationServices = .live, filtering: VideoFilterDependencies = .live,
+         likeStore: VideoLikeStore = .shared) {
         self.filtering = filtering
         self.services = services
         self.mid = mid
-        dynamics = DynamicFeedModel(source: .space(hostMid: mid), services: services)
+        dynamics = DynamicFeedModel(source: .space(hostMid: mid), likeStore: likeStore, services: services)
     }
 
     // MARK: - 名片

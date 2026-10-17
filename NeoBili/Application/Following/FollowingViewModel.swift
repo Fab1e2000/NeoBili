@@ -48,14 +48,14 @@ final class FollowingViewModel {
     private let accountSessionID: UUID
     private let likeStore: VideoLikeStore
 
-    init(services: ApplicationServices = .live, readStore: FollowingReadStore = .shared, liveDirectory: FollowedLiveDirectory = FollowedLiveDirectory(),
+    init(services: ApplicationServices = .live, readStore: FollowingReadStore = .shared, liveDirectory: FollowedLiveDirectory? = nil,
          likeStore: VideoLikeStore = .shared) {
         self.likeStore = likeStore
         self.accountSessionID = likeStore.sessionID
         self.feed = DynamicFeedModel(source: .following, likeStore: likeStore, services: services)
         self.services = services
         self.readStore = readStore
-        self.liveDirectory = liveDirectory
+        self.liveDirectory = liveDirectory ?? FollowedLiveDirectory(loader: { _ in try await services.streaming.followedUsers() })
     }
 
     func configureAccount(_ accountID: Int?) {

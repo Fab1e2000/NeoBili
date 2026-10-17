@@ -6,6 +6,26 @@ import XCTest
 
 @MainActor
 final class SpaceInteractionRepairTests: XCTestCase {
+    func testSpaceDynamicsUseOnlyTheirInjectedLikeStore() {
+        let firstLikes = VideoLikeStore()
+        let otherLikes = VideoLikeStore()
+        let first = SpaceViewModel(mid: 42, services: services(), likeStore: firstLikes)
+        let other = SpaceViewModel(mid: 42, services: services(), likeStore: otherLikes)
+        let video = FollowedVideo(id: "fixture", bvid: "BVfixture", aid: 17, title: "Fixture",
+            cover: "", durationText: "1:00", playText: "0", authorMid: 42,
+            authorName: "Fixture", authorFace: "", publishedText: "")
+        let entry = DynamicEntry(id: "fixture", authorMid: 42, authorName: "Fixture", authorFace: "",
+            publishedText: "", text: "", images: [], video: video, likeCount: 3,
+            commentCount: 0, forwardCount: 0, isLikedByServer: false, commentOid: 17, commentType: 1)
+        firstLikes.setOverride(aid: 17, liked: true)
+        XCTAssertTrue(first.dynamics.isLiked(entry))
+        XCTAssertEqual(first.dynamics.likeCount(entry), 4)
+        XCTAssertFalse(other.dynamics.isLiked(entry))
+        XCTAssertEqual(other.dynamics.likeCount(entry), 3)
+        firstLikes.resetSession()
+        XCTAssertFalse(first.dynamics.isLiked(entry))
+    }
+
     func testOlderCardReadCannotUndoSuccessfulFollow() async throws {
         let gate = SpaceRepairGate<SpaceCard>()
         defer { Task { await gate.cancelAll() } }

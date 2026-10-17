@@ -124,7 +124,11 @@ final class HomeInlinePreviewPerformanceTests: XCTestCase {
         let card = video(10, cid: 0)
         let started = expectation(description: "Resolved manifest started")
         let cancelled = expectation(description: "Underlying resolved manifest cancelled")
-        let account = DeviceIdentity.shared.loginSessionID
+        let suite = "neobili.preview-cancellation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dependencies = PlaybackDependencies.isolated(defaults: defaults)
+        let account = dependencies.services.session.currentID()
         let cache = VideoPreparationCache(detailLoader: { bvid in
             VideoDetail(bvid: bvid, aid: 10, cid: 777, title: "Fixture", desc: "", pic: "",
                 duration: 120, pubdate: 0, owner: .init(mid: 0, name: "Fixture", face: ""),
@@ -140,7 +144,7 @@ final class HomeInlinePreviewPerformanceTests: XCTestCase {
         }, sessionProvider: { account })
         let preview = HomeInlinePreview(loader: { video, owner, account in
             try await HomeInlinePreview.loadPreviewSource(video, owner: owner, account: account, cache: cache)
-        })
+        }, dependencies: dependencies)
         defer { preview.stop() }
         preview.select(card)
         await fulfillment(of: [started], timeout: 2)
