@@ -23,6 +23,7 @@ struct APIClient {
     static let shared = APIClient()
 
     private static let baseURL = URL(string: "https://api.bilibili.com")!
+    private let signWebParameters: @Sendable ([String: String]) async throws -> [String: String]
     private let transport: HTTPTransport
     private let appEncoder: any AppRequestEncoding
     private let authentication: @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot
@@ -40,8 +41,13 @@ struct APIClient {
          appHeaders: @escaping @Sendable (UUID) async throws -> [String: String] = { session in
              guard !AppNetwork.isRegression else { return [:] }
              return try await DeviceIdentity.shared.appRequestHeaders(expectedSessionID: session)
+         },
+         transport: HTTPTransport? = nil,
+         signWebParameters: @escaping @Sendable ([String: String]) async throws -> [String: String] = {
+             try await WBISigner.shared.sign(params: $0)
          }) {
-        self.transport = HTTPTransport(session: session)
+        self.transport = transport ?? HTTPTransport(session: session)
+        self.signWebParameters = signWebParameters
         self.appEncoder = appEncoder
         self.authentication = authentication
         self.appAuthentication = appAuthentication
@@ -67,7 +73,7 @@ struct APIClient {
     ) async throws -> T {
         var finalParams = params
         if requiresWBI {
-            finalParams = try await WBISigner.shared.sign(params: params)
+            finalParams = try await signWebParameters(params)
         }
 
         guard var components = URLComponents(url: Self.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {

@@ -4,25 +4,36 @@ import Foundation
 /// The caller chooses retries: behavioral writes continue to use zero retries.
 struct HTTPTransport {
     let session: URLSession
+    let diagnostics: RecommendationDiagnostics
+    let observeResponse: @Sendable (HTTPURLResponse, URLRequest) async -> Void
+
+    init(session: URLSession, diagnostics: RecommendationDiagnostics = .shared,
+         observeResponse: @escaping @Sendable (HTTPURLResponse, URLRequest) async -> Void = {
+             await DeviceIdentity.shared.observeAppResponse($0, request: $1)
+         }) {
+        self.session = session
+        self.diagnostics = diagnostics
+        self.observeResponse = observeResponse
+    }
 
     func data(for request: URLRequest, retries: Int) async throws -> (Data, URLResponse) {
         var attempt = 0
         while true {
             try Task.checkCancellation()
-            let diagnosticID = await RecommendationDiagnostics.shared.begin(request, attempt: attempt)
+            let diagnosticID = await diagnostics.begin(request, attempt: attempt)
             do {
                 let result = try await session.data(for: request)
                 if !AppNetwork.isRegression, let http = result.1 as? HTTPURLResponse {
-                    await DeviceIdentity.shared.observeAppResponse(http, request: request)
+                    await observeResponse(http, request)
                 }
-                await RecommendationDiagnostics.shared.finish(diagnosticID, data: result.0, response: result.1)
+                await diagnostics.finish(diagnosticID, data: result.0, response: result.1)
                 return result
             } catch let error as URLError where attempt < retries && Self.isRetryable(error) {
-                await RecommendationDiagnostics.shared.fail(diagnosticID, error: error)
+                await diagnostics.fail(diagnosticID, error: error)
                 attempt += 1
                 try await Task.sleep(for: .milliseconds(500 * attempt))
             } catch {
-                await RecommendationDiagnostics.shared.fail(diagnosticID, error: error)
+                await diagnostics.fail(diagnosticID, error: error)
                 throw error
             }
         }
