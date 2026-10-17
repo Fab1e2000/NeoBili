@@ -1,21 +1,6 @@
 import Foundation
 import Observation
 
-struct VideoResolutionBatch: Equatable {
-    let ids: [String]
-    let generation: Int
-    let enabled: Bool
-    let minimumSeconds: Int
-
-    func resetsEntrance(comparedTo previous: Self?) -> Bool {
-        guard let previous else { return true }
-        // ID 增删仅影响对应卡片；只有主动刷新或过滤设置变化才重播整批。
-        return generation != previous.generation
-            || enabled != previous.enabled
-            || minimumSeconds != previous.minimumSeconds
-    }
-}
-
 /// 单张卡片的起点。卡片只观察自己这一格，翻页往时钟里加新卡时，
 /// 已经在屏幕上的卡片不会被连带重算。
 @MainActor @Observable

@@ -15,12 +15,15 @@ cp \
     "$APP/Domain/Models/DynamicModels.swift" \
     "$APP/Domain/Models/SearchModels.swift" \
     "$APP/Domain/Models/SpaceModels.swift" \
+    "$APP/Application/Content/SpaceVideo+Presentation.swift" \
     "$APP/Domain/Models/AccountModels.swift" \
     "$APP/Domain/Models/DynamicVote.swift" \
     "$APP/Domain/Models/CommentModels.swift" \
     "$APP/Domain/Models/LenientDecoding.swift" \
     "$APP/Domain/Models/RecommendationFilter.swift" \
+    "$APP/Application/Settings/RecommendationFilter+Preferences.swift" \
     "$APP/Domain/Models/AppLanguage.swift" \
+    "$APP/Application/Settings/AppLanguage+Preferences.swift" \
     "$APP/Core/Extensions/Int+BiliFormatting.swift" \
     "$APP/Core/Extensions/BiliDateFormatting.swift" \
     "$APP/Data/Networking/Transport/AppNetwork.swift" \
@@ -42,6 +45,7 @@ cp \
     "$APP/Data/Networking/Identity/AppBuvid.swift" \
     "$APP/Data/Networking/Identity/CapturedDeviceDiagnostic.swift" \
     "$APP/Domain/Models/DeviceIdentityPreferences.swift" \
+    "$APP/Data/Networking/Identity/DeviceIdentityPreferences+Storage.swift" \
     "$APP/Data/Networking/Identity/AppDeviceRegistration.swift" \
     "$APP/Data/Networking/Identity/AppGuestRegistration.swift" \
     "$APP/Data/Networking/Identity/AppTicketService.swift" \
@@ -69,7 +73,7 @@ cp \
     "$APP/Data/Networking/Identity/DeviceIdentity.swift" \
     "$APP/Data/Networking/Identity/KeychainStore.swift" \
     "$APP/Data/Networking/Identity/AppSigner.swift" \
-    "$APP/Data/Networking/Transport/URL+Bili.swift" \
+    "$APP/Domain/Models/URL+Bili.swift" \
     "$APP/Core/UI/EnvironmentAction.swift" \
     "$APP/Domain/Models/DanmakuModels.swift" \
     "$APP/Data/Media/DanmakuLoader.swift" \

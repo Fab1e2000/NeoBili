@@ -54,3 +54,5 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 5. 移动源码后同步离线测试的输入路径，并运行 `python3 scripts/check-architecture.py` 和开发指南中的相关检查。
 
 `project.yml` 是工程配置来源；源码采用 synchronized folder，单纯移动 Swift 文件不需要手工修改工程文件。只有配置发生变化时才修改配置并重新生成工程。
+
+播放器事件、画质与手势设置值属于 Domain；mpv 加载和渲染宿主、窗口方向属于 Platform。观看上报、列表删除/入场状态以及设置持久化属于 Application。Domain 不持有 UserDefaults；设备偏好的读取适配位于 Data，纯 URL 归一化位于 Domain。

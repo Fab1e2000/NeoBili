@@ -31,7 +31,8 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 
 # 验证真实入场状态逻辑，不创建窗口或启动设备。
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Domain/Models/VideoEntranceClock.swift" \
+    "$APP/Domain/Models/VideoResolutionBatch.swift" \
+    "$APP/Application/Content/VideoEntranceClock.swift" \
     "$HARNESS/src/VideoEntranceRegression.swift" \
     -o "$BUILD_DIR/video-entrance"
 "$BUILD_DIR/video-entrance"
@@ -45,7 +46,7 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 
 # 只有真实播放进度才能上传历史；seek、预载、缓冲、EOF 和慢网队列回归。
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Features/Player/PlaybackWatchProgress.swift" \
+    "$APP/Application/Player/PlaybackWatchProgress.swift" \
     "$APP/Domain/Models/PlaybackWatchReport.swift" \
     "$HARNESS/src/PlaybackWatchProgressRegression.swift" \
     -o "$BUILD_DIR/playback-watch-progress"
@@ -58,7 +59,7 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 "$BUILD_DIR/inline-video-layout"
 
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Features/Player/PlayerSurfaceGeometry.swift" \
+    "$APP/Platform/Playback/PlayerSurfaceGeometry.swift" \
     "$HARNESS/src/PlayerSurfaceAspectRegression.swift" \
     -o "$BUILD_DIR/player-surface-aspect"
 "$BUILD_DIR/player-surface-aspect"
@@ -71,13 +72,14 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
     "$APP/Domain/Models/CardAnimationSettings.swift" \
+    "$APP/Application/Settings/CardAnimationSettings+Preferences.swift" \
     "$HARNESS/src/CardAnimationRegression.swift" \
     -o "$BUILD_DIR/card-animation"
 "$BUILD_DIR/card-animation"
 
 # Already-mounted mini windows must receive new-session handoffs without layout.
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Features/Player/PlayerSurfaceOwnership.swift" \
+    "$APP/Platform/Playback/PlayerSurfaceOwnership.swift" \
     "$HARNESS/src/PlayerSurfaceOwnershipRegression.swift" \
     -o "$BUILD_DIR/player-surface-ownership"
 "$BUILD_DIR/player-surface-ownership"

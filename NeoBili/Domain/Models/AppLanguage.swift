@@ -8,7 +8,6 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case system, simplifiedChinese, english
 
     static let storageKey = "neobili.appLanguage"
-    private static let overrideKey = "AppleLanguages"
 
     var id: String { rawValue }
 
@@ -21,29 +20,11 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         }
     }
 
-    private var code: String? {
+    var code: String? {
         switch self {
         case .system: nil
         case .simplifiedChinese: "zh-Hans"
         case .english: "en"
-        }
-    }
-
-    static var stored: AppLanguage {
-        UserDefaults.standard.string(forKey: storageKey).flatMap(AppLanguage.init(rawValue:)) ?? .system
-    }
-
-    /// 本次启动实际使用的语言。设置改动要到下次启动才生效，界面据此提示。
-    static let launched = stored
-
-    /// 保存选择并写入下次启动使用的语言覆盖。
-    static func apply(_ language: AppLanguage) {
-        let defaults = UserDefaults.standard
-        defaults.set(language.rawValue, forKey: storageKey)
-        if let code = language.code {
-            defaults.set([code], forKey: overrideKey)
-        } else {
-            defaults.removeObject(forKey: overrideKey)
         }
     }
 
