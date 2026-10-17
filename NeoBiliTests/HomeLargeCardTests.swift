@@ -14,6 +14,52 @@ final class HomeLargeCardTests: XCTestCase {
         return v
     }
 
+    #if NEOBILI_REGRESSION
+    func testUnchangedRowsSkipPreparationButContentHeaderAndEnvironmentStillUpdate() throws {
+        let collection = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
+        let coordinator = HomeFeedCollection.Coordinator()
+        coordinator.showsHeaderRow = false
+        coordinator.attach(collection)
+        let source = try XCTUnwrap(collection.dataSource as? UICollectionViewDiffableDataSource<HomeFeedCollection.Section, String>)
+        let videos = (0..<1_000).map { video($0) }
+        let rows = HomeFeedRow.group(videos.map(HomeFeedItem.video))
+        coordinator.apply(rows)
+        XCTAssertEqual(coordinator.rowPreparationCount, 1)
+        // Rebuild each input like HomeViewModel.feedRows does; do not benchmark
+        // only Array's shared-buffer equality shortcut.
+        let equivalentRows = (0..<100).map { _ in HomeFeedRow.group(videos.map(HomeFeedItem.video)) }
+        let start = ProcessInfo.processInfo.systemUptime
+        for input in equivalentRows { coordinator.apply(input) }
+        let elapsed = ProcessInfo.processInfo.systemUptime - start
+        XCTAssertEqual(coordinator.rowPreparationCount, 1, "Unrelated page updates must not rebuild the item index")
+        XCTAssertEqual(source.snapshot().numberOfItems, 1_000)
+        print("UNCHANGED_FEED_APPLY cards=1000 updates=100 preparations=0 elapsed=\(elapsed)")
+
+        // The same IDs can carry new metadata or a different layout kind.
+        var changed = videos
+        changed[1].isLargeRecommendationCard = true
+        changed[1].recommendationBadge = "更新后的标签"
+        let changedRows = HomeFeedRow.group(changed.map(HomeFeedItem.video))
+        coordinator.apply(changedRows)
+        XCTAssertEqual(coordinator.rowPreparationCount, 2)
+        XCTAssertEqual(source.snapshot().numberOfSections, 3)
+        XCTAssertEqual(source.snapshot().itemIdentifiers, videos.map { HomeFeedItem.video($0).id })
+
+        coordinator.showsHeaderRow = true
+        coordinator.apply(changedRows)
+        XCTAssertEqual(coordinator.rowPreparationCount, 3)
+        XCTAssertEqual(source.snapshot().sectionIdentifiers.first, .header)
+        XCTAssertEqual(source.snapshot().numberOfItems, 1_001)
+
+        coordinator.update(environment: EnvironmentValues(), hidesPortraitVideos: true)
+        coordinator.apply(changedRows)
+        XCTAssertEqual(coordinator.rowPreparationCount, 4, "Environment changes still reconfigure unchanged rows")
+        coordinator.apply(changedRows)
+        XCTAssertEqual(coordinator.rowPreparationCount, 4)
+    }
+
+    #endif
+
     func testLargeTitleIsSingleLineAndBadgeSurvivesCardReuse() {
         let card = NativeHomeVideoCard.CardView(resolveAvatar: { _ in nil })
         card.frame = CGRect(x: 0, y: 0, width: 386, height: 278)

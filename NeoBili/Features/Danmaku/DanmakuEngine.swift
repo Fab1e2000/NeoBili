@@ -84,6 +84,10 @@ final class DanmakuEngine: UIView {
     /// 活动图层硬上限：防御异常刷屏把合成器压垮，超出的直接丢弃。
     private static let maximumActiveLayers = 90
     private var activeCount = 0
+#if NEOBILI_REGRESSION
+    /// Deterministic workload evidence for burst admission, without timing noise.
+    private(set) var bitmapRequestCount = 0
+#endif
 
     private let bitmapCache: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
@@ -234,6 +238,19 @@ final class DanmakuEngine: UIView {
         if !item.isScroll && (item.isTop ? blockTop : blockBottom) { return }
         guard bounds.width > 10, activeCount < Self.maximumActiveLayers else { return }
         rebuildTracks()
+        // Reject a saturated lane before text measurement and bitmap drawing.
+        // Width-dependent catch-up checks still run in place(scroll:layer:width:).
+        if item.isScroll {
+            guard scrollTracks.contains(where: { track in
+                guard let previous = track.last else { return true }
+                return previous.x + previous.width <= bounds.width
+            }) else { return }
+        } else {
+            guard staticTracks.contains(where: { $0 == nil }) else { return }
+        }
+#if NEOBILI_REGRESSION
+        bitmapRequestCount += 1
+#endif
         guard let layer = Self.bitmap(for: item.text, color: coloredEnabled ? item.color : 0xFFFFFF, fontSize: fontSize,
                                       framed: item.isSelf, cache: bitmapCache,
                                       scale: min(window?.screen.scale ?? traitCollection.displayScale,
@@ -327,17 +344,7 @@ final class DanmakuEngine: UIView {
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         for index in scrollTracks.indices {
-            scrollTracks[index] = scrollTracks[index].compactMap { original in
-                var item = original
-                item.x -= CGFloat(max(0, dt)) * item.speed
-                if item.x + item.width <= 0 {
-                    item.layer.removeFromSuperlayer()
-                    activeCount -= 1
-                    return nil
-                }
-                item.layer.position.x = item.x + item.width / 2
-                return item
-            }
+            activeCount -= Self.advanceTrack(&scrollTracks[index], by: CGFloat(max(0, dt)))
         }
         for index in staticTracks.indices {
             guard var item = staticTracks[index] else { continue }
@@ -351,6 +358,27 @@ final class DanmakuEngine: UIView {
             }
         }
         if activeCount == 0 { stopTicking() }
+    }
+
+    /// Stable in-place compaction keeps each lane's buffer across display-link
+    /// ticks, including frames that expire multiple comments. The last survivor
+    /// must remain the newest one because admission uses it for collision checks.
+    private static func advanceTrack(_ track: inout [ScrollItem], by dt: CGFloat) -> Int {
+        var survivorCount = 0
+        for index in track.indices {
+            var item = track[index]
+            item.x -= dt * item.speed
+            if item.x + item.width <= 0 {
+                item.layer.removeFromSuperlayer()
+            } else {
+                item.layer.position.x = item.x + item.width / 2
+                track[survivorCount] = item
+                survivorCount += 1
+            }
+        }
+        let expiredCount = track.count - survivorCount
+        if expiredCount > 0 { track.removeLast(expiredCount) }
+        return expiredCount
     }
 
     // MARK: - 位图渲染

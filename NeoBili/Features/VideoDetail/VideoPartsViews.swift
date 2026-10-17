@@ -86,6 +86,9 @@ struct VideoPartsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        // The list's background does not replace the sheet's own live glass
+        // backdrop. Keep the half-height picker opaque above a playing video.
+        .presentationBackground(Color(uiColor: .systemGroupedBackground))
         .videoCardAnimationSource(.collection)
     }
 }

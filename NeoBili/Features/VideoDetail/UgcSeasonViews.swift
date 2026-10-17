@@ -93,6 +93,9 @@ struct UgcSeasonSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        // Match the parts picker: avoid a live glass backdrop over Metal video
+        // while retaining the native half/full-height sheet and ongoing playback.
+        .presentationBackground(Color(uiColor: .systemGroupedBackground))
         .resolvePortraitVideos(season.episodes)
         .videoCardAnimationSource(.collection)
     }

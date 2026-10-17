@@ -189,6 +189,12 @@ struct HomeFeedCollection: UIViewRepresentable {
         private weak var collectionView: UICollectionView?
         private var dataSource: UICollectionViewDiffableDataSource<Section, String>?
         private var itemsByID: [String: HomeFeedItem] = [:]
+        // Retain the value-semantic input so unrelated page updates can skip
+        // flattening, deduplication, dictionary construction and snapshot reads.
+        private var appliedRows: [HomeFeedRow]?
+        #if NEOBILI_REGRESSION
+        private(set) var rowPreparationCount = 0
+        #endif
         private var latestIDs: [String] = []
         private var earlierIDs: [String] = []
         private var hasMarker = false
@@ -289,6 +295,11 @@ struct HomeFeedCollection: UIViewRepresentable {
 
         func apply(_ rows: [HomeFeedRow]) {
             guard let dataSource else { return }
+            guard appliedRows != rows || needsReconfigureAll || showsHeaderRow != hasHeaderRow else { return }
+            appliedRows = rows
+            #if NEOBILI_REGRESSION
+            rowPreparationCount += 1
+            #endif
             let items = HomeFeedRow.collectionItems(rows)
             var seen = Set<String>()
             var byID: [String: HomeFeedItem] = [:]

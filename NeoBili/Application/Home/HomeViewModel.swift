@@ -14,7 +14,7 @@ enum HomeFeedItem: Identifiable {
     }
 }
 
-enum HomeFeedRow: Identifiable {
+enum HomeFeedRow: Identifiable, Equatable {
     case videos([VideoSummary])
     case lastSeen
 

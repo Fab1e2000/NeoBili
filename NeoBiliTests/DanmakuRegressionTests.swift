@@ -209,6 +209,53 @@ final class DanmakuRegressionTests: XCTestCase {
         XCTAssertTrue(engine.layer.sublayers?.isEmpty ?? true)
     }
 
+    func testCompactionPreservesSurvivorIdentityAndAllowsLaneReuse() throws {
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 24))
+        engine.mode = .live
+        engine.enqueue(text: "同宽一", color: 0xFFFFFF)
+        let first = try XCTUnwrap(engine.layer.sublayers?.first)
+        engine.advance(by: 2)
+        engine.enqueue(text: "同宽二", color: 0xFFFFFF)
+        let second = try XCTUnwrap(engine.layer.sublayers?.last)
+        engine.advance(by: 2)
+        engine.enqueue(text: "同宽三", color: 0xFFFFFF)
+        let third = try XCTUnwrap(engine.layer.sublayers?.last)
+        XCTAssertEqual(engine.layer.sublayers?.count, 3)
+        // Two expire in one tick; the third must keep its layer and keep moving.
+        engine.advance(by: 5.1)
+        XCTAssertNil(first.superlayer)
+        XCTAssertNil(second.superlayer)
+        XCTAssertTrue(third.superlayer === engine.layer)
+        let x = third.position.x
+        engine.enqueue(text: "同宽四", color: 0xFFFFFF)
+        XCTAssertEqual(engine.layer.sublayers?.count, 2)
+        engine.advance(by: 0.1)
+        XCTAssertLessThan(third.position.x, x)
+        engine.advance(by: 10)
+        XCTAssertTrue(engine.layer.sublayers?.isEmpty ?? true)
+        engine.enqueue(text: "清空后复用", color: 0xFFFFFF)
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+    }
+
+#if NEOBILI_REGRESSION
+    func testSaturatedBurstSkipsBitmapWorkAndReopensAfterExpiry() {
+        for mode in [1, 4, 5] {
+            let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 24))
+            // Each unique string is a cache miss. Previously all 200 requests
+            // reached text measurement / rasterization before lane rejection.
+            for index in 0..<200 {
+                engine.presentImmediately(DanmakuItem(time: 0, text: "唯一弹幕 \(index)", mode: mode, color: 0xFFFFFF))
+            }
+            XCTAssertEqual(engine.layer.sublayers?.count, 1)
+            XCTAssertEqual(engine.bitmapRequestCount, 1)
+            engine.advance(by: 8)
+            engine.presentImmediately(DanmakuItem(time: 0, text: "恢复", mode: mode, color: 0xFFFFFF))
+            XCTAssertEqual(engine.layer.sublayers?.count, 1)
+            XCTAssertEqual(engine.bitmapRequestCount, 2)
+        }
+    }
+#endif
+
     func testPauseFreezesFixedCommentLifetime() throws {
         let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 200))
         engine.prepare(items: [DanmakuItem(time: 0, text: "固定弹幕", mode: 5, color: 0xFFFFFF)])

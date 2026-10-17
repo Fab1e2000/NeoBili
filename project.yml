@@ -82,6 +82,9 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+      configs:
+        Regression:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG NEOBILI_REGRESSION"
 
 # 共享运行方案：Debug + LLDB，重新生成工程时也保留。
 schemes:
