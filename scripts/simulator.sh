@@ -74,10 +74,15 @@ else
     [[ "$SELECTOR" != -* ]] || { echo 'Invalid test selector' >&2; exit 2; }
     ARGS+=("-only-testing:NeoBiliTests/$SELECTOR")
   done
-  if xcodebuild "${ARGS[@]}" -parallel-testing-enabled NO -resultBundlePath "$RESULT/tests.xcresult" test > "$RESULT/test.log" 2>&1; then
+  if xcodebuild "${ARGS[@]}" -parallel-testing-enabled NO -collect-test-diagnostics "${NEOBILI_TEST_DIAGNOSTICS:-on-failure}" -resultBundlePath "$RESULT/tests.xcresult" test > "$RESULT/test.log" 2>&1; then
     STATUS=0
   else
     STATUS=$?
+  fi
+  if [[ "${NEOBILI_FAIL_RUNTIME_ISSUES:-0}" == 1 ]] &&
+     grep -Eq 'Main Thread Checker:|WARNING: ThreadSanitizer:|ERROR: AddressSanitizer:|runtime error:' "$RESULT/test.log"; then
+    echo 'Runtime checker reported an issue; inspect test.log.' >&2
+    STATUS=1
   fi
   tail -30 "$RESULT/test.log"
   if [[ -d "$RESULT/tests.xcresult" ]]; then

@@ -66,13 +66,15 @@ git config --local core.hooksPath .githooks
 Regression 数据隔离和 UDID 锁。参数不经过 shell 求值。诊断运行与普通回归分开记录：
 
 ```sh
-bash scripts/simulator.sh test -- -enableThreadSanitizer YES
-bash scripts/simulator.sh test -- -enableAddressSanitizer YES -enableUndefinedBehaviorSanitizer YES
+NEOBILI_FAIL_RUNTIME_ISSUES=1 bash scripts/simulator.sh test -- -enableThreadSanitizer YES
+NEOBILI_FAIL_RUNTIME_ISSUES=1 bash scripts/simulator.sh test -- -enableAddressSanitizer YES -enableUndefinedBehaviorSanitizer YES
 ```
 
+诊断命令将 Main Thread Checker 和 sanitizer 的运行时报告视为失败；XCTest 默认加载 Main Thread Checker。
 不要同时开启 Thread Sanitizer 和 Address Sanitizer。额外参数记录在该次运行的
 `environment.txt`，不要通过参数传入凭据。临时编译检查可传
-`SWIFT_STRICT_CONCURRENCY=complete`；Swift 6 本身已启用完整并发安全检查。
+`SWIFT_STRICT_CONCURRENCY=complete`。诊断采集阻塞时可显式设置
+`NEOBILI_TEST_DIAGNOSTICS=never`，只跳过额外系统诊断，仍保留日志及结果包；默认值为 `on-failure`。Swift 6 本身已启用完整并发安全检查。
 
 ## 验证分层
 
