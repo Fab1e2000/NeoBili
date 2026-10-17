@@ -233,56 +233,22 @@ final class PlayerViewModel {
 
     // MARK: - 定时休眠
 
-    /// 定时休眠的可选项。`afterVideoEnd` 表示当前这条视频播完就停。
-    enum SleepOption: Equatable, Hashable {
-        case minutes(Int)
-        case afterVideoEnd
-    }
-
-    static let sleepOptions: [SleepOption] = [
-        .minutes(15), .minutes(30), .minutes(60), .minutes(90), .minutes(120)
-    ]
-
-    /// 倒计时的到期时刻。nil 表示没有正在运行的倒计时休眠。
-    private(set) var sleepDeadline: Date?
-    /// 「播完就睡」是否生效。
-    private(set) var sleepsAfterVideoEnd = false
-    /// 菜单上当前选中的选项，给高亮对勾用。
-    private(set) var selectedSleepOption: SleepOption?
-    private var sleepTask: Task<Void, Never>?
-    @ObservationIgnored private let sleepWaiter: @Sendable (TimeInterval) async throws -> Void
+    typealias SleepOption = PlaybackSleepTimer.Option
+    static let sleepOptions = PlaybackSleepTimer.options
+    private let sleepTimer: PlaybackSleepTimer
     @ObservationIgnored private let danmakuLoader: @Sendable (Int) async throws -> [DanmakuItem]
 
-    var isSleepTimerActive: Bool {
-        sleepDeadline != nil || sleepsAfterVideoEnd
-    }
+    var sleepDeadline: Date? { sleepTimer.deadline }
+    var sleepsAfterVideoEnd: Bool { sleepTimer.afterVideoEnd }
+    var selectedSleepOption: SleepOption? { sleepTimer.selectedOption }
+    var isSleepTimerActive: Bool { sleepTimer.isActive }
 
     func setSleepTimer(_ option: SleepOption) {
-        cancelSleepTimer()
-        selectedSleepOption = option
-        switch option {
-        case .minutes(let minutes):
-            sleepDeadline = Date.now.addingTimeInterval(TimeInterval(minutes) * 60)
-            let waiter = sleepWaiter
-            sleepTask = Task { [weak self] in
-                try? await waiter(TimeInterval(minutes) * 60)
-                guard !Task.isCancelled else { return }
-                self?.enterSleep()
-            }
-        case .afterVideoEnd:
-            sleepsAfterVideoEnd = true
-        }
+        sleepTimer.set(option) { [weak self] in self?.enterSleep() }
     }
 
-    func cancelSleepTimer() {
-        sleepTask?.cancel()
-        sleepTask = nil
-        sleepDeadline = nil
-        sleepsAfterVideoEnd = false
-        selectedSleepOption = nil
-    }
+    func cancelSleepTimer() { sleepTimer.cancel() }
 
-    /// 休眠时刻到了：清掉定时状态并暂停播放。
     private func enterSleep() {
         cancelSleepTimer()
         // 取流或重建内核期间也要留下暂停意图，阻止迟到的自动播放。
@@ -329,7 +295,7 @@ final class PlayerViewModel {
             try await services.video.playURL(bvid: bvid, cid: cid, quality: quality)
         }
         self.sourceOpener = sourceOpener
-        self.sleepWaiter = sleepWaiter
+        self.sleepTimer = PlaybackSleepTimer(waiter: sleepWaiter)
         self.danmakuLoader = danmakuLoader
         self.watchProgressClock = watchProgressClock
         self.playbackEntry = playbackEntry
@@ -377,7 +343,7 @@ final class PlayerViewModel {
             finishWatchReport()
             dependencies.systemMedia.deactivate(sessionID: systemMediaSessionID)
             danmaku?.shutdown()
-            sleepTask?.cancel()
+            sleepTimer.cancel()
             session.stop()
         }
     }

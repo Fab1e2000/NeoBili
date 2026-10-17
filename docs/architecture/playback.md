@@ -128,3 +128,5 @@ param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 Recor
 音频会话协调器位于 `Platform/Media`；播放器控件位置的纯值位于 Domain，持久化偏好位于 `Application/Settings`。生产实例由 App 创建，设置页和控件通过同一 `playerChromePreferences` 环境值观察更新。
 
 图片的 `BiliImagePipeline` 在 App 组装，统一持有位图缓存、解码限流和预取限流；列表、SwiftUI 图片和 UIKit 卡片通过环境传递同一实例。评论表情仓库也可通过环境替换，测试使用独立缓存与通知中心，不清理生产共享缓存。
+
+`PlayerViewModel` 将一次性休眠等待和菜单状态交给 `PlaybackSleepTimer`，到期仍由播放器清理状态并暂停。`NowPlayingStore` 使用 `PlaybackNavigationHistory` 在跳转时冻结实际分 P，播放、加载与页面呈现任务仍由原模型持有。

@@ -121,7 +121,7 @@ final class NowPlayingStore {
     }
 
     /// 视频页里点相关视频是就地替换，这里记着来路，供左上角返回按钮逐级回退。
-    private var history: [VideoDetailRoute] = []
+    private var history = PlaybackNavigationHistory()
     private var loadTasks: [Task<Void, Never>] = []
     private var playerLoadTask: Task<Void, Never>?
     private var detailLoadTask: Task<Void, Never>?
@@ -148,7 +148,7 @@ final class NowPlayingStore {
     /// 服务 sheet 打开期间，由它承载视频模态，根 TabView 暂停呈现。
     var isServiceSheetPresented = false
 
-    var canGoBack: Bool { !history.isEmpty }
+    var canGoBack: Bool { history.canGoBack }
 
     /// 正在播放的分P。入口已经给了 cid 时立刻有值，播放器不必等详情接口。
     var activeCid: Int? {
@@ -168,7 +168,7 @@ final class NowPlayingStore {
             requestPageExpansion(from: sourceID)
             return
         }
-        history.removeAll()
+        history.reset()
         start(newRoute)
         requestPageExpansion(from: sourceID)
     }
@@ -180,14 +180,14 @@ final class NowPlayingStore {
             return
         }
         guard route?.bvid != newRoute.bvid else { return }
-        if let route { history.append(historySnapshot(route)) }
+        if let route { history.record(route, activeCid: activeCid) }
         start(newRoute)
     }
 
     /// 视频页里点相关视频：就地换掉当前视频，旧的压进历史。
     func openRelated(_ video: VideoSummary) {
         if let route {
-            history.append(historySnapshot(route))
+            history.record(route, activeCid: activeCid)
         }
         start(
             VideoDetailRoute(
@@ -205,7 +205,7 @@ final class NowPlayingStore {
     func openEpisode(_ episode: UgcSeasonEpisode) {
         guard let bvid = episode.bvid else { return }
         if let route {
-            history.append(historySnapshot(route))
+            history.record(route, activeCid: activeCid)
         }
         start(
             VideoDetailRoute(
@@ -220,7 +220,7 @@ final class NowPlayingStore {
 
     /// 左上角返回：先在历史里逐级回退，退到底了退出视频页并继续在底部播放条播放。
     func goBack() {
-        if let previous = history.popLast() {
+        if let previous = history.pop() {
             start(previous)
         } else {
             dismissVideoPage()
@@ -312,7 +312,7 @@ final class NowPlayingStore {
         detailViewModel = nil
         commentsViewModel = nil
         route = nil
-        history.removeAll()
+        history.reset()
         isExpanded = false
         isMiniPlayerPresented = false
         isVideoPageDismissalInProgress = false
@@ -408,12 +408,6 @@ final class NowPlayingStore {
             self.buildCommentsIfNeeded()
             await viewModel.loadExtras()
         }
-    }
-
-    private func historySnapshot(_ route: VideoDetailRoute) -> VideoDetailRoute {
-        var snapshot = route
-        snapshot.cid = activeCid ?? route.cid
-        return snapshot
     }
 
     private func startPlayerIfPossible() {
