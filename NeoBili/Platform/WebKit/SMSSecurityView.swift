@@ -19,7 +19,7 @@ struct SMSSecurityView: UIViewRepresentable {
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
         // 仅为指定安全接口补当前 App 的签名，不实现或冒充完整官方 JS bridge。
-        view.load(URLRequest(url: url))
+        if !RuntimePolicy.isRegression { view.load(URLRequest(url: url)) }
         return view
     }
     func updateUIView(_ uiView: WKWebView, context: Context) {}
@@ -66,6 +66,7 @@ struct SMSSecurityView: UIViewRepresentable {
                      decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
             guard let url = action.request.url else { decisionHandler(.cancel); return }
             if url.absoluteString == "about:blank" { decisionHandler(.allow); return }
+            guard !RuntimePolicy.isRegression else { decisionHandler(.cancel); return }
             let host = url.host ?? ""
             let allowed = url.scheme == "https" && (host == "bilibili.com" || host.hasSuffix(".bilibili.com") || host == "geetest.com" || host.hasSuffix(".geetest.com"))
             decisionHandler(allowed ? .allow : .cancel)

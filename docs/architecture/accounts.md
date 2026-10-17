@@ -9,7 +9,7 @@ UA、Referer 与显式 Cookie 仍由它组装。App GET、表单、只读 gRPC �
 `AppRequest` 和已校验的 `AppRequestContext`，不读取凭据存储或发起网络请求。
 `APIClient` 在编码前统一合并设备公共头，并在异步准备后复核登录代际；不感兴趣等无自定义头的 App 接口也使用同一身份。
 `HTTPTransport` 发送已编码请求并记录脱敏诊断、处理已发送 ticket 的失效响应；重试复用同一份请求，写操作使用零重试。
-登录、直播和图片各有独立入口，默认 HTTP 传输使用 `AppNetwork.session`。WBI 与 App 签名各自维护。
+登录、直播和图片各有独立入口，默认 HTTP 传输使用 `AppNetwork.session`。Regression 禁止安全验证 WebKit 的远端初始加载及导航。WBI 与 App 签名各自维护。
 非零业务码先于成功数据解码，列表用宽松解码避免单条异常拖垮整页。
 推荐、直播与「不感兴趣」及撤销共用实测 iPhone 9.13.0 协议身份：
 `build=91300100`、`mobi_app=iphone`、`platform=ios`，客户端参数集中在 `AppClientIdentity`。
