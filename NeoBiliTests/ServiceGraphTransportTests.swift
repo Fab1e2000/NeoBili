@@ -40,6 +40,19 @@ final class ServiceGraphTransportTests: XCTestCase {
         }
     }
 
+    func testRecommendationAdapterUsesItsInjectedTransport() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ServiceGraphProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let snapshot = DeviceIdentity.AuthenticatedRequestSnapshot(sessionID: UUID(), accountID: 41,
+            csrfToken: "fixture", cookieHeader: "DedeUserID=41", isLoggedIn: true)
+        let service = RecommendationService.live(client: APIClient(session: session, authentication: { snapshot }, signWebParameters: { $0 }))
+        let result = try await service.recommendFeed(request: .init(source: .web))
+        XCTAssertTrue(result.videos.isEmpty)
+        XCTAssertNil(result.nextRequest)
+    }
+
     func testLiveAdapterUsesItsInjectedTransport() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ServiceGraphProtocol.self]
@@ -94,7 +107,9 @@ private final class ServiceGraphProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200,
             httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         let body: String
-        if request.url?.path.contains("/search/type") == true {
+        if request.url?.path.contains("/feed/rcmd") == true {
+            body = #"{"code":0,"data":{"item":[]}}"#
+        } else if request.url?.path.contains("/search/type") == true {
             let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
             guard query.contains(where: { $0.name == "w_rid" && $0.value?.isEmpty == false }), account == 41 else {
                 client?.urlProtocol(self, didFailWithError: URLError(.userAuthenticationRequired)); return

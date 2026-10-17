@@ -1,40 +1,48 @@
 import Foundation
 
 extension BiliAPI {
-    static func recommendFeed(request: RecommendationRequest) async throws -> RecommendationBatch {
+    static func recommendFeed(request: RecommendationRequest, client: APIClient = .shared, identity: DeviceIdentity = .shared,
+                              session: AppRecommendationSession = .shared, network: AppNetworkMetadata = .shared,
+                              clickReporter: RecommendationClickReporter = .shared,
+                              filter: @Sendable () -> RecommendationFilter = { .current() }) async throws -> RecommendationBatch {
         switch request.source {
         case .app:
-            return try await appRecommendFeed(request: request)
+            return try await appRecommendFeed(request: request, client: client, identity: identity, session: session,
+                                              network: network, clickReporter: clickReporter, filter: filter)
         case .web:
-            let videos = try await webRecommendFeed(freshIndex: request.pageIndex)
+            let videos = try await webRecommendFeed(freshIndex: request.pageIndex, client: client, filter: filter)
             return RecommendationBatch(videos: videos, nextRequest: videos.isEmpty ? nil : request.next())
         }
     }
 
     /// 网页推荐：Cookie 认证 + WBI 签名，每次 20 条。
-    static func webRecommendFeed(freshIndex: Int) async throws -> [VideoSummary] {
-        let page: WebRecommendationPage = try await APIClient.shared.get(
+    static func webRecommendFeed(freshIndex: Int, client: APIClient = .shared,
+                                 filter: @Sendable () -> RecommendationFilter = { .current() }) async throws -> [VideoSummary] {
+        let page: WebRecommendationPage = try await client.get(
             path: "x/web-interface/wbi/index/top/feed/rcmd",
             params: WebRecommendationPage.parameters(freshIndex: freshIndex), requiresWBI: true
         )
-        return page.videos(filter: .current())
+        return page.videos(filter: filter())
     }
 
-    static func appRecommendFeed(request: RecommendationRequest) async throws -> RecommendationBatch {
-        Task { await RecommendationClickReporter.shared.flush() }
-        let account = try await APIClient.shared.appAccount(expectedSessionID: nil)
+    static func appRecommendFeed(request: RecommendationRequest, client: APIClient = .shared, identity: DeviceIdentity = .shared,
+                              session: AppRecommendationSession = .shared, network: AppNetworkMetadata = .shared,
+                              clickReporter: RecommendationClickReporter = .shared,
+                              filter: @Sendable () -> RecommendationFilter = { .current() }) async throws -> RecommendationBatch {
+        Task { await clickReporter.flush() }
+        let account = try await client.appAccount(expectedSessionID: nil)
         if account.mid != nil, account.accessKey?.isEmpty != false { throw BiliAPIError.missingAccessKey }
         try Task.checkCancellation()
-        let headers = try await DeviceIdentity.shared.appRequestHeaders(expectedSessionID: account.sessionID)
-        let context = AppRecommendationSession.shared.takeRequest(accountSession: account.sessionID)
-        let page: AppRecommendationPage = try await APIClient.shared.getApp(
+        let headers = try await identity.appRequestHeaders(expectedSessionID: account.sessionID)
+        let context = session.takeRequest(accountSession: account.sessionID)
+        let page: AppRecommendationPage = try await client.getApp(
             path: "x/v2/feed/index",
             params: AppRecommendationProtocol.parameters(for: request, display: await AppRecommendationDisplay.current(),
-                openEvent: context.openEvent, bannerHash: context.bannerHash, network: AppNetworkMetadata.shared.snapshot().queryNetwork),
+                openEvent: context.openEvent, bannerHash: context.bannerHash, network: network.snapshot().queryNetwork),
             headers: headers, expectedSessionID: account.sessionID, requiresAccountCredential: true
         )
-        AppRecommendationSession.shared.recordBanner(page.bannerHash, context: context)
-        return appRecommendationBatch(page: page, request: request, filter: .current(), accountSessionID: account.sessionID)
+        session.recordBanner(page.bannerHash, context: context)
+        return appRecommendationBatch(page: page, request: request, filter: filter(), accountSessionID: account.sessionID)
     }
 
     /// Bind response cards to the requesting account without losing page-level metadata.
