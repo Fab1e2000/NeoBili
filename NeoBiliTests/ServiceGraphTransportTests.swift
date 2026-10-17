@@ -69,6 +69,36 @@ final class ServiceGraphTransportTests: XCTestCase {
         XCTAssertTrue(countries.isEmpty)
     }
 
+    func testApplicationAssemblyKeepsReadWriteAuthenticationAndLiveInOneGraph() async throws {
+        let suite = "neobili.application-graph.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let identity = DeviceIdentity(defaults: defaults, credentials: .memory(), allowsNetwork: false, purgeCookies: {})
+        await identity.setLoginCookies(sessdata: "fixture", biliJct: "csrf-42", dedeUserID: "42")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ServiceGraphProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let diagnostics = RecommendationDiagnostics(enabled: { false })
+        let client = APIClient(session: session, authentication: { await identity.authenticatedRequestSnapshot() },
+            transport: HTTPTransport(session: session, diagnostics: diagnostics, observeResponse: { _, _ in }),
+            signWebParameters: { $0 })
+        let services = ApplicationServices.makeLive(identity: identity, client: client, session: session,
+            diagnostics: diagnostics, network: AppNetworkMetadata(), recommendationSession: AppRecommendationSession(),
+            reporter: AppBehaviorReporter(identity: identity, client: client, automaticScheduling: false),
+            clickReporter: RecommendationClickReporter(identity: identity, client: client), filter: { .none })
+        let profile = try await services.account.myProfile()
+        XCTAssertEqual(profile.mid, 42)
+        XCTAssertEqual(services.session.currentID(), identity.loginSessionID)
+        try await services.library.deleteHistory(kid: "archive_1", expectedSessionID: services.session.currentID())
+        let key = try await services.authentication.webKey()
+        XCTAssertEqual(key.hash, "fixture-hash")
+        let followed = try await services.streaming.followedUsers()
+        XCTAssertTrue(followed.rooms.isEmpty)
+        let recommendations = try await services.recommendation.recommendFeed(request: .init(source: .web))
+        XCTAssertTrue(recommendations.videos.isEmpty)
+    }
+
     func testLiveAdapterUsesItsInjectedTransport() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ServiceGraphProtocol.self]

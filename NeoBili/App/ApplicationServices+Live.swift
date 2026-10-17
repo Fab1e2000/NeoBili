@@ -2,22 +2,33 @@ import Foundation
 import AVFAudio
 
 extension ApplicationServices {
-    static let live = Self(
-        currentAppBuvid: { await DeviceIdentity.shared.appBuvid() },
-        exportDiagnostics: { try await RecommendationDiagnostics.shared.export() },
-        telemetry: .live,
-        authentication: .live,
-        session: .live(),
-        links: .live,
-        search: .live(),
-        library: .live(),
-        video: .live(),
-        account: .live(),
-        comment: .live(),
-        streaming: .live(),
-        community: .live(),
-        recommendation: .live()
-    )
+    static let live = makeLive(identity: .shared, client: .shared, session: AppNetwork.session,
+                              diagnostics: .shared, network: .shared, recommendationSession: .shared,
+                              reporter: .shared, clickReporter: .shared)
+
+    static func makeLive(identity: DeviceIdentity, client: APIClient, session: URLSession,
+                         diagnostics: RecommendationDiagnostics, network: AppNetworkMetadata,
+                         recommendationSession: AppRecommendationSession, reporter: AppBehaviorReporter,
+                         clickReporter: RecommendationClickReporter,
+                         filter: @escaping @Sendable () -> RecommendationFilter = { .current() }) -> Self {
+        Self(
+            currentAppBuvid: { await identity.appBuvid() },
+            exportDiagnostics: { try await diagnostics.export() },
+            telemetry: .live(identity: identity, reporter: reporter, clickReporter: clickReporter),
+            authentication: .live(session: session, identity: identity),
+            session: .live(identity: identity),
+            links: .live(session: session),
+            search: .live(client: client),
+            library: .live(client: client, identity: identity),
+            video: .live(client: client, identity: identity),
+            account: .live(client: client),
+            comment: .live(client: client, identity: identity),
+            streaming: .live(client: client, identity: identity, session: session),
+            community: .live(client: client, identity: identity),
+            recommendation: .live(client: client, identity: identity, session: recommendationSession,
+                                  network: network, clickReporter: clickReporter, filter: filter)
+        )
+    }
 }
 
 extension HomeFeedAccount {
