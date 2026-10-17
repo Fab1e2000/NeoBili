@@ -40,6 +40,19 @@ final class ServiceGraphTransportTests: XCTestCase {
         }
     }
 
+    func testLiveAdapterUsesItsInjectedTransport() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ServiceGraphProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let snapshot = DeviceIdentity.AuthenticatedRequestSnapshot(sessionID: UUID(), accountID: 41,
+            csrfToken: "fixture", cookieHeader: "DedeUserID=41", isLoggedIn: true)
+        let service = LiveService.live(client: APIClient(session: session, authentication: { snapshot }))
+        let result = try await service.followedUsers()
+        XCTAssertTrue(result.rooms.isEmpty)
+        XCTAssertFalse(result.hasMore)
+    }
+
     func testIndependentAccountAdaptersUseTheirInjectedTransportAndCredentials() async throws {
         for account in [41, 42] {
             let configuration = URLSessionConfiguration.ephemeral

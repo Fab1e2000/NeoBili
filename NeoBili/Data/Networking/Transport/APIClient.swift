@@ -23,7 +23,7 @@ struct APIClient {
     static let shared = APIClient()
 
     private static let baseURL = URL(string: "https://api.bilibili.com")!
-    private let signWebParameters: @Sendable ([String: String]) async throws -> [String: String]
+    let signWebParameters: @Sendable ([String: String]) async throws -> [String: String]
     private let transport: HTTPTransport
     private let appEncoder: any AppRequestEncoding
     private let authentication: @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot

@@ -1,28 +1,28 @@
 import Foundation
 
 extension LiveService {
-    static func live(client: APIClient = .shared) -> Self {
+    static func live(client: APIClient = .shared, identity: DeviceIdentity = .shared, session: URLSession = AppNetwork.session) -> Self {
         Self(
             recommendedOperation: { page in
-                try await LiveAPI.recommended(page: page)
+                try await LiveAPI.recommended(page: page, client: client, identity: identity)
             },
             followedOperation: { page in
-                try await LiveAPI.followed(page: page)
+                try await LiveAPI.followed(page: page, client: client)
             },
             followedUsersOperation: {
-                try await LiveAPI.followedUsers()
+                try await LiveAPI.followedUsers(client: client)
             },
             roomInfoOperation: { roomID in
-                try await LiveAPI.roomInfo(roomID: roomID)
+                try await LiveAPI.roomInfo(roomID: roomID, client: client)
             },
             danmuInfoOperation: { roomID in
-                try await LiveAPI.danmuInfo(roomID: roomID)
+                try await LiveAPI.danmuInfo(roomID: roomID, client: client)
             },
             superChatListOperation: { roomID in
-                try await LiveAPI.superChatList(roomID: roomID)
+                try await LiveAPI.superChatList(roomID: roomID, session: session)
             },
             playbackOperation: { roomID, quality in
-                try await LiveAPI.playback(roomID: roomID, quality: quality)
+                try await LiveAPI.playback(roomID: roomID, quality: quality, client: client)
             }
         )
     }
