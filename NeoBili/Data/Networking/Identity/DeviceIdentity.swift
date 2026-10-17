@@ -18,25 +18,13 @@ actor DeviceIdentity {
     private let defaults: UserDefaults
     private let eventSerialDefaults: UserDefaults
     private let credentials: CredentialStorage
+    private let accountPersistence: AccountCredentialPersistence
     private let rawTransport: SMSPassport.Transport
     private nonisolated let networkSnapshot: @Sendable () -> AppNetworkMetadataSnapshot
     private let allowsNetwork: Bool
     private let purgeCookies: @Sendable () -> Void
     private let buvid3Key = "neobili.buvid3"
     private let buvid4Key = "neobili.buvid4"
-    private static let sessdataKeychainKey = "neobili.sessdata"
-    private static let biliJctKeychainKey = "neobili.bili_jct"
-    private static let dedeUserIDKeychainKey = "neobili.dedeuserid"
-    private static let accessKeyKeychainKey = "neobili.access_key"
-    private static let accessKeyClientKey = "neobili.access_key.client"
-    private static let telemetryEpochKey = "neobili.telemetry.loginEpoch"
-
-    private static let renewalKey = "neobili.login.bundle.v1"
-    private struct LoginBundle: Codable {
-        let scope: String
-        let epoch: String
-        let value: SMSLoginModels.Credentials
-    }
     private var renewableLogin: SMSLoginModels.Credentials?
     private var renewalTask: Task<Void, Never>?
     private var renewalTaskID: UUID?
@@ -114,6 +102,7 @@ actor DeviceIdentity {
             eventSerialDefaults.set(defaults.integer(forKey: serialKey), forKey: serialKey)
         }
         self.credentials = credentials
+        self.accountPersistence = AccountCredentialPersistence(storage: credentials, scope: AppClientIdentity.credentialScope)
         self.customBuvid = customBuvid.flatMap(DeviceIdentityPreferences.normalizedCustomBuvid)
         self.experimentalBuvid = randomBuvidExperiment
             ? AppBuvid.randomExperimentIdentifier(defaults: defaults, credentials: credentials) : nil
@@ -131,34 +120,17 @@ actor DeviceIdentity {
             capturedGuestID: capturedDevice?.parsedGuestID) : nil)
         self.ticketService = ticketService ?? (allowsNetwork ? AppTicketService(credentials: registrationCredentials, transport: rawTransport) : nil)
         self.purgeCookies = purgeCookies
-        cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
-        if cachedTelemetryEpoch == nil {
-            credentials.write(UUID().uuidString, Self.telemetryEpochKey)
-            cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
-        }
+        cachedTelemetryEpoch = accountPersistence.restoreTelemetryEpoch()
         cachedBuvid3 = defaults.string(forKey: buvid3Key)
         cachedBuvid4 = defaults.string(forKey: buvid4Key)
-        cachedSessdata = credentials.read(Self.sessdataKeychainKey)
-        cachedBiliJct = credentials.read(Self.biliJctKeychainKey)
-        cachedDedeUserID = credentials.read(Self.dedeUserIDKeychainKey)
-        // 不同 scope 的旧凭据来自 Android/HD；保留 Cookie，由 AccountStore 换取 iOS 凭据。
-        if credentials.read(Self.accessKeyClientKey) == AppClientIdentity.credentialScope {
-            cachedAccessKey = credentials.read(Self.accessKeyKeychainKey)
-        } else {
-            needsAppCredentialMigration = credentials.read(Self.accessKeyKeychainKey)?.isEmpty == false
-        }
-        if let text = credentials.read(Self.renewalKey), let bytes = text.data(using: .utf8),
-           let bundle = try? JSONDecoder().decode(LoginBundle.self, from: bytes),
-           bundle.scope == AppClientIdentity.credentialScope {
-            credentials.write(bundle.epoch, Self.telemetryEpochKey)
-            cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
-            renewableLogin = bundle.value
-            cachedSessdata = bundle.value.cookies.sessdata
-            cachedBiliJct = bundle.value.cookies.biliJct
-            cachedDedeUserID = bundle.value.cookies.dedeUserID
-            cachedAccessKey = bundle.value.accessKey
-            needsAppCredentialMigration = false
-        }
+        let restored = accountPersistence.restoreLogin(telemetryEpoch: cachedTelemetryEpoch)
+        cachedTelemetryEpoch = restored.telemetryEpoch
+        cachedSessdata = restored.sessdata
+        cachedBiliJct = restored.csrf
+        cachedDedeUserID = restored.accountID
+        cachedAccessKey = restored.accessKey
+        needsAppCredentialMigration = restored.needsMigration
+        renewableLogin = restored.renewableLogin
     }
 
     func accountSnapshot() -> AccountCredentialsSnapshot {
@@ -342,10 +314,7 @@ actor DeviceIdentity {
     }
 
     private func replaceTelemetryEpoch(_ value: String) {
-        credentials.write(value, Self.telemetryEpochKey)
-        // Preserve the storage result even if a Keychain write fails. Reads occur
-        // only at account transitions; event/header construction uses the mirror.
-        cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
+        cachedTelemetryEpoch = accountPersistence.replaceTelemetryEpoch(value)
     }
 
     private func replaceLoginCookies(sessdata: String, biliJct: String, dedeUserID: String) {
@@ -356,9 +325,7 @@ actor DeviceIdentity {
         cachedSessdata = sessdata
         cachedBiliJct = biliJct
         cachedDedeUserID = dedeUserID
-        credentials.write(sessdata, Self.sessdataKeychainKey)
-        credentials.write(biliJct, Self.biliJctKeychainKey)
-        credentials.write(dedeUserID, Self.dedeUserIDKeychainKey)
+        accountPersistence.writeLegacyCookies(sessdata: sessdata, csrf: biliJct, accountID: dedeUserID)
     }
 
     /// App 登录返回的凭据；旧 Cookie-only 会话可缺少此值。
@@ -366,9 +333,7 @@ actor DeviceIdentity {
         discardRenewal()
         cachedAccessKey = accessKey
         needsAppCredentialMigration = false
-        credentials.write(nil, Self.accessKeyClientKey)
-        credentials.write(accessKey, Self.accessKeyKeychainKey)
-        credentials.write(accessKey?.isEmpty == false ? AppClientIdentity.credentialScope : nil, Self.accessKeyClientKey)
+        accountPersistence.writeAccessKey(accessKey)
     }
 
     /// 换取到的 App 凭据只在仍是同一账号时保存，换取途中退出或换号就丢弃。
@@ -391,11 +356,7 @@ actor DeviceIdentity {
         cachedDedeUserID = nil
         cachedAccessKey = nil
         needsAppCredentialMigration = false
-        credentials.write(nil, Self.sessdataKeychainKey)
-        credentials.write(nil, Self.biliJctKeychainKey)
-        credentials.write(nil, Self.dedeUserIDKeychainKey)
-        credentials.write(nil, Self.accessKeyKeychainKey)
-        credentials.write(nil, Self.accessKeyClientKey)
+        accountPersistence.clearLegacyLogin()
         purgeCookies()
         await ticketService?.invalidateAccount(prefix: oldEpoch + "|")
     }
@@ -404,7 +365,7 @@ actor DeviceIdentity {
         renewalTask?.cancel(); renewalTask = nil; renewalTaskID = nil
         renewableLogin = nil; nextRenewalCheck = 0; renewalState = "idle"
         appCredentialRejected = false
-        credentials.write(nil, Self.renewalKey)
+        accountPersistence.discardRenewal()
     }
 
     /// Store the SMS token pair and Cookie together, including authorization-only login.
@@ -415,9 +376,7 @@ actor DeviceIdentity {
         }
         // Verify the atomic record before changing live credentials. Failed writes keep the old login.
         let epoch = authorizationOnly ? (cachedTelemetryEpoch ?? UUID().uuidString) : UUID().uuidString
-        let text = try bundleText(value, epoch: epoch)
-        credentials.write(text, Self.renewalKey)
-        guard credentials.read(Self.renewalKey) == text else { throw AppLoginRenewal.Failure.storage }
+        try accountPersistence.saveVerifiedBundle(value, epoch: epoch)
         let oldEpoch = cachedTelemetryEpoch ?? ""
         renewalTask?.cancel(); renewalTask = nil; renewalTaskID = nil
         if !authorizationOnly {
@@ -431,13 +390,6 @@ actor DeviceIdentity {
         await ticketService?.invalidateAccount(prefix: oldEpoch + "|")
     }
 
-    private func bundleText(_ value: SMSLoginModels.Credentials, epoch: String? = nil) throws -> String {
-        let bytes = try JSONEncoder().encode(LoginBundle(scope: AppClientIdentity.credentialScope,
-            epoch: epoch ?? cachedTelemetryEpoch ?? "", value: value))
-        guard let text = String(data: bytes, encoding: .utf8) else { throw AppLoginRenewal.Failure.storage }
-        return text
-    }
-
     private func applyLoginBundle(_ value: SMSLoginModels.Credentials) {
         renewableLogin = value
         appCredentialRejected = false
@@ -445,11 +397,7 @@ actor DeviceIdentity {
         cachedDedeUserID = value.cookies.dedeUserID; cachedAccessKey = value.accessKey
         needsAppCredentialMigration = false
         // Legacy readers remain compatible; relaunch prefers the complete atomic record.
-        credentials.write(value.cookies.sessdata, Self.sessdataKeychainKey)
-        credentials.write(value.cookies.biliJct, Self.biliJctKeychainKey)
-        credentials.write(value.cookies.dedeUserID, Self.dedeUserIDKeychainKey)
-        credentials.write(value.accessKey, Self.accessKeyKeychainKey)
-        credentials.write(AppClientIdentity.credentialScope, Self.accessKeyClientKey)
+        accountPersistence.writeLegacyMirror(value)
     }
 
     func renewalDevice(expectedSessionID: UUID) async throws -> AppLoginRenewal.Device {
@@ -526,9 +474,7 @@ actor DeviceIdentity {
             guard isCurrent(snapshot) else { return }
             let fresh = try await AppLoginRenewal.refresh(old: snapshot.credentials, device: device, sts: sts, transport: transport)
             guard isCurrent(snapshot) else { return }
-            let text = try bundleText(fresh)
-            credentials.write(text, Self.renewalKey)
-            guard credentials.read(Self.renewalKey) == text else { throw AppLoginRenewal.Failure.storage }
+            try accountPersistence.saveVerifiedBundle(fresh, epoch: cachedTelemetryEpoch ?? "")
             applyLoginBundle(fresh)
             nextRenewalCheck = now + 1800; renewalState = "renewed"
             // Preserve login generation so valid playback/queued feedback survives an in-account renewal.

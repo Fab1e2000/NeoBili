@@ -71,6 +71,7 @@ cp \
     "$APP/Data/Networking/Identity/AppLoginRenewal.swift" \
     "$APP/Data/Networking/Identity/WBISigner.swift" \
     "$APP/Data/Networking/Identity/DeviceIdentity.swift" \
+    "$APP/Data/Networking/Identity/AccountCredentialPersistence.swift" \
     "$APP/Data/Networking/Identity/KeychainStore.swift" \
     "$APP/Data/Networking/Identity/AppSigner.swift" \
     "$APP/Domain/Models/URL+Bili.swift" \
