@@ -8,6 +8,7 @@ import XCTest
 /// Keychain, remote account, stream player or HTTP endpoint is used.
 @MainActor
 final class LivePageLayoutTests: XCTestCase {
+    private let imagePipeline = BiliImagePipeline(download: { _ in throw URLError(.notConnectedToInternet) })
     func testLiveCardExpandsForAccessibilityTextAtNarrowAndWideWidths() async throws {
         let host = try LivePageSnapshotHost()
         defer { host.close() }
@@ -26,7 +27,7 @@ final class LivePageLayoutTests: XCTestCase {
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measurement.height = $0 }
                     }
                     .dynamicTypeSize(size)
-                    .preferredColorScheme(scheme)
+                    .preferredColorScheme(scheme).environment(\.imagePipeline, imagePipeline)
                     .id("\(width)-\(name)")
                 )
                 XCTAssertGreaterThan(measurement.height, width * 9 / 16 + 70)
@@ -77,7 +78,7 @@ final class LivePageLayoutTests: XCTestCase {
                     .environment(account)
                     .defaultAppStorage(defaults)
                     .dynamicTypeSize(.large)
-                    .preferredColorScheme(.light)
+                    .preferredColorScheme(.light).environment(\.imagePipeline, imagePipeline)
                     .id(name)
             )
 
@@ -156,8 +157,8 @@ final class LivePageLayoutTests: XCTestCase {
                 (String(streamers[index].prefix(1)) as NSString).draw(at: CGPoint(x: 17, y: 15),
                     withAttributes: [.font: UIFont.systemFont(ofSize: 32, weight: .medium), .foregroundColor: UIColor.white])
             }
-            await BiliImageCache.shared.insert(cover, for: coverURL)
-            await BiliImageCache.shared.insert(face, for: faceURL)
+            await imagePipeline.cache.insert(cover, for: coverURL)
+            await imagePipeline.cache.insert(face, for: faceURL)
             rooms.append(LiveRoom(roomID: 9_000_001 + index, title: names[index], username: streamers[index],
                                   coverURL: coverURL, faceURL: faceURL, online: 21_680 + index * 1729,
                                   areaName: areas[index]))

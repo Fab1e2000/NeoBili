@@ -138,6 +138,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         var namespace: Namespace.ID?
         var animationSource: VideoCardAnimationSource?
         var animationOverrides = VideoCardAnimationOverrides()
+        var imagePipeline: BiliImagePipeline = .live
         var hidesPortraitVideos = false
 
         /// 这些值变了，已显示的格子要重新配置；只有设置改变时才会变。
@@ -278,6 +279,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 namespace: values.videoTransitionNamespace,
                 animationSource: values.videoCardAnimationSource,
                 animationOverrides: values.videoCardAnimationOverrides,
+                imagePipeline: values.imagePipeline,
                 hidesPortraitVideos: hidesPortraitVideos
             )
             if updated.signature != environment.signature { needsReconfigureAll = true }
@@ -448,6 +450,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 .environment(\.videoCardAnimationSource, environment.animationSource)
                 .environment(\.videoCardAnimationOverrides, environment.animationOverrides)
                 .environment(\.hidesPortraitVideos, environment.hidesPortraitVideos)
+                .environment(\.imagePipeline, environment.imagePipeline)
                 .appTextSize()
             if let cell = cell as? PersistentFeedHostingCell {
                 cell.setContent(AnyView(content))
@@ -525,8 +528,8 @@ struct HomeFeedCollection: UIViewRepresentable {
                              height: (collectionView.bounds.width - HomeCardLayout.horizontalInset * 2) / HomeCardLayout.largeCoverAspectRatio)
                     : HomeCardLayout.coverSize(for: collectionView.bounds.width)
                 imagePrefetches[indexPath] = [
-                    BiliImageLoader.prefetch(video.secureCoverURL, pointSize: cover, scale: scale),
-                    BiliImageLoader.prefetch(video.secureAvatarURL, pointSize: HomeCardLayout.avatarSize, scale: scale)
+                    BiliImageLoader.prefetch(video.secureCoverURL, pointSize: cover, scale: scale, pipeline: environment.imagePipeline),
+                    BiliImageLoader.prefetch(video.secureAvatarURL, pointSize: HomeCardLayout.avatarSize, scale: scale, pipeline: environment.imagePipeline)
                 ].compactMap { $0 }
             }
         }

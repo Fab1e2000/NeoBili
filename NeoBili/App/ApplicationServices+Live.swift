@@ -191,3 +191,14 @@ extension DeviceIdentity {
 extension ImageFileCache {
     static let shared = ImageFileCache()
 }
+
+// The UI image graph shares one production budget and admits independent test graphs.
+extension BiliImagePipeline {
+    static let live = BiliImagePipeline(download: ApplicationServices.imageData)
+}
+extension BiliImageCache {
+    static var shared: BiliImageCache { BiliImagePipeline.live.cache }
+}
+@MainActor extension CommentEmoteStore {
+    static let shared = CommentEmoteStore()
+}

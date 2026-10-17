@@ -126,3 +126,5 @@ param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 Recor
 列表卡片与相关推荐通过 `videoPreparation` 环境取得预取缓存。根页面和详情页将 NowPlayingStore 所属缓存传给子视图，UIKit 协调器保留同一环境快照；显示任务仍按原有延迟预取并在离屏时取消。
 
 音频会话协调器位于 `Platform/Media`；播放器控件位置的纯值位于 Domain，持久化偏好位于 `Application/Settings`。生产实例由 App 创建，设置页和控件通过同一 `playerChromePreferences` 环境值观察更新。
+
+图片的 `BiliImagePipeline` 在 App 组装，统一持有位图缓存、解码限流和预取限流；列表、SwiftUI 图片和 UIKit 卡片通过环境传递同一实例。评论表情仓库也可通过环境替换，测试使用独立缓存与通知中心，不清理生产共享缓存。

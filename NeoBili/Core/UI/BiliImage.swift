@@ -8,6 +8,7 @@ struct BiliImage: View {
     /// 尺寸取缓存或开始加载，也和列表预取用同一个缓存键。
     var targetSize: CGSize? = nil
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.imagePipeline) private var pipeline
     @State private var image: Image?
     @State private var loadedURL: URL?
     @State private var failed = false
@@ -27,7 +28,7 @@ struct BiliImage: View {
     private var displayedImage: Image? {
         if loadedURL == url, let image { return image }
         guard let url, let pixelSize,
-              let cached = BiliImageMemoryCache.image(for: url, pixelSize: pixelSize) else { return nil }
+              let cached = BiliImageMemoryCache.image(for: url, pixelSize: pixelSize, pipeline: pipeline) else { return nil }
         return Image(uiImage: cached)
     }
 
@@ -63,14 +64,14 @@ struct BiliImage: View {
             return
         }
         guard let pixelSize else { return }
-        if let cached = BiliImageMemoryCache.image(for: url, pixelSize: pixelSize) {
+        if let cached = BiliImageMemoryCache.image(for: url, pixelSize: pixelSize, pipeline: pipeline) {
             image = Image(uiImage: cached)
             return
         }
         // 网络抖动或请求排队超时不应让图片一直停在失败图标：稍等后再试两次。
         for attempt in 0..<3 {
             do {
-                let loaded = try await BiliImageLoader.load(url, pixelSize: pixelSize)
+                let loaded = try await BiliImageLoader.load(url, pixelSize: pixelSize, pipeline: pipeline)
                 if !Task.isCancelled { image = Image(uiImage: loaded) }
                 return
             } catch {

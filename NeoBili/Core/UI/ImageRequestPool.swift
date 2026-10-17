@@ -66,7 +66,6 @@ actor ImageRequestPool<Key: Hashable & Sendable, Value: Sendable> {
 /// Limit CPU-heavy ImageIO work without retaining cancelled offscreen images
 /// (and their compressed data) behind the active decodes.
 actor ImageDecodeGate {
-    static let shared = ImageDecodeGate(limit: 4)
     private struct Waiter {
         let id: UUID
         let continuation: CheckedContinuation<Void, Error>
