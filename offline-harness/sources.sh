@@ -25,7 +25,7 @@ cp \
     "$APP/Domain/Models/AppLanguage.swift" \
     "$APP/Application/Settings/AppLanguage+Preferences.swift" \
     "$APP/Core/Extensions/Int+BiliFormatting.swift" \
-    "$APP/Core/Extensions/BiliDateFormatting.swift" \
+    "$APP/Core/Formatting/BiliDateFormatting.swift" \
     "$APP/Data/Networking/Transport/AppNetwork.swift" \
     "$APP/Data/Networking/Reporting/RecommendationDiagnostics.swift" \
     "$APP/Domain/Models/DiagnosticsPreferences.swift" \

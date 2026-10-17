@@ -1,6 +1,6 @@
 # 架构
 
-NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的服务器。“前后端解耦”在本项目中指：页面和业务状态依赖服务契约，网络、签名及存储实现通过适配器提供。Domain 的值与服务契约由独立静态框架 `NeoBiliDomain` 编译；其余层目前由 `NeoBili` App target 编译。Domain 没有项目内依赖，App 依赖 Domain；其余目录之间的边界继续由检查脚本维护。
+NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的服务器。“前后端解耦”在本项目中指：页面和业务状态依赖服务契约，网络、签名及存储实现通过适配器提供。值与服务契约由静态框架 `NeoBiliDomain` 编译，通用缓存、共享请求池与日期格式化由 `NeoBiliCore` 编译；两个模块均没有项目内依赖。其余层目前由 `NeoBili` App target 编译并依赖这两个模块，目录之间的业务边界继续由检查脚本维护。
 
 构建、测试和设备使用统一见[开发与测试](DEVELOPMENT.md)。
 
@@ -17,6 +17,7 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 | `Data/Networking` | 端点、传输、身份、签名、响应解析及上报 | View / ViewModel 依赖 |
 | `Data/Media` | 图片传输与缓存、弹幕下载 | 页面导航 |
 | `Platform` | mpv、系统媒体控制等平台适配 | 业务页面 |
+| `Core/Caching`、`Core/Formatting` | 不依赖业务的请求合并、内存缓存与日期格式化（NeoBiliCore） | 页面、账号、生产默认实例 |
 | `Core/UI`、`Core/Extensions` | 共享组件、主题、格式化和交互工具 | 业务接口调用 |
 | `App/Diagnostics`、`Core/Diagnostics` | 显式启用的业务诊断/回放与通用滚动测量 | 默认后台探测 |
 
@@ -53,7 +54,7 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 4. 测试业务状态时注入受控服务；测试端点时使用受控传输。不要为了运行单元测试读写真实账号。
 5. 移动源码后同步离线测试的输入路径，并运行 `python3 scripts/check-architecture.py` 和开发指南中的相关检查。
 
-`project.yml` 是工程配置来源；各层分别采用 synchronized folder。Domain 文件只属于 `NeoBiliDomain`，其余层属于 App；同一层新增或移动 Swift 文件无需手工登记。跨模块移动需同步配置并重新生成工程。测试显式 `@testable import NeoBiliDomain`；离线 harness 继续直接编译选定源码，条件导入保留这一入口。
+`project.yml` 是工程配置来源；各层分别采用 synchronized folder。Domain 文件只属于 `NeoBiliDomain`，Core/Caching 与 Core/Formatting 属于 `NeoBiliCore`，其余层属于 App；同一层新增或移动 Swift 文件无需手工登记。跨模块移动需同步配置并重新生成工程。测试显式 `@testable import NeoBiliDomain` / `NeoBiliCore`；离线 harness 继续直接编译选定源码，条件导入保留这一入口。
 
 播放器事件、画质与手势设置值属于 Domain；mpv 加载和渲染宿主、窗口方向属于 Platform。观看上报、列表删除/入场状态以及设置持久化属于 Application。Domain 不持有 UserDefaults；设备偏好的读取适配位于 Data，纯 URL 归一化位于 Domain。
 

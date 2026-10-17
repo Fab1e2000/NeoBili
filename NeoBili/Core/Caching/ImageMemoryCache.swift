@@ -4,7 +4,7 @@ import Synchronization
 /// One byte-bounded bitmap store for synchronous UI reads and asynchronous
 /// loaders. Recency links keep hits and each eviction constant-time under the
 /// lock; scrolling never scans every retained bitmap to choose a victim.
-final class ImageMemoryCache<Key: Hashable & Sendable, Value: Sendable>: Sendable {
+public final class ImageMemoryCache<Key: Hashable & Sendable, Value: Sendable>: Sendable {
     private struct Entry {
         let value: Value
         let cost: Int
@@ -44,14 +44,14 @@ final class ImageMemoryCache<Key: Hashable & Sendable, Value: Sendable>: Sendabl
     private let maximumBytes: Int
     private let maximumEntries: Int
 
-    init(maximumBytes: Int, maximumEntries: Int) {
+    public init(maximumBytes: Int, maximumEntries: Int) {
         self.maximumBytes = max(0, maximumBytes)
         self.maximumEntries = max(1, maximumEntries)
     }
 
-    var cachedByteCount: Int { state.withLock { $0.bytes } }
+    public var cachedByteCount: Int { state.withLock { $0.bytes } }
 
-    func value(for key: Key) -> Value? {
+    public func value(for key: Key) -> Value? {
         state.withLock { state in
             guard let entry = state.entries[key] else { return nil }
             if state.newest != key {
@@ -62,7 +62,7 @@ final class ImageMemoryCache<Key: Hashable & Sendable, Value: Sendable>: Sendabl
         }
     }
 
-    func insert(_ value: Value, for key: Key, cost: Int) {
+    public func insert(_ value: Value, for key: Key, cost: Int) {
         guard cost >= 0, cost <= maximumBytes else { return }
         state.withLock { state in
             state.remove(key)
@@ -75,7 +75,7 @@ final class ImageMemoryCache<Key: Hashable & Sendable, Value: Sendable>: Sendabl
         }
     }
 
-    func removeAll() {
+    public func removeAll() {
         state.withLock { state in
             state = State()
         }

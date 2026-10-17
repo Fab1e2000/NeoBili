@@ -27,7 +27,11 @@ targets:
         type: syncedFolder
       - path: NeoBili/Application
         type: syncedFolder
-      - path: NeoBili/Core
+      - path: NeoBili/Core/UI
+        type: syncedFolder
+      - path: NeoBili/Core/Extensions
+        type: syncedFolder
+      - path: NeoBili/Core/Diagnostics
         type: syncedFolder
       - path: NeoBili/Data
         type: syncedFolder
@@ -39,6 +43,8 @@ targets:
         type: syncedFolder
     dependencies:
       - target: NeoBiliDomain
+        embed: false
+      - target: NeoBiliCore
         embed: false
       - package: MPVKit
         product: MPVKit
@@ -101,6 +107,24 @@ targets:
         Regression:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG NEOBILI_REGRESSION"
 
+  NeoBiliCore:
+    type: framework
+    platform: iOS
+    sources:
+      - path: NeoBili/Core/Caching
+        type: syncedFolder
+      - path: NeoBili/Core/Formatting
+        type: syncedFolder
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACH_O_TYPE: staticlib
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+      configs:
+        Regression:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG NEOBILI_REGRESSION"
+
   NeoBiliTests:
     type: bundle.unit-test
     platform: iOS
@@ -111,6 +135,8 @@ targets:
     dependencies:
       - target: NeoBili
       - target: NeoBiliDomain
+        embed: false
+      - target: NeoBiliCore
         embed: false
     settings:
       base:

@@ -4,16 +4,18 @@ import Foundation
 /// immediately; the transfer/decode is cancelled only after its last consumer
 /// leaves. Generation IDs prevent a late cancelled operation from touching a
 /// replacement request for the same URL.
-actor ImageRequestPool<Key: Hashable & Sendable, Value: Sendable> {
+public actor ImageRequestPool<Key: Hashable & Sendable, Value: Sendable> {
     private struct Entry {
         let generation: UUID
         let task: Task<Void, Never>
         var consumers: [UUID: CheckedContinuation<Value, Error>]
     }
-    private var entries: [Key: Entry] = [:]
-    var consumerCount: Int { entries.values.reduce(0) { $0 + $1.consumers.count } }
+    public init() {}
 
-    func value(for key: Key, operation: @escaping @Sendable () async throws -> Value) async throws -> Value {
+    private var entries: [Key: Entry] = [:]
+    public var consumerCount: Int { entries.values.reduce(0) { $0 + $1.consumers.count } }
+
+    public func value(for key: Key, operation: @escaping @Sendable () async throws -> Value) async throws -> Value {
         try Task.checkCancellation()
         let consumer = UUID()
         let value: Value = try await withTaskCancellationHandler {
@@ -65,7 +67,7 @@ actor ImageRequestPool<Key: Hashable & Sendable, Value: Sendable> {
 
 /// Limit CPU-heavy ImageIO work without retaining cancelled offscreen images
 /// (and their compressed data) behind the active decodes.
-actor ImageDecodeGate {
+public actor ImageDecodeGate {
     private struct Waiter {
         let id: UUID
         let continuation: CheckedContinuation<Void, Error>
@@ -75,9 +77,9 @@ actor ImageDecodeGate {
     private var waiters: [Waiter] = []
     var queuedCount: Int { waiters.count }
 
-    init(limit: Int) { self.limit = max(1, limit) }
+    public init(limit: Int) { self.limit = max(1, limit) }
 
-    func enter() async throws {
+    public func enter() async throws {
         try Task.checkCancellation()
         if active < limit {
             active += 1
@@ -97,7 +99,7 @@ actor ImageDecodeGate {
         }
     }
 
-    func leave() {
+    public func leave() {
         if waiters.isEmpty {
             active -= 1
         } else {

@@ -11,8 +11,8 @@ swiftc -swift-version 6 -O -parse-as-library \
     -o "$BUILD_DIR/image-performance"
 "$BUILD_DIR/image-performance"
 swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Core/UI/ImageRequestPool.swift" \
-    "$ROOT/NeoBili/Core/UI/ImageMemoryCache.swift" \
+    "$ROOT/NeoBili/Core/Caching/ImageRequestPool.swift" \
+    "$ROOT/NeoBili/Core/Caching/ImageMemoryCache.swift" \
     "$HARNESS/src/ImagePipelineRegression.swift" \
     -o "$BUILD_DIR/image-pipeline"
 "$BUILD_DIR/image-pipeline"
@@ -40,7 +40,7 @@ swiftc -swift-version 6 -O -parse-as-library \
 "$BUILD_DIR/metadata-persistence"
 
 swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Core/Extensions/BiliDateFormatting.swift" \
+    "$ROOT/NeoBili/Core/Formatting/BiliDateFormatting.swift" \
     "$HARNESS/src/DateFormattingPerformance.swift" \
     -o "$BUILD_DIR/date-formatting"
 "$BUILD_DIR/date-formatting"

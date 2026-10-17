@@ -5,7 +5,7 @@ import Synchronization
 /// time zone are part of the key, so a settings/time-zone change cannot reuse a
 /// formatter configured for the previous environment. Formatting is serialized
 /// with cache access; callers never receive a mutable shared DateFormatter.
-enum BiliDateFormatting {
+public enum BiliDateFormatting {
     private struct Key: Hashable {
         let template: String
         let locale: Locale
@@ -14,7 +14,7 @@ enum BiliDateFormatting {
     }
     private static let formatters = Mutex<[Key: DateFormatter]>([:])
 
-    static func string(
+    public static func string(
         from date: Date,
         template: String,
         locale: Locale,

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliCore)
+import NeoBiliCore
+#endif
 #if canImport(NeoBiliDomain)
 import NeoBiliDomain
 #endif
