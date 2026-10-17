@@ -22,7 +22,7 @@ struct BiliResponse<T: Decodable>: Decodable {
 
 /// Thin async wrapper around URLSession for talking to Bilibili's public web
 /// endpoints as an anonymous (logged-out) client.
-struct APIClient {
+public struct APIClient: Sendable {
 
     private static let baseURL = URL(string: "https://api.bilibili.com")!
     let signWebParameters: @Sendable ([String: String]) async throws -> [String: String]
@@ -32,7 +32,7 @@ struct APIClient {
     private let appAuthentication: @Sendable () async -> DeviceIdentity.AppRequestAccount
     private let appHeaders: @Sendable (UUID) async throws -> [String: String]
 
-    init(transport: HTTPTransport,
+    public init(transport: HTTPTransport,
          appEncoder: any AppRequestEncoding = AppRequestEncoder(),
          authentication: @escaping @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot,
          appAuthentication: @escaping @Sendable () async -> DeviceIdentity.AppRequestAccount,

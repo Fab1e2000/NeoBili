@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 /// App 短信登录。登录尝试使用自己的设备身份，写请求不自动重试。
-enum SMSPassport {
+public enum SMSPassport {
     typealias Context = SMSLoginModels.Context
     typealias Country = SMSLoginModels.Country
     typealias Captcha = SMSLoginModels.Captcha
@@ -12,7 +12,7 @@ enum SMSPassport {
     typealias SendOutcome = SMSLoginModels.SendOutcome
     typealias Credentials = SMSLoginModels.Credentials
     typealias LoginOutcome = SMSLoginModels.LoginOutcome
-    typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    public typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     static func liveTransport(session: URLSession, identity: DeviceIdentity) -> Transport {
         { request in

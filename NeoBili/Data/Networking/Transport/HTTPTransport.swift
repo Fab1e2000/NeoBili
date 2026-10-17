@@ -2,12 +2,12 @@ import Foundation
 
 /// Sends already encoded requests. It knows nothing about App signatures or models.
 /// The caller chooses retries: behavioral writes continue to use zero retries.
-struct HTTPTransport {
+public struct HTTPTransport: Sendable {
     let session: URLSession
     let diagnostics: RecommendationDiagnostics
     let observeResponse: @Sendable (HTTPURLResponse, URLRequest) async -> Void
 
-    init(session: URLSession, diagnostics: RecommendationDiagnostics,
+    public init(session: URLSession, diagnostics: RecommendationDiagnostics,
          observeResponse: @escaping @Sendable (HTTPURLResponse, URLRequest) async -> Void) {
         self.session = session
         self.diagnostics = diagnostics

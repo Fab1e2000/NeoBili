@@ -5,7 +5,7 @@ import Foundation
 
 extension AuthenticationService {
 
-    static func live(session: URLSession, identity: DeviceIdentity) -> Self {
+    public static func live(session: URLSession, identity: DeviceIdentity) -> Self {
         let transport = SMSPassport.liveTransport(session: session, identity: identity)
         return Self(encryptPassword: { try PasswordCipher.encryptedPassword($0, salt: $1, publicKeyPEM: $2) },
             generateQRCodeOperation: {

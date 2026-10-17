@@ -77,7 +77,7 @@ enum AppTicketProtocol {
     }
 }
 
-actor AppTicketService {
+public actor AppTicketService {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     private struct Cache: Codable { let scope: String; let ticket: String; var expiry: TimeInterval }
     private struct Context { let scope: String; let headers: [String: String]; let accessKey: String? }

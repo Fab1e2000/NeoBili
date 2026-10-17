@@ -12,7 +12,7 @@ import CryptoKit
 /// MD5-sign every query string (plus a `wts` timestamp) into a `w_rid` value.
 /// Endpoints under `.../wbi/...` reject requests that don't carry a valid
 /// `wts`/`w_rid` pair.
-actor WBISigner {
+public actor WBISigner {
 
     private static let mixinKeyEncTab: [Int] = [
         46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
@@ -32,7 +32,7 @@ actor WBISigner {
     /// 同一时间只允许一个 nav 请求。多个接口同时启动时，其余的会复用这一个结果，
     /// 否则首屏会连着发好几次相同的密钥请求，把真正要用的接口挤到后面。
     private var refreshTask: Task<String, Error>?
-    init(session: URLSession = AppNetwork.session, defaults: UserDefaults = .standard,
+    public init(session: URLSession = AppNetwork.session, defaults: UserDefaults = .standard,
          cookieHeader: @escaping @Sendable () async -> String) {
         self.session = session
         self.defaults = defaults
@@ -44,13 +44,13 @@ actor WBISigner {
     }
 
     /// App 启动时先把密钥准备好，第一次视频请求就不用排在 nav 请求后面。
-    nonisolated func warmUp() {
+    public nonisolated func warmUp() {
         Task { _ = try? await sign(params: [:]) }
     }
 
     /// Returns the query items with `wts` and `w_rid` appended, signed with the
     /// current mixin key.
-    func sign(params: [String: String]) async throws -> [String: String] {
+    public func sign(params: [String: String]) async throws -> [String: String] {
         try Task.checkCancellation()
         let mixinKey = try await mixinKeyValue()
         // 共享 nav 请求不能被单个调用方取消，但它结束后已取消的调用方

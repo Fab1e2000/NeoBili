@@ -4,8 +4,8 @@ import NeoBiliDomain
 import Foundation
 
 @MainActor
-enum LiveExposureReporting {
-    static func record(_ event: RecommendationExposureEvent, currentSessionID: UUID, reporter: AppBehaviorReporter) {
+public enum LiveExposureReporting {
+    public static func record(_ event: RecommendationExposureEvent, currentSessionID: UUID, reporter: AppBehaviorReporter) {
         guard !AppNetwork.isRegression,
               let session = event.card.video.playbackEntry.loginSessionID,
               session == currentSessionID,

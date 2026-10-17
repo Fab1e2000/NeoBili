@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension LiveService {
-    static func live(client: APIClient, identity: DeviceIdentity, session: URLSession) -> Self {
+    public static func live(client: APIClient, identity: DeviceIdentity, session: URLSession) -> Self {
         Self(
             recommendedOperation: { page in
                 try await LiveAPI.recommended(page: page, client: client, identity: identity)

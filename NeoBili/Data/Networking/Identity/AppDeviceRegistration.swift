@@ -74,7 +74,7 @@ enum IOSFingerprintProtocol {
     }
 }
 
-actor AppDeviceRegistration {
+public actor AppDeviceRegistration {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     typealias Material = @Sendable (String, Int?) async -> Data?
     private struct Cache: Codable { let buvid: String; let id: String; let expiry: TimeInterval }

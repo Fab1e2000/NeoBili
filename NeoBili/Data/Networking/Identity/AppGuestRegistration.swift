@@ -67,7 +67,7 @@ enum AppGuestProtocol {
     }
 }
 
-actor AppGuestRegistration {
+public actor AppGuestRegistration {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     typealias VendorIdentifier = @Sendable () async -> String?
     private let credentials: CredentialStorage

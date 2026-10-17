@@ -6,12 +6,12 @@ import NeoBiliDomain
 #endif
 import Foundation
 
-struct BiliImageDataLoader: Sendable {
+public struct BiliImageDataLoader: Sendable {
     private let session: URLSession
-    init(session: URLSession) { self.session = session }
+    public init(session: URLSession) { self.session = session }
     private let requests = ImageRequestPool<URL, Data>()
 
-    func data(for url: URL) async throws -> Data {
+    public func data(for url: URL) async throws -> Data {
         try await requests.value(for: url) { [session] in
             var request = URLRequest(url: url)
             request.timeoutInterval = 8

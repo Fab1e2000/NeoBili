@@ -5,7 +5,7 @@ import Foundation
 
 extension TelemetryService {
 
-    static func live(identity: DeviceIdentity, reporter: AppBehaviorReporter, clickReporter: RecommendationClickReporter) -> Self {
+    public static func live(identity: DeviceIdentity, reporter: AppBehaviorReporter, clickReporter: RecommendationClickReporter) -> Self {
         Self(playback: { event in
             AppPlayerBehavior.record(event.name, aid: event.aid, cid: event.cid, position: event.position,
                 playbackSession: event.playbackSession, source: event.source, accountSession: event.accountSession,

@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension CommunityService {
-    static func live(client: APIClient, identity: DeviceIdentity) -> Self {
+    public static func live(client: APIClient, identity: DeviceIdentity) -> Self {
         Self(
             dynamicVoteInfoOperation: { id in
                 try await BiliAPI.dynamicVoteInfo(id: id, client: client)

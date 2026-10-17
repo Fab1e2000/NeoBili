@@ -19,7 +19,12 @@ struct AppBehaviorEvent: Codable, Sendable {
     }
 }
 
-actor AppBehaviorReporter {
+public actor AppBehaviorReporter {
+    public init(identity: DeviceIdentity, client: APIClient, directory: URL?) {
+        self.init(identity: identity, client: client, directory: directory, automaticScheduling: true,
+                  now: { Date().timeIntervalSince1970 }, sender: nil, snapshotProvider: nil)
+    }
+
     typealias Sender = @Sendable ([AppBehaviorEvent]) async throws -> Void
     private let identity: DeviceIdentity
     private let client: APIClient
@@ -85,7 +90,7 @@ actor AppBehaviorReporter {
         if now() >= retryAfter { schedule() }
     }
 
-    func setBackground(_ value: Bool) async {
+    public func setBackground(_ value: Bool) async {
         background = value
         scheduled?.cancel(); scheduled = nil; scheduleID = nil
         if value { await checkpoint() } else { await flush() }

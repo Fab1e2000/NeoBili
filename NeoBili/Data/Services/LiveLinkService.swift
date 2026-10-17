@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension LinkService {
-    static func live(session: URLSession) -> Self { Self(resolve: { url in
+    public static func live(session: URLSession) -> Self { Self(resolve: { url in
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
         request.timeoutInterval = 10

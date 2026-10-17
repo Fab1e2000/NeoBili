@@ -32,6 +32,16 @@ def main():
         layer = path.relative_to(APP).parts[0]
         text = source(path)
         banned = FORBIDDEN.get(layer, set())
+        imported_modules = set(re.findall(r"\bimport (NeoBili\w*)\b", text))
+        pure_core = layer == "Core" and path.relative_to(APP).parts[1] in {"Caching", "Formatting"}
+        allowed_modules = None
+        if layer == "Domain" or pure_core:
+            allowed_modules = set()
+        elif layer == "Data" or layer in {"Features", "Application"}:
+            allowed_modules = {"NeoBiliDomain", "NeoBiliCore"}
+        if allowed_modules is not None:
+            for module in sorted(imported_modules - allowed_modules):
+                errors.append(f"{path.relative_to(ROOT)}: {module} is not an allowed module dependency")
         for name in sorted(set(re.findall(r"\b\w+\b", text))):
             if symbols.get(name, set()) & banned:
                 errors.append(f"{path.relative_to(ROOT)}: {name} crosses the {layer} boundary")
@@ -42,7 +52,7 @@ def main():
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"Architecture boundaries passed ({len(files)} Swift files). Domain is a compiled module; this check also enforces source-layer and UI/transport restrictions.")
+    print(f"Architecture boundaries passed ({len(files)} Swift files). Domain, Core and Data are compiled modules; source-layer and UI/transport restrictions also apply.")
     return 0
 
 

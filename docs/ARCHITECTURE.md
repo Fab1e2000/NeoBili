@@ -1,6 +1,6 @@
 # 架构
 
-NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的服务器。“前后端解耦”在本项目中指：页面和业务状态依赖服务契约，网络、签名及存储实现通过适配器提供。值与服务契约由静态框架 `NeoBiliDomain` 编译，通用缓存、共享请求池与日期格式化由 `NeoBiliCore` 编译；两个模块均没有项目内依赖。其余层目前由 `NeoBili` App target 编译并依赖这两个模块，目录之间的业务边界继续由检查脚本维护。
+NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的服务器。“前后端解耦”在本项目中指：页面和业务状态依赖服务契约，网络、签名及存储实现通过适配器提供。值与服务契约由静态框架 `NeoBiliDomain` 编译，通用缓存、共享请求池与日期格式化由 `NeoBiliCore` 编译；两个模块均没有项目内依赖。网络、身份、签名、上报和媒体缓存由 `NeoBiliData` 编译，依赖 Domain 与 Core。其余层由 `NeoBili` App target 编译；App 组装 Data 适配器，Application / Features 只使用领域契约，其目录边界继续由检查脚本维护。
 
 构建、测试和设备使用统一见[开发与测试](DEVELOPMENT.md)。
 
@@ -22,6 +22,19 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 | `App/Diagnostics`、`Core/Diagnostics` | 显式启用的业务诊断/回放与通用滚动测量 | 默认后台探测 |
 
 通常的请求路径是：`View → Application model → Domain service → Data adapter → APIClient`。简单的一次性操作可以由 View 使用环境中的服务完成；分页、重试和长任务由状态模型持有。
+
+编译模块依赖如下；Domain 与 Core 没有项目内依赖：
+
+```mermaid
+flowchart LR
+    App[NeoBili App] --> Data[NeoBiliData]
+    App --> Domain[NeoBiliDomain]
+    App --> Core[NeoBiliCore]
+    Data --> Domain
+    Data --> Core
+```
+
+App target 包含 App、Application、Features、Platform 和共享 UI。Application / Features 禁止导入 Data；生产组装位于 App，平台媒体适配可使用 Data 的窄接口。内部端点、编码器细节和队列模型不作为公共 API，测试通过 `@testable import NeoBiliData` 验证。
 
 ## 服务如何注入
 
@@ -54,10 +67,12 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 4. 测试业务状态时注入受控服务；测试端点时使用受控传输。不要为了运行单元测试读写真实账号。
 5. 移动源码后同步离线测试的输入路径，并运行 `python3 scripts/check-architecture.py` 和开发指南中的相关检查。
 
-`project.yml` 是工程配置来源；各层分别采用 synchronized folder。Domain 文件只属于 `NeoBiliDomain`，Core/Caching 与 Core/Formatting 属于 `NeoBiliCore`，其余层属于 App；同一层新增或移动 Swift 文件无需手工登记。跨模块移动需同步配置并重新生成工程。测试显式 `@testable import NeoBiliDomain` / `NeoBiliCore`；离线 harness 继续直接编译选定源码，条件导入保留这一入口。
+`project.yml` 是工程配置来源；各层分别采用 synchronized folder。Domain 文件只属于 `NeoBiliDomain`，Core/Caching 与 Core/Formatting 属于 `NeoBiliCore`，Data 属于 `NeoBiliData`，其余层属于 App；同一层新增或移动 Swift 文件无需手工登记。跨模块移动需同步配置并重新生成工程。测试显式 `@testable import NeoBiliDomain` / `NeoBiliCore` / `NeoBiliData`；离线 harness 继续直接编译选定源码，条件导入保留这一入口。
 
 播放器事件、画质与手势设置值属于 Domain；mpv 加载和渲染宿主、窗口方向属于 Platform。观看上报、列表删除/入场状态以及设置持久化属于 Application。Domain 不持有 UserDefaults；设备偏好的读取适配位于 Data，纯 URL 归一化位于 Domain。
 
 空间页资料头部和关注动态内容使用独立展示组件；滚动协调、导航和刷新任务仍由父页面持有。全部关注分页状态由 Application 的 `FollowingAllUpsModel` 管理。首页图片预取消费者由 `HomeFeedImagePrefetcher` 在索引路径与显示中的 cell 之间转交，并沿用快照切换和离屏取消入口。
 
 显式启用的性能演示和搜索诊断属于 App 诊断组装。首页模型始终使用传入的 loader，App 根据演示启动参数选择生产默认 loader；诊断模式不会覆盖调用方注入的数据源。窗口方向锁仍是 AppDelegate 与窗口适配共用的进程级系统状态，由 App 创建。
+
+账号凭据变化的通知名属于 Domain 的 `AccountSessionEvents`；Data 发布状态变化，Application 订阅同一通知契约。

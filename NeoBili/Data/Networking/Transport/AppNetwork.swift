@@ -1,8 +1,8 @@
 import Foundation
 
 /// Regression is a separate build, so environment overrides cannot enable live traffic.
-enum AppNetwork {
-    static var isRegression: Bool {
+public enum AppNetwork {
+    public static var isRegression: Bool {
         #if NEOBILI_REGRESSION
         true
         #else
@@ -10,7 +10,7 @@ enum AppNetwork {
         #endif
     }
 
-    static let session: URLSession = {
+    public static let session: URLSession = {
         guard isRegression else { return .shared }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RegressionNetworkBlocker.self]

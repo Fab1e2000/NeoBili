@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension AccountSessionClient {
-    static func live(identity: DeviceIdentity, client: APIClient) -> AccountSessionClient { AccountSessionClient(
+    public static func live(identity: DeviceIdentity, client: APIClient) -> AccountSessionClient { AccountSessionClient(
         credentials: {
             // Startup/foreground services renew independently of cached account restoration.
             return await identity.accountSnapshot()

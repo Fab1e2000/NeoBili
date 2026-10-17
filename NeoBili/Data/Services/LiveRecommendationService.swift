@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension RecommendationService {
-    static func live(client: APIClient, identity: DeviceIdentity,
+    public static func live(client: APIClient, identity: DeviceIdentity,
                               session: AppRecommendationSession, network: AppNetworkMetadata,
                               clickReporter: RecommendationClickReporter,
                               filter: @escaping @Sendable () -> RecommendationFilter) -> Self {

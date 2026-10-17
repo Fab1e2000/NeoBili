@@ -5,11 +5,11 @@ import Foundation
 
 /// Owns one room connection, authentication, heartbeats and reconnect cancellation.
 @MainActor
-final class LiveDanmakuConnection: LiveDanmakuStreaming {
+public final class LiveDanmakuConnection: LiveDanmakuStreaming {
     private let identity: DeviceIdentity
     private let client: APIClient
 
-    init(identity: DeviceIdentity, client: APIClient) {
+    public init(identity: DeviceIdentity, client: APIClient) {
         self.identity = identity
         self.client = client
     }
@@ -25,14 +25,14 @@ final class LiveDanmakuConnection: LiveDanmakuStreaming {
         didSet { onEvent?(.connection(connection)) }
     }
 
-    func start(roomID: Int, onEvent: @escaping @MainActor (LiveDanmakuEvent) -> Void) {
+    public func start(roomID: Int, onEvent: @escaping @MainActor (LiveDanmakuEvent) -> Void) {
         stop()
         self.roomID = roomID
         self.onEvent = onEvent
         receiveLoop = Task { await connect() }
     }
 
-    func stop() {
+    public func stop() {
         connectGeneration += 1
         heartbeatTask?.cancel(); heartbeatTask = nil
         receiveLoop?.cancel(); receiveLoop = nil

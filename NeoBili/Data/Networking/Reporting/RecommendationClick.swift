@@ -37,14 +37,14 @@ struct RecommendationClick: Codable, Sendable {
     }
 }
 
-actor RecommendationClickReporter {
+public actor RecommendationClickReporter {
     private let directory: URL?
     private let identity: DeviceIdentity
     private let client: APIClient
     private var queue: [RecommendationClick] = []
     private var sending = false
 
-    init(directory: URL? = nil, identity: DeviceIdentity, client: APIClient) {
+    public init(directory: URL? = nil, identity: DeviceIdentity, client: APIClient) {
         self.directory = directory; self.identity = identity; self.client = client
         if let url = directory?.appendingPathComponent("pending.json"),
            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),

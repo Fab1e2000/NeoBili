@@ -105,3 +105,5 @@ GenWebTicket 属于网页票据，不能替代 App 的 x-bili-ticket。当前不
 滚动弹幕原有的宽度、速度和追尾判定继续保留。
 
 通用的请求合并池、解码并发闸门和内存 LRU 位于 `Core/Caching`，由无业务依赖的 `NeoBiliCore` 模块编译。平台图片管线和 Data 传输消费者显式导入该模块；生产实例与容量仍由 App 组装。
+
+图片传输和文件缓存由 `NeoBiliData` 编译，依赖 `NeoBiliCore` 的通用请求池；位图解码与 UIKit 图片管线仍属于 App 的平台适配。文件缓存只公开查看器需要的加载、释放和失效操作。

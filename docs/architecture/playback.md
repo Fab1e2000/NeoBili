@@ -132,3 +132,5 @@ param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 Recor
 `PlayerViewModel` 将一次性休眠等待和菜单状态交给 `PlaybackSleepTimer`，到期仍由播放器清理状态并暂停。`NowPlayingStore` 使用 `PlaybackNavigationHistory` 在跳转时冻结实际分 P，播放、加载与页面呈现任务仍由原模型持有。
 
 视频详情原生列表的行由 `VideoDescriptionComponents` 组装，保留稳定标识、版本键和间距；页面持有导航绑定与播放交互。弹幕发送经详情模型所注入的 CommentService 转发当前分 P 和播放位置。
+
+播放值与服务契约由 `NeoBiliDomain` 编译，网络适配器由 `NeoBiliData` 提供；播放器协调与 mpv 平台会话仍属于 App target。生产依赖由 App 组装，播放模型通过注入的契约调用。

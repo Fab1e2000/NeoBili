@@ -9,7 +9,7 @@ import UIKit
 
 /// Official 8.89 local branch: prefix plus three characters plus 32 UUID digits.
 /// Existing persisted identities are never regenerated during an upgrade.
-enum AppBuvid {
+public enum AppBuvid {
     typealias Mode = DeviceIdentityPreferences.Mode
     static let modeKey = DeviceIdentityPreferences.modeKey
     static let launchMode = DeviceIdentityPreferences.launchMode
@@ -56,7 +56,7 @@ enum AppBuvid {
         return "\(advertising == nil ? "Y" : "Z")\(chars[2])\(chars[12])\(chars[22])\(digits)"
     }
 
-    static func vendorIdentifier() async -> String? {
+    public static func vendorIdentifier() async -> String? {
         #if canImport(UIKit)
         return await MainActor.run { UIDevice.current.identifierForVendor?.uuidString }
         #else

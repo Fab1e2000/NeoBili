@@ -5,10 +5,6 @@ import Foundation
 import CryptoKit
 import Synchronization
 
-extension Notification.Name {
-    static let appCredentialStateDidChange = Notification.Name("NeoBili.appCredentialStateDidChange")
-}
-
 /// Manages the anonymous device identity (buvid3/buvid4) that Bilibili's web
 /// API expects as a cookie on every request, even for guest (logged-out) traffic.
 /// Without it, some endpoints apply stricter risk-control throttling.
@@ -16,7 +12,7 @@ extension Notification.Name {
 /// 登录凭据（SESSDATA / bili_jct / DedeUserID）也走这里拼进同一个 Cookie 头：
 /// 拿到之后所有接口——推荐、评论、收藏、历史——不需要任何额外改动就能获得
 /// 登录态。凭据本体存 Keychain（见 `KeychainStore`），重启 App 后自动恢复。
-actor DeviceIdentity {
+public actor DeviceIdentity {
 
     private let defaults: UserDefaults
     private let eventSerialDefaults: UserDefaults
@@ -62,7 +58,7 @@ actor DeviceIdentity {
 
     /// Cookie、CSRF 和会话版本必须在同一次 actor 调用中读取。
     /// 排队中的写请求绑定这个版本，退出后即使重登同一个账号也不会误发。
-    struct AuthenticatedRequestSnapshot: Sendable {
+    public struct AuthenticatedRequestSnapshot: Sendable {
         let sessionID: UUID
         let accountID: Int?
         let csrfToken: String?
@@ -70,7 +66,7 @@ actor DeviceIdentity {
         let isLoggedIn: Bool
     }
 
-    func authenticatedRequestSnapshot() -> AuthenticatedRequestSnapshot {
+    public func authenticatedRequestSnapshot() -> AuthenticatedRequestSnapshot {
         AuthenticatedRequestSnapshot(
             sessionID: loginSessionID,
             accountID: cachedDedeUserID.flatMap(Int.init),
@@ -80,7 +76,7 @@ actor DeviceIdentity {
         )
     }
 
-    init(defaults: UserDefaults = .standard,
+    public init(defaults: UserDefaults = .standard,
          randomBuvidExperiment: Bool = false,
          customBuvid: String? = nil,
          credentials: CredentialStorage = AppNetwork.isRegression ? .memory() : .keychain,
@@ -174,9 +170,9 @@ actor DeviceIdentity {
     }
 
     /// App 接口的身份：access_key 与登录账号的 mid，在同一次 actor 调用里读出。
-    typealias AppRequestAccount = AppAccountSnapshot
+    public typealias AppRequestAccount = AppAccountSnapshot
 
-    func appAccount() -> AppRequestAccount {
+    public func appAccount() -> AppRequestAccount {
         let key = accessKey.flatMap { $0.isEmpty ? nil : $0 }
         return AppRequestAccount(accessKey: key,
                                  mid: cachedSessdata == nil ? nil : cachedDedeUserID.flatMap(Int.init),
@@ -184,7 +180,7 @@ actor DeviceIdentity {
     }
 
     /// Own local identity, separate from server device_id and web buvid3.
-    func appBuvid() async -> String {
+    public func appBuvid() async -> String {
         if let captured = CapturedDeviceDiagnostic.configuration { return captured.buvid }
         if let customBuvid { return customBuvid }
         if let experimentalBuvid { return experimentalBuvid }
@@ -210,7 +206,7 @@ actor DeviceIdentity {
     }
 
     /// 推荐和观看反馈共享本次启动/登录会话，换号（包括同账号重登）时更新。
-    func appRequestHeaders(expectedSessionID: UUID) async throws -> [String: String] {
+    public func appRequestHeaders(expectedSessionID: UUID) async throws -> [String: String] {
         guard expectedSessionID == loginSessionID else { throw CancellationError() }
         let buvid = await appBuvid()
         guard expectedSessionID == loginSessionID else { throw CancellationError() }
@@ -233,7 +229,7 @@ actor DeviceIdentity {
         return headers
     }
 
-    func observeAppResponse(_ response: HTTPURLResponse, request: URLRequest) async {
+    public func observeAppResponse(_ response: HTTPURLResponse, request: URLRequest) async {
         guard allowsNetwork, request.value(forHTTPHeaderField: "session_id") == appSessionID, let host = request.url?.host,
               ["app.bilibili.com", "api.bilibili.com", "grpc.biliapi.net", "dataflow.biliapi.com", "passport.bilibili.com"].contains(host),
               let sentTicket = request.value(forHTTPHeaderField: "x-bili-ticket") else { return }
@@ -269,7 +265,7 @@ actor DeviceIdentity {
     }
 
     /// App 启动时就把设备标识取回来，之后的接口请求不必再等它。
-    nonisolated func warmUp() {
+    public nonisolated func warmUp() {
         _ = networkSnapshot()
         Task {
             await startFetchIfNeeded()
@@ -278,7 +274,7 @@ actor DeviceIdentity {
     }
 
     /// Guest identity is loaded at startup/activation, never on every feed refresh.
-    func refreshAppServices(validateCredential: Bool = false) async {
+    public func refreshAppServices(validateCredential: Bool = false) async {
         guard allowsNetwork else { return }
         let session = loginSessionID
         let buvid = await appBuvid()
@@ -295,7 +291,7 @@ actor DeviceIdentity {
     /// 第一次还没有标识时只在后台补取，不阻塞调用方：这个 SPI 请求过去会排在
     /// 视频详情和播放地址前面，直接推迟首帧。没有标识的访客请求依然可用，
     /// 只是更容易被限流，等下一次请求带上就行。
-    func cookieHeader() -> String {
+    public func cookieHeader() -> String {
         if cachedBuvid3 == nil {
             startFetchIfNeeded()
         }
@@ -504,7 +500,7 @@ actor DeviceIdentity {
     /// `HTTPCookieStorage.shared`。我们自己只清 Keychain 的话，共享罐里那份
     /// SESSDATA 还在，退出登录就不彻底：界面已经是未登录，请求却仍可能带着
     /// 旧会话出去，重新登录时新旧凭据还会撞在一起。
-    static func purgeSharedCookieJar() {
+    public static func purgeSharedCookieJar() {
         let storage = HTTPCookieStorage.shared
         for cookie in storage.cookies ?? [] where cookie.domain.contains("bilibili.com") {
             storage.deleteCookie(cookie)

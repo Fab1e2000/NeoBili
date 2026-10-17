@@ -83,6 +83,7 @@ cp \
     "$APP/Domain/Services/RecommendationService.swift" \
     "$APP/Domain/Services/VideoService.swift" \
     "$APP/Domain/Services/SessionService.swift" \
+    "$APP/Domain/Services/AccountSessionEvents.swift" \
     "$APP/Domain/Models/HomeFeedAccount.swift" \
     "$APP/Domain/Models/PlayURLModels.swift" \
     "$APP/Domain/Models/VideoStoryboard.swift" \
