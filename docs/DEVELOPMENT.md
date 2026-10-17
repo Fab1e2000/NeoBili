@@ -60,6 +60,20 @@ git config --local core.hooksPath .githooks
 `NEOBILI_SIMULATOR_NAME` 与 `NEOBILI_SIMULATOR_RUNTIME`（例如 `iOS-27-0`）指定机型和系统。
 找不到或存在多个匹配时停止，不猜测其他设备。`NEOBILI_DERIVED_DATA` 可覆盖编译缓存路径。
 
+### Sanitizer 与严格并发检查
+
+底层 Simulator 入口接受 `--` 后逐个传递的 xcodebuild 参数，仍使用同一设备选择、
+Regression 数据隔离和 UDID 锁。参数不经过 shell 求值。诊断运行与普通回归分开记录：
+
+```sh
+bash scripts/simulator.sh test -- -enableThreadSanitizer YES
+bash scripts/simulator.sh test -- -enableAddressSanitizer YES -enableUndefinedBehaviorSanitizer YES
+```
+
+不要同时开启 Thread Sanitizer 和 Address Sanitizer。额外参数记录在该次运行的
+`environment.txt`，不要通过参数传入凭据。临时编译检查可传
+`SWIFT_STRICT_CONCURRENCY=complete`；Swift 6 本身已启用完整并发安全检查。
+
 ## 验证分层
 
 | 层级 | 入口 | 数据与用途 |
