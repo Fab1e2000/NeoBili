@@ -382,9 +382,9 @@ final class HomeViewModel {
             }
         }
 
+        let account = await currentAccount()
+        let session = currentSessionID()
         do {
-            let account = await currentAccount()
-            let session = currentSessionID()
             guard activeLoadID == loadID else { return }
             try Task.checkCancellation()
             let usesApp = defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
@@ -429,7 +429,7 @@ final class HomeViewModel {
                 if wasEmpty, !videos.isEmpty { appRefreshCursor = response.refreshCursor ?? 0 }
             }
         } catch {
-            guard activeLoadID == loadID, !Self.isCancellation(error) else { return }
+            guard activeLoadID == loadID, currentSessionID() == session, !Self.isCancellation(error) else { return }
             // 与 PiliPlus 一致：已有推荐时刷新失败也保留旧内容，不把页面替换成错误页。
             errorMessage = error.localizedDescription
         }

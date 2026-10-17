@@ -107,3 +107,5 @@ Device protobuf 使用已确认的字段映射，未知首次追踪时间不填�
 身份、签名和传输实现由 `NeoBiliData` 编译。账号凭据快照、服务操作和状态通知名属于 `NeoBiliDomain`；Application 不导入 Data，App 负责将生产身份与客户端交给适配器工厂。
 
 网络会话由 App 组装层持有，Data 通过 `AppNetwork.makeSession()` 保留编译期 Regression 隔离；端点、身份与缓存接收显式传输依赖。离线 harness 创建自己的阻断会话。
+
+首页推荐的成功与失败回调都校验请求所属的账号会话；换号后的旧请求错误不能覆盖当前页面状态。
