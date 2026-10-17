@@ -12,7 +12,6 @@ typealias PlaybackSourceOpener = @MainActor (MPVPlayerSession, PlaybackSource, T
 @Observable
 final class PlayerViewModel {
     @ObservationIgnored private let dependencies: PlaybackDependencies
-    @ObservationIgnored private let telemetry: TelemetryService
     let storyboardStore = VideoStoryboardStore()
     let bvid: String
     let cid: Int
@@ -43,7 +42,7 @@ final class PlayerViewModel {
 
     func selectPlaybackRate(_ rate: Double) {
         guard !isStopped, PlaybackSpeed.options.contains(rate), playbackRate != rate else { return }
-        watchProgress.setPlaybackRate(rate, at: watchProgressClock())
+        reporting.setPlaybackRate(rate)
         playbackRate = rate
         session.setPlaybackRate(rate)
         dependencies.systemMedia.updateElapsed(currentTime, sessionID: systemMediaSessionID, force: true)
@@ -213,19 +212,7 @@ final class PlayerViewModel {
     @ObservationIgnored private let loginSessionID: UUID
     private let qualityPlaybackURLLoader: QualityPlaybackURLLoader
     private let sourceOpener: PlaybackSourceOpener
-    @ObservationIgnored private let watchProgressSender: PlaybackWatchProgressSender?
-    @ObservationIgnored private let watchReportSender: PlaybackWatchReportSender?
-    @ObservationIgnored private let playbackEntry: PlaybackEntry
-    @ObservationIgnored private var watchStartTimestamp: Int?
-    @ObservationIgnored private var watchPlaybackSession: String
-    @ObservationIgnored private var hasSentWatchStart = false
-    @ObservationIgnored private var hasSentWatchFinish = false
-    @ObservationIgnored private var hasSentPlayerStart = false
-    @ObservationIgnored private var hasSentPlayerEnd = false
-    @ObservationIgnored private var lastLoggedPlaying: Bool?
-    @ObservationIgnored private var watchAid: Int
-    @ObservationIgnored private let watchProgressClock: () -> TimeInterval
-    @ObservationIgnored private var watchProgress = PlaybackWatchProgress()
+    @ObservationIgnored private let reporting: PlaybackReportingCoordinator
     private let progressStore: PlaybackProgressStore
     var isPlaybackCompleted: Bool { resumeState.isCompleted }
 
@@ -279,10 +266,10 @@ final class PlayerViewModel {
         dependencies: PlaybackDependencies = .live
     ) {
         self.dependencies = dependencies
-        self.telemetry = telemetry ?? dependencies.services.telemetry
+        let telemetry = telemetry ?? dependencies.services.telemetry
         let progressStore = progressStore ?? dependencies.progress
         let services = dependencies.services
-        self.watchPlaybackSession = playbackSession ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let watchPlaybackSession = playbackSession ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         self.bvid = bvid
         self.cid = cid
         self.configuration = configuration
@@ -300,23 +287,21 @@ final class PlayerViewModel {
         self.sourceOpener = sourceOpener
         self.sleepTimer = PlaybackSleepTimer(waiter: sleepWaiter)
         self.danmakuLoader = danmakuLoader
-        self.watchProgressClock = watchProgressClock
-        self.playbackEntry = playbackEntry
-        self.watchStartTimestamp = nil
-        self.watchAid = aid
+        let watchProgressSender: PlaybackWatchProgressSender?
+        let watchReportSender: PlaybackWatchReportSender?
         // Bind before scheduling any async work: a delayed heartbeat must never
         // acquire credentials from a later login, including the same account.
         if let watchReportReporter {
-            self.watchProgressSender = nil
-            self.watchReportSender = PlaybackWatchReportSender(report: watchReportReporter)
+            watchProgressSender = nil
+            watchReportSender = PlaybackWatchReportSender(report: watchReportReporter)
         } else if let watchProgressReporter {
-            self.watchReportSender = nil
-            self.watchProgressSender = PlaybackWatchProgressSender { time in
+            watchReportSender = nil
+            watchProgressSender = PlaybackWatchProgressSender { time in
                 await watchProgressReporter(bvid, cid, time)
             }
         } else {
-            self.watchProgressSender = nil
-            self.watchReportSender = dependencies.watchReports.sender(loginSessionID: loginSessionID, bvid: bvid, cid: cid, serverReport: { report in
+            watchProgressSender = nil
+            watchReportSender = dependencies.watchReports.sender(loginSessionID: loginSessionID, bvid: bvid, cid: cid, serverReport: { report in
                 if report.aid > 0 {
                     return try? await services.library.reportAppWatch(bvid: bvid, aid: report.aid, cid: cid, report: report,
                                                      expectedSessionID: loginSessionID)
@@ -328,6 +313,9 @@ final class PlayerViewModel {
                 }
             })
         }
+        self.reporting = PlaybackReportingCoordinator(telemetry: telemetry, cid: cid, loginSessionID: loginSessionID,
+            playbackEntry: playbackEntry, playbackSession: watchPlaybackSession, aid: aid,
+            clock: watchProgressClock, progressSender: watchProgressSender, reportSender: watchReportSender)
         self.progressStore = progressStore
         let savedPosition = progressStore.resumePosition(bvid: bvid, cid: cid)
         self.currentTime = savedPosition
@@ -342,8 +330,8 @@ final class PlayerViewModel {
     deinit {
         MainActor.assumeIsolated {
             savePlaybackProgress()
-            watchProgressSender?.enqueue(watchProgress.checkpoint())
-            finishWatchReport()
+            reporting.enqueueLegacyCheckpoint()
+            reporting.finishWatchReport(context: reportingContext)
             dependencies.systemMedia.deactivate(sessionID: systemMediaSessionID)
             danmaku?.shutdown()
             sleepTimer.cancel()
@@ -372,8 +360,8 @@ final class PlayerViewModel {
 
     func load() async {
         guard !isStopped, !isFetchingSource else { return }
-        checkpointWatchProgress()
-        watchProgress.interrupt(discontinuity: true)
+        reporting.checkpointWatchProgress(context: reportingContext)
+        reporting.interrupt(discontinuity: true)
         isFetchingSource = true
         defer { isFetchingSource = false }
         isLoading = true
@@ -439,8 +427,8 @@ final class PlayerViewModel {
     }
 
     private func replaceSession() {
-        checkpointWatchProgress()
-        watchProgress.interrupt(discontinuity: true)
+        reporting.checkpointWatchProgress(context: reportingContext)
+        reporting.interrupt(discontinuity: true)
         let surfacePresentation = session.surfacePresentation
         resumeState.prepareForOpen(at: currentTime)
         engineID = UUID()
@@ -459,8 +447,8 @@ final class PlayerViewModel {
     }
 
     private func showPlaybackError(_ message: String) {
-        checkpointWatchProgress()
-        watchProgress.interrupt(discontinuity: true)
+        reporting.checkpointWatchProgress(context: reportingContext)
+        reporting.interrupt(discontinuity: true)
         isSwitchingQuality = false
         qualityPlaybackIntent = nil
         errorMessage = message
@@ -526,10 +514,10 @@ final class PlayerViewModel {
             await dependencies.preparation.cancelPlaybackURL(bvid: bvid, cid: cid,
                 ownerID: playbackRequestOwnerID, sessionID: loginSessionID)
         }
-        watchProgressSender?.enqueue(watchProgress.checkpoint())
-        finishPlayerBehavior()
-        finishWatchReport()
-        watchProgress.interrupt()
+        reporting.enqueueLegacyCheckpoint()
+        reporting.finishPlayerBehavior(context: reportingContext)
+        reporting.finishWatchReport(context: reportingContext)
+        reporting.interrupt()
         session.stop()
         dependencies.systemMedia.deactivate(sessionID: systemMediaSessionID)
         isPlaying = false
@@ -560,10 +548,10 @@ final class PlayerViewModel {
         guard !isStopped else { return }
         if qualityPlaybackIntent != nil || !hasRenderedFirstFrame { qualityPlaybackIntent = false }
         session.pause()
-        watchProgress.setPaused(true, at: watchProgressClock())
+        reporting.setPaused(true)
         isPlaying = false
-        checkpointWatchProgress()
-        watchProgress.interrupt()
+        reporting.checkpointWatchProgress(context: reportingContext)
+        reporting.interrupt()
         dependencies.systemMedia.updatePlaybackState(
             isPlaying: false,
             sessionID: systemMediaSessionID, rate: playbackRate
@@ -579,8 +567,8 @@ final class PlayerViewModel {
         guard hasRenderedFirstFrame else { return }
         danmaku?.setPaused(false)
         if resumeState.isCompleted {
-            resetWatchReport()
-            watchProgress.interrupt(discontinuity: true)
+            reporting.resetWatchReport(context: reportingContext)
+            reporting.interrupt(discontinuity: true)
             // EOF 会卸载文件，必须重新打开当前地址，单纯 seek/play 不会重播。
             resumeState.seek(to: 0)
             currentTime = 0
@@ -623,12 +611,12 @@ final class PlayerViewModel {
     func seek(to seconds: Double) async {
         guard !isStopped, seconds.isFinite else { return }
         let needsReopen = resumeState.isCompleted
-        if needsReopen { resetWatchReport() }
+        if needsReopen { reporting.resetWatchReport(context: reportingContext) }
         let wasPlaying = isPlaying
         let upperBound = duration > 0 ? duration : max(seconds, 0)
         let target = min(max(seconds, 0), upperBound)
-        checkpointWatchProgress()
-        watchProgress.interrupt(discontinuity: true)
+        reporting.checkpointWatchProgress(context: reportingContext)
+        reporting.interrupt(discontinuity: true)
         currentTime = target
         resumeState.seek(to: target)
         danmaku?.seek(to: target)
@@ -693,13 +681,10 @@ final class PlayerViewModel {
                 qualityPlaybackIntent = nil
             }
             if isPlaying { session.refreshAudioFocusIfNeeded() }
-            startPlayerBehaviorIfReady()
+            reporting.startPlayerBehaviorIfReady(context: reportingContext)
         case .playing(let playing):
-            if hasSentPlayerStart, lastLoggedPlaying != playing {
-                recordPlayerBehavior(playing ? "player.player.resume.all.player" : "player.player.pause.all.player")
-                lastLoggedPlaying = playing
-            }
-            watchProgress.setPaused(!playing, at: watchProgressClock())
+            reporting.recordPlayingTransition(playing, context: reportingContext)
+            reporting.setPaused(!playing)
             danmaku?.setPaused(!playing)
             if qualityPlaybackIntent == false, playing {
                 session.pause()
@@ -707,12 +692,12 @@ final class PlayerViewModel {
                 return
             }
             isPlaying = playing
-            startPlayerBehaviorIfReady()
+            reporting.startPlayerBehaviorIfReady(context: reportingContext)
             if !playing {
                 endTemporaryDoubleSpeed()
                 savePlaybackProgress()
-                checkpointWatchProgress()
-                watchProgress.interrupt()
+                reporting.checkpointWatchProgress(context: reportingContext)
+                reporting.interrupt()
             }
             dependencies.systemMedia.updatePlaybackState(
                 isPlaying: playing,
@@ -720,23 +705,23 @@ final class PlayerViewModel {
             )
         case .buffering(let buffering):
             isBuffering = buffering
-            if buffering { watchProgress.interrupt() }
+            if buffering { reporting.interrupt() }
             if !hasRenderedFirstFrame { isLoading = true }
         case .position(let position):
             guard hasRenderedFirstFrame, !isLoading, (!isSwitchingQuality || isFetchingQuality),
                   resumeState.accept(position: position) else { return }
             // MPVEngine limits progress delivery before dispatching to the main queue.
-            if watchStartTimestamp == nil, isPlaying && !isBuffering { watchStartTimestamp = Int(Date().timeIntervalSince1970) }
+            if isPlaying && !isBuffering { reporting.noteActivePosition() }
             currentTime = position
-            startPlayerBehaviorIfReady()
+            reporting.startPlayerBehaviorIfReady(context: reportingContext)
             danmaku?.update(currentTime: position)
             if abs(position - lastSavedPosition) >= 5 { savePlaybackProgress() }
-            let checkpoint = watchProgress.observe(
-                position: position, at: watchProgressClock(), isActive: isPlaying && !isBuffering,
+            let checkpoint = reporting.observe(
+                position: position, isActive: isPlaying && !isBuffering,
                 isMiniPlayer: session.surfacePresentation == .mini
             )
-            startWatchReportIfReady()
-            enqueueWatchReport(checkpoint)
+            reporting.startWatchReportIfReady(context: reportingContext)
+            reporting.enqueueWatchReport(checkpoint, context: reportingContext)
             dependencies.systemMedia.updateElapsed(
                 position,
                 sessionID: systemMediaSessionID
@@ -746,7 +731,7 @@ final class PlayerViewModel {
                   resumeState.confirm(position: position) else { return }
             currentTime = position
             // Decoding the requested frame confirms a seek, not watched time.
-            watchProgress.interrupt()
+            reporting.interrupt()
             savePlaybackProgress()
             dependencies.systemMedia.updateElapsed(position, sessionID: systemMediaSessionID, force: true)
         case .duration(let duration):
@@ -781,10 +766,9 @@ final class PlayerViewModel {
             resumeState.complete()
             savePlaybackProgress()
             // Final App history is carried by finish, not a second checkpoint.
-            let terminal = watchProgress.complete(duration: duration)
-            watchProgressSender?.enqueue(terminal)
-            finishPlayerBehavior()
-            finishWatchReport()
+            reporting.complete(duration: duration)
+            reporting.finishPlayerBehavior(context: reportingContext)
+            reporting.finishWatchReport(context: reportingContext)
             if sleepsAfterVideoEnd {
                 enterSleep()
             }
@@ -797,96 +781,12 @@ final class PlayerViewModel {
         }
     }
 
-    func updateWatchAid(_ aid: Int) {
-        if aid > 0 {
-            watchAid = aid
-            startPlayerBehaviorIfReady()
-            startWatchReportIfReady()
-        }
-    }
+    func updateWatchAid(_ aid: Int) { reporting.updateWatchAid(aid, context: reportingContext) }
 
-    private func startWatchReportIfReady() {
-        guard !isStopped, watchReportSender != nil, watchAid > 0,
-              watchProgress.watchedTime > 0, !hasSentWatchStart else { return }
-        hasSentWatchStart = true
-        startPlayerBehaviorIfReady()
-        let snapshot = makeWatchReport(position: 0)
-        let start = PlaybackWatchReport(position: 0, watchedTime: 0, pausedTime: 0,
-            maximumPosition: 0, duration: duration, startTimestamp: 0,
-            sourceFields: snapshot.sourceFields, playbackSession: watchPlaybackSession,
-            aid: watchAid, delivery: .start)
-        watchReportSender?.enqueue(start)
-    }
-
-    private func enqueueWatchReport(_ position: Double?) {
-        guard let position else { return }
-        watchProgressSender?.enqueue(position)
-        var report = makeWatchReport(position: position)
-        report.delivery = .checkpoint
-        watchReportSender?.enqueue(report)
-    }
-
-    private func makeWatchReport(position: Double) -> PlaybackWatchReport {
-        var fields = playbackEntry.parameters(for: loginSessionID)
-        if let selectedVideoQuality { fields["quality"] = String(selectedVideoQuality) }
-        if session.surfacePresentation == .page { fields["spmid"] = "united.player-video-detail.0.0" }
-        var report = watchProgress.report(position: position, duration: duration,
-            startTimestamp: watchStartTimestamp ?? Int(Date().timeIntervalSince1970), sourceFields: fields, at: watchProgressClock())
-        report.playbackSession = watchPlaybackSession
-        report.aid = watchAid
-        report.localStartTimestamp = watchStartTimestamp
-        report.startTimestamp = 0 // Sender fills only the acknowledgement for this playback session.
-        return report
-    }
-
-    private func finishWatchReport() {
-        guard hasSentWatchStart, !hasSentWatchFinish, let position = watchProgress.terminalPosition else { return }
-        hasSentWatchFinish = true
-        finishPlayerBehavior()
-        var report = makeWatchReport(position: position)
-        report.delivery = .finish
-        watchReportSender?.enqueue(report)
-    }
-
-    private func resetWatchReport() {
-        watchProgress = PlaybackWatchProgress()
-        watchProgress.setPlaybackRate(playbackRate, at: watchProgressClock())
-        watchStartTimestamp = nil
-        watchPlaybackSession = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        hasSentWatchStart = false
-        hasSentWatchFinish = false
-        hasSentPlayerStart = false
-        hasSentPlayerEnd = false
-        lastLoggedPlaying = nil
-        playerBehaviorSequence = 0
-    }
-
-    private var playerBehaviorSequence = 0
-
-    private func recordPlayerBehavior(_ name: String, position: Double? = nil) {
-        telemetry.record(name, aid: watchAid, cid: cid, position: position ?? currentTime,
-            playbackSession: watchPlaybackSession, source: playbackEntry.parameters(for: loginSessionID),
-            accountSession: loginSessionID, quality: selectedVideoQuality, playbackRate: playbackRate, sequence: playerBehaviorSequence)
-        playerBehaviorSequence += 1
-    }
-
-    private func startPlayerBehaviorIfReady() {
-        guard !isStopped, watchAid > 0, hasRenderedFirstFrame, !isLoading, isPlaying,
-              !hasSentPlayerStart else { return }
-        hasSentPlayerStart = true; hasSentPlayerEnd = false
-        lastLoggedPlaying = true
-        recordPlayerBehavior("player.player.start.all.player", position: 0)
-    }
-
-    private func finishPlayerBehavior() {
-        guard hasSentPlayerStart, !hasSentPlayerEnd else { return }
-        hasSentPlayerEnd = true
-        recordPlayerBehavior("player.player.end.all.player")
-    }
-
-    /// 观看进度上报（心跳）。失败静默：历史记录是尽力而为的副产品，
-    /// 不能因为上报失败打断或提示播放。
-    private func checkpointWatchProgress() {
-        enqueueWatchReport(watchProgress.checkpoint())
+    private var reportingContext: PlaybackReportingCoordinator.Context {
+        .init(currentTime: currentTime, duration: duration, selectedVideoQuality: selectedVideoQuality,
+              playbackRate: playbackRate, isPage: session.surfacePresentation == .page,
+              isStopped: isStopped, hasRenderedFirstFrame: hasRenderedFirstFrame,
+              isLoading: isLoading, isPlaying: isPlaying)
     }
 }

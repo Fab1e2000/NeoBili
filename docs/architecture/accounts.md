@@ -100,7 +100,7 @@ Device protobuf 使用已确认的字段映射，未知首次追踪时间不填�
 
 视频列表的 `VideoFilterDependencies` 绑定同一时长设置与元数据缓存，由 App 组装；列表通过环境传递，Home/Space 模型通过构造器传入。纯时长文本解析属于 Domain 的 `VideoDuration`，持久化设置属于 `Application/Settings`，独立测试使用自己的偏好域与缓存。
 
-身份、WBI 签名、HTTP 客户端、网络状态、推荐会话、诊断和上报队列的生产默认实例在 `App/ApplicationServices+Live.swift` 创建；Data 类型保留显式构造接缝。离线 harness 使用独立的宿主组装与内存凭据，不加载 App 的组装文件。
+身份、WBI 签名、HTTP 客户端、网络状态、推荐会话、诊断和上报队列的生产默认实例在 `App/ApplicationServices+Live.swift` 创建；Data 类型保留显式构造接缝。离线 harness 使用独立的宿主组装与内存凭据，不加载 `ApplicationServices+Live.swift`；复用 `App/NetworkingDefaults.swift` 的便利初始化器，由宿主提供隔离依赖。
 
 `AccountCredentialPersistence` 同步负责账号凭据的格式、兼容存储与写后读回验证。`DeviceIdentity` 保留内存镜像、账号代际和续期任务；只有原子凭据记录验证成功后才发布新登录态，持久化委托不引入新的 await。
 

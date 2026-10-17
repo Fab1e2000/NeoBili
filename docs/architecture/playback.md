@@ -134,3 +134,5 @@ param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 Recor
 视频详情原生列表的行由 `VideoDescriptionComponents` 组装，保留稳定标识、版本键和间距；页面持有导航绑定与播放交互。弹幕发送经详情模型所注入的 CommentService 转发当前分 P 和播放位置。
 
 播放值与服务契约由 `NeoBiliDomain` 编译，网络适配器由 `NeoBiliData` 提供；播放器协调与 mpv 平台会话仍属于 App target。生产依赖由 App 组装，播放模型通过注入的契约调用。
+
+`PlaybackReportingCoordinator` 持有观看累计、心跳与播放行为的开始/结束去重状态，以及对应发送器。Player 在原事件顺序中传入即时值快照；协作者不持有 Player、渲染会话或额外任务。退出、析构和 EOF 各自保留已有的上报边界，本地续播保存仍由 Player 管理。

@@ -48,7 +48,7 @@ App target 包含 App、Application、Features、Platform 和共享 UI。Applica
 
 ## 状态与任务所有权
 
-`NowPlayingStore` 从打开到关闭持有当前媒体、详情模型和返回历史。`PlayerViewModel` 协调播放、画质、备用源与观看记录，平台会话负责内核。账号切换或媒体切换后，旧标识的回调不能修改新状态。
+`NowPlayingStore` 从打开到关闭持有当前媒体、详情模型和返回历史。`PlayerViewModel` 协调播放、画质、备用源与本地续播；`PlaybackReportingCoordinator` 管理观看累计、心跳和播放行为边界，平台会话负责内核。账号切换或媒体切换后，旧标识的回调不能修改新状态。
 
 页面模型持有自己的加载任务。共享缓存持有共享下载任务，单张卡片退出只取消自己的等待。直播实时连接拥有认证、心跳和重连任务，`stop()` 统一终止；展示模型拥有列表合并和 SC 历史任务。
 
