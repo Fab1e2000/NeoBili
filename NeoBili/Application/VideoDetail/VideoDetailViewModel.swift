@@ -96,6 +96,11 @@ final class VideoDetailViewModel {
         }
     }
 
+    func sendDanmaku(_ text: String, cid: Int, progress: TimeInterval, mode: Int) async throws {
+        _ = try await services.comment.shootDanmaku(cid: cid, bvid: detail?.bvid ?? bvid,
+                                                   message: text, progress: progress, mode: mode)
+    }
+
     func load() async {
         guard detail == nil else { return }
         isLoading = true

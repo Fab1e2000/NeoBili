@@ -4,6 +4,24 @@ import Synchronization
 
 @MainActor
 final class VideoActionStateRepairTests: XCTestCase {
+    func testDanmakuUsesInjectedDetailServiceAndPlaybackSnapshot() async throws {
+        let captured = Mutex<[(Int, String, String, TimeInterval, Int)]>([])
+        let sessionID = UUID()
+        var services = ApplicationServices(session: SessionService(currentID: { sessionID }, homeAccount: { HomeFeedAccount(accountID: nil, hasAppCredential: false) }))
+        services.comment.shootDanmakuOperation = { cid, bvid, text, progress, mode in
+            captured.withLock { $0.append((cid, bvid, text, progress, mode)) }
+            return 1
+        }
+        let model = VideoDetailViewModel(bvid: "BV-fixture", likeStore: VideoLikeStore(), services: services)
+        try await model.sendDanmaku("fixture message", cid: 42, progress: 12.5, mode: 1)
+        let request = try XCTUnwrap(captured.withLock { $0.first })
+        XCTAssertEqual(request.0, 42)
+        XCTAssertEqual(request.1, "BV-fixture")
+        XCTAssertEqual(request.2, "fixture message")
+        XCTAssertEqual(request.3, 12.5)
+        XCTAssertEqual(request.4, 1)
+    }
+
     func testRemovingOneOfTwoFoldersKeepsFavoriteAndCount() async throws {
         let calls = ActionCalls()
         let model = try await model(favorited: true, calls: calls)
