@@ -95,22 +95,35 @@ final class VideoScrollHandoffTests: XCTestCase {
         XCTAssertEqual(rig.distance, 40)
     }
 
-    private final class Rig {
+    func testReleasedFixtureDoesNotLeaveUnownedCallbacksInRetainedScrollView() {
+        var rig: Rig? = Rig()
+        let scroll = rig!.scroll
+        scroll.draggingForTest = true
+        rig = nil
+        scroll.contentOffset.y += 20
+        XCTAssertTrue(scroll.contentOffset.y.isFinite)
+    }
+
+    @MainActor private final class Rig {
         let scroll = TestScroll()
         let observer = PausedVideoCollapseScroll.Observer()
         var distance: CGFloat = 0
         var maximum: CGFloat = 200
         var active = true
         var geometry: VideoScrollContext {
-            .init(minimumContentHeight: 500, reservation: 300, distance: { [unowned self] in distance }, isActive: { [unowned self] _ in active })
+            .init(minimumContentHeight: 500, reservation: 300, distance: { [weak self] in self?.distance ?? 0 }, isActive: { [weak self] _ in self?.active ?? false })
         }
         init() {
             scroll.frame = CGRect(x: 0, y: 0, width: 200, height: 500)
             scroll.contentSize = CGSize(width: 200, height: 3000)
-            observer.consume = { [unowned self] delta in
+            observer.consume = { [weak self] delta in
+                guard let self else { return 0 }
                 let old = distance; distance = min(max(0, distance + delta), maximum); return distance - old
             }
-            observer.canConsume = { [unowned self] delta in delta > 0 ? distance < maximum : distance > 0 }
+            observer.canConsume = { [weak self] delta in
+                guard let self else { return false }
+                return delta > 0 ? distance < maximum : distance > 0
+            }
             observer.configure(geometry, page: .comments, ownsInsets: true)
             scroll.addSubview(observer)
         }

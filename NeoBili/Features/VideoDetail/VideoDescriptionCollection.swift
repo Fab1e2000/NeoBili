@@ -21,7 +21,7 @@ struct VideoDescriptionComponent {
         self.revision = revision
         self.content = AnyView(content())
     }
-    init(introduction: VideoIntroductionCard, bottomSpacing: CGFloat = 14) {
+    @MainActor init(introduction: VideoIntroductionCard, bottomSpacing: CGFloat = 14) {
         id = "introduction"
         revision = [introduction.title, introduction.desc, AnyHashable(introduction.stat), introduction.pubdate, introduction.isExpanded]
         content = AnyView(EmptyView())
@@ -376,7 +376,7 @@ final class DescriptionComponentCell: UICollectionViewCell {
     override func layoutSubviews() {
         UIView.performWithoutAnimation {
             super.layoutSubviews()
-            func settle(_ surface: UIView) {
+            @MainActor func settle(_ surface: UIView) {
                 for key in ["position", "bounds", "bounds.size"] { surface.layer.removeAnimation(forKey: key) }
                 surface.subviews.forEach(settle)
             }
