@@ -59,6 +59,31 @@ final class PlayerQualityTests: XCTestCase {
         XCTAssertEqual(player.playbackRate, 1.25)
     }
 
+    func testKernelPauseRestoresTemporarySpeed() async throws {
+        try await assertKernelEventRestoresTemporarySpeed(.playing(false))
+    }
+
+    func testNaturalEndRestoresTemporarySpeed() async throws {
+        try await assertKernelEventRestoresTemporarySpeed(.ended)
+    }
+
+    private func assertKernelEventRestoresTemporarySpeed(_ event: PlayerPlaybackEvent) async throws {
+        let payload = try Self.payload(quality: 80)
+        let player = try makePlayer(payload: payload, loader: { _, _, _ in payload })
+        defer { player.stop() }
+        player.selectPlaybackRate(1.25)
+        await player.load()
+        ready(player, position: 37)
+        player.beginTemporaryDoubleSpeed()
+        XCTAssertEqual(player.playbackRate, 2)
+        player.session.onEvent?(event)
+        XCTAssertFalse(player.isPlaying)
+        XCTAssertEqual(player.playbackRate, 1.25)
+        XCTAssertEqual(player.session.playbackRate, 1.25)
+        player.endTemporaryDoubleSpeed()
+        XCTAssertEqual(player.playbackRate, 1.25)
+    }
+
     func testDeclared4KIsNotMistakenForAnAlreadyAuthorizedStream() throws {
         let payload = try Self.payload(quality: 80)
         XCTAssertEqual(payload.declaredVideoQualities, [120, 80, 64])

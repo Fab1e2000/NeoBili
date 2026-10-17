@@ -735,6 +735,7 @@ final class PlayerViewModel {
             isPlaying = playing
             startPlayerBehaviorIfReady()
             if !playing {
+                endTemporaryDoubleSpeed()
                 savePlaybackProgress()
                 checkpointWatchProgress()
                 watchProgress.interrupt()
@@ -800,6 +801,7 @@ final class PlayerViewModel {
         case .ended:
             guard hasRenderedFirstFrame, !isLoading, !isSwitchingQuality else { return }
             isPlaying = false
+            endTemporaryDoubleSpeed()
             isLoading = false
             danmaku?.setPaused(true)
             resumeState.complete()
