@@ -131,6 +131,45 @@ final class AppProtocolIntegrationTests: XCTestCase {
         XCTAssertTrue(ProtocolTransport.state.withLock { $0.requests.isEmpty })
     }
 
+    func testAccountChangeBeforeResponseRejectsOldAppData() async throws {
+        let session = transport()
+        defer { session.invalidateAndCancel() }
+        let initial = context().account
+        let current = Mutex(initial)
+        ProtocolTransport.state.withLock {
+            $0.beforeResponse = {
+                current.withLock { $0 = .init(accessKey: "other-fixture", mid: 84, sessionID: UUID()) }
+            }
+        }
+        let client = APIClient(session: session, appAuthentication: { current.withLock { $0 } },
+                               appHeaders: { _ in [:] })
+        do {
+            let _: Payload = try await client.getApp(path: "fixture", params: [:], retries: 0,
+                                                     expectedSessionID: initial.sessionID)
+            XCTFail("A response belonging to the old account must be rejected")
+        } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        XCTAssertEqual(ProtocolTransport.state.withLock { $0.requests.count }, 1)
+    }
+
+    func testWebFormPreservesLiteralPlusAndUnicode() async throws {
+        let session = transport()
+        defer { session.invalidateAndCancel() }
+        let generation = UUID()
+        let client = APIClient(session: session, authentication: {
+            .init(sessionID: generation, accountID: 42, csrfToken: "fixture",
+                  cookieHeader: "SESSDATA=fixture", isLoggedIn: true)
+        })
+        let message = "C++ & A=B 中文 %"
+        try await client.post(path: "fixture", form: ["message": message])
+        let request = try XCTUnwrap(ProtocolTransport.state.withLock { $0.requests.first })
+        let data = try XCTUnwrap(request.httpBody)
+        let body = try XCTUnwrap(String(data: data, encoding: .utf8))
+        let field = try XCTUnwrap(body.split(separator: "&").first { $0.hasPrefix("message=") })
+        let value = String(field.dropFirst("message=".count))
+            .replacingOccurrences(of: "+", with: " ").removingPercentEncoding
+        XCTAssertEqual(value, message)
+    }
+
     func testReadRetriesReuseEncodedRequestWhileBehavioralWriteIsNotRetried() async throws {
         let session = transport()
         defer { session.invalidateAndCancel() }
@@ -185,17 +224,31 @@ private struct FixtureCodec: AppRequestEncoding {
     }
 }
 private final class ProtocolTransport: URLProtocol, @unchecked Sendable {
-    struct State { var failuresRemaining = 0; var requests: [URLRequest] = [] }
+    struct State { var failuresRemaining = 0; var requests: [URLRequest] = []; var beforeResponse: (@Sendable () -> Void)? }
     static let state = Mutex(State())
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        var captured = request
+        if captured.httpBody == nil, let stream = captured.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var bytes = Data()
+            var buffer = [UInt8](repeating: 0, count: 1024)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                guard count > 0 else { break }
+                bytes.append(contentsOf: buffer.prefix(count))
+            }
+            captured.httpBody = bytes
+        }
         let fail = Self.state.withLock {
-            $0.requests.append(request)
+            $0.requests.append(captured)
             if $0.failuresRemaining > 0 { $0.failuresRemaining -= 1; return true }
             return false
         }
         if fail { client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost)); return }
+        Self.state.withLock { $0.beforeResponse }?()
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200,
             httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(#"{"code":0,"data":{"value":7}}"#.utf8))

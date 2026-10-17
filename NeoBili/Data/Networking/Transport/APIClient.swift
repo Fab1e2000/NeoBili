@@ -223,7 +223,7 @@ struct APIClient {
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             var formComponents = URLComponents()
             formComponents.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
-            request.httpBody = formComponents.percentEncodedQuery?.data(using: .utf8)
+            request.httpBody = formComponents.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B").data(using: .utf8)
         }
 
         return try await perform(request)
@@ -238,7 +238,9 @@ struct APIClient {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
         let request = try await encodeAppRequest(.get(path: path, parameters: params,
             requiresAccountCredential: requiresAccountCredential, usesAPIHost: usesAPIHost), context: .init(account: account, headers: headers))
-        return try await perform(request, retries: retries)
+        let result: T = try await perform(request, retries: retries)
+        _ = try await appAccount(expectedSessionID: account.sessionID)
+        return result
     }
 
     /// Unary App gRPC uses the same account/device as recommendation and watch feedback.
