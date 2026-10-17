@@ -135,7 +135,7 @@ final class HomeInlinePreview {
     }
 
     private func handle(_ event: PlayerPlaybackEvent) {
-        guard !finished, accountSession == ApplicationServices.live.session.currentID() else { return }
+        guard !finished, accountSession == dependencies.services.session.currentID() else { return }
         switch event {
         case .firstFrame: hasFirstFrame = true
         case .playing(let value):

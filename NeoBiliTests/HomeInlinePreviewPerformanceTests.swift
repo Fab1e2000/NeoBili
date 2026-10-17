@@ -19,6 +19,23 @@ final class HomeInlinePreviewPerformanceTests: XCTestCase {
               audio: nil, duration: 120)
     }
 
+    func testPreviewEventsUseTheInjectedAccountSession() async throws {
+        let suite = "neobili.preview-session.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let opened = expectation(description: "preview opened")
+        let preview = HomeInlinePreview(loader: { _, _, _ in (1, Self.source()) },
+            opener: { _, _ in opened.fulfill() }, dependencies: .isolated(defaults: defaults))
+        defer { preview.stop() }
+        preview.select(video(1))
+        await fulfillment(of: [opened], timeout: 2)
+        let session = try XCTUnwrap(preview.session)
+        session.onEvent?(.firstFrame)
+        session.onEvent?(.duration(180))
+        XCTAssertTrue(preview.hasFirstFrame)
+        XCTAssertEqual(preview.duration, 180)
+    }
+
     func testRapidlyPassingCardsAllocatesNoSessions() async throws {
         let loads = Mutex(0)
         var creations = 0
