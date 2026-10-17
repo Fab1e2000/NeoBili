@@ -544,6 +544,26 @@ final class LiveDanmakuLifecycleTests: XCTestCase {
         XCTAssertEqual(gate.requests, [1, 2])
     }
 
+    func testLateHistoryDoesNotRestoreDeletedOrHiddenSuperChats() async throws {
+        for deleted in [true, false] {
+            let gate = LiveSuperChatGate()
+            gate.includeWitness = true
+            let model = LiveDanmakuModel(superChatLoader: { room in await gate.load(room) })
+            defer { model.stop(); gate.cancelAll() }
+            model.start(roomID: 1)
+            try await waitForHistory { gate.pending[1] != nil }
+            if deleted {
+                model.receive(.message(Data(#"{"cmd":"SUPER_CHAT_MESSAGE_DELETE","data":{"ids":[11]}}"#.utf8)))
+            } else {
+                model.hideSuperChat(11)
+            }
+            gate.resolve(room: 1, id: 11)
+            // A second entry is a completion witness: history is processed sequentially.
+            try await waitForHistory { model.superChats.contains { $0.id == 12 } }
+            XCTAssertFalse(model.superChats.contains { $0.id == 11 })
+        }
+    }
+
     func testStoppingRejectsPendingSuperChatHistory() async throws {
         let gate = LiveSuperChatGate()
         let model = LiveDanmakuModel(superChatLoader: { room in await gate.load(room) })
@@ -586,6 +606,7 @@ final class LiveDanmakuLifecycleTests: XCTestCase {
 private final class LiveSuperChatGate {
     private(set) var pending: [Int: CheckedContinuation<[[String: Any]], Never>] = [:]
     private(set) var requests: [Int] = []
+    var includeWitness = false
     func load(_ room: Int) async -> [[String: Any]] {
         requests.append(room)
         return await withCheckedContinuation { pending[room] = $0 }
@@ -595,7 +616,9 @@ private final class LiveSuperChatGate {
                                     "start_time": Date().timeIntervalSince1970,
                                     "end_time": Date().timeIntervalSince1970 + 300,
                                     "user_info": ["uname": "fixture"]]
-        pending.removeValue(forKey: room)?.resume(returning: [entry])
+        var witness = entry
+        witness["id"] = id + 1
+        pending.removeValue(forKey: room)?.resume(returning: id == 11 && includeWitness ? [entry, witness] : [entry])
     }
     func cancelAll() {
         let remaining = pending.values

@@ -22,6 +22,21 @@ final class ServiceBoundaryTests: XCTestCase {
         XCTAssertTrue(model.isLiked(comment))
     }
 
+    func testCancelledCommentLikeRollsBackWithoutErrorMessage() async throws {
+        let comment = try JSONDecoder().decode(Comment.self, from: Data(#"{"rpid":7,"ctime":1,"like":0,"rcount":0,"action":0,"member":{"uname":"test","avatar":""},"content":{"message":"test"}}"#.utf8))
+        for urlCancellation in [false, true] {
+            var services = ApplicationServices(session: .init(currentID: { UUID() }, homeAccount: { .init(accountID: nil, hasAppCredential: false) }))
+            services.comment.likeCommentOperation = { _, _, _, _ in
+                if urlCancellation { throw URLError(.cancelled) }
+                throw CancellationError()
+            }
+            let model = CommentsViewModel(oid: 42, type: 1, services: services)
+            await model.toggleLike(comment, isLoggedIn: true)
+            XCTAssertFalse(model.isLiked(comment))
+            XCTAssertNil(model.actionMessage)
+        }
+    }
+
     func testUnconfiguredOperationFailsInsteadOfUsingLiveNetwork() async {
         do {
             _ = try await SearchService().searchSuggestions(term: "offline")

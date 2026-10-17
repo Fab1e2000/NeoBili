@@ -257,6 +257,8 @@ final class LiveDanmakuModel {
         // 服务端按时间正序；append 是「新条目插到最前」，所以正序迭代后
         // 最新的排在最前，prune 的 removeLast 丢的也是最旧的。
         for entry in list {
+            if let id = entry["id"] as? Int,
+               deletedSuperChatIDs.contains(id) || hiddenSuperChatIDs.contains(id) { continue }
             append(superChat: entry)
         }
     }

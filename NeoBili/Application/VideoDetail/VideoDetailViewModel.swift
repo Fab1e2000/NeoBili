@@ -160,9 +160,15 @@ final class VideoDetailViewModel {
         async let relation: Void = loadRelationIfNeeded()
         async let card = try? services.video.memberCard(mid: detail.owner.mid)
 
-        self.tags = await tags ?? []
+        let loadedTags = await tags ?? []
+        guard !Task.isCancelled, likeStore.sessionID == sessionID,
+              session.currentID() == appAccountSessionID else { return }
+        self.tags = loadedTags
         await relation
-        self.ownerCard = await card
+        let loadedCard = await card
+        guard !Task.isCancelled, likeStore.sessionID == sessionID,
+              session.currentID() == appAccountSessionID else { return }
+        self.ownerCard = loadedCard
     }
 
     /// 操作前和初次进入页面共用同一请求，避免迟到的快照覆盖已完成的互动。
@@ -341,6 +347,8 @@ final class VideoDetailViewModel {
 
         do {
             try await services.library.unfavoriteEverywhere(aid: detail.aid)
+            guard !Task.isCancelled, likeStore.sessionID == sessionID,
+                  session.currentID() == appAccountSessionID else { return }
             actionMessage = String(localized: "已取消收藏")
         } catch {
             guard likeStore.sessionID == sessionID, session.currentID() == appAccountSessionID else { return }
