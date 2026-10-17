@@ -6,7 +6,7 @@ struct SearchPage: View {
     @Binding var isFocused: Bool
     @Environment(\.appThemeColor) private var themeColor
     let onSubmit: (String?) -> Void
-    @State private var history = SearchHistory.shared
+    private var history: SearchHistory { viewModel.history }
     @TitleBarPreference private var titleBarStyle
     private var pinsTitleBar: Bool { titleBarStyle.isPinned }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

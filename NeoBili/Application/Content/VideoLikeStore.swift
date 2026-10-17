@@ -33,7 +33,4 @@ final class VideoLikeStore {
         overrides[aid] = liked
     }
 
-    /// 会话级单例：持有它的模型（动态流、视频页）都创建在拿不到
-    /// SwiftUI 环境的位置，注入反而要穿透好几层构造链。
-    static let shared = VideoLikeStore()
 }

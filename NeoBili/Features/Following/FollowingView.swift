@@ -164,7 +164,7 @@ struct FollowingView: View {
     private var feed: some View {
         list
             .task(id: account.accountID) {
-                FollowingReadStore.shared.configure(accountID: account.accountID)
+                viewModel.configureAccount(account.accountID)
                 await viewModel.loadInitial()
             }
 

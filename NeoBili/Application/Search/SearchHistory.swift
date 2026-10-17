@@ -3,7 +3,6 @@ import Foundation
 @MainActor
 @Observable
 final class SearchHistory {
-    static let shared = SearchHistory()
     private(set) var keywords: [String]
     private let defaults: UserDefaults
     private let key = "neobili.searchHistory"

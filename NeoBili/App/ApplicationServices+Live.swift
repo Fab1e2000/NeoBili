@@ -94,3 +94,16 @@ extension PlaybackWatchReportSender {
         PlaybackDependencies.live.watchReports.sender(loginSessionID: loginSessionID, bvid: bvid, cid: cid, serverReport: serverReport)
     }
 }
+
+extension ApplicationStores {
+    @MainActor static let live = Self(likes: VideoLikeStore(), followingRead: FollowingReadStore(), searchHistory: SearchHistory())
+}
+extension VideoLikeStore {
+    static var shared: VideoLikeStore { ApplicationStores.live.likes }
+}
+extension FollowingReadStore {
+    static var shared: FollowingReadStore { ApplicationStores.live.followingRead }
+}
+extension SearchHistory {
+    static var shared: SearchHistory { ApplicationStores.live.searchHistory }
+}

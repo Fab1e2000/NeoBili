@@ -6,7 +6,6 @@ import Foundation
 @MainActor
 @Observable
 final class FollowingReadStore {
-    static let shared = FollowingReadStore()
     /// 本地已清除红点的 UP 主及清除时间，等服务端列表确认后移除。
     private(set) var cleared: [Int: Double] = [:]
     private(set) var priorityUntil: [String: Double] = [:]
