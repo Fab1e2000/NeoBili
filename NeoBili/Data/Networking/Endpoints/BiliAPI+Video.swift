@@ -33,10 +33,10 @@ extension BiliAPI {
         return try AppRelatedPage(payload: related, isView: false, accountSession: expectedSessionID)
     }
 
-    static func relatedVideos(bvid: String) async throws -> [VideoSummary] {
-        let login = await DeviceIdentity.shared.loginSessionID
+    static func relatedVideos(bvid: String, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws -> [VideoSummary] {
+        let login = await identity.loginSessionID
         return try await appRelatedPage(bvid: bvid, playbackSession: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
-                                        expectedSessionID: login).videos
+                                        expectedSessionID: login, client: client, identity: identity).videos
     }
 
     // MARK: - 视频页附加信息

@@ -7,7 +7,7 @@ extension VideoService {
                                  additionalHeaders: ["Referer": "https://www.bilibili.com/video/\(bvid)"])
         },
             playURLOperation: { bvid, cid, quality in
-                try await BiliAPI.playURL(bvid: bvid, cid: cid, quality: quality)
+                try await BiliAPI.playURL(bvid: bvid, cid: cid, quality: quality, client: client, identity: identity)
             },
             videoDetailOperation: { bvid in
                 try await BiliAPI.videoDetail(bvid: bvid, client: client)
@@ -25,7 +25,7 @@ extension VideoService {
                 try await BiliAPI.memberCard(mid: mid, client: client)
             },
             likeVideoOperation: { aid, like in
-                try await BiliAPI.likeVideo(aid: aid, like: like)
+                try await BiliAPI.likeVideo(aid: aid, like: like, client: client, identity: identity)
             },
             likeVideoWithContextOperation: { aid, like, entry, expectedSessionID in
                 try await BiliAPI.likeVideo(aid: aid, like: like, entry: entry, expectedSessionID: expectedSessionID, client: client)
@@ -40,13 +40,13 @@ extension VideoService {
                 try await BiliAPI.addCoin(aid: aid, multiply: multiply, selectLike: selectLike, entry: entry, expectedSessionID: expectedSessionID, client: client)
             },
             updateFavoritesOperation: { aid, addFolderIDs, removeFolderIDs, expectedSessionID in
-                try await BiliAPI.updateFavorites(aid: aid, addFolderIDs: addFolderIDs, removeFolderIDs: removeFolderIDs, expectedSessionID: expectedSessionID)
+                try await BiliAPI.updateFavorites(aid: aid, addFolderIDs: addFolderIDs, removeFolderIDs: removeFolderIDs, expectedSessionID: expectedSessionID, client: client, identity: identity)
             },
             blockUserOperation: { mid in
-                try await BiliAPI.blockUser(mid: mid)
+                try await BiliAPI.blockUser(mid: mid, client: client, identity: identity)
             },
             modifyRelationOperation: { mid, follow in
-                try await BiliAPI.modifyRelation(mid: mid, follow: follow)
+                try await BiliAPI.modifyRelation(mid: mid, follow: follow, client: client, identity: identity)
             }
         )
     }

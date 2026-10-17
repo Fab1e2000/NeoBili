@@ -23,9 +23,9 @@ extension BiliAPI {
     /// 展开某条评论下的全部回复（楼中楼）。`root` 传那条一级评论的 `rpid`。
     ///
     /// 和一级评论不同，这个接口对未登录用户没有条数限制，可以正常一页页翻。
-    static func sendComment(oid: Int, type: Int, message: String, root: Int, parent: Int) async throws -> CommentSubmission {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        let result: CommentSubmission = try await APIClient.shared.post(path: "x/v2/reply/add", form: [
+    static func sendComment(oid: Int, type: Int, message: String, root: Int, parent: Int, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws -> CommentSubmission {
+        let csrf = await identity.csrfToken ?? ""
+        let result: CommentSubmission = try await client.post(path: "x/v2/reply/add", form: [
             "oid": String(oid), "type": String(type), "message": message,
             "root": String(root), "parent": String(parent), "plat": "1", "csrf": csrf
         ])
@@ -48,9 +48,9 @@ extension BiliAPI {
     }
 
     /// 给评论点赞 / 取消点赞。`oid` 和 `type` 的含义与拉取评论时相同。
-    static func likeComment(oid: Int, type: Int, rpid: Int, like: Bool) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
+    static func likeComment(oid: Int, type: Int, rpid: Int, like: Bool, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(
             path: "x/v2/reply/action",
             form: [
                 "type": String(type),

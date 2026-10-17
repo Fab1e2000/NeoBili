@@ -1,13 +1,13 @@
 import Foundation
 
 extension CommunityService {
-    static func live(client: APIClient = .shared) -> Self {
+    static func live(client: APIClient = .shared, identity: DeviceIdentity = .shared) -> Self {
         Self(
             dynamicVoteInfoOperation: { id in
                 try await BiliAPI.dynamicVoteInfo(id: id, client: client)
             },
             submitDynamicVoteOperation: { id, options, voterMID, dynamicID in
-                try await BiliAPI.submitDynamicVote(id: id, options: options, voterMID: voterMID, dynamicID: dynamicID)
+                try await BiliAPI.submitDynamicVote(id: id, options: options, voterMID: voterMID, dynamicID: dynamicID, client: client, identity: identity)
             },
             followedUpsOperation: {
                 try await BiliAPI.followedUps(client: client)
@@ -25,7 +25,7 @@ extension CommunityService {
                 try await BiliAPI.spaceDynamics(hostMid: hostMid, offset: offset, client: client)
             },
             likeDynamicOperation: { id, like in
-                try await BiliAPI.likeDynamic(id: id, like: like)
+                try await BiliAPI.likeDynamic(id: id, like: like, client: client, identity: identity)
             },
             spaceCardOperation: { mid in
                 try await BiliAPI.spaceCard(mid: mid, client: client)

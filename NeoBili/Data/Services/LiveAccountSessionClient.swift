@@ -1,23 +1,24 @@
 import Foundation
 
 extension AccountSessionClient {
-    static var live: AccountSessionClient { AccountSessionClient(
+    static var live: AccountSessionClient { live(identity: .shared, client: .shared) }
+    static func live(identity: DeviceIdentity, client: APIClient) -> AccountSessionClient { AccountSessionClient(
         credentials: {
             // Startup/foreground services renew independently of cached account restoration.
-            return await DeviceIdentity.shared.accountSnapshot()
+            return await identity.accountSnapshot()
         },
-        save: { await DeviceIdentity.shared.saveLogin($0, accessKey: $1) },
-        clear: { await DeviceIdentity.shared.clearLoginCookies() },
-        profile: { try await BiliAPI.myProfile() },
+        save: { await identity.saveLogin($0, accessKey: $1) },
+        clear: { await identity.clearLoginCookies() },
+        profile: { try await BiliAPI.myProfile(client: client) },
         exchangeAppCredential: {
             throw LoginModels.PassportError.rejected(String(localized: "请使用短信验证码重新授权"))
         },
         saveAppAuthorization: { key, mid in
-            let session = DeviceIdentity.shared.loginSessionID
-            guard await DeviceIdentity.shared.setAccessKey(key, forAccount: String(mid), expectedSessionID: session) else {
+            let session = identity.loginSessionID
+            guard await identity.setAccessKey(key, forAccount: String(mid), expectedSessionID: session) else {
                 throw CancellationError()
             }
         },
-        saveSMS: { try await DeviceIdentity.shared.saveSMSLogin($0, expectedSessionID: $1, authorizationOnly: $2) }
+        saveSMS: { try await identity.saveSMSLogin($0, expectedSessionID: $1, authorizationOnly: $2) }
     ) }
 }

@@ -14,9 +14,9 @@ extension BiliAPI {
     }
 
     /// Existing dynamic-feed interaction: its App tracker has not been established yet.
-    static func likeVideo(aid: Int, like: Bool) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(path: "x/web-interface/archive/like",
+    static func likeVideo(aid: Int, like: Bool, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(path: "x/web-interface/archive/like",
             form: ["aid": String(aid), "like": like ? "1" : "2", "csrf": csrf])
     }
 
@@ -71,9 +71,9 @@ extension BiliAPI {
 
     /// 一次性调整这个视频在各个收藏夹里的归属。
     /// 两个列表都可以为空，服务端按「加入这些、移出那些」处理。
-    static func updateFavorites(aid: Int, addFolderIDs: [Int], removeFolderIDs: [Int], expectedSessionID: UUID? = nil) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
+    static func updateFavorites(aid: Int, addFolderIDs: [Int], removeFolderIDs: [Int], expectedSessionID: UUID? = nil, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(
             path: "x/v3/fav/resource/deal",
             form: [
                 "rid": String(aid),
@@ -86,9 +86,9 @@ extension BiliAPI {
     }
 
     /// 拉黑 UP 主。参数照 PiliPlus `VideoHttp.relationMod`（act=5）。
-    static func blockUser(mid: Int) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
+    static func blockUser(mid: Int, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(
             path: "x/relation/modify",
             form: [
                 "fid": String(mid),
@@ -109,9 +109,9 @@ extension BiliAPI {
     ///
     /// 这个接口会校验来源站点，所以要把 Origin/Referer 换成 space 站——沿用
     /// 全站默认的 www 来源会被拒。`re_src=11` 表示来源是视频播放页。
-    static func modifyRelation(mid: Int, follow: Bool) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
+    static func modifyRelation(mid: Int, follow: Bool, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(
             path: "x/relation/modify",
             form: [
                 "fid": String(mid),

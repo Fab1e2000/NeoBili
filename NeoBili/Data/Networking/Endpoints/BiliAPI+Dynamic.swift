@@ -9,9 +9,9 @@ extension BiliAPI {
         try await client.get(path: "x/vote/vote_info", params: ["vote_id": String(id)])
     }
 
-    static func submitDynamicVote(id: Int, options: [Int], voterMID: Int, dynamicID: String) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.postJSON(
+    static func submitDynamicVote(id: Int, options: [Int], voterMID: Int, dynamicID: String, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.postJSON(
             path: "x/vote/do_vote",
             query: ["csrf": csrf],
             json: ["vote_id": id, "votes": options, "voter_uid": voterMID,
@@ -104,9 +104,9 @@ extension BiliAPI {
     ///
     /// 该接口只认 JSON body：表单编码会报 4100001 参数错误。csrf 按惯例
     /// 放 query，body 里带 spmid（对齐 PiliPlus 的请求格式）。
-    static func likeDynamic(id: String, like: Bool) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.postJSON(
+    static func likeDynamic(id: String, like: Bool, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.postJSON(
             path: "x/dynamic/feed/dyn/thumb",
             query: ["csrf": csrf],
             json: [
