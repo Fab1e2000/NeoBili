@@ -1,4 +1,5 @@
 import Foundation
+import AVFAudio
 
 extension ApplicationServices {
     static let live = Self(
@@ -61,4 +62,18 @@ extension PlaybackProgressStore {
 }
 extension VideoPreparationCache {
     static var shared: VideoPreparationCache { ApplicationServices.playbackPreparation }
+}
+
+extension SystemNowPlayingCenter {
+    @MainActor static let shared = SystemNowPlayingCenter(
+        output: .system(), notifications: .default,
+        interruptionObject: AVAudioSession.sharedInstance(), idleTimer: PlaybackIdleTimer(),
+        artworkLoader: { url in
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 8
+            request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
+            return try await AppNetwork.session.data(for: request).0
+        }
+    )
 }

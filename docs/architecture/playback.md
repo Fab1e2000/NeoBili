@@ -115,3 +115,7 @@ param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 Recor
 生产实例由 `App/ApplicationServices+Live.swift` 组装；`NowPlayingStore` 将同一图传给视频播放器、
 直播播放器、详情和评论模型。加载、失效与取消使用同一个准备缓存，避免跨实例取消失效。
 测试可注入独立偏好域、缓存和 `SystemMediaControlling`，无需清理共享观看进度或写入系统媒体中心。
+
+系统媒体适配器通过 `SystemMediaOutput` 写入系统、注册远程命令，并接收独立的通知中心、
+自动锁定策略和封面 loader。生产图保持唯一实例；测试不注册真实远程命令或恢复 UIApplication 全局状态。
+实例销毁时解除通知与命令注册，取消封面任务。

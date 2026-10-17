@@ -8,14 +8,13 @@ import UIKit
 /// 用 sessionID 拒绝旧播放器迟到的事件，防止切换视频时旧页面清掉新媒体卡片。
 @MainActor
 final class SystemNowPlayingCenter: SystemMediaControlling {
-    static let shared = SystemNowPlayingCenter()
-
-    private let infoCenter = MPNowPlayingInfoCenter.default()
-    private let commandCenter = MPRemoteCommandCenter.shared()
-    private var commandTargets: [Any] = []
+    private let output: SystemMediaOutput
+    private let notifications: NotificationCenter
+    private let artworkLoader: @Sendable (URL) async throws -> Data
+    private var removeCommandHandlers: (() -> Void)?
     private var interruptionObserver: NSObjectProtocol?
     private var applicationObservers: [NSObjectProtocol] = []
-    private let idleTimer = PlaybackIdleTimer()
+    private let idleTimer: PlaybackIdleTimer
     private var activeSessionID: UUID?
     private var metadata: SystemMediaMetadata?
     private var duration: TimeInterval = 0
@@ -30,19 +29,25 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
     private var toggleHandler: (() -> Void)?
     private var seekHandler: ((TimeInterval) -> Void)?
 
-    private init() {
+    init(output: SystemMediaOutput, notifications: NotificationCenter,
+         interruptionObject: AnyObject?, idleTimer: PlaybackIdleTimer,
+         artworkLoader: @escaping @Sendable (URL) async throws -> Data) {
+        self.output = output
+        self.notifications = notifications
+        self.idleTimer = idleTimer
+        self.artworkLoader = artworkLoader
         setCommandsEnabled(false)
         for (name, active) in [(UIApplication.didBecomeActiveNotification, true),
                                (UIApplication.willResignActiveNotification, false)] {
-            applicationObservers.append(NotificationCenter.default.addObserver(
+            applicationObservers.append(notifications.addObserver(
                 forName: name, object: nil, queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated { self?.idleTimer.setApplicationActive(active) }
             })
         }
-        interruptionObserver = NotificationCenter.default.addObserver(
+        interruptionObserver = notifications.addObserver(
             forName: AVAudioSession.interruptionNotification,
-            object: AVAudioSession.sharedInstance(),
+            object: interruptionObject,
             queue: .main
         ) { [weak self] notification in
             guard let rawValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
@@ -52,26 +57,20 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
             MainActor.assumeIsolated { self?.pauseHandler?() }
         }
 
-        commandTargets.append(commandCenter.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.playHandler?() }
-            return .success
-        })
-        commandTargets.append(commandCenter.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.pauseHandler?() }
-            return .success
-        })
-        commandTargets.append(commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.toggleHandler?() }
-            return .success
-        })
-        commandTargets.append(commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let event = event as? MPChangePlaybackPositionCommandEvent else {
-                return .commandFailed
-            }
-            let position = event.positionTime
-            Task { @MainActor in self?.seekHandler?(position) }
-            return .success
-        })
+        removeCommandHandlers = output.installHandlers(
+            { [weak self] in self?.playHandler?() },
+            { [weak self] in self?.pauseHandler?() },
+            { [weak self] in self?.toggleHandler?() },
+            { [weak self] in self?.seekHandler?($0) })
+    }
+
+    deinit {
+        MainActor.assumeIsolated {
+            artworkTask?.cancel()
+            removeCommandHandlers?()
+            if let interruptionObserver { notifications.removeObserver(interruptionObserver) }
+            applicationObservers.forEach(notifications.removeObserver)
+        }
     }
 
     func activate(
@@ -96,15 +95,15 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
             elapsed = 0
             playbackRate = 0
             lastPublishedSecond = -1
-            infoCenter.playbackState = .paused
+            output.setPlaybackState(.paused)
             idleTimer.update(isPlaying: false)
         }
         setCommandsEnabled(true)
-        commandCenter.changePlaybackPositionCommand.isEnabled = !newMetadata.isLiveStream
+        output.setSeekEnabled(!newMetadata.isLiveStream)
         // 纯 SwiftUI 生命周期里没有 viewController 做第一响应者，必须显式
         // 打开远程控制事件，系统才会把本 App 登记为「正在播放」的媒体应用
         // （灵动岛 / 锁屏 / 控制中心的卡片都挂在这个登记上）。
-        UIApplication.shared.beginReceivingRemoteControlEvents()
+        output.receiveRemoteEvents(true)
 
         if isNewSession || artworkChanged {
             artwork = nil
@@ -137,7 +136,7 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
         guard activeSessionID == sessionID else { return }
         playbackRate = isPlaying ? Float(rate) : 0
         idleTimer.update(isPlaying: isPlaying)
-        infoCenter.playbackState = isPlaying ? .playing : .paused
+        output.setPlaybackState(isPlaying ? .playing : .paused)
         publish()
     }
 
@@ -154,9 +153,9 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
         toggleHandler = nil
         seekHandler = nil
         setCommandsEnabled(false)
-        UIApplication.shared.endReceivingRemoteControlEvents()
-        infoCenter.playbackState = .stopped
-        infoCenter.nowPlayingInfo = nil
+        output.receiveRemoteEvents(false)
+        output.setPlaybackState(.stopped)
+        output.setInfo(nil)
     }
 
     static func makeInfo(
@@ -196,14 +195,11 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
         if let artwork {
             info[MPMediaItemPropertyArtwork] = artwork
         }
-        infoCenter.nowPlayingInfo = info
+        output.setInfo(info)
     }
 
     private func setCommandsEnabled(_ enabled: Bool) {
-        commandCenter.playCommand.isEnabled = enabled
-        commandCenter.pauseCommand.isEnabled = enabled
-        commandCenter.togglePlayPauseCommand.isEnabled = enabled
-        commandCenter.changePlaybackPositionCommand.isEnabled = enabled
+        output.setCommandsEnabled(enabled)
     }
 
     private func loadArtwork(from url: URL?, sessionID: UUID) {
@@ -212,12 +208,9 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
             artworkTask = nil
             return
         }
+        let artworkLoader = self.artworkLoader
         artworkTask = Task { [weak self] in
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 8
-            request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
-            request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-            guard let (data, _) = try? await AppNetwork.session.data(for: request),
+            guard let data = try? await artworkLoader(url),
                   !Task.isCancelled,
                   let image = UIImage(data: data)
             else { return }
