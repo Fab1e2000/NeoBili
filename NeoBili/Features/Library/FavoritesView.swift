@@ -155,6 +155,7 @@ struct FavoriteFolderView: View {
     let folder: FavFolder
 
     @Environment(AccountStore.self) private var account
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
@@ -328,7 +329,7 @@ struct FavoriteFolderView: View {
             if loadsNextPage { await loadMoreIfNeeded() }
             if !isSelecting, let summary {
                 // 收藏没有 cid，预取会先取一次详情再取播放地址。
-                await VideoPreparationCache.shared.prefetchWhenSettled(bvid: summary.bvid)
+                await preparation.prefetchWhenSettled(bvid: summary.bvid)
             }
         }
     }

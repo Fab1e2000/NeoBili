@@ -6,6 +6,7 @@ import SwiftUI
 struct WatchLaterView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(AccountStore.self) private var account
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
@@ -179,7 +180,7 @@ struct WatchLaterView: View {
         .task {
             if loadsNextPage, !model.isSelecting, model.errorMessage == nil { await model.load() }
             if !model.isSelecting, let summary {
-                await VideoPreparationCache.shared.prefetchWhenSettled(
+                await preparation.prefetchWhenSettled(
                     bvid: summary.bvid,
                     cid: summary.cid > 0 ? summary.cid : nil
                 )

@@ -127,6 +127,7 @@ final class NowPlayingStore {
     private var detailLoadTask: Task<Void, Never>?
     private let detailModelFactory: @MainActor (VideoDetailRoute) -> VideoDetailViewModel
 
+    var preparationCache: VideoPreparationCache { dependencies.preparation }
     private let dependencies: PlaybackDependencies
     private let defaults: UserDefaults
 

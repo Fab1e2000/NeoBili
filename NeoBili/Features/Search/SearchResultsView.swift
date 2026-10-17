@@ -7,6 +7,7 @@ struct SearchResultsView: View {
     /// 和搜索入口共用视图模型，保留查询与结果状态。
     let viewModel: SearchViewModel
 
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.videoFiltering) private var filtering
@@ -53,7 +54,7 @@ struct SearchResultsView: View {
                         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
                         // 搜索结果里没有 cid，所以预取要先取一次详情再取播放地址。
                         // 详情会一起缓存下来，进入视频页时不会重复请求。
-                        .task { await VideoPreparationCache.shared.prefetchWhenSettled(bvid: item.bvid) }
+                        .task { await preparation.prefetchWhenSettled(bvid: item.bvid) }
                     }
                 }
                 if let message = viewModel.loadMoreError {

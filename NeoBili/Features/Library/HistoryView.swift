@@ -7,6 +7,7 @@ import SwiftUI
 struct HistoryView: View {
     @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
@@ -185,7 +186,7 @@ struct HistoryView: View {
         .task {
             if loadsNextPage { await loadMoreIfNeeded() }
             if !isSelecting, let summary {
-                await VideoPreparationCache.shared.prefetchWhenSettled(
+                await preparation.prefetchWhenSettled(
                     bvid: summary.bvid,
                     cid: summary.cid > 0 ? summary.cid : nil
                 )

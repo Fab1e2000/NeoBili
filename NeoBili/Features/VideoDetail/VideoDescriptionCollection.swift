@@ -236,8 +236,9 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             cell.accessibilityIdentifier = "related.\(video.bvid)"
             let key = ObjectIdentifier(cell)
             preparations.removeValue(forKey: key)?.cancel()
+            let preparation = environment.videoPreparation
             preparations[key] = Task {
-                await VideoPreparationCache.shared.prefetchWhenSettled(bvid: video.bvid, cid: video.cid)
+                await preparation.prefetchWhenSettled(bvid: video.bvid, cid: video.cid)
             }
         }
         func collectionView(_ view: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt path: IndexPath) {
@@ -437,5 +438,6 @@ struct VideoDescriptionContent: View {
             // 自动计入顶部边距，不用另外补。
             .ignoresSafeArea(.container, edges: .top)
             .resolvePortraitVideos(all)
+            .environment(\.videoPreparation, store.preparationCache)
     }
 }

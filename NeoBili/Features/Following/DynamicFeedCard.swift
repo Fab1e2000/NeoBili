@@ -12,6 +12,7 @@ struct DynamicFeedCard: View {
     let onOpenDetail: () -> Void
     var showsAuthor = true
 
+    @Environment(\.videoPreparation) private var preparation
     @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @State private var isVisible = false
@@ -46,7 +47,7 @@ struct DynamicFeedCard: View {
         // 离开视口即取消停留等待；滑过的卡片不抢播放地址预取名额。
         .task(id: preparationID) {
             guard let preparationID else { return }
-            await VideoPreparationCache.shared.prefetchWhenSettled(bvid: preparationID)
+            await preparation.prefetchWhenSettled(bvid: preparationID)
         }
         .task(id: pagination) {
             guard pagination != nil else { return }

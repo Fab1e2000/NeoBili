@@ -92,6 +92,7 @@ struct RootView: View {
         .appTheme()
         .modifier(AppAuthorizationRecovery(account: account))
         .environment(nowPlaying)
+        .environment(\.videoPreparation, nowPlaying.preparationCache)
         .environment(account)
         .environment(feedback)
         .environment(themeIcon)

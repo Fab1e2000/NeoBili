@@ -20,6 +20,7 @@ struct HomeFeedCellView: View {
     let onOpenLastSeen: () -> Void
     var preview: HomeInlinePreview? = nil
 
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
@@ -133,7 +134,7 @@ struct HomeFeedCellView: View {
             guard video.recommendationTarget == nil else { return }
             // 快速滑过的卡片不预取：停留一会儿才请求播放地址，
             // 免得一次甩动排进几十个网络请求和解析。
-            await VideoPreparationCache.shared.prefetchWhenSettled(bvid: video.bvid, cid: video.cid > 0 ? video.cid : nil)
+            await preparation.prefetchWhenSettled(bvid: video.bvid, cid: video.cid > 0 ? video.cid : nil)
         }
     }
 

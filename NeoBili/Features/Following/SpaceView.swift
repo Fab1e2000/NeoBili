@@ -9,6 +9,7 @@ struct SpaceView: View {
     @Environment(\.appThemeColor) private var themeColor
     let up: FollowedUp
 
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
@@ -444,7 +445,7 @@ struct SpaceView: View {
                     )
                 }
                 // 空间投稿列表里没有 cid，预取要先取一次详情再取播放地址。
-                .task { await VideoPreparationCache.shared.prefetchWhenSettled(bvid: video.bvid) }
+                .task { await preparation.prefetchWhenSettled(bvid: video.bvid) }
             }
 
             if viewModel.isLoadingMoreVideos {
