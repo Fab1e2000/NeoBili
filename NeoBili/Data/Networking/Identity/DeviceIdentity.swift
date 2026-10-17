@@ -24,6 +24,8 @@ actor DeviceIdentity {
     private let defaults: UserDefaults
     private let eventSerialDefaults: UserDefaults
     private let credentials: CredentialStorage
+    private let rawTransport: SMSPassport.Transport
+    private nonisolated let networkSnapshot: @Sendable () -> AppNetworkMetadataSnapshot
     private let allowsNetwork: Bool
     private let purgeCookies: @Sendable () -> Void
     private let buvid3Key = "neobili.buvid3"
@@ -103,6 +105,8 @@ actor DeviceIdentity {
          deviceRegistration: AppDeviceRegistration? = nil,
          guestRegistration: AppGuestRegistration? = nil,
          ticketService: AppTicketService? = nil,
+         rawTransport: @escaping SMSPassport.Transport = { try await AppNetwork.session.data(for: $0) },
+         networkSnapshot: @escaping @Sendable () -> AppNetworkMetadataSnapshot = { AppNetworkMetadata.shared.snapshot() },
          purgeCookies: @escaping @Sendable () -> Void = { DeviceIdentity.purgeSharedCookieJar() }) {
         var startSession = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
         while startSession == appSessionID { startSession = String(format: "%08x", UInt32.random(in: 0...UInt32.max)) }
@@ -124,12 +128,14 @@ actor DeviceIdentity {
         let capturedDevice = CapturedDeviceDiagnostic.configuration
         let registrationCredentials = capturedDevice.map { CapturedDeviceDiagnostic.isolatedStorage(credentials, configuration: $0) }
             ?? ownRegistrationCredentials
+        self.rawTransport = rawTransport
+        self.networkSnapshot = networkSnapshot
         self.allowsNetwork = allowsNetwork
         self.vendorIdentifier = vendorIdentifier
-        self.deviceRegistration = deviceRegistration ?? (allowsNetwork ? AppDeviceRegistration(credentials: registrationCredentials) : nil)
-        self.guestRegistration = guestRegistration ?? (allowsNetwork ? AppGuestRegistration(credentials: registrationCredentials,
+        self.deviceRegistration = deviceRegistration ?? (allowsNetwork ? AppDeviceRegistration(credentials: registrationCredentials, transport: rawTransport) : nil)
+        self.guestRegistration = guestRegistration ?? (allowsNetwork ? AppGuestRegistration(credentials: registrationCredentials, transport: rawTransport,
             capturedGuestID: capturedDevice?.parsedGuestID) : nil)
-        self.ticketService = ticketService ?? (allowsNetwork ? AppTicketService(credentials: registrationCredentials) : nil)
+        self.ticketService = ticketService ?? (allowsNetwork ? AppTicketService(credentials: registrationCredentials, transport: rawTransport) : nil)
         self.purgeCookies = purgeCookies
         cachedTelemetryEpoch = credentials.read(Self.telemetryEpochKey)
         if cachedTelemetryEpoch == nil {
@@ -240,7 +246,7 @@ actor DeviceIdentity {
         let buvid = await appBuvid()
         guard expectedSessionID == loginSessionID else { throw CancellationError() }
         var headers = AppDeviceProtocol.headers(buvid: buvid, sessionID: appSessionID)
-        headers.merge(AppNetworkMetadata.shared.snapshot().headers) { _, new in new }
+        headers.merge(networkSnapshot().headers) { _, new in new }
         let account = appAccount()
         let guestID = await guestRegistration?.cachedID()
         if let guestID { headers["guestid"] = String(guestID) }
@@ -295,7 +301,7 @@ actor DeviceIdentity {
 
     /// App 启动时就把设备标识取回来，之后的接口请求不必再等它。
     nonisolated func warmUp() {
-        _ = AppNetworkMetadata.shared
+        _ = networkSnapshot()
         Task {
             await startFetchIfNeeded()
             await refreshAppServices()
@@ -308,7 +314,7 @@ actor DeviceIdentity {
         let session = loginSessionID
         let buvid = await appBuvid()
         let base = AppDeviceProtocol.headers(buvid: buvid, sessionID: appSessionID)
-            .merging(AppNetworkMetadata.shared.snapshot().headers) { _, new in new }
+            .merging(networkSnapshot().headers) { _, new in new }
         _ = await guestRegistration?.load(buvid: buvid, headers: base)
         guard session == loginSessionID else { return }
         _ = try? await appRequestHeaders(expectedSessionID: session)
@@ -496,7 +502,7 @@ actor DeviceIdentity {
         }
         let snapshot = AppLoginRenewal.Snapshot(session: loginSessionID, credentials: old)
         let id = UUID(); renewalTaskID = id
-        let task = Task { await self.performRenewal(snapshot, transport: transport ?? SMSPassport.live,
+        let task = Task { await self.performRenewal(snapshot, transport: transport ?? self.rawTransport,
                                                    now: now, device: suppliedDevice) }
         renewalTask = task
         await task.value
@@ -594,7 +600,7 @@ actor DeviceIdentity {
         request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
         do {
-            let (data, _) = try await AppNetwork.session.data(for: request)
+            let (data, _) = try await rawTransport(request)
             let decoded = try JSONDecoder().decode(SPIResponse.self, from: data)
             if let b3 = decoded.data?.b3 {
                 cachedBuvid3 = b3

@@ -10,7 +10,19 @@ enum SMSPassport {
     typealias Credentials = SMSLoginModels.Credentials
     typealias LoginOutcome = SMSLoginModels.LoginOutcome
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
-    static let live: Transport = { try await AppNetwork.session.data(for: $0) }
+    static let live: Transport = { request in
+        try await liveTransport(session: AppNetwork.session, identity: .shared)(request)
+    }
+
+    static func liveTransport(session: URLSession, identity: DeviceIdentity) -> Transport {
+        { request in
+            let result = try await session.data(for: request)
+            if !AppNetwork.isRegression, let http = result.1 as? HTTPURLResponse {
+                await identity.observeAppResponse(http, request: request)
+            }
+            return result
+        }
+    }
 
     static func prepare(identity: DeviceIdentity = .shared) async throws -> Context {
         let accountSession = identity.loginSessionID
@@ -179,9 +191,6 @@ enum SMSPassport {
         var request = request
         request.httpShouldHandleCookies = false
         let (data, response) = try await transport(request)
-        if !AppNetwork.isRegression, let http = response as? HTTPURLResponse {
-            await DeviceIdentity.shared.observeAppResponse(http, request: request)
-        }
         guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode),
               let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw LoginModels.PassportError.invalidResponse

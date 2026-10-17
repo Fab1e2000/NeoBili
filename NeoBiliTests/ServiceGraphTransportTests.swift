@@ -53,6 +53,22 @@ final class ServiceGraphTransportTests: XCTestCase {
         XCTAssertNil(result.nextRequest)
     }
 
+    func testAuthenticationAdapterUsesOneSessionForWebAndSMSRequests() async throws {
+        let suite = "neobili.service-authentication.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let identity = DeviceIdentity(defaults: defaults, credentials: .memory(), allowsNetwork: false, purgeCookies: {})
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ServiceGraphProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let service = AuthenticationService.live(session: session, identity: identity)
+        let key = try await service.webKey()
+        XCTAssertEqual(key.hash, "fixture-hash")
+        let countries = try await service.countries()
+        XCTAssertTrue(countries.isEmpty)
+    }
+
     func testLiveAdapterUsesItsInjectedTransport() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ServiceGraphProtocol.self]
@@ -107,7 +123,11 @@ private final class ServiceGraphProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200,
             httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         let body: String
-        if request.url?.path.contains("/feed/rcmd") == true {
+        if request.url?.path.contains("/web/key") == true {
+            body = #"{"code":0,"data":{"hash":"fixture-hash","key":"fixture-key"}}"#
+        } else if request.url?.path.contains("/country/list") == true {
+            body = #"{"code":0,"data":{"common":[],"others":[]}}"#
+        } else if request.url?.path.contains("/feed/rcmd") == true {
             body = #"{"code":0,"data":{"item":[]}}"#
         } else if request.url?.path.contains("/search/type") == true {
             let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
