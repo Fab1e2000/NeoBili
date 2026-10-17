@@ -207,8 +207,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         private weak var clock: VideoEntranceClock?
         /// 每一行配置时拿到的入场起点，用来判断哪些行需要重新配置。
         private var configuredStarts: [String: [TimeInterval?]] = [:]
-        private var imagePrefetches: [IndexPath: [Task<Void, Never>]] = [:]
-        private var displayedImagePrefetches: [ObjectIdentifier: [Task<Void, Never>]] = [:]
+        private let imagePrefetcher = HomeFeedImagePrefetcher()
         /// App 的文字档位，决定标题预排版用的字号。
         private var dynamicTypeSize: DynamicTypeSize = .large
         var removalAnimationDuration: Double?
@@ -520,32 +519,18 @@ struct HomeFeedCollection: UIViewRepresentable {
             let scale = collectionView.traitCollection.displayScale
             prepareTitles(for: indexPaths.compactMap { dataSource.itemIdentifier(for: $0).flatMap { itemsByID[$0] } })
             for indexPath in indexPaths {
-                guard imagePrefetches[indexPath] == nil else { continue }
                 guard let id = dataSource.itemIdentifier(for: indexPath),
                       case .video(let video)? = itemsByID[id] else { continue }
-                let cover = video.isLargeRecommendationCard
-                    ? CGSize(width: collectionView.bounds.width - HomeCardLayout.horizontalInset * 2,
-                             height: (collectionView.bounds.width - HomeCardLayout.horizontalInset * 2) / HomeCardLayout.largeCoverAspectRatio)
-                    : HomeCardLayout.coverSize(for: collectionView.bounds.width)
-                imagePrefetches[indexPath] = [
-                    BiliImageLoader.prefetch(video.secureCoverURL, pointSize: cover, scale: scale, pipeline: environment.imagePipeline),
-                    BiliImageLoader.prefetch(video.secureAvatarURL, pointSize: HomeCardLayout.avatarSize, scale: scale, pipeline: environment.imagePipeline)
-                ].compactMap { $0 }
+                imagePrefetcher.prefetch(indexPath: indexPath, video: video,
+                    width: collectionView.bounds.width, scale: scale, pipeline: environment.imagePipeline)
             }
         }
 
         func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
-            for indexPath in indexPaths {
-                imagePrefetches.removeValue(forKey: indexPath)?.forEach { $0.cancel() }
-            }
+            imagePrefetcher.cancel(indexPaths: indexPaths)
         }
 
-        func cancelImagePrefetches() {
-            imagePrefetches.values.forEach { $0.forEach { $0.cancel() } }
-            imagePrefetches.removeAll()
-            displayedImagePrefetches.values.forEach { $0.forEach { $0.cancel() } }
-            displayedImagePrefetches.removeAll()
-        }
+        func cancelImagePrefetches() { imagePrefetcher.cancelAll() }
 
         // MARK: 切换淡入
 
@@ -597,9 +582,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             // Keep the prefetch consumer cancellable until this cell leaves.
             // Key visible handles by cell identity: a snapshot may reuse the
             // old index path for a different card before didEndDisplaying.
-            let cellID = ObjectIdentifier(cell)
-            displayedImagePrefetches.removeValue(forKey: cellID)?.forEach { $0.cancel() }
-            displayedImagePrefetches[cellID] = imagePrefetches.removeValue(forKey: indexPath)
+            imagePrefetcher.willDisplay(cellID: ObjectIdentifier(cell), indexPath: indexPath)
             applyContentOpacity(to: cell, id: dataSource?.itemIdentifier(for: indexPath))
             if dataSource?.itemIdentifier(for: indexPath) == Self.headerID {
                 positionHeader(cell, in: collectionView)
@@ -621,7 +604,7 @@ struct HomeFeedCollection: UIViewRepresentable {
 
         func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell,
                             forItemAt indexPath: IndexPath) {
-            displayedImagePrefetches.removeValue(forKey: ObjectIdentifier(cell))?.forEach { $0.cancel() }
+            imagePrefetcher.didEndDisplaying(cellID: ObjectIdentifier(cell))
             updateExposure()
         }
 

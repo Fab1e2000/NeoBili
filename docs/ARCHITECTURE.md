@@ -56,3 +56,5 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 `project.yml` 是工程配置来源；源码采用 synchronized folder，单纯移动 Swift 文件不需要手工修改工程文件。只有配置发生变化时才修改配置并重新生成工程。
 
 播放器事件、画质与手势设置值属于 Domain；mpv 加载和渲染宿主、窗口方向属于 Platform。观看上报、列表删除/入场状态以及设置持久化属于 Application。Domain 不持有 UserDefaults；设备偏好的读取适配位于 Data，纯 URL 归一化位于 Domain。
+
+空间页资料头部和关注动态内容使用独立展示组件；滚动协调、导航和刷新任务仍由父页面持有。全部关注分页状态由 Application 的 `FollowingAllUpsModel` 管理。首页图片预取消费者由 `HomeFeedImagePrefetcher` 在索引路径与显示中的 cell 之间转交，并沿用快照切换和离屏取消入口。

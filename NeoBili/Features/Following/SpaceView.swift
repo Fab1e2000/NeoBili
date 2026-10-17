@@ -5,7 +5,6 @@ import SwiftUI
 /// 排版参考 B 站客户端的空间页，但只保留看内容需要的部分：充电、大航海、
 /// 特别关注这些和播放无关的入口都不做。
 struct SpaceView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appThemeColor) private var themeColor
     let up: FollowedUp
 
@@ -206,107 +205,7 @@ struct SpaceView: View {
     // MARK: - 头部
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            banner
-
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(viewModel.card?.name ?? up.uname)
-                        .font(.title3.weight(.semibold))
-                        .lineLimit(1)
-
-                    if let level = viewModel.card?.level, level > 0 {
-                        Text("LV\(level)")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(themeColor, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    }
-
-                    if viewModel.card?.isVIP == true {
-                        Text("大会员")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.pink, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    }
-
-                    Spacer(minLength: 0)
-
-                    followButton
-                }
-
-                statsRow
-
-                if let sign = viewModel.card?.sign, !sign.isEmpty {
-                    Text(sign)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                }
-            }
-            .padding(.horizontal, SpaceHeaderLayout.horizontalInset)
-        }
-        .padding(.bottom, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-    }
-
-    /// 头图。头像压在它的左下角，一半探出到下面的信息区里。
-    private var banner: some View {
-        Group {
-            if let url = viewModel.card?.bannerURL(isDark: colorScheme == .dark) {
-                CoverThumbnail(url: url, aspectRatio: SpaceHeaderLayout.bannerAspectRatio)
-            } else {
-                // 没设置过头图（或者名片还没回来）时给一层渐变，
-                // 比让图片控件显示「图裂了」的占位好看得多。
-                LinearGradient(
-                    colors: [themeColor.opacity(0.55), themeColor.opacity(0.15)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .aspectRatio(SpaceHeaderLayout.bannerAspectRatio, contentMode: .fit)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .clipped()
-        .overlay(alignment: .bottomLeading) {
-            BiliImage(url: viewModel.card?.secureAvatarURL ?? up.secureAvatarURL)
-                .aspectRatio(contentMode: .fill)
-                .frame(width: SpaceHeaderLayout.avatarSize, height: SpaceHeaderLayout.avatarSize)
-                .clipShape(Circle())
-                .overlay {
-                    Circle().stroke(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 3)
-                }
-                // 头像不要顶在屏幕左缘，和下面的名字、签名对齐。
-                .padding(.leading, SpaceHeaderLayout.horizontalInset)
-                .offset(y: SpaceHeaderLayout.avatarSize / 2)
-        }
-        // 给探出来的那半个头像让出高度。
-        .padding(.bottom, SpaceHeaderLayout.avatarSize / 2 + 8)
-    }
-
-    private var statsRow: some View {
-        HStack(spacing: 22) {
-            stat(count: viewModel.card?.follower, label: String(localized: "粉丝"))
-            stat(count: viewModel.card?.followingCount, label: String(localized: "关注"))
-            stat(count: viewModel.card?.likeCount, label: String(localized: "获赞"))
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func stat(count: Int?, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(count.map(\.biliCountText) ?? "—")
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
+        SpaceProfileHeader(card: viewModel.card, up: up, themeColor: themeColor) { followButton }
     }
 
     private var followContext: SpaceViewModel.FollowContext {

@@ -254,59 +254,19 @@ struct FollowingView: View {
         }
     }
 
-    @ViewBuilder
     private var feedContent: some View {
         let feed = viewModel.activeFeed
-
-        if feed.isLoading, feed.entries.isEmpty {
-            loadingPlaceholder
-        } else if let message = feed.errorMessage, feed.entries.isEmpty {
-            ContentUnavailableView {
-                Label("加载失败", systemImage: "wifi.slash")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("重试") {
-                    Task { await viewModel.activeFeed.refresh() }
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 300)
-        } else if !feed.isLoading, feed.entries.isEmpty {
-            ContentUnavailableView(
-                "还没有新动态",
-                systemImage: "bell.slash",
-                description: Text(
-                    viewModel.selectedUp == nil
-                        ? "你关注的 UP 主最近没有更新。"
-                        : "这位 UP 主最近没有更新。"
-                )
-            )
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 300)
-        } else {
-            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) ?? true }
-            if visibleEntries.isEmpty {
-                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
-                    LoadingTaskAnchor().padding()
-                } else {
-                    Button("继续加载动态") { Task { await feed.loadReplacementPage() } }
-                        .padding()
-                }
-            }
-            ForEach(visibleEntries) { entry in
-                card(for: entry, lastVisibleID: visibleEntries.last?.id)
-                    .videoEntranceIdentity(entry.video?.bvid)
-                    .padding(.horizontal, DynamicCardLayout.pageHorizontalInset)
-                    .padding(.vertical, DynamicCardLayout.cardVerticalSpacing)
-            }
-
-            if feed.isLoadingMore {
-                LoadingTaskAnchor()
-                    .padding()
-            }
-        }
+        return FollowingFeedContent(feed: feed, showsAuthor: viewModel.selectedUp == nil,
+            hidesPortraitVideos: hidesPortraitVideos, filtering: filtering, dynamicTransition: dynamicTransition,
+            onRetry: { Task { await viewModel.activeFeed.refresh() } },
+            onLoadReplacement: { Task { await feed.loadReplacementPage() } },
+            onOpenVideo: open,
+            onOpenAuthor: { entry in
+                path.append(.space(FollowedUp(mid: entry.authorMid, uname: entry.authorName,
+                    face: entry.authorFace, hasUpdate: false)))
+            },
+            onLike: like,
+            onOpenDetail: { detailEntry = $0 })
     }
 
     private func startRefresh() {
@@ -370,39 +330,9 @@ struct FollowingView: View {
         refreshOpacity = 1
     }
 
-    private var loadingPlaceholder: some View {
-        LoadingTaskAnchor()
-    }
 
-    private func card(for entry: DynamicEntry, lastVisibleID: String?) -> some View {
-        DynamicFeedCard(
-            entry: entry,
-            feed: viewModel.activeFeed,
-            lastVisibleID: lastVisibleID,
-            onOpenVideo: { open(entry) },
-            // 卡片头像和头像条的长按菜单都可以进入 UP 主页。
-            onOpenAuthor: {
-                path.append(.space(
-                    FollowedUp(
-                        mid: entry.authorMid,
-                        uname: entry.authorName,
-                        face: entry.authorFace,
-                        hasUpdate: false
-                    )
-                ))
-            },
-            onLike: { like(entry) },
-            onOpenDetail: { detailEntry = entry },
-            showsAuthor: viewModel.selectedUp == nil
-        )
-        .videoTransitionSource("following-dynamic-\(entry.id)", in: dynamicTransition)
-        .contextMenu {
-            if let video = entry.video,
-               video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) {
-                WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
-            }
-        }
-    }
+
+
 
     private var animatesCardEnter: Bool { cardAnimationsEnabled && dynamicEnterEnabled && !reduceMotion }
 
