@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 全局的一句话操作反馈。
