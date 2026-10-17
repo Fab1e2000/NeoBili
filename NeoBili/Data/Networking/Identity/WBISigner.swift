@@ -33,7 +33,7 @@ actor WBISigner {
     /// 否则首屏会连着发好几次相同的密钥请求，把真正要用的接口挤到后面。
     private var refreshTask: Task<String, Error>?
     init(session: URLSession = AppNetwork.session, defaults: UserDefaults = .standard,
-         cookieHeader: @escaping @Sendable () async -> String = { await DeviceIdentity.shared.cookieHeader() }) {
+         cookieHeader: @escaping @Sendable () async -> String) {
         self.session = session
         self.defaults = defaults
         self.cookieHeader = cookieHeader

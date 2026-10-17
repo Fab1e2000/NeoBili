@@ -32,23 +32,13 @@ struct APIClient {
     private let appAuthentication: @Sendable () async -> DeviceIdentity.AppRequestAccount
     private let appHeaders: @Sendable (UUID) async throws -> [String: String]
 
-    init(session: URLSession = AppNetwork.session,
+    init(transport: HTTPTransport,
          appEncoder: any AppRequestEncoding = AppRequestEncoder(),
-         authentication: @escaping @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot = {
-             await DeviceIdentity.shared.authenticatedRequestSnapshot()
-         },
-         appAuthentication: @escaping @Sendable () async -> DeviceIdentity.AppRequestAccount = {
-             await DeviceIdentity.shared.appAccount()
-         },
-         appHeaders: @escaping @Sendable (UUID) async throws -> [String: String] = { session in
-             guard !AppNetwork.isRegression else { return [:] }
-             return try await DeviceIdentity.shared.appRequestHeaders(expectedSessionID: session)
-         },
-         transport: HTTPTransport? = nil,
-         signWebParameters: @escaping @Sendable ([String: String]) async throws -> [String: String] = {
-             try await WBISigner.shared.sign(params: $0)
-         }) {
-        self.transport = transport ?? HTTPTransport(session: session)
+         authentication: @escaping @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot,
+         appAuthentication: @escaping @Sendable () async -> DeviceIdentity.AppRequestAccount,
+         appHeaders: @escaping @Sendable (UUID) async throws -> [String: String],
+         signWebParameters: @escaping @Sendable ([String: String]) async throws -> [String: String]) {
+        self.transport = transport
         self.signWebParameters = signWebParameters
         self.appEncoder = appEncoder
         self.authentication = authentication

@@ -30,6 +30,7 @@ cp \
     "$APP/Data/Networking/Reporting/RecommendationDiagnostics.swift" \
     "$APP/Domain/Models/DiagnosticsPreferences.swift" \
     "$APP/Data/Networking/Transport/APIClient.swift" \
+    "$APP/App/NetworkingDefaults.swift" \
     "$APP/Domain/Models/BiliAPIError.swift" \
     "$APP/Data/Networking/Transport/HTTPTransport.swift" \
     "$APP/Data/Networking/Transport/AppRequestEncoding.swift" \

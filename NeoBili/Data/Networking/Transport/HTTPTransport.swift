@@ -7,10 +7,8 @@ struct HTTPTransport {
     let diagnostics: RecommendationDiagnostics
     let observeResponse: @Sendable (HTTPURLResponse, URLRequest) async -> Void
 
-    init(session: URLSession, diagnostics: RecommendationDiagnostics = .shared,
-         observeResponse: @escaping @Sendable (HTTPURLResponse, URLRequest) async -> Void = {
-             await DeviceIdentity.shared.observeAppResponse($0, request: $1)
-         }) {
+    init(session: URLSession, diagnostics: RecommendationDiagnostics,
+         observeResponse: @escaping @Sendable (HTTPURLResponse, URLRequest) async -> Void) {
         self.session = session
         self.diagnostics = diagnostics
         self.observeResponse = observeResponse

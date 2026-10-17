@@ -91,7 +91,7 @@ actor DeviceIdentity {
          guestRegistration: AppGuestRegistration? = nil,
          ticketService: AppTicketService? = nil,
          rawTransport: @escaping SMSPassport.Transport = { try await AppNetwork.session.data(for: $0) },
-         networkSnapshot: @escaping @Sendable () -> AppNetworkMetadataSnapshot = { AppNetworkMetadata.shared.snapshot() },
+         networkSnapshot: @escaping @Sendable () -> AppNetworkMetadataSnapshot,
          purgeCookies: @escaping @Sendable () -> Void = { DeviceIdentity.purgeSharedCookieJar() }) {
         var startSession = String(format: "%08x", UInt32.random(in: 0...UInt32.max))
         while startSession == appSessionID { startSession = String(format: "%08x", UInt32.random(in: 0...UInt32.max)) }
