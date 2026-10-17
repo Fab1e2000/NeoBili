@@ -1,11 +1,17 @@
 import SwiftUI
 
 extension EnvironmentValues {
+    @Entry private var injectedVideoFiltering: VideoFilterDependencies?
+    @MainActor var videoFiltering: VideoFilterDependencies {
+        get { injectedVideoFiltering ?? .live }
+        set { injectedVideoFiltering = newValue }
+    }
     @Entry var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
 }
 
 /// 列表持有整批判断和补页；全部完成后才发布统一的动画起点。
 private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModifier {
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // 不能标 private：Xcode 26 会因此把合成的成员初始化器也变成 private，
@@ -27,7 +33,7 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
 
     private var batch: VideoResolutionBatch {
         VideoResolutionBatch(ids: identifiers(videos), generation: batchID, enabled: enabled,
-                             minimumSeconds: VideoDurationFilterSettings.shared.minimumSeconds)
+                             minimumSeconds: filtering.duration.minimumSeconds)
     }
 
     private var animatesEntrance: Bool {
@@ -68,12 +74,12 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
 
                 if enabled || current.minimumSeconds > 0 {
                     let requests = videos.compactMap {
-                        $0.metadataRequest(hidingPortrait: enabled, minimumSeconds: current.minimumSeconds)
+                        $0.metadataRequest(hidingPortrait: enabled, minimumSeconds: current.minimumSeconds, filtering: filtering)
                     }
-                    await PortraitVideoStore.shared.resolveRequests(requests)
+                    await filtering.metadata.resolveRequests(requests)
                 }
                 guard !Task.isCancelled else { return }
-                let approved = videos.hidingKnownPortraitVideos(enabled)
+                let approved = videos.hidingKnownPortraitVideos(enabled, filtering: filtering)
                 if (enabled || current.minimumSeconds > 0), approved.count < targetCount, let loadReplacementPage, replacementPages < 8 {
                     replacementPages += 1
                     replacing = true

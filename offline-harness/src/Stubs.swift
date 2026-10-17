@@ -48,3 +48,13 @@ extension HomeFeedAccount {
     static func current() async -> Self { await ApplicationServices.live.session.homeAccount() }
 }
 enum ServiceError: Error { case unconfigured(String) }
+
+extension VideoFilterDependencies {
+    @MainActor static let live: Self = {
+        let defaults = UserDefaults(suiteName: "neobili.offline.filters.\(UUID().uuidString)")!
+        return Self(duration: VideoDurationFilterSettings(defaults: defaults),
+                    metadata: PortraitVideoStore(defaults: defaults, metadataLoader: { _ in
+                        .init(dimension: .init(width: 1920, height: 1080), durationSeconds: 700)
+                    }))
+    }()
+}

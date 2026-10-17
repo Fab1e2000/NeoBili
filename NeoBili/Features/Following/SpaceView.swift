@@ -41,9 +41,9 @@ struct SpaceView: View {
         var storage: [Tab: CGFloat] = [:]
     }
 
-    init(up: FollowedUp) {
+    init(up: FollowedUp, filtering: VideoFilterDependencies = .live) {
         self.up = up
-        _viewModel = State(initialValue: SpaceViewModel(mid: up.mid))
+        _viewModel = State(initialValue: SpaceViewModel(mid: up.mid, filtering: filtering))
     }
 
     var body: some View {
@@ -92,6 +92,7 @@ struct SpaceView: View {
         .toolbarBackground(Color(uiColor: .secondarySystemGroupedBackground), for: .navigationBar)
         // 进了 UP 主页就把底部标签栏收起来，整屏都留给他的内容。
         .toolbarVisibility(.hidden, for: .tabBar)
+        .environment(\.videoFiltering, viewModel.filtering)
         .imageViewerHost()
         .task { await viewModel.loadVideosIfNeeded() }
         .task(id: followContext) { await viewModel.loadCard(followContext) }
@@ -365,7 +366,7 @@ struct SpaceView: View {
 
     @ViewBuilder
     private var videoList: some View {
-        let visibleVideos = viewModel.videos.hidingKnownPortraitVideos(hidesPortraitVideos)
+        let visibleVideos = viewModel.videos.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: viewModel.filtering)
 
         if let message = viewModel.videosError, !viewModel.videos.isEmpty {
             HStack(alignment: .top, spacing: 12) {
@@ -382,7 +383,7 @@ struct SpaceView: View {
             .padding(.vertical, 12)
         }
 
-        if visibleVideos.isEmpty, viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos) {
+        if visibleVideos.isEmpty, viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos, filtering: viewModel.filtering) {
             LoadingTaskAnchor().padding(.vertical, 40)
         } else if viewModel.isLoadingVideos, viewModel.videos.isEmpty {
             LoadingTaskAnchor().padding(.vertical, 40)
@@ -473,9 +474,9 @@ struct SpaceView: View {
             ContentUnavailableView("还没有动态", systemImage: "bell.slash", description: Text("这位 UP 主还没有发过动态。"))
                 .padding(.vertical, 20)
         } else {
-            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos) ?? true }
+            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: viewModel.filtering) ?? true }
             if visibleEntries.isEmpty {
-                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos) {
+                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos, filtering: viewModel.filtering) {
                     LoadingTaskAnchor().padding()
                 } else {
                     Button("继续加载动态") { Task { await feed.loadReplacementPage() } }
@@ -497,7 +498,7 @@ struct SpaceView: View {
                 .videoTransitionSource("space-dynamic-\(entry.id)", in: dynamicTransition)
                 .contextMenu {
                     if let video = entry.video,
-                       video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
+                       video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: viewModel.filtering) {
                         WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
                     }
                 }

@@ -9,10 +9,11 @@ struct SearchResultsView: View {
 
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     private var visibleResults: [SearchResultItem] {
-        viewModel.results.hidingKnownPortraitVideos(hidesPortraitVideos)
+        viewModel.results.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
@@ -74,7 +75,7 @@ struct SearchResultsView: View {
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
         .overlay {
-            if viewModel.isLoading || (visibleResults.isEmpty && viewModel.results.hasPendingVideoDimensions(hidesPortraitVideos)) {
+            if viewModel.isLoading || (visibleResults.isEmpty && viewModel.results.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering)) {
                 LoadingTaskAnchor()
             } else if let message = viewModel.errorMessage {
                 ContentUnavailableView {

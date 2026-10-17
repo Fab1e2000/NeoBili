@@ -10,6 +10,7 @@ struct HistoryView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     @State private var items: [HistoryItem] = []
@@ -28,14 +29,14 @@ struct HistoryView: View {
     @State private var isRemovingSelected = false
 
     private var visibleItems: [HistoryItem] {
-        items.hidingKnownPortraitVideos(hidesPortraitVideos)
+        items.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
         let visibleItems = visibleItems
         let paginationIDs = Set(visibleItems.suffix(5).map(\.id))
         Group {
-            if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos) {
+            if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
                 LoadingTaskAnchor()
                     .scrollingPageHeaderAbove()
             } else if let errorMessage, items.isEmpty {

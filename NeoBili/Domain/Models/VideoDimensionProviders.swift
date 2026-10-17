@@ -14,9 +14,9 @@ extension VideoSummary {
     var skipsVideoFilters: Bool { recommendationTarget != nil }
 }
 
-extension SearchResultItem { var videoDurationSeconds: Int? { VideoDurationFilterSettings.seconds(from: duration) } }
+extension SearchResultItem { var videoDurationSeconds: Int? { VideoDuration.seconds(from: duration) } }
 
-extension FollowedVideo { var videoDurationSeconds: Int? { VideoDurationFilterSettings.seconds(from: durationText) } }
+extension FollowedVideo { var videoDurationSeconds: Int? { VideoDuration.seconds(from: durationText) } }
 
 extension FavMedia { var videoDurationSeconds: Int? { duration } }
 
@@ -26,6 +26,6 @@ extension WatchLaterItem { var videoDurationSeconds: Int? { duration } }
 
 extension UgcSeasonEpisode { var videoDurationSeconds: Int? { arc?.duration } }
 
-extension SpaceVideo { var videoDurationSeconds: Int? { VideoDurationFilterSettings.seconds(from: length) } }
+extension SpaceVideo { var videoDurationSeconds: Int? { VideoDuration.seconds(from: length) } }
 
 extension VideoDetail { var videoDurationSeconds: Int? { duration } }

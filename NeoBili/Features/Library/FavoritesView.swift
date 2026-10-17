@@ -158,6 +158,7 @@ struct FavoriteFolderView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     @State private var videos: [FavMedia] = []
@@ -175,14 +176,14 @@ struct FavoriteFolderView: View {
     @State private var isRemovingSelected = false
 
     private var visibleVideos: [FavMedia] {
-        videos.hidingKnownPortraitVideos(hidesPortraitVideos)
+        videos.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
         let visibleVideos = visibleVideos
         let paginationIDs = Set(visibleVideos.suffix(5).map(\.id))
         Group {
-            if visibleVideos.isEmpty, videos.hasPendingVideoDimensions(hidesPortraitVideos) {
+            if visibleVideos.isEmpty, videos.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
                 LoadingTaskAnchor()
             } else if let errorMessage, videos.isEmpty {
                 ContentUnavailableView {

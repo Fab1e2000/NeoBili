@@ -218,56 +218,58 @@ struct Harness {
     // MARK: 过滤语义（竖屏 + 最低时长，走真实扩展方法）
 
     static func testFilterSemantics() async {
-        // 真实的 canDisplayVideo(hidingPortrait:) 从共享设置读最低时长；
-        // 结束后恢复原值。
-        let originalMinutes = VideoDurationFilterSettings.shared.minimumMinutes
-        VideoDurationFilterSettings.shared.minimumMinutes = 10 // 600 秒
-        defer { VideoDurationFilterSettings.shared.minimumMinutes = originalMinutes }
+        let suite = "neobili.filter-semantics.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let filtering = VideoFilterDependencies(duration: VideoDurationFilterSettings(defaults: defaults),
+            metadata: PortraitVideoStore(defaults: defaults, metadataLoader: { _ in
+                .init(dimension: .init(width: 1920, height: 1080), durationSeconds: 700)
+            }))
+        filtering.duration.minimumMinutes = 10
 
         // 时长阈值边界：恰好达到保留（>=）。
         let atThreshold = TestItem(bvid: "at", dimension: VideoDimension(width: 1920, height: 1080), duration: 600)
-        expect(atThreshold.canDisplayVideo(hidingPortrait: false), "恰好 600 秒、阈值 600 秒：保留")
-        expect(atThreshold.metadataRequest(hidingPortrait: false, minimumSeconds: 600) == nil,
+        expect(atThreshold.canDisplayVideo(hidingPortrait: false, filtering: filtering), "恰好 600 秒、阈值 600 秒：保留")
+        expect(atThreshold.metadataRequest(hidingPortrait: false, minimumSeconds: 600, filtering: filtering) == nil,
                "画幅时长都已知且达标：不需要补查")
 
         let below = TestItem(bvid: "below", dimension: VideoDimension(width: 1920, height: 1080), duration: 599)
-        expect(!below.canDisplayVideo(hidingPortrait: false), "599 秒、阈值 600 秒：隐藏")
+        expect(!below.canDisplayVideo(hidingPortrait: false, filtering: filtering), "599 秒、阈值 600 秒：隐藏")
 
         // 画幅已知竖屏：不补查、隐藏。
         let knownPortrait = TestItem(bvid: "p", dimension: VideoDimension(width: 1080, height: 1920), duration: 700)
-        expect(knownPortrait.metadataRequest(hidingPortrait: true, minimumSeconds: 0) == nil,
+        expect(knownPortrait.metadataRequest(hidingPortrait: true, minimumSeconds: 0, filtering: filtering) == nil,
                "画幅已知竖屏：不再补查")
-        expect(!knownPortrait.canDisplayVideo(hidingPortrait: true), "已知竖屏：隐藏")
+        expect(!knownPortrait.canDisplayVideo(hidingPortrait: true, filtering: filtering), "已知竖屏：隐藏")
 
         // 未开启任何过滤：不补查、全保留。
         let known = TestItem(bvid: "x", dimension: nil, duration: 700)
-        expect(known.metadataRequest(hidingPortrait: false, minimumSeconds: 0) == nil, "过滤全关：不补查")
-        expect(known.canDisplayVideo(hidingPortrait: false), "过滤全关：保留")
+        expect(known.metadataRequest(hidingPortrait: false, minimumSeconds: 0, filtering: filtering) == nil, "过滤全关：不补查")
+        expect(known.canDisplayVideo(hidingPortrait: false, filtering: filtering), "过滤全关：保留")
 
         // 只开时长过滤、时长未知：补查且带时长要求；补查前隐藏。
         let durationUnknown = TestItem(bvid: "d", dimension: VideoDimension(width: 1920, height: 1080), duration: nil)
-        let request = durationUnknown.metadataRequest(hidingPortrait: false, minimumSeconds: 60)
+        let request = durationUnknown.metadataRequest(hidingPortrait: false, minimumSeconds: 60, filtering: filtering)
         expect(request?.requiringDuration == true, "时长未知：补查详情（含时长要求）")
-        expect(!durationUnknown.canDisplayVideo(hidingPortrait: false), "时长未知：补查前隐藏")
+        expect(!durationUnknown.canDisplayVideo(hidingPortrait: false, filtering: filtering), "时长未知：补查前隐藏")
 
         // 两个过滤同时开：竖屏或过短任一成立都隐藏。
         let shortLandscape = TestItem(bvid: "sl", dimension: VideoDimension(width: 1920, height: 1080), duration: 30)
-        expect(!shortLandscape.canDisplayVideo(hidingPortrait: false), "横屏但过短：隐藏")
+        expect(!shortLandscape.canDisplayVideo(hidingPortrait: false, filtering: filtering), "横屏但过短：隐藏")
         let longPortrait = TestItem(bvid: "lp", dimension: VideoDimension(width: 1080, height: 1920), duration: 700)
-        expect(!longPortrait.canDisplayVideo(hidingPortrait: true), "竖屏但够长：仍隐藏")
+        expect(!longPortrait.canDisplayVideo(hidingPortrait: true, filtering: filtering), "竖屏但够长：仍隐藏")
 
-        // 详情缓存补齐列表缺失的信息：画幅、时长都未知时，shared store
+        // 详情缓存补齐列表缺失的信息：画幅、时长都未知时，独立 store
         // 的补查（stub 返回横屏 + 700 秒）让它从「隐藏」变为「保留」。
-        // 探针 ID 每次运行唯一：进程的 UserDefaults 是持久化的，
-        // 固定 ID 会被上一轮的结果提前「补齐」。
-        let probeID = "shared-probe-\(UUID().uuidString)"
+        // 本场景使用独立偏好域，补查结果不影响其他测试。
+        let probeID = "isolated-probe-\(UUID().uuidString)"
         let probe = TestItem(bvid: probeID, dimension: nil, duration: nil)
-        expect(!probe.canDisplayVideo(hidingPortrait: false), "列表与缓存都未知：隐藏")
-        expect(probe.metadataRequest(hidingPortrait: false, minimumSeconds: 600)?.bvid == probeID,
+        expect(!probe.canDisplayVideo(hidingPortrait: false, filtering: filtering), "列表与缓存都未知：隐藏")
+        expect(probe.metadataRequest(hidingPortrait: false, minimumSeconds: 600, filtering: filtering)?.bvid == probeID,
                "未知条目进入补查清单")
-        await PortraitVideoStore.shared.resolve([probeID])
-        expect(probe.canDisplayVideo(hidingPortrait: false), "详情补查后（700 秒横屏）：保留")
-        expect(PortraitVideoStore.shared.hasFreshAttempt(bvid: probeID, requiringDuration: true),
+        await filtering.metadata.resolve([probeID])
+        expect(probe.canDisplayVideo(hidingPortrait: false, filtering: filtering), "详情补查后（700 秒横屏）：保留")
+        expect(filtering.metadata.hasFreshAttempt(bvid: probeID, requiringDuration: true),
                "补查结果带时长标记，满足 requiringDuration 的复用")
     }
 

@@ -91,6 +91,7 @@ enum HomeSheet: Identifiable, Hashable {
 @MainActor
 @Observable
 final class HomeViewModel {
+    @ObservationIgnored let filtering: VideoFilterDependencies
     @ObservationIgnored private let feedbackService: RecommendationService
     private(set) var videos: [VideoSummary] = []
     private(set) var exposurePolicy = RecommendationExposurePolicy()
@@ -221,13 +222,13 @@ final class HomeViewModel {
     func feedRows(hidingKnownPortraitVideos hidesPortraitVideos: Bool) -> [HomeFeedRow] {
         let visibleItems = feedItems.filter { item in
             guard case .video(let video) = item else { return true }
-            return video.canDisplayVideo(hidingPortrait: hidesPortraitVideos)
+            return video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: self.filtering)
         }
         return HomeFeedRow.group(visibleItems)
     }
 
     func hasVisibleVideos(hidingKnownPortraitVideos hidesPortraitVideos: Bool) -> Bool {
-        videos.contains { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos) }
+        videos.contains { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: self.filtering) }
     }
 
 
@@ -256,6 +257,7 @@ final class HomeViewModel {
     }
 
     init(defaults: UserDefaults = .standard,
+         filtering: VideoFilterDependencies? = nil,
          reportUninterested: ((RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason) async throws -> Void)? = nil,
          cancelUninterested: ((RecommendationFeedbackOptions) async throws -> Void)? = nil,
          dislikeVideo: ((Int, Bool) async throws -> Void)? = nil,
@@ -265,6 +267,7 @@ final class HomeViewModel {
          feedbackService: RecommendationService = ApplicationServices.live.recommendation,
          videoService: VideoService = ApplicationServices.live.video,
          fetchRecommendations: @escaping (RecommendationRequest) async throws -> RecommendationBatch = ApplicationServices.live.recommendation.recommendFeed) {
+        self.filtering = filtering ?? .live
         self.feedbackService = feedbackService
         self.defaults = defaults
         self.reportUninterested = { options, reason, session in
@@ -333,7 +336,7 @@ final class HomeViewModel {
         // 每张卡出现都会调用：只从末尾往前看最后 5 张可见视频，
         // 不在滚动时把整个列表过滤一遍。
         let tail = videos.reversed().lazy
-            .filter { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos) }
+            .filter { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: self.filtering) }
             .prefix(5)
         guard tail.contains(where: { $0.bvid == video.bvid }) else { return }
         await startLoad(reason: .loadMore, replacingActiveLoad: false)

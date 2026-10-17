@@ -97,3 +97,5 @@ Device protobuf 使用已确认的字段映射，未知首次追踪时间不填�
 认证适配器将同一 URLSession 传给网页和短信登录端点。设备身份的注册、SPI 与续期使用实例持有的原始传输，网络状态也由实例注入；短信响应观察绑定对应身份，不会修改其他服务图的账号状态。
 
 `App/ApplicationServices+Live.swift` 的 `makeLive` 显式组装各个服务适配器；独立图传入自己的 identity、client、session、诊断和上报实例。生产 `live` 通过同一入口组装，普通页面的默认创建方式保持不变。
+
+视频列表的 `VideoFilterDependencies` 绑定同一时长设置与元数据缓存，由 App 组装；列表通过环境传递，Home/Space 模型通过构造器传入。纯时长文本解析属于 Domain 的 `VideoDuration`，持久化设置属于 `Application/Settings`，独立测试使用自己的偏好域与缓存。

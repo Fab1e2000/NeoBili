@@ -394,13 +394,14 @@ struct VideoDescriptionContent: View {
     let end: () -> Void
     let canConsume: (CGFloat) -> Bool
     let canContinue: () -> Bool
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     var body: some View {
         let all = viewModel?.related ?? []
-        let videos = all.hidingKnownPortraitVideos(hidesPortraitVideos)
+        let videos = all.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
         let relatedError = viewModel?.relatedErrorMessage
-        let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos)
+        let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering)
         // 与原生详情页一样用分区标题组织内容，相关视频不直接接在操作栏下面。
         let header = VideoDescriptionComponent("relatedHeader", revision: []) {
             Text("相关视频")

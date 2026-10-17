@@ -15,6 +15,7 @@ struct FollowingView: View {
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.tabContentOpacity) private var tabContentOpacity
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -285,9 +286,9 @@ struct FollowingView: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: 300)
         } else {
-            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos) ?? true }
+            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) ?? true }
             if visibleEntries.isEmpty {
-                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos) {
+                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
                     LoadingTaskAnchor().padding()
                 } else {
                     Button("继续加载动态") { Task { await feed.loadReplacementPage() } }
@@ -397,7 +398,7 @@ struct FollowingView: View {
         .videoTransitionSource("following-dynamic-\(entry.id)", in: dynamicTransition)
         .contextMenu {
             if let video = entry.video,
-               video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
+               video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) {
                 WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
             }
         }

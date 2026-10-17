@@ -1,10 +1,12 @@
 import SwiftUI
 
 struct ContentFilterSettingsView: View {
-    @Bindable private var durationFilter = VideoDurationFilterSettings.shared
+    @Environment(\.videoFiltering) private var filtering
+    private var durationFilter: VideoDurationFilterSettings { filtering.duration }
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
 
     var body: some View {
+        @Bindable var durationFilter = filtering.duration
         Form {
             Section {
                 Toggle("隐藏竖屏视频", isOn: $hidesPortraitVideos)

@@ -6,6 +6,7 @@ import Foundation
 @MainActor
 @Observable
 final class SpaceViewModel {
+    @ObservationIgnored let filtering: VideoFilterDependencies
     @ObservationIgnored private let services: ApplicationServices
     let mid: Int
     let dynamics: DynamicFeedModel
@@ -37,7 +38,8 @@ final class SpaceViewModel {
     private var page = 1
     private var hasMoreVideos = true
 
-    init(mid: Int, services: ApplicationServices = .live) {
+    init(mid: Int, services: ApplicationServices = .live, filtering: VideoFilterDependencies = .live) {
+        self.filtering = filtering
         self.services = services
         self.mid = mid
         dynamics = DynamicFeedModel(source: .space(hostMid: mid), services: services)
@@ -145,7 +147,7 @@ final class SpaceViewModel {
         current video: SpaceVideo,
         hidingKnownPortraitVideos hidesPortraitVideos: Bool = false
     ) async {
-        let visibleVideos = videos.hidingKnownPortraitVideos(hidesPortraitVideos)
+        let visibleVideos = videos.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
         guard hasMoreVideos, !isLoadingVideos, !isLoadingMoreVideos,
               let index = visibleVideos.firstIndex(of: video),
               index >= visibleVideos.count - 5

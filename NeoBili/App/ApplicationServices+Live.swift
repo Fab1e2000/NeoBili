@@ -118,3 +118,18 @@ extension FollowingReadStore {
 extension SearchHistory {
     static var shared: SearchHistory { ApplicationStores.live.searchHistory }
 }
+
+extension VideoFilterDependencies {
+    @MainActor static let live = Self(duration: VideoDurationFilterSettings(), metadata: PortraitVideoStore(metadataLoader: loadMetadata))
+
+    private static func loadMetadata(_ bvid: String) async throws -> PortraitVideoStore.Metadata {
+        let detail = try await ApplicationServices.playbackPreparation.detail(for: bvid)
+        return .init(dimension: detail.dimension, durationSeconds: detail.duration)
+    }
+}
+extension VideoDurationFilterSettings {
+    static var shared: VideoDurationFilterSettings { VideoFilterDependencies.live.duration }
+}
+extension PortraitVideoStore {
+    static var shared: PortraitVideoStore { VideoFilterDependencies.live.metadata }
+}

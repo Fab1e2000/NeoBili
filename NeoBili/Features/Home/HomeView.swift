@@ -17,7 +17,7 @@ struct HomeView: View {
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
 
-    @State private var viewModel = HomeViewModel()
+    @State private var viewModel: HomeViewModel
     @State private var feedController = HomeFeedScrollController()
     /// 列表要避让的上下距离（状态栏 + 固定标题栏、标签栏），量好交给 UIKit 列表。
     @State private var safeInsets = EdgeInsets()
@@ -31,8 +31,9 @@ struct HomeView: View {
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
 
-    init(isSelected: Bool = true) {
+    init(isSelected: Bool = true, filtering: VideoFilterDependencies = .live) {
         self.isSelected = isSelected
+        _viewModel = State(initialValue: HomeViewModel(filtering: filtering))
     }
 
     private var animatesExit: Bool {
@@ -95,6 +96,7 @@ struct HomeView: View {
                 await viewModel.loadReplacementPage()
                 return viewModel.videos
             }
+            .environment(\.videoFiltering, viewModel.filtering)
             .videoCardAnimationSource(.recommendation)
             .onChange(of: animatesExit) { _, enabled in
                 guard !enabled else { return }
@@ -218,7 +220,7 @@ private struct HomeFeedStatusOverlay: View {
     let onRefresh: () -> Void
 
     var body: some View {
-        if viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos),
+        if viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos, filtering: viewModel.filtering),
            !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
             LoadingTaskAnchor()
         } else if viewModel.isLoading, viewModel.videos.isEmpty {

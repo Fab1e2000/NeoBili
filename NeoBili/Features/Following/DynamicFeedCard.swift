@@ -12,6 +12,7 @@ struct DynamicFeedCard: View {
     let onOpenDetail: () -> Void
     var showsAuthor = true
 
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @State private var isVisible = false
 
@@ -24,7 +25,7 @@ struct DynamicFeedCard: View {
 
     var body: some View {
         let video = entry.video
-        let preparationID = isVisible && (video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos) ?? false)
+        let preparationID = isVisible && (video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) ?? false)
             ? video?.bvid : nil
         let pagination = isVisible ? PaginationRequest(feedID: ObjectIdentifier(feed), generation: feed.entriesGeneration,
                                                         count: feed.entries.count, lastVisibleID: lastVisibleID) : nil

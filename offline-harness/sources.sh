@@ -4,7 +4,8 @@
 cp \
     "$APP/Domain/Models/VideoDimension.swift" \
     "$APP/Application/Content/VideoFiltering.swift" \
-    "$APP/Domain/Models/VideoDurationFilterSettings.swift" \
+    "$APP/Application/Settings/VideoDurationFilterSettings.swift" \
+    "$APP/Domain/Models/VideoDuration.swift" \
     "$APP/Application/Content/PortraitVideoStore.swift" \
     "$APP/Domain/Models/VideoDimensionProviders.swift" \
     "$APP/Domain/Models/VideoModels.swift" \

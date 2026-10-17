@@ -32,7 +32,8 @@ swiftc -swift-version 6 -O -parse-as-library \
 swiftc -swift-version 6 -O -parse-as-library \
     "$ROOT/NeoBili/Domain/Models/VideoDimension.swift" \
     "$ROOT/NeoBili/Application/Content/VideoFiltering.swift" \
-    "$ROOT/NeoBili/Domain/Models/VideoDurationFilterSettings.swift" \
+    "$ROOT/NeoBili/Application/Settings/VideoDurationFilterSettings.swift" \
+    "$ROOT/NeoBili/Domain/Models/VideoDuration.swift" \
     "$ROOT/NeoBili/Application/Content/PortraitVideoStore.swift" \
     "$HARNESS/src/MetadataPersistenceRegression.swift" \
     -o "$BUILD_DIR/metadata-persistence"

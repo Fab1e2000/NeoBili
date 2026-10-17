@@ -45,17 +45,18 @@ struct UgcSeasonSheet: View {
     let onSelect: (UgcSeasonEpisode) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     private var visibleEpisodes: [UgcSeasonEpisode] {
-        season.episodes.hidingKnownPortraitVideos(hidesPortraitVideos)
+        season.episodes.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    if visibleEpisodes.isEmpty, season.episodes.hasPendingVideoDimensions(hidesPortraitVideos) {
+                    if visibleEpisodes.isEmpty, season.episodes.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
                         LoadingTaskAnchor()
                     } else if visibleEpisodes.isEmpty {
                         ContentUnavailableView("没有可显示的分集", systemImage: "rectangle.slash")
