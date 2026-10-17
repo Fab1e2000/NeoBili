@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension SearchService {
-    static func live(client: APIClient = .shared) -> Self {
+    static func live(client: APIClient) -> Self {
         Self(hotSearches: {
             let payload: HotSearchPayload = try await client.getRaw(url: URL(string: "https://s.search.bilibili.com/main/hotword")!,
                                     additionalHeaders: SearchRequest.headers(keyword: ""))

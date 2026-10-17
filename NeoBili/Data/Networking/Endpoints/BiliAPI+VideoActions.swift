@@ -17,7 +17,7 @@ extension BiliAPI {
     }
 
     /// Existing dynamic-feed interaction: its App tracker has not been established yet.
-    static func likeVideo(aid: Int, like: Bool, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+    static func likeVideo(aid: Int, like: Bool, client: APIClient, identity: DeviceIdentity) async throws {
         let csrf = await identity.csrfToken ?? ""
         try await client.post(path: "x/web-interface/archive/like",
             form: ["aid": String(aid), "like": like ? "1" : "2", "csrf": csrf])
@@ -26,7 +26,7 @@ extension BiliAPI {
     /// App operation codes: 0 likes, 1 removes the like; web uses 1/2.
     /// The caller supplies the desired state, not the wire operation code.
     static func likeVideo(aid: Int, like: Bool, entry: PlaybackEntry,
-                          expectedSessionID: UUID? = nil, client: APIClient = .shared) async throws {
+                          expectedSessionID: UUID? = nil, client: APIClient) async throws {
         let account = try await client.appAccount(expectedSessionID: expectedSessionID)
         var form = try videoActionParameters(aid: aid, entry: entry, sessionID: account.sessionID)
         form["like"] = like ? "0" : "1"
@@ -37,7 +37,7 @@ extension BiliAPI {
     /// 独立播放器 provider 仅接收 spmid/from_spmid，不接收 from 或卡片 track_id。
     /// action_id 来自官方 pvUniqueID，未证实等同于本地 playback session，暂不伪造。
     static func dislikeVideo(aid: Int, dislike: Bool, entry: PlaybackEntry? = nil,
-                             expectedSessionID: UUID? = nil, client: APIClient = .shared) async throws {
+                             expectedSessionID: UUID? = nil, client: APIClient) async throws {
         let account = try await client.appAccount(expectedSessionID: expectedSessionID)
         var form = ["aid": String(aid), "dislike": dislike ? "0" : "1"]
         if let entry {
@@ -53,7 +53,7 @@ extension BiliAPI {
     /// 返回值说明这三步各自的结果——账号硬币不够时 `coin` 会是 false，
     /// 但点赞和收藏仍然成功，所以要按字段分别反映到界面上。
     static func tripleAction(aid: Int, entry: PlaybackEntry = .other,
-                             expectedSessionID: UUID? = nil, client: APIClient = .shared) async throws -> TripleResult {
+                             expectedSessionID: UUID? = nil, client: APIClient) async throws -> TripleResult {
         let account = try await client.appAccount(expectedSessionID: expectedSessionID)
         let form = try videoActionParameters(aid: aid, entry: entry, sessionID: account.sessionID)
         return try await client.postAppData(path: "x/v2/view/like/triple", form: form,
@@ -63,7 +63,7 @@ extension BiliAPI {
     /// The current UI selects one coin; preserve an explicit two-coin choice for callers.
     static func addCoin(aid: Int, multiply: Int, selectLike: Bool = false,
                         entry: PlaybackEntry = .other, expectedSessionID: UUID? = nil,
-                        client: APIClient = .shared) async throws {
+                        client: APIClient) async throws {
         let account = try await client.appAccount(expectedSessionID: expectedSessionID)
         var form = try videoActionParameters(aid: aid, entry: entry, sessionID: account.sessionID)
         form["multiply"] = String(multiply)
@@ -74,7 +74,7 @@ extension BiliAPI {
 
     /// 一次性调整这个视频在各个收藏夹里的归属。
     /// 两个列表都可以为空，服务端按「加入这些、移出那些」处理。
-    static func updateFavorites(aid: Int, addFolderIDs: [Int], removeFolderIDs: [Int], expectedSessionID: UUID? = nil, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+    static func updateFavorites(aid: Int, addFolderIDs: [Int], removeFolderIDs: [Int], expectedSessionID: UUID? = nil, client: APIClient, identity: DeviceIdentity) async throws {
         let csrf = await identity.csrfToken ?? ""
         try await client.post(
             path: "x/v3/fav/resource/deal",
@@ -89,7 +89,7 @@ extension BiliAPI {
     }
 
     /// 拉黑 UP 主。参数照 PiliPlus `VideoHttp.relationMod`（act=5）。
-    static func blockUser(mid: Int, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+    static func blockUser(mid: Int, client: APIClient, identity: DeviceIdentity) async throws {
         let csrf = await identity.csrfToken ?? ""
         try await client.post(
             path: "x/relation/modify",
@@ -112,7 +112,7 @@ extension BiliAPI {
     ///
     /// 这个接口会校验来源站点，所以要把 Origin/Referer 换成 space 站——沿用
     /// 全站默认的 www 来源会被拒。`re_src=11` 表示来源是视频播放页。
-    static func modifyRelation(mid: Int, follow: Bool, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+    static func modifyRelation(mid: Int, follow: Bool, client: APIClient, identity: DeviceIdentity) async throws {
         let csrf = await identity.csrfToken ?? ""
         try await client.post(
             path: "x/relation/modify",

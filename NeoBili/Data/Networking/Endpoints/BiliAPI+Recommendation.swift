@@ -4,10 +4,10 @@ import NeoBiliDomain
 import Foundation
 
 extension BiliAPI {
-    static func recommendFeed(request: RecommendationRequest, client: APIClient = .shared, identity: DeviceIdentity = .shared,
-                              session: AppRecommendationSession = .shared, network: AppNetworkMetadata = .shared,
-                              clickReporter: RecommendationClickReporter = .shared,
-                              filter: @Sendable () -> RecommendationFilter = { .current() }) async throws -> RecommendationBatch {
+    static func recommendFeed(request: RecommendationRequest, client: APIClient, identity: DeviceIdentity,
+                              session: AppRecommendationSession, network: AppNetworkMetadata,
+                              clickReporter: RecommendationClickReporter,
+                              filter: @Sendable () -> RecommendationFilter) async throws -> RecommendationBatch {
         switch request.source {
         case .app:
             return try await appRecommendFeed(request: request, client: client, identity: identity, session: session,
@@ -19,8 +19,8 @@ extension BiliAPI {
     }
 
     /// 网页推荐：Cookie 认证 + WBI 签名，每次 20 条。
-    static func webRecommendFeed(freshIndex: Int, client: APIClient = .shared,
-                                 filter: @Sendable () -> RecommendationFilter = { .current() }) async throws -> [VideoSummary] {
+    static func webRecommendFeed(freshIndex: Int, client: APIClient,
+                                 filter: @Sendable () -> RecommendationFilter) async throws -> [VideoSummary] {
         let page: WebRecommendationPage = try await client.get(
             path: "x/web-interface/wbi/index/top/feed/rcmd",
             params: WebRecommendationPage.parameters(freshIndex: freshIndex), requiresWBI: true
@@ -28,10 +28,10 @@ extension BiliAPI {
         return page.videos(filter: filter())
     }
 
-    static func appRecommendFeed(request: RecommendationRequest, client: APIClient = .shared, identity: DeviceIdentity = .shared,
-                              session: AppRecommendationSession = .shared, network: AppNetworkMetadata = .shared,
-                              clickReporter: RecommendationClickReporter = .shared,
-                              filter: @Sendable () -> RecommendationFilter = { .current() }) async throws -> RecommendationBatch {
+    static func appRecommendFeed(request: RecommendationRequest, client: APIClient, identity: DeviceIdentity,
+                              session: AppRecommendationSession, network: AppNetworkMetadata,
+                              clickReporter: RecommendationClickReporter,
+                              filter: @Sendable () -> RecommendationFilter) async throws -> RecommendationBatch {
         Task { await clickReporter.flush() }
         let account = try await client.appAccount(expectedSessionID: nil)
         if account.mid != nil, account.accessKey?.isEmpty != false { throw BiliAPIError.missingAccessKey }
@@ -67,7 +67,7 @@ extension BiliAPI {
     static func feedDislike(_ options: RecommendationFeedbackOptions,
                             reason: RecommendationFeedbackOptions.Reason,
                             expectedSessionID: UUID? = nil,
-                            client: APIClient = .shared) async throws {
+                            client: APIClient) async throws {
         let session = try feedbackSession(options, expectedSessionID: expectedSessionID)
         var params = feedbackParameters(options)
         if options.dislikeReasons?.contains(reason) == true {
@@ -82,7 +82,7 @@ extension BiliAPI {
     /// 撤销这张卡片的「不感兴趣」。
     static func feedDislikeCancel(_ options: RecommendationFeedbackOptions,
                                  expectedSessionID: UUID? = nil,
-                                 client: APIClient = .shared) async throws {
+                                 client: APIClient) async throws {
         let session = try feedbackSession(options, expectedSessionID: expectedSessionID)
         try await sendFeedback(path: "x/feed/dislike/cancel", params: feedbackParameters(options),
                                expectedSessionID: session, client: client)

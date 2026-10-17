@@ -522,7 +522,7 @@ final class LiveDanmakuLifecycleTests: XCTestCase {
         let body = Data(#"{"cmd":"DANMU_MSG","info":[[],"message",[42,"tester"]]}"#.utf8)
         let packet = LivePacketCodec.packet(op: 5, protover: 0, seq: 1, body: body)
         let batch = Data([0xAA]) + packet + packet
-        let connection = LiveDanmakuConnection()
+        let connection = TestNetworking.stream()
         connection.start(roomID: 0) { model.receive($0) }
         connection.handleFrame(batch.dropFirst())
         connection.stop()

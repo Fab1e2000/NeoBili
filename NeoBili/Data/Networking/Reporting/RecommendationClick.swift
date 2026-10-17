@@ -44,7 +44,7 @@ actor RecommendationClickReporter {
     private var queue: [RecommendationClick] = []
     private var sending = false
 
-    init(directory: URL? = nil, identity: DeviceIdentity = .shared, client: APIClient = .shared) {
+    init(directory: URL? = nil, identity: DeviceIdentity, client: APIClient) {
         self.directory = directory; self.identity = identity; self.client = client
         if let url = directory?.appendingPathComponent("pending.json"),
            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
@@ -56,7 +56,7 @@ actor RecommendationClickReporter {
     }
 
     /// UI calls this only from the actual video Button action, never a preload.
-    @MainActor static func record(_ video: VideoSummary, identity: DeviceIdentity = .shared, reporter: RecommendationClickReporter = .shared) {
+    @MainActor static func record(_ video: VideoSummary, identity: DeviceIdentity, reporter: RecommendationClickReporter) {
         let session = identity.loginSessionID
         let time = Int(Date().timeIntervalSince1970 * 1000)
         Task { await reporter.record(video, session: session, timestamp: time) }

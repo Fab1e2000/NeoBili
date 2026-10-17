@@ -50,7 +50,11 @@ final class ServiceGraphTransportTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         let snapshot = DeviceIdentity.AuthenticatedRequestSnapshot(sessionID: UUID(), accountID: 41,
             csrfToken: "fixture", cookieHeader: "DedeUserID=41", isLoggedIn: true)
-        let service = RecommendationService.live(client: APIClient(session: session, authentication: { snapshot }, signWebParameters: { $0 }))
+        let identity = TestNetworking.identity()
+        let client = TestNetworking.client(identity: identity, session: session, authentication: { snapshot }, signWebParameters: { $0 })
+        let service = RecommendationService.live(client: client, identity: identity,
+            session: AppRecommendationSession(), network: AppNetworkMetadata(monitoring: false),
+            clickReporter: RecommendationClickReporter(identity: identity, client: client), filter: { .none })
         let result = try await service.recommendFeed(request: .init(source: .web))
         XCTAssertTrue(result.videos.isEmpty)
         XCTAssertNil(result.nextRequest)
@@ -109,7 +113,9 @@ final class ServiceGraphTransportTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         let snapshot = DeviceIdentity.AuthenticatedRequestSnapshot(sessionID: UUID(), accountID: 41,
             csrfToken: "fixture", cookieHeader: "DedeUserID=41", isLoggedIn: true)
-        let service = LiveService.live(client: APIClient(session: session, authentication: { snapshot }))
+        let identity = TestNetworking.identity()
+        let service = LiveService.live(client: TestNetworking.client(identity: identity, session: session, authentication: { snapshot }),
+                                       identity: identity, session: session)
         let result = try await service.followedUsers()
         XCTAssertTrue(result.rooms.isEmpty)
         XCTAssertFalse(result.hasMore)

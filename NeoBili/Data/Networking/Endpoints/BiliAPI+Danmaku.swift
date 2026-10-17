@@ -7,7 +7,7 @@ extension BiliAPI {
     ///   - mode: 1 滚动、4 底部、5 顶部。
     ///   - progress: 弹幕出现在视频里的时间（秒）。
     @discardableResult
-    static func shootDanmaku(cid: Int, bvid: String, message: String, progress: TimeInterval, mode: Int, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws -> Int? {
+    static func shootDanmaku(cid: Int, bvid: String, message: String, progress: TimeInterval, mode: Int, client: APIClient, identity: DeviceIdentity) async throws -> Int? {
         let csrf = await identity.csrfToken ?? ""
         let result: DanmakuPostResult = try await client.post(path: "x/v2/dm/post", form: [
             "type": "1",

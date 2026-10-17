@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension BiliAPI {
-    static func videoDetail(bvid: String, client: APIClient = .shared) async throws -> VideoDetail {
+    static func videoDetail(bvid: String, client: APIClient) async throws -> VideoDetail {
         try await client.get(
             path: "x/web-interface/view",
             params: ["bvid": bvid]
@@ -14,8 +14,8 @@ extension BiliAPI {
     /// Official iPhone ViewUnite cards include the tracking used by subsequent watch feedback.
     static func appRelatedPage(bvid: String, aid: Int = 0, entry: PlaybackEntry = .other,
                                playbackSession: String, expectedSessionID: UUID,
-                               pagination: Data? = nil, client: APIClient = .shared,
-                               identity: DeviceIdentity = .shared) async throws -> AppRelatedPage {
+                               pagination: Data? = nil, client: APIClient,
+                               identity: DeviceIdentity) async throws -> AppRelatedPage {
         let headers = try await identity.appRequestHeaders(expectedSessionID: expectedSessionID)
         let request = pagination.map {
             AppRelatedPage.moreRequest(bvid: bvid, aid: aid, entry: entry, playbackSession: playbackSession,
@@ -36,7 +36,7 @@ extension BiliAPI {
         return try AppRelatedPage(payload: related, isView: false, accountSession: expectedSessionID)
     }
 
-    static func relatedVideos(bvid: String, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws -> [VideoSummary] {
+    static func relatedVideos(bvid: String, client: APIClient, identity: DeviceIdentity) async throws -> [VideoSummary] {
         let login = await identity.loginSessionID
         return try await appRelatedPage(bvid: bvid, playbackSession: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
                                         expectedSessionID: login, client: client, identity: identity).videos
@@ -45,7 +45,7 @@ extension BiliAPI {
     // MARK: - 视频页附加信息
 
     /// 稿件标签。这是网页端播放页现在用的那个端点，不是更早的 `x/tag/archive/tags`。
-    static func videoTags(aid: Int, client: APIClient = .shared) async throws -> [VideoTag] {
+    static func videoTags(aid: Int, client: APIClient) async throws -> [VideoTag] {
         try await client.get(
             path: "x/web-interface/view/detail/tag",
             params: ["aid": String(aid)]
@@ -56,7 +56,7 @@ extension BiliAPI {
     ///
     /// 五个按钮的高亮状态一次拿全。未登录时接口照样返回 code 0，只是全为假值，
     /// 所以调用方不需要为访客单独分支。
-    static func videoRelation(aid: Int, bvid: String, client: APIClient = .shared) async throws -> VideoRelation {
+    static func videoRelation(aid: Int, bvid: String, client: APIClient) async throws -> VideoRelation {
         try await client.get(
             path: "x/web-interface/archive/relation",
             params: ["aid": String(aid), "bvid": bvid]
@@ -64,7 +64,7 @@ extension BiliAPI {
     }
 
     /// UP 主名片，用来显示粉丝数和投稿数。`photo=false` 让服务端不必附带空间头图。
-    static func memberCard(mid: Int, client: APIClient = .shared) async throws -> MemberCard {
+    static func memberCard(mid: Int, client: APIClient) async throws -> MemberCard {
         let payload: MemberCardPayload = try await client.get(
             path: "x/web-interface/card",
             params: ["mid": String(mid), "photo": "false"]

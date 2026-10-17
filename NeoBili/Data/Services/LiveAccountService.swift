@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension AccountService {
-    static func live(client: APIClient = .shared) -> Self {
+    static func live(client: APIClient) -> Self {
         Self(
             myProfileOperation: {
                 try await BiliAPI.myProfile(client: client)

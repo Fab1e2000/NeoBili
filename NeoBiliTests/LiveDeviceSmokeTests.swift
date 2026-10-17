@@ -80,7 +80,7 @@ final class LiveDeviceSmokeTests: XCTestCase {
         sessionEvidence.lifetime = .keepAlways
         add(sessionEvidence)
         do {
-            let page = try await LiveAPI.recommended()
+            let page = try await LiveAPI.recommended(client: .shared, identity: .shared)
             XCTAssertFalse(page.rooms.isEmpty)
             let evidence = XCTAttachment(string: "recommended=\(page.rooms.count)\nhasMore=\(page.hasMore)")
             evidence.name = "live-directory-evidence"
@@ -92,7 +92,7 @@ final class LiveDeviceSmokeTests: XCTestCase {
         }
         if account.isLoggedIn {
             do {
-                let page = try await LiveAPI.followed()
+                let page = try await LiveAPI.followed(client: .shared)
                 XCTAssertTrue(page.rooms.allSatisfy(\.isLive))
                 let evidence = XCTAttachment(string: "liveFollowedRooms=\(page.rooms.count)\nhasMore=\(page.hasMore)")
                 evidence.name = "live-following-evidence"

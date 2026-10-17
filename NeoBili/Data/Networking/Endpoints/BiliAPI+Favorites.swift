@@ -9,7 +9,7 @@ extension BiliAPI {
     ///
     /// 传了 `videoAid` 时每个收藏夹会多带一个 `fav_state`，表示它里面有没有
     /// 这个视频——收藏夹选择弹窗靠它决定默认勾选哪几项，不必逐个收藏夹去查。
-    static func favoriteFolders(ownerMid: Int, videoAid: Int? = nil, client: APIClient = .shared) async throws -> [FavFolder] {
+    static func favoriteFolders(ownerMid: Int, videoAid: Int? = nil, client: APIClient) async throws -> [FavFolder] {
         var params = ["up_mid": String(ownerMid)]
         if let videoAid {
             params["type"] = "2"
@@ -22,7 +22,7 @@ extension BiliAPI {
         return payload.list ?? []
     }
 
-    static func favoriteVideos(folderID: Int, page: Int, client: APIClient = .shared) async throws -> FavResourceList {
+    static func favoriteVideos(folderID: Int, page: Int, client: APIClient) async throws -> FavResourceList {
         try await client.get(
             path: "x/v3/fav/resource/list",
             params: [
@@ -40,12 +40,12 @@ extension BiliAPI {
     /// 走的就是下面那个 `updateFavorites`——`deal` 接口只认 `add_media_ids` 和
     /// `del_media_ids` 两个字段。这里以前写的是 `remove_media_ids`，服务端认不出
     /// 来，于是每次都返回成功却什么也没删，表现就是「取消收藏没反应」。
-    static func removeFavorite(folderID: Int, aid: Int, expectedSessionID: UUID? = nil, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+    static func removeFavorite(folderID: Int, aid: Int, expectedSessionID: UUID? = nil, client: APIClient, identity: DeviceIdentity) async throws {
         try await updateFavorites(aid: aid, addFolderIDs: [], removeFolderIDs: [folderID], expectedSessionID: expectedSessionID, client: client, identity: identity)
     }
 
     /// 把稿件从**所有**收藏夹里移除。收藏按钮在已收藏状态下再点一次走这里。
-    static func unfavoriteEverywhere(aid: Int, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+    static func unfavoriteEverywhere(aid: Int, client: APIClient, identity: DeviceIdentity) async throws {
         let csrf = await identity.csrfToken ?? ""
         try await client.post(
             path: "x/v3/fav/resource/unfav-all",
@@ -55,7 +55,7 @@ extension BiliAPI {
 
     /// 删除整个收藏夹。可以一次删多个，服务端要求逗号分隔。
     static func deleteFavoriteFolders(folderIDs: [Int], expectedSessionID: UUID? = nil,
-                                      client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws {
+                                      client: APIClient, identity: DeviceIdentity) async throws {
         let sessionID = expectedSessionID ?? identity.loginSessionID
         let csrf = await identity.csrfToken ?? ""
         try await client.post(

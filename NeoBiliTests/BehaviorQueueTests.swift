@@ -61,7 +61,7 @@ final class BehaviorQueueTests: XCTestCase {
     func testOfflinePersistsBoundedQueueAndCooldownPreventsRequestStorm() async throws {
         let (identity, _, _, directory) = await fixture()
         let sends = Mutex(0)
-        let queue = AppBehaviorReporter(identity: identity, directory: directory, automaticScheduling: false, sender: { _ in
+        let queue = AppBehaviorReporter(identity: identity, client: TestNetworking.client(identity: identity), directory: directory, automaticScheduling: false, sender: { _ in
             sends.withLock { $0 += 1 }; throw URLError(.notConnectedToInternet)
         })
         await record(queue, identity, count: 125)
@@ -78,12 +78,12 @@ final class BehaviorQueueTests: XCTestCase {
 
     func testRestartDeliversOriginalEventsOnceAndReloginDiscardsThem() async throws {
         let (identity, settings, credentials, directory) = await fixture()
-        let first = AppBehaviorReporter(identity: identity, directory: directory, automaticScheduling: false)
+        let first = AppBehaviorReporter(identity: identity, client: TestNetworking.client(identity: identity), directory: directory, automaticScheduling: false)
         await record(first, identity, count: 2); await first.checkpoint()
         let saved = try JSONDecoder().decode([AppBehaviorEvent].self, from: Data(contentsOf: directory.appendingPathComponent("pending.json")))
         let restarted = DeviceIdentity(defaults: settings, credentials: credentials, allowsNetwork: false, purgeCookies: {})
         let delivered = Mutex<[UUID]>([])
-        let second = AppBehaviorReporter(identity: restarted, directory: directory, automaticScheduling: false, sender: { batch in
+        let second = AppBehaviorReporter(identity: restarted, client: TestNetworking.client(identity: restarted), directory: directory, automaticScheduling: false, sender: { batch in
             delivered.withLock { $0 += batch.map(\.id) }
         })
         await second.flush(); await second.flush()
@@ -97,7 +97,7 @@ final class BehaviorQueueTests: XCTestCase {
     func testAmbiguousTimeoutIsNotReplayed() async throws {
         let (identity, _, _, directory) = await fixture()
         let sends = Mutex(0)
-        let queue = AppBehaviorReporter(identity: identity, directory: directory, automaticScheduling: false, sender: { _ in
+        let queue = AppBehaviorReporter(identity: identity, client: TestNetworking.client(identity: identity), directory: directory, automaticScheduling: false, sender: { _ in
             sends.withLock { $0 += 1 }; throw URLError(.timedOut)
         })
         await record(queue, identity); await queue.flush(); await queue.flush()
@@ -111,7 +111,7 @@ final class BehaviorQueueTests: XCTestCase {
         let gate = QueueSnapshotGate()
         let first = Mutex(true)
         let delivered = Mutex<[AppBehaviorEvent]>([])
-        let queue = AppBehaviorReporter(identity: identity, directory: directory, automaticScheduling: false,
+        let queue = AppBehaviorReporter(identity: identity, client: TestNetworking.client(identity: identity), directory: directory, automaticScheduling: false,
             sender: { batch in delivered.withLock { $0 += batch } }, snapshotProvider: { session in
                 let value = try await identity.appDeviceSnapshot(expectedSessionID: session)
                 if first.withLock({ value in let old = value; value = false; return old }) { await gate.wait() }
@@ -135,7 +135,7 @@ final class BehaviorQueueTests: XCTestCase {
     func testFailedDurableRemovalDoesNotSendPersistedBatch() async throws {
         let (identity, _, _, directory) = await fixture()
         let sends = Mutex(0)
-        let queue = AppBehaviorReporter(identity: identity, directory: directory, automaticScheduling: false,
+        let queue = AppBehaviorReporter(identity: identity, client: TestNetworking.client(identity: identity), directory: directory, automaticScheduling: false,
             sender: { _ in sends.withLock { $0 += 1 } })
         await record(queue, identity); await queue.checkpoint()
         let file = directory.appendingPathComponent("pending.json")
@@ -149,7 +149,7 @@ final class BehaviorQueueTests: XCTestCase {
     func testIdleAndBackgroundHaveNoNetworkAndBurstBatchesTwenty() async {
         let (identity, _, _, directory) = await fixture()
         let sizes = Mutex<[Int]>([])
-        let queue = AppBehaviorReporter(identity: identity, directory: directory, automaticScheduling: false, sender: { batch in
+        let queue = AppBehaviorReporter(identity: identity, client: TestNetworking.client(identity: identity), directory: directory, automaticScheduling: false, sender: { batch in
             sizes.withLock { $0.append(batch.count) }
         })
         await queue.flush()

@@ -243,6 +243,11 @@ struct NetworkLoadingRegression {
             let client = APIClient(session: transport, appAuthentication: { await credentials.value() })
             // No reporter override: exercise Home -> the real BiliAPI wrapper ->
             // APIClient, with only the credential lookup/HTTP boundary injected.
+            let identity = DeviceIdentity(defaults: defaults(), credentials: .memory(), allowsNetwork: false,
+                networkSnapshot: { .init(connection: .unknown) }, purgeCookies: {})
+            let feedback = RecommendationService.live(client: client, identity: identity,
+                session: AppRecommendationSession(), network: AppNetworkMetadata(monitoring: false),
+                clickReporter: RecommendationClickReporter(identity: identity, client: client), filter: { .none })
             let model = HomeViewModel(defaults: defaults(), currentAccount: { fixtureAccount },
                 currentSessionID: {
                     let clickedSession = currentSession
@@ -250,7 +255,7 @@ struct NetworkLoadingRegression {
                     // after the click snapshot and before any reporter runs.
                     if changeOnClick { currentSession = newSession }
                     return clickedSession
-                }, feedbackService: .live(client: client), videoService: .live(client: client),
+                }, feedbackService: feedback, videoService: .live(client: client, identity: identity),
                 fetchRecommendations: { request in RecommendationBatch(videos: [video(1)], nextRequest: request.next(appCursor: 1)) })
             await model.loadInitial()
             changeOnClick = true
@@ -279,8 +284,13 @@ struct NetworkLoadingRegression {
             let client = APIClient(session: transport, appAuthentication: {
                 DeviceIdentity.AppRequestAccount(accessKey: "fixture", mid: 42, sessionID: token)
             })
+            let identity = DeviceIdentity(defaults: defaults(), credentials: .memory(), allowsNetwork: false,
+                networkSnapshot: { .init(connection: .unknown) }, purgeCookies: {})
+            let feedback = RecommendationService.live(client: client, identity: identity,
+                session: AppRecommendationSession(), network: AppNetworkMetadata(monitoring: false),
+                clickReporter: RecommendationClickReporter(identity: identity, client: client), filter: { .none })
             let model = HomeViewModel(defaults: defaults(), currentAccount: { fixtureAccount },
-                currentSessionID: { token }, feedbackService: .live(client: client), videoService: .live(client: client),
+                currentSessionID: { token }, feedbackService: feedback, videoService: .live(client: client, identity: identity),
                 fetchRecommendations: { request in RecommendationBatch(videos: [video(1)], nextRequest: request.next(appCursor: 1)) })
             await model.loadInitial()
             switch action {

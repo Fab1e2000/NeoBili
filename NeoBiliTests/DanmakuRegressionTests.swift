@@ -318,13 +318,13 @@ final class DanmakuNetworkSmokeTests: XCTestCase {
         let account = AccountStore(monitorNetwork: false)
         await account.restoreSessionIfNeeded()
         if account.isLoggedIn {
-            let portal = try await LiveAPI.followedUsers()
+            let portal = try await LiveAPI.followedUsers(client: .shared)
             XCTAssertTrue(portal.rooms.allSatisfy { $0.uid > 0 && $0.roomID > 0 })
             let evidence = XCTAttachment(string: "liveUsersWithIdentity=\(portal.rooms.count)")
             evidence.lifetime = .keepAlways
             add(evidence)
         }
-        let recommended = try await LiveAPI.recommended()
+        let recommended = try await LiveAPI.recommended(client: .shared, identity: .shared)
         let room = try XCTUnwrap(recommended.rooms.filter(\.isLive).max(by: { $0.online < $1.online }))
         let model = LiveDanmakuModel()
         model.start(roomID: room.roomID)
@@ -344,7 +344,7 @@ final class DanmakuNetworkSmokeTests: XCTestCase {
 @MainActor
 private extension LiveDanmakuModel {
     func handleFrame(_ data: Data) {
-        let stream = LiveDanmakuConnection()
+        let stream = TestNetworking.stream()
         stream.start(roomID: 0) { [weak self] in self?.receive($0) }
         stream.handleFrame(data)
         stream.stop()

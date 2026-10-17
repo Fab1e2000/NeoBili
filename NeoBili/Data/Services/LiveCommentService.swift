@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension CommentService {
-    static func live(client: APIClient = .shared, identity: DeviceIdentity = .shared) -> Self {
+    static func live(client: APIClient, identity: DeviceIdentity) -> Self {
         Self(
             shootDanmakuOperation: { cid, bvid, message, progress, mode in
                 try await BiliAPI.shootDanmaku(cid: cid, bvid: bvid, message: message, progress: progress, mode: mode, client: client, identity: identity)

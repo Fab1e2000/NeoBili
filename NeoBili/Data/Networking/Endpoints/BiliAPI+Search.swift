@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension BiliAPI {
-    static func searchVideos(keyword: String, page: Int, client: APIClient = .shared) async throws -> SearchResultPage {
+    static func searchVideos(keyword: String, page: Int, client: APIClient) async throws -> SearchResultPage {
         let response: SearchResultPage = try await client.get(
             path: "x/web-interface/wbi/search/type",
             params: SearchRequest.parameters(keyword: keyword, page: page),
@@ -27,7 +27,7 @@ extension BiliAPI {
     /// `{code, message, data}` 信封：候选词直接挂在 `result.tag` 上，而且
     /// 一个都没命中时 `code` 会是 3、`result` 退化成空数组。所以这里走
     /// `getRaw`，由 `SearchSuggestPayload` 自己宽松地解。
-    static func searchSuggestions(term: String, client: APIClient = .shared) async throws -> [SearchSuggestion] {
+    static func searchSuggestions(term: String, client: APIClient) async throws -> [SearchSuggestion] {
         var components = URLComponents(string: "https://s.search.bilibili.com/main/suggest")!
         components.queryItems = [
             URLQueryItem(name: "term", value: term),

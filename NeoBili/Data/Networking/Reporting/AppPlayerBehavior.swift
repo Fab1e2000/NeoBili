@@ -26,7 +26,7 @@ enum AppPlayerBehavior {
     }
 
     static func record(_ name: String, aid: Int, cid: Int, position: Double, playbackSession: String,
-                       source: [String: String], accountSession: UUID, quality: Int?, playbackRate: Double = 1, sequence: Int, inlinePreview: Bool = false, reporter: AppBehaviorReporter = .shared) {
+                       source: [String: String], accountSession: UUID, quality: Int?, playbackRate: Double = 1, sequence: Int, inlinePreview: Bool = false, reporter: AppBehaviorReporter) {
         guard !AppNetwork.isRegression,
               let info = payload(aid: aid, cid: cid, position: position, playbackSession: playbackSession,
                                  source: source, quality: quality, playbackRate: playbackRate, inlinePreview: inlinePreview) else { return }

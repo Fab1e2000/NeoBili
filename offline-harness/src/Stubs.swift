@@ -39,9 +39,10 @@ struct AccountCredentialsSnapshot: Sendable {
 // Host composition root: the same service contracts and adapters as the app.
 // Only presentation-only services are omitted from this smaller executable.
 struct ApplicationServices {
-    var session: SessionService = .live()
-    var video: VideoService = .live()
-    var recommendation: RecommendationService = .live()
+    var session: SessionService = .live(identity: .shared)
+    var video: VideoService = .live(client: .shared, identity: .shared)
+    var recommendation: RecommendationService = .live(client: .shared, identity: .shared, session: .shared,
+        network: .shared, clickReporter: .shared, filter: { .current() })
     static let live = ApplicationServices()
 }
 extension HomeFeedAccount {

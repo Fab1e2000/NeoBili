@@ -9,7 +9,7 @@ final class LiveDanmakuConnection: LiveDanmakuStreaming {
     private let identity: DeviceIdentity
     private let client: APIClient
 
-    init(identity: DeviceIdentity = .shared, client: APIClient = .shared) {
+    init(identity: DeviceIdentity, client: APIClient) {
         self.identity = identity
         self.client = client
     }

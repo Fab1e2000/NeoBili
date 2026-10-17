@@ -36,7 +36,7 @@ actor AppBehaviorReporter {
     private var background = false
     private var retryAfter: TimeInterval = 0
 
-    init(identity: DeviceIdentity = .shared, client: APIClient = .shared, directory: URL? = nil,
+    init(identity: DeviceIdentity, client: APIClient, directory: URL? = nil,
          automaticScheduling: Bool = true, now: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 },
          sender: Sender? = nil,
          snapshotProvider: (@Sendable (UUID) async throws -> AppDeviceSnapshot)? = nil) {

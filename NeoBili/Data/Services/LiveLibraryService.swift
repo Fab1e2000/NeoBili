@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension LibraryService {
-    static func live(client: APIClient = .shared, identity: DeviceIdentity = .shared) -> Self {
+    static func live(client: APIClient, identity: DeviceIdentity) -> Self {
         Self(
             historyPageOperation: { max, viewAt in
                 try await BiliAPI.historyPage(max: max, viewAt: viewAt, client: client)

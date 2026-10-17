@@ -4,7 +4,6 @@ import NeoBiliDomain
 import Foundation
 
 extension AuthenticationService {
-    static var live: Self { live(session: AppNetwork.session, identity: .shared) }
 
     static func live(session: URLSession, identity: DeviceIdentity) -> Self {
         let transport = SMSPassport.liveTransport(session: session, identity: identity)

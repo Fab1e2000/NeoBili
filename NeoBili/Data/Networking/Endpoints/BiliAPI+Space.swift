@@ -9,7 +9,7 @@ extension BiliAPI {
     ///
     /// 走的是不需要 WBI 的 `card` 接口——`space/wbi/acc/info` 风控严得多，
     /// 而这里要的字段它基本都有。唯一拿不到的是 IP 属地，那一项直接不显示。
-    static func spaceCard(mid: Int, client: APIClient = .shared) async throws -> SpaceCard {
+    static func spaceCard(mid: Int, client: APIClient) async throws -> SpaceCard {
         let payload: SpaceCardPayload = try await client.get(
             path: "x/web-interface/card",
             params: ["mid": String(mid), "photo": "true"]
@@ -18,7 +18,7 @@ extension BiliAPI {
     }
 
     /// 仅完整空间页请求 App 头图；直播关注等名片使用方不增加请求。
-    static func spaceProfile(mid: Int, client: APIClient = .shared) async throws -> SpaceCard {
+    static func spaceProfile(mid: Int, client: APIClient) async throws -> SpaceCard {
         async let profile = spaceCard(mid: mid, client: client)
         async let background: SpaceBackgroundPayload? = try? client.getApp(
             path: "x/v2/space", params: ["vmid": String(mid)], retries: 0
@@ -33,7 +33,7 @@ extension BiliAPI {
     ///
     /// 走 WBI 签名，并且要带上和取流同一组浏览器指纹参数：缺了它们，
     /// 连续翻几页之后就会被风控挡下（-352）。
-    static func spaceVideos(mid: Int, page: Int, client: APIClient = .shared) async throws -> SpaceVideoPage {
+    static func spaceVideos(mid: Int, page: Int, client: APIClient) async throws -> SpaceVideoPage {
         var params = [
             "mid": String(mid),
             "pn": String(page),

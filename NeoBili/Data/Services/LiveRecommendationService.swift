@@ -4,10 +4,10 @@ import NeoBiliDomain
 import Foundation
 
 extension RecommendationService {
-    static func live(client: APIClient = .shared, identity: DeviceIdentity = .shared,
-                              session: AppRecommendationSession = .shared, network: AppNetworkMetadata = .shared,
-                              clickReporter: RecommendationClickReporter = .shared,
-                              filter: @escaping @Sendable () -> RecommendationFilter = { .current() }) -> Self {
+    static func live(client: APIClient, identity: DeviceIdentity,
+                              session: AppRecommendationSession, network: AppNetworkMetadata,
+                              clickReporter: RecommendationClickReporter,
+                              filter: @escaping @Sendable () -> RecommendationFilter) -> Self {
         Self(
             recommendFeedOperation: { request in
                 try await BiliAPI.recommendFeed(request: request, client: client, identity: identity, session: session,

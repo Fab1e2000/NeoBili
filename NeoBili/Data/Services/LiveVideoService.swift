@@ -4,7 +4,7 @@ import NeoBiliDomain
 import Foundation
 
 extension VideoService {
-    static func live(client: APIClient = .shared, identity: DeviceIdentity = .shared) -> Self {
+    static func live(client: APIClient, identity: DeviceIdentity) -> Self {
         Self(storyboardOperation: { bvid, cid in
             try await client.get(path: "x/player/videoshot", params: ["bvid": bvid, "cid": String(cid), "index": "1"],
                                  additionalHeaders: ["Referer": "https://www.bilibili.com/video/\(bvid)"])

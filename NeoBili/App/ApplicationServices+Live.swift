@@ -39,7 +39,7 @@ extension HomeFeedAccount {
 }
 
 extension ApplicationServices {
-    @MainActor static func makeLiveDanmakuStream() -> any LiveDanmakuStreaming { LiveDanmakuConnection() }
+    @MainActor static func makeLiveDanmakuStream() -> any LiveDanmakuStreaming { LiveDanmakuConnection(identity: .shared, client: .shared) }
 }
 
 extension ApplicationServices {
@@ -157,7 +157,7 @@ extension AppRecommendationSession {
 extension RecommendationClickReporter {
     static let shared = RecommendationClickReporter(directory: AppNetwork.isRegression ? nil :
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("RecommendationClickQueue", isDirectory: true))
+            .appendingPathComponent("RecommendationClickQueue", isDirectory: true), identity: .shared, client: .shared)
 }
 
 extension RecommendationDiagnostics {
@@ -165,7 +165,7 @@ extension RecommendationDiagnostics {
 }
 
 extension AppBehaviorReporter {
-    static let shared = AppBehaviorReporter(directory: AppNetwork.isRegression ? nil :
+    static let shared = AppBehaviorReporter(identity: .shared, client: .shared, directory: AppNetwork.isRegression ? nil :
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BehaviorQueue", isDirectory: true))
 }
@@ -231,4 +231,20 @@ extension ApplicationServices {
         #endif
         return live.recommendation.recommendFeed
     }
+}
+
+extension TelemetryService {
+    static var live: Self { live(identity: .shared, reporter: .shared, clickReporter: .shared) }
+}
+
+extension AccountSessionClient {
+    static var live: AccountSessionClient { live(identity: .shared, client: .shared) }
+}
+
+extension AuthenticationService {
+    static var live: Self { live(session: AppNetwork.session, identity: .shared) }
+}
+
+extension LinkService {
+    static var live: Self { live(session: AppNetwork.session) }
 }

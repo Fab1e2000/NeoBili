@@ -5,7 +5,7 @@ import Foundation
 
 /// 仅包含浏览和播放接口；复用现有网页身份与 App 登录，不在风控后切换身份重试。
 enum LiveAPI {
-    static func recommended(page: Int = 1, client: APIClient = .shared, identity: DeviceIdentity = .shared) async throws -> LiveRoomPage {
+    static func recommended(page: Int = 1, client: APIClient, identity: DeviceIdentity) async throws -> LiveRoomPage {
         let page = max(1, page)
         // 直播 iOS 推荐必须携带屏幕倍率；匿名请求也需要此参数。
         let accessKey = await identity.accessKey
@@ -14,7 +14,7 @@ enum LiveAPI {
         return payload.page(number: page)
     }
 
-    static func followed(page: Int = 1, client: APIClient = .shared) async throws -> LiveRoomPage {
+    static func followed(page: Int = 1, client: APIClient) async throws -> LiveRoomPage {
         let page = max(1, page)
         let payload: LiveListingPayload = try await request(path: "xlive/web-ucenter/user/following", params: [
             "page": String(page), "page_size": "9", "ignoreRecord": "1", "hit_ab": "true"
@@ -22,7 +22,7 @@ enum LiveAPI {
         return payload.page(number: page, size: 9, onlyLive: true)
     }
 
-    static func followedUsers(client: APIClient = .shared) async throws -> LiveRoomPage {
+    static func followedUsers(client: APIClient) async throws -> LiveRoomPage {
         let payload: FollowedLiveUsersPayload = try await client.get(
             path: "x/polymer/web-dynamic/v1/portal",
             params: ["up_list_more": "1", "web_location": "333.1365"],
@@ -31,7 +31,7 @@ enum LiveAPI {
         return LiveRoomPage(rooms: payload.live_users.items, page: 1, hasMore: false)
     }
 
-    static func roomInfo(roomID: Int, client: APIClient = .shared) async throws -> LiveRoom {
+    static func roomInfo(roomID: Int, client: APIClient) async throws -> LiveRoom {
         guard roomID > 0 else { throw BiliAPIError.invalidURL }
         let payload: LiveRoomInfoPayload = try await request(path: "xlive/web-room/v1/index/getH5InfoByRoom", params: [
             "room_id": String(roomID)
@@ -40,7 +40,7 @@ enum LiveAPI {
     }
 
     /// 弹幕服务器的认证 token 与候选地址（PiliPlus live.dart:159 的同一端点）。
-    static func danmuInfo(roomID: Int, client: APIClient = .shared) async throws -> LiveDanmuInfoPayload {
+    static func danmuInfo(roomID: Int, client: APIClient) async throws -> LiveDanmuInfoPayload {
         guard roomID > 0 else { throw BiliAPIError.invalidURL }
         return try await request(path: "xlive/web-room/v1/index/getDanmuInfo", params: [
             "id": String(roomID), "type": "0", "web_location": "444.8"
@@ -65,7 +65,7 @@ enum LiveAPI {
     }
 
     /// PiliPlus live.dart 的同一套播放参数，公开 nav 密钥仍由现有 WBISigner 管理。
-    static func playback(roomID: Int, quality: Int = 10000, client: APIClient = .shared) async throws -> LivePlayback {
+    static func playback(roomID: Int, quality: Int = 10000, client: APIClient) async throws -> LivePlayback {
         guard roomID > 0 else { throw BiliAPIError.invalidURL }
         let payload: LivePlaybackPayload = try await request(path: "xlive/web-room/v2/index/getRoomPlayInfo", params: [
             "room_id": String(roomID), "protocol": "0,1", "format": "0,1,2", "codec": "0,1,2",

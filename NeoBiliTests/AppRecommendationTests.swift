@@ -337,7 +337,8 @@ final class AppRecommendationTests: XCTestCase {
         var request = RecommendationRequest(source: .app)
         var seen: Set<String> = []
         for page in 0..<3 {
-            let batch = try await BiliAPI.appRecommendFeed(request: request)
+            let batch = try await BiliAPI.appRecommendFeed(request: request, client: .shared, identity: .shared,
+                session: .shared, network: .shared, clickReporter: .shared, filter: { .current() })
             let videos = batch.videos
             let duplicates = videos.filter { seen.contains($0.bvid) }.count
             print("AppRecommendationSmoke: page=\(page), cards=\(videos.count), duplicates=\(duplicates), appCredential=\(hasAppCredential), hasNext=\(batch.nextRequest != nil), refreshActive=\(batch.refreshConfig?.active ?? -1), refreshAppear=\(batch.refreshConfig?.appear ?? -1), refreshBehavior=\(batch.refreshConfig?.behavior ?? -1)")

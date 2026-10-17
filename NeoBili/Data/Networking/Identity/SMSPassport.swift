@@ -13,9 +13,6 @@ enum SMSPassport {
     typealias Credentials = SMSLoginModels.Credentials
     typealias LoginOutcome = SMSLoginModels.LoginOutcome
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
-    static let live: Transport = { request in
-        try await liveTransport(session: AppNetwork.session, identity: .shared)(request)
-    }
 
     static func liveTransport(session: URLSession, identity: DeviceIdentity) -> Transport {
         { request in
@@ -27,7 +24,7 @@ enum SMSPassport {
         }
     }
 
-    static func prepare(identity: DeviceIdentity = .shared) async throws -> Context {
+    static func prepare(identity: DeviceIdentity) async throws -> Context {
         let accountSession = identity.loginSessionID
         let headers = try await identity.appRequestHeaders(expectedSessionID: accountSession)
         let buvid = await identity.appBuvid()
@@ -38,7 +35,7 @@ enum SMSPassport {
                        deviceID: deviceID, loginSession: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())
     }
 
-    static func countries(transport: Transport = live) async throws -> [Country] {
+    static func countries(transport: Transport) async throws -> [Country] {
         let request = URLRequest(url: URL(string: "https://passport.bilibili.com/web/generic/country/list")!)
         let json = try await object(request, transport: transport)
         try requireSuccess(json)
@@ -117,7 +114,7 @@ enum SMSPassport {
     }
 
     static func send(context: Context, phone: String, country: Int, captcha: Captcha? = nil,
-                     result: ChallengeResult? = nil, transport: Transport = live) async throws -> SendOutcome {
+                     result: ChallengeResult? = nil, transport: Transport) async throws -> SendOutcome {
         var fields = ["tel": phone, "cid": String(country), "login_session_id": context.loginSession,
                       "spm_id": "main.homepage.avatar-nologin.all.click", "otp_channel": "sms"]
         if let captcha, let result {
@@ -156,12 +153,12 @@ enum SMSPassport {
         return Captcha(token: token, gt: gt, challenge: challenge)
     }
     static func login(context: Context, phone: String, country: Int, code: String, key: String,
-                      transport: Transport = live) async throws -> LoginOutcome {
+                      transport: Transport) async throws -> LoginOutcome {
         let fields = ["tel": phone, "cid": String(country), "code": code, "captcha_key": key,
                       "login_session_id": context.loginSession, "spm_id": "main.homepage.avatar-nologin.all.click"]
         return try loginOutcome(try await object(makeRequest(path: "x/passport-login/login/sms", context: context, fields: fields), transport: transport))
     }
-    static func exchange(context: Context, code: String, transport: Transport = live) async throws -> LoginOutcome {
+    static func exchange(context: Context, code: String, transport: Transport) async throws -> LoginOutcome {
         let fields = ["code": code, "grant_type": "authorization_code"]
         return try loginOutcome(try await object(makeRequest(path: "x/passport-login/oauth2/access_token", context: context, fields: fields), transport: transport))
     }
