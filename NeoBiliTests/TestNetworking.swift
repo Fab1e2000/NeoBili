@@ -13,7 +13,8 @@ enum TestNetworking {
     static func identity() -> DeviceIdentity {
         DeviceIdentity(defaults: UserDefaults(suiteName: "neobili.test-networking.\(UUID().uuidString)")!,
                        credentials: .memory(), allowsNetwork: false,
-                       networkSnapshot: { .init(connection: .unknown) }, purgeCookies: {})
+                       rawTransport: { _ in throw URLError(.notConnectedToInternet) },
+                networkSnapshot: { .init(connection: .unknown) }, purgeCookies: {})
     }
 
     static func client(identity: DeviceIdentity, session: URLSession? = nil,

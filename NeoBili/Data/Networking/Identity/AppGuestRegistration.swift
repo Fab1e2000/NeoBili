@@ -83,7 +83,7 @@ public actor AppGuestRegistration {
     static let firstRunKey = "neobili.ios.guest.firstRunMilliseconds"
 
     init(credentials: CredentialStorage,
-         transport: @escaping Transport = { try await AppNetwork.session.data(for: $0) },
+         transport: @escaping Transport,
          vendorIdentifier: @escaping VendorIdentifier = {
              #if canImport(UIKit)
              return await MainActor.run { UIDevice.current.identifierForVendor?.uuidString }

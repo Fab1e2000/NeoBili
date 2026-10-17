@@ -25,7 +25,7 @@ public actor ImageFileCache {
     public init(directory: URL? = nil, byteLimit: Int = 256 * 1024 * 1024,
          maxAge: TimeInterval = 30 * 24 * 60 * 60,
          now: @escaping @Sendable () -> Date = { Date() },
-         download: @escaping Download = { try await AppNetwork.session.data(for: $0) }) {
+         download: @escaping Download) {
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appending(path: "ImageViewer", directoryHint: .isDirectory)
         self.byteLimit = max(0, byteLimit)

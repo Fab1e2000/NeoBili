@@ -47,7 +47,7 @@ extension ApplicationServices {
 
 extension ApplicationServices {
     @MainActor static func recordExposure(_ event: RecommendationExposureEvent) { LiveExposureReporting.record(event, currentSessionID: live.session.currentID(), reporter: .shared) }
-    static func loadDanmaku(cid: Int) async throws -> [DanmakuItem] { try await DanmakuLoader.load(cid: cid) }
+    static func loadDanmaku(cid: Int) async throws -> [DanmakuItem] { try await DanmakuLoader.load(cid: cid, session: AppNetwork.session) }
 }
 
 extension ApplicationServices {
@@ -195,7 +195,7 @@ extension DeviceIdentity {
 }
 
 extension ImageFileCache {
-    static let shared = ImageFileCache()
+    static let shared = ImageFileCache(download: { try await AppNetwork.session.data(for: $0) })
 }
 
 // The UI image graph shares one production budget and admits independent test graphs.
@@ -250,4 +250,8 @@ extension AuthenticationService {
 
 extension LinkService {
     static var live: Self { live(session: AppNetwork.session) }
+}
+
+extension AppNetwork {
+    static let session = makeSession()
 }

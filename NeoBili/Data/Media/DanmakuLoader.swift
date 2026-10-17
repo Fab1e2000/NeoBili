@@ -8,7 +8,7 @@ import Foundation
 public enum DanmakuLoader {
     static let maximumItems = 20_000
 
-    @concurrent public static func load(cid: Int, session: URLSession = AppNetwork.session) async throws -> [DanmakuItem] {
+    @concurrent public static func load(cid: Int, session: URLSession) async throws -> [DanmakuItem] {
         guard cid > 0 else { return [] }
         guard let url = URL(string: "https://api.bilibili.com/x/v1/dm/list.so?oid=\(cid)") else { return [] }
         var request = URLRequest(url: url)

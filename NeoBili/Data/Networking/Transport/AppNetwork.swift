@@ -10,14 +10,14 @@ public enum AppNetwork {
         #endif
     }
 
-    public static let session: URLSession = {
+    public static func makeSession() -> URLSession {
         guard isRegression else { return .shared }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RegressionNetworkBlocker.self]
         configuration.httpCookieStorage = nil
         configuration.urlCache = nil
         return URLSession(configuration: configuration)
-    }()
+    }
 }
 
 private final class RegressionNetworkBlocker: URLProtocol, @unchecked Sendable {

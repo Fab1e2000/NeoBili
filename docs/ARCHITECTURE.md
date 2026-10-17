@@ -38,7 +38,7 @@ App target 包含 App、Application、Features、Platform 和共享 UI。Applica
 
 ## 服务如何注入
 
-`ApplicationServices` 是按业务分组的值类型。`App/ApplicationServices+Live.swift` 组装生产实现；页面通过 `EnvironmentValues.applicationServices` 取得依赖。模型通过初始化参数接收服务或更小的 loader / writer 闭包。已有的默认初始化方式仍使用生产组装，方便普通页面创建。网络客户端、传输、WBI 签名器与身份的生产便利初始化器位于 `App/NetworkingDefaults.swift`，转发到 Data 的显式依赖初始化器。
+`ApplicationServices` 是按业务分组的值类型。`App/ApplicationServices+Live.swift` 组装生产实现；页面通过 `EnvironmentValues.applicationServices` 取得依赖。模型通过初始化参数接收服务或更小的 loader / writer 闭包。已有的默认初始化方式仍使用生产组装，方便普通页面创建。网络客户端、传输、WBI 签名器与身份的生产便利初始化器位于 `App/NetworkingDefaults.swift`，转发到 Data 的显式依赖初始化器。生产网络会话由 App 持有；Data 的会话工厂保留编译期 Regression 隔离，端点和缓存显式接收 session 或传输闭包。
 
 `ApplicationStores` 统一持有点赞差量、关注已读和搜索历史，生产图由 App 组装。关注父子模型共享注入的点赞状态；搜索页面显示与模型写入同一历史实例。
 

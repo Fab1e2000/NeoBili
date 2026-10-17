@@ -22,7 +22,7 @@ targets:
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      # 每层自动同步；Domain 由独立模块编译。
+      # 每层自动同步；Domain、Core 纯工具与 Data 由独立模块编译。
       - path: NeoBili/App
         type: syncedFolder
       - path: NeoBili/Application

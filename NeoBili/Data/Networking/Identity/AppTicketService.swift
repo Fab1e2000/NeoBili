@@ -94,7 +94,7 @@ public actor AppTicketService {
     private var failureCount = 0
     private var nextAttempt: TimeInterval = 0
 
-    init(credentials: CredentialStorage, transport: @escaping Transport = { try await AppNetwork.session.data(for: $0) },
+    init(credentials: CredentialStorage, transport: @escaping Transport,
          clock: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 },
          jitter: @escaping @Sendable () -> Double = { Double.random(in: 0...1) }) {
         self.credentials = credentials; self.transport = transport; self.clock = clock; self.jitter = jitter

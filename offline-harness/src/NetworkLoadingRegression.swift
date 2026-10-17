@@ -244,6 +244,7 @@ struct NetworkLoadingRegression {
             // No reporter override: exercise Home -> the real BiliAPI wrapper ->
             // APIClient, with only the credential lookup/HTTP boundary injected.
             let identity = DeviceIdentity(defaults: defaults(), credentials: .memory(), allowsNetwork: false,
+                rawTransport: { _ in throw URLError(.notConnectedToInternet) },
                 networkSnapshot: { .init(connection: .unknown) }, purgeCookies: {})
             let feedback = RecommendationService.live(client: client, identity: identity,
                 session: AppRecommendationSession(), network: AppNetworkMetadata(monitoring: false),
@@ -285,6 +286,7 @@ struct NetworkLoadingRegression {
                 DeviceIdentity.AppRequestAccount(accessKey: "fixture", mid: 42, sessionID: token)
             })
             let identity = DeviceIdentity(defaults: defaults(), credentials: .memory(), allowsNetwork: false,
+                rawTransport: { _ in throw URLError(.notConnectedToInternet) },
                 networkSnapshot: { .init(connection: .unknown) }, purgeCookies: {})
             let feedback = RecommendationService.live(client: client, identity: identity,
                 session: AppRecommendationSession(), network: AppNetworkMetadata(monitoring: false),

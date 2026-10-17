@@ -19,7 +19,7 @@ enum BiliPassport {
 
     typealias QRCodeInfo = LoginModels.QRCodeInfo
 
-    static func generateQRCode(session: URLSession = AppNetwork.session) async throws -> QRCodeInfo {
+    static func generateQRCode(session: URLSession) async throws -> QRCodeInfo {
         try await get(path: "x/passport-login/web/qrcode/generate", session: session)
     }
 
@@ -29,7 +29,7 @@ enum BiliPassport {
     /// 直接读顶层会把「未扫码」误判成「登录成功」）：
     /// 86101 未扫码、86090 已扫码未确认、86038 已过期、0 已确认（此刻
     /// Set-Cookie 才会带上 SESSDATA 等凭据）。
-    static func pollQRCode(_ qrcodeKey: String, session: URLSession = AppNetwork.session) async throws -> QRCodePollOutcome {
+    static func pollQRCode(_ qrcodeKey: String, session: URLSession) async throws -> QRCodePollOutcome {
         let request = try makeRequest(path: "x/passport-login/web/qrcode/poll", query: ["qrcode_key": qrcodeKey])
         let (data, response) = try await send(request, session: session)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
@@ -84,7 +84,7 @@ enum BiliPassport {
     /// 显示服务端提供的 iPhone 登录确认页。
     typealias AppQRCodeInfo = LoginModels.AppQRCodeInfo
 
-    static func generateAppQRCode(session: URLSession = AppNetwork.session) async throws -> AppQRCodeInfo {
+    static func generateAppQRCode(session: URLSession) async throws -> AppQRCodeInfo {
         let params = AppSigner.signed(
             AppClientIdentity.parameters.merging(["local_id": "0"]) { _, value in value },
             purpose: .passport
@@ -97,7 +97,7 @@ enum BiliPassport {
     /// 和网页那条链路不同，这里的业务状态码在**顶层** `code` 上，凭据也在
     /// JSON body 里而不是 Set-Cookie 头里：
     /// 86039 未确认、86038 已过期、0 已确认。
-    static func pollAppQRCode(_ authCode: String, fallbackCookies: LoginCookies? = nil, session: URLSession = AppNetwork.session) async throws -> QRCodePollOutcome {
+    static func pollAppQRCode(_ authCode: String, fallbackCookies: LoginCookies? = nil, session: URLSession) async throws -> QRCodePollOutcome {
         let params = AppSigner.signed(
             AppClientIdentity.parameters.merging(["auth_code": authCode, "local_id": "0"]) { _, value in value },
             purpose: .passport
@@ -192,7 +192,7 @@ enum BiliPassport {
     /// 用已登录的 Cookie 替自己确认一张iPhone App
     /// 登录二维码，再像扫码一样轮询出 `access_key`（PiliPlus 把这个确认接口标为「cookie转access_key」）。
     /// 旧链路仅保留用于原有回归；生产入口已改为 SMSPassport，不保证设备列表新增条目。
-    static func exchangeAccessKey(cookies: LoginCookies, session: URLSession = AppNetwork.session) async throws -> String {
+    static func exchangeAccessKey(cookies: LoginCookies, session: URLSession) async throws -> String {
         let info = try await generateAppQRCode(session: session)
         let request = try makeAppConfirmationRequest(authCode: info.authCode, cookies: cookies)
         let (envelope, response) = try await sendEnvelope(request, session: session)
@@ -260,7 +260,7 @@ enum BiliPassport {
 
     typealias WebKey = LoginModels.WebKey
 
-    static func webKey(session: URLSession = AppNetwork.session) async throws -> WebKey {
+    static func webKey(session: URLSession) async throws -> WebKey {
         try await get(path: "x/passport-login/web/key", session: session)
     }
 
@@ -268,7 +268,7 @@ enum BiliPassport {
     /// 滑块验证 WebView，验证成功后得到的 challenge/validate/seccode 一并回传。
     typealias CaptchaInfo = LoginModels.CaptchaInfo
 
-    static func captcha(session: URLSession = AppNetwork.session) async throws -> CaptchaInfo {
+    static func captcha(session: URLSession) async throws -> CaptchaInfo {
         try await get(path: "x/passport-login/captcha", query: ["source": "main_web"], session: session)
     }
 
@@ -281,7 +281,7 @@ enum BiliPassport {
         challenge: String,
         validate: String,
         seccode: String,
-        session: URLSession = AppNetwork.session
+        session: URLSession
     ) async throws -> LoginCookies {
         var request = try makeRequest(path: "x/passport-login/web/login")
         request.httpMethod = "POST"

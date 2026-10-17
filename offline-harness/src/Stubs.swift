@@ -94,3 +94,7 @@ extension ApplicationServices {
         live.recommendation.recommendFeed
     }
 }
+
+extension AppNetwork {
+    static let session = makeSession()
+}

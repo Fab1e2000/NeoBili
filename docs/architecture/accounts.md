@@ -105,3 +105,5 @@ Device protobuf 使用已确认的字段映射，未知首次追踪时间不填�
 `AccountCredentialPersistence` 同步负责账号凭据的格式、兼容存储与写后读回验证。`DeviceIdentity` 保留内存镜像、账号代际和续期任务；只有原子凭据记录验证成功后才发布新登录态，持久化委托不引入新的 await。
 
 身份、签名和传输实现由 `NeoBiliData` 编译。账号凭据快照、服务操作和状态通知名属于 `NeoBiliDomain`；Application 不导入 Data，App 负责将生产身份与客户端交给适配器工厂。
+
+网络会话由 App 组装层持有，Data 通过 `AppNetwork.makeSession()` 保留编译期 Regression 隔离；端点、身份与缓存接收显式传输依赖。离线 harness 创建自己的阻断会话。

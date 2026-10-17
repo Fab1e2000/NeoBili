@@ -49,7 +49,7 @@ enum LiveAPI {
 
     /// 有效期内的 SC 列表（开播中进房时补齐已有 SC）。返回原始字典，
     /// 字段与 WS 的 SUPER_CHAT_MESSAGE.data 完全同构，走同一条解析路径。
-    static func superChatList(roomID: Int, session: URLSession = AppNetwork.session) async throws -> [[String: Any]] {
+    static func superChatList(roomID: Int, session: URLSession) async throws -> [[String: Any]] {
         guard roomID > 0 else { return [] }
         let url = try makeURL(path: "av/v1/SuperChat/getMessageList", params: ["room_id": String(roomID)])
         var request = URLRequest(url: url)

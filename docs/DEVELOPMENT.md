@@ -96,7 +96,7 @@ Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用�
 它不包含本地签名覆盖；账号使用内存 `CredentialStorage`，测试可注入独立身份和 UserDefaults。
 应用测试宿主保留窗口但不加载业务根页面或预热真实接口。
 
-默认网络入口 `AppNetwork.session` 在 Regression 中拦截请求并返回离线错误，不带 Cookie
+App 持有的默认网络入口 `AppNetwork.session` 由 Data 工厂创建，在 Regression 中拦截请求并返回离线错误，不带 Cookie
 或磁盘缓存；测试需要响应时注入专用 session 或 loader。原生 mpv 加载与直播 WebSocket
 在此配置下禁用，播放器状态机使用注入会话验证。新增网络通道必须遵守同样的隔离边界。
 

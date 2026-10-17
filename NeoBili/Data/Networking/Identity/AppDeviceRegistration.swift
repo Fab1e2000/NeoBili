@@ -88,7 +88,7 @@ public actor AppDeviceRegistration {
     private var retryAfter: TimeInterval = 0
     private static let storageKey = "neobili.ios.fingerprint.registration"
 
-    init(credentials: CredentialStorage, transport: @escaping Transport = { try await AppNetwork.session.data(for: $0) },
+    init(credentials: CredentialStorage, transport: @escaping Transport,
          material: @escaping Material = { await IOSFingerprintProtocol.material(buvid: $0, mid: $1) },
          clock: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 }) {
         self.credentials = credentials; self.transport = transport; self.material = material; self.clock = clock
