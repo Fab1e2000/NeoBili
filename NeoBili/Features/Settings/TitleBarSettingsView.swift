@@ -15,7 +15,7 @@ struct TitleBarSettingsView: View {
                 .pickerStyle(.inline)
                 .labelsHidden()
             } footer: {
-                Text("随内容滚动时，标题随页面滚走；固定时可选择边界清晰的切边背景或柔和的渐变背景。搜索框始终保留在顶部。关注和直播始终使用固定切边导航栏，不受此设置影响。")
+                Text("随内容滚动时，标题随页面滚走，顶部不添加渐变模糊；固定时使用边界清晰的切边背景。搜索框始终保留在顶部。关注和直播始终使用固定切边导航栏，不受此设置影响。")
             }
         }
         .settingsPage("标题栏")

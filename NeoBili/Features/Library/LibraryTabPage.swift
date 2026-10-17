@@ -20,7 +20,8 @@ struct LibraryTabPage: View {
                             .padding(.horizontal, 20)
                     }
                 }
-                .scrollEdgeEffectStyle(titleBarStyle.scrollEdgeStyle, for: .top)
+                .scrollEdgeEffectStyle(.hard, for: .top)
+                .scrollEdgeEffectHidden(!titleBarStyle.isPinned, for: .top)
                 .environment(\.scrollingPageHeader, pinsTitleBar ? nil : ScrollingPageHeader(title: tab.pageTitle))
                 .onAppear { OrientationController.enterPortrait() }
         }

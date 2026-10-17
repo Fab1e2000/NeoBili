@@ -24,10 +24,9 @@ struct HomeFeedCollection: UIViewRepresentable {
     var onOpenMine: () -> Void = {}
     /// 标题栏固定在外层时，列表里不再插入页头行。
     var pinsTitleBar = TitleBarSettings.defaultValue
-    var hardTitleBarEdge = false
     /// 列表忽略安全区铺满全屏，状态栏（+ 固定标题栏）和标签栏的高度由外层量好传入。
     var safeInsets = EdgeInsets()
-    /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身不透明，顶部模糊不受影响。
+    /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身保持不透明。
     var contentOpacity: Double = 1
     /// 移除卡片（不感兴趣、点踩、拉黑）时，后面的卡片挪过来补位的动画时长；nil 表示不做动画
     /// （卡片动画关闭或系统开启了「减弱动态效果」）。
@@ -53,7 +52,8 @@ struct HomeFeedCollection: UIViewRepresentable {
         view.contentInsetAdjustmentBehavior = .never
         applyInsets(to: view)
         // 卡片从顶部滑过时的 iOS 26 scroll edge effect，底部不加。
-        view.topEdgeEffect.style = topEdgeStyle
+        view.topEdgeEffect.style = .hard
+        view.topEdgeEffect.isHidden = !pinsTitleBar
         view.bottomEdgeEffect.isHidden = true
         view.delegate = coordinator
         view.prefetchDataSource = coordinator
@@ -80,7 +80,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         coordinator.removalAnimationDuration = removalAnimationDuration
         coordinator.showsHeaderRow = !pinsTitleBar
         applyInsets(to: view)
-        if view.topEdgeEffect.style != topEdgeStyle { view.topEdgeEffect.style = topEdgeStyle }
+        view.topEdgeEffect.isHidden = !pinsTitleBar
         coordinator.state.setRefreshing(isRefreshing)
         coordinator.pull.threshold = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
         coordinator.pull.enabled = !isRefreshing
@@ -94,8 +94,6 @@ struct HomeFeedCollection: UIViewRepresentable {
         coordinator.apply(rows)
         DispatchQueue.main.async { [weak coordinator] in coordinator?.updateExposure() }
     }
-
-    private var topEdgeStyle: UIScrollEdgeEffect.Style { pinsTitleBar && hardTitleBarEdge ? .hard : .soft }
 
     /// 列表内的页头自带上下留白，紧贴状态栏下方，与其它页面的页头位置一致；
     /// 固定标题栏时卡片紧贴栏下，补回网格留白。

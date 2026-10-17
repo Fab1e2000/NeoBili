@@ -51,7 +51,8 @@ struct HomeView: View {
                         .padding(.horizontal, 20)
                 }
             }
-            .scrollEdgeEffectStyle(titleBarStyle.scrollEdgeStyle, for: .top)
+            .scrollEdgeEffectStyle(.hard, for: .top)
+            .scrollEdgeEffectHidden(!titleBarStyle.isPinned, for: .top)
             .background(Color(uiColor: .systemGroupedBackground))
             .task { await viewModel.loadInitial() }
             // 登录/退出/拿到 App 凭据后服务端会切到个性化/通用推流，
@@ -122,7 +123,6 @@ struct HomeView: View {
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
                 onOpenMine: { openMine?(()) },
                 pinsTitleBar: pinsTitleBar,
-                hardTitleBarEdge: titleBarStyle == .pinnedHard,
                 safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity,
                 // 补位整段 0.3 秒，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。

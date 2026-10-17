@@ -7,21 +7,20 @@ enum TitleBarSettings {
     static let styleKey = "neobili.titleBarStyle"
 
     enum Style: String, CaseIterable {
-        case scrolling, pinnedHard, pinnedGradient
+        case scrolling, pinnedHard
 
         var isPinned: Bool { self != .scrolling }
-        var scrollEdgeStyle: ScrollEdgeEffectStyle { self == .pinnedHard ? .hard : .soft }
         var title: String {
             switch self {
             case .scrolling: String(localized: "随内容滚动")
             case .pinnedHard: String(localized: "固定·切边")
-            case .pinnedGradient: String(localized: "固定·渐变")
             }
         }
     }
 
     static func selected(_ rawValue: String, legacyPinned: Bool) -> Style {
-        Style(rawValue: rawValue) ?? (legacyPinned ? .pinnedGradient : .scrolling)
+        if rawValue == "pinnedGradient" { return .pinnedHard }
+        return Style(rawValue: rawValue) ?? (legacyPinned ? .pinnedHard : .scrolling)
     }
 }
 

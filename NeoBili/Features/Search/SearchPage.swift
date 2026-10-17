@@ -107,7 +107,8 @@ struct SearchPage: View {
             }
             .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: displaysHeader)
         }
-        .scrollEdgeEffectStyle(titleBarStyle.scrollEdgeStyle, for: .top)
+        .scrollEdgeEffectStyle(.hard, for: .top)
+        .scrollEdgeEffectHidden(!titleBarStyle.isPinned, for: .top)
         .task { await viewModel.loadHotSearches() }
         .onDisappear { isFocused = false }
         .toolbar(.hidden, for: .navigationBar)
