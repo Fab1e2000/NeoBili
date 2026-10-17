@@ -130,30 +130,33 @@ struct PlaybackWatchProgress {
 /// Keeping this separate lets the final checkpoint finish after the player exits.
 @MainActor
 final class PlaybackWatchProgressSender {
-    private struct Key: Hashable {
-        let loginSessionID: UUID
-        let bvid: String
-        let cid: Int
-    }
+    @MainActor final class Registry {
+        private struct Key: Hashable {
+            let loginSessionID: UUID
+            let bvid: String
+            let cid: Int
+        }
 
-    private final class WeakReference {
-        weak var value: PlaybackWatchProgressSender?
-        init(_ value: PlaybackWatchProgressSender) { self.value = value }
-    }
+        private final class WeakReference {
+            weak var value: PlaybackWatchProgressSender?
+            init(_ value: PlaybackWatchProgressSender) { self.value = value }
+        }
 
-    private static var sharedSenders: [Key: WeakReference] = [:]
+        private var sharedSenders: [Key: WeakReference] = [:]
 
-    /// Reopening the same part must join its old writer while the last request
-    /// is still in flight. Otherwise that request can overwrite newer history.
-    /// Only live reporters use this registry; injected test reporters stay local.
-    static func shared(loginSessionID: UUID, bvid: String, cid: Int,
-                       report: @escaping @Sendable (Double) async -> Void) -> PlaybackWatchProgressSender {
-        sharedSenders = sharedSenders.filter { $0.value.value != nil }
-        let key = Key(loginSessionID: loginSessionID, bvid: bvid, cid: cid)
-        if let existing = sharedSenders[key]?.value { return existing }
-        let sender = PlaybackWatchProgressSender(report: report)
-        sharedSenders[key] = WeakReference(sender)
-        return sender
+        /// Reopening the same part must join its old writer while the last request
+        /// is still in flight. Otherwise that request can overwrite newer history.
+        /// The dependency graph owns this registry; tests create independent registries.
+        func sender(loginSessionID: UUID, bvid: String, cid: Int,
+                           report: @escaping @Sendable (Double) async -> Void) -> PlaybackWatchProgressSender {
+            sharedSenders = sharedSenders.filter { $0.value.value != nil }
+            let key = Key(loginSessionID: loginSessionID, bvid: bvid, cid: cid)
+            if let existing = sharedSenders[key]?.value { return existing }
+            let sender = PlaybackWatchProgressSender(report: report)
+            sharedSenders[key] = WeakReference(sender)
+            return sender
+        }
+
     }
 
     private let report: @Sendable (Double) async -> Void
@@ -181,30 +184,43 @@ final class PlaybackWatchProgressSender {
 /// 移动心跳的观看秒数与历史进度分开；不能把续播/拖动位置当成观看时长。
 @MainActor
 final class PlaybackWatchReportSender {
-    private struct Key: Hashable {
-        let loginSessionID: UUID
-        let bvid: String
-        let cid: Int
-    }
+    @MainActor final class Registry {
+        private struct Key: Hashable {
+            let loginSessionID: UUID
+            let bvid: String
+            let cid: Int
+        }
 
-    private final class WeakReference {
-        weak var value: PlaybackWatchReportSender?
-        init(_ value: PlaybackWatchReportSender) { self.value = value }
-    }
+        private final class WeakReference {
+            weak var value: PlaybackWatchReportSender?
+            init(_ value: PlaybackWatchReportSender) { self.value = value }
+        }
 
-    private static var sharedSenders: [Key: WeakReference] = [:]
+        private var sharedSenders: [Key: WeakReference] = [:]
 
-    /// Reopening the same part must join its old writer while the last request
-    /// is still in flight. Otherwise that request can overwrite newer history.
-    /// Only live reporters use this registry; injected test reporters stay local.
-    static func shared(loginSessionID: UUID, bvid: String, cid: Int,
-                       report: @escaping @Sendable (PlaybackWatchReport) async -> Void) -> PlaybackWatchReportSender {
-        sharedSenders = sharedSenders.filter { $0.value.value != nil }
-        let key = Key(loginSessionID: loginSessionID, bvid: bvid, cid: cid)
-        if let existing = sharedSenders[key]?.value { return existing }
-        let sender = PlaybackWatchReportSender(report: report)
-        sharedSenders[key] = WeakReference(sender)
-        return sender
+        /// Reopening the same part must join its old writer while the last request
+        /// is still in flight. Otherwise that request can overwrite newer history.
+        /// The dependency graph owns this registry; tests create independent registries.
+        func sender(loginSessionID: UUID, bvid: String, cid: Int,
+                           report: @escaping @Sendable (PlaybackWatchReport) async -> Void) -> PlaybackWatchReportSender {
+            sharedSenders = sharedSenders.filter { $0.value.value != nil }
+            let key = Key(loginSessionID: loginSessionID, bvid: bvid, cid: cid)
+            if let existing = sharedSenders[key]?.value { return existing }
+            let sender = PlaybackWatchReportSender(report: report)
+            sharedSenders[key] = WeakReference(sender)
+            return sender
+        }
+
+        func sender(loginSessionID: UUID, bvid: String, cid: Int,
+                           serverReport: @escaping @Sendable (PlaybackWatchReport) async -> Int?) -> PlaybackWatchReportSender {
+            sharedSenders = sharedSenders.filter { $0.value.value != nil }
+            let key = Key(loginSessionID: loginSessionID, bvid: bvid, cid: cid)
+            if let existing = sharedSenders[key]?.value { return existing }
+            let sender = PlaybackWatchReportSender(serverReport: serverReport, receivesAcknowledgements: true)
+            sharedSenders[key] = WeakReference(sender)
+            return sender
+        }
+
     }
 
     private let report: @Sendable (PlaybackWatchReport) async -> Int?
@@ -218,16 +234,6 @@ final class PlaybackWatchReportSender {
 
     init(serverReport: @escaping @Sendable (PlaybackWatchReport) async -> Int?, receivesAcknowledgements: Bool) {
         self.report = serverReport
-    }
-
-    static func shared(loginSessionID: UUID, bvid: String, cid: Int,
-                       serverReport: @escaping @Sendable (PlaybackWatchReport) async -> Int?) -> PlaybackWatchReportSender {
-        sharedSenders = sharedSenders.filter { $0.value.value != nil }
-        let key = Key(loginSessionID: loginSessionID, bvid: bvid, cid: cid)
-        if let existing = sharedSenders[key]?.value { return existing }
-        let sender = PlaybackWatchReportSender(serverReport: serverReport, receivesAcknowledgements: true)
-        sharedSenders[key] = WeakReference(sender)
-        return sender
     }
 
     func enqueue(_ position: PlaybackWatchReport?) {

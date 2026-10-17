@@ -77,3 +77,20 @@ extension SystemNowPlayingCenter {
         }
     )
 }
+
+extension PlaybackWatchProgressSender {
+    static func shared(loginSessionID: UUID, bvid: String, cid: Int,
+                       report: @escaping @Sendable (Double) async -> Void) -> PlaybackWatchProgressSender {
+        PlaybackDependencies.live.watchProgress.sender(loginSessionID: loginSessionID, bvid: bvid, cid: cid, report: report)
+    }
+}
+extension PlaybackWatchReportSender {
+    static func shared(loginSessionID: UUID, bvid: String, cid: Int,
+                       report: @escaping @Sendable (PlaybackWatchReport) async -> Void) -> PlaybackWatchReportSender {
+        PlaybackDependencies.live.watchReports.sender(loginSessionID: loginSessionID, bvid: bvid, cid: cid, report: report)
+    }
+    static func shared(loginSessionID: UUID, bvid: String, cid: Int,
+                       serverReport: @escaping @Sendable (PlaybackWatchReport) async -> Int?) -> PlaybackWatchReportSender {
+        PlaybackDependencies.live.watchReports.sender(loginSessionID: loginSessionID, bvid: bvid, cid: cid, serverReport: serverReport)
+    }
+}

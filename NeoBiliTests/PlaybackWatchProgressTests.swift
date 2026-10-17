@@ -128,8 +128,9 @@ final class PlaybackWatchProgressTests: XCTestCase {
         let latestFinished = expectation(description: "newest heartbeat finishes after old request")
         let recorder = WatchReportRecorder()
         let gate = WatchReportGate()
+        let registry = PlaybackWatchProgressSender.Registry()
         let login = UUID()
-        var old: PlaybackWatchProgressSender? = .shared(loginSessionID: login, bvid: "same", cid: 1) { value in
+        var old: PlaybackWatchProgressSender? = registry.sender(loginSessionID: login, bvid: "same", cid: 1) { value in
             await recorder.append(value)
             if value == 55 {
                 firstStarted.fulfill()
@@ -142,7 +143,7 @@ final class PlaybackWatchProgressTests: XCTestCase {
         await fulfillment(of: [firstStarted], timeout: 1)
         old?.enqueue(60)
         old = nil
-        let reopened = PlaybackWatchProgressSender.shared(loginSessionID: login, bvid: "same", cid: 1) { _ in
+        let reopened = registry.sender(loginSessionID: login, bvid: "same", cid: 1) { _ in
             XCTFail("the old in-flight writer should have been reused")
         }
         reopened.enqueue(65)
@@ -153,17 +154,18 @@ final class PlaybackWatchProgressTests: XCTestCase {
     }
 
     func testHeartbeatWritersSeparatePartsAndLoginsAndDoNotRetainIdlePlayers() {
+        let registry = PlaybackWatchProgressSender.Registry()
         let login = UUID()
-        let first = PlaybackWatchProgressSender.shared(loginSessionID: login, bvid: "same", cid: 1) { _ in }
-        let same = PlaybackWatchProgressSender.shared(loginSessionID: login, bvid: "same", cid: 1) { _ in }
-        let otherPart = PlaybackWatchProgressSender.shared(loginSessionID: login, bvid: "same", cid: 2) { _ in }
-        let otherLogin = PlaybackWatchProgressSender.shared(loginSessionID: UUID(), bvid: "same", cid: 1) { _ in }
+        let first = registry.sender(loginSessionID: login, bvid: "same", cid: 1) { _ in }
+        let same = registry.sender(loginSessionID: login, bvid: "same", cid: 1) { _ in }
+        let otherPart = registry.sender(loginSessionID: login, bvid: "same", cid: 2) { _ in }
+        let otherLogin = registry.sender(loginSessionID: UUID(), bvid: "same", cid: 1) { _ in }
         XCTAssertTrue(first === same)
         XCTAssertFalse(first === otherPart)
         XCTAssertFalse(first === otherLogin)
         weak var released: PlaybackWatchProgressSender?
         do {
-            let unused = PlaybackWatchProgressSender.shared(loginSessionID: login, bvid: "unused", cid: 1) { _ in }
+            let unused = registry.sender(loginSessionID: login, bvid: "unused", cid: 1) { _ in }
             released = unused
         }
         XCTAssertNil(released)

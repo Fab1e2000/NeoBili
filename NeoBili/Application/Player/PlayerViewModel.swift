@@ -347,7 +347,7 @@ final class PlayerViewModel {
             }
         } else {
             self.watchProgressSender = nil
-            self.watchReportSender = .shared(loginSessionID: loginSessionID, bvid: bvid, cid: cid, serverReport: { report in
+            self.watchReportSender = dependencies.watchReports.sender(loginSessionID: loginSessionID, bvid: bvid, cid: cid, serverReport: { report in
                 if report.aid > 0 {
                     return try? await services.library.reportAppWatch(bvid: bvid, aid: report.aid, cid: cid, report: report,
                                                      expectedSessionID: loginSessionID)

@@ -5,6 +5,7 @@ import Observation
 /// requests audio focus or treats manifest prefetch as watched playback.
 @MainActor @Observable
 final class HomeInlinePreview {
+    @ObservationIgnored private let dependencies: PlaybackDependencies
     @ObservationIgnored private let telemetry: TelemetryService
     private(set) var videoID: String?
     private(set) var session: MPVPlayerSession?
@@ -33,15 +34,20 @@ final class HomeInlinePreview {
     @ObservationIgnored private let openSource: @MainActor (MPVPlayerSession, PlaybackSource) async throws -> Void
     @ObservationIgnored private let makeSession: @MainActor (VideoPlaybackConfiguration) -> MPVPlayerSession
 
-    init(telemetry: TelemetryService = ApplicationServices.live.telemetry, loader: @escaping @Sendable (VideoSummary, UUID, UUID) async throws -> (Int, PlaybackSource) = { video, owner, account in
-        guard !RuntimePolicy.isRegression else { throw CancellationError() }
-        return try await HomeInlinePreview.loadPreviewSource(video, owner: owner, account: account)
-    }, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+    init(telemetry: TelemetryService? = nil,
+         loader: (@Sendable (VideoSummary, UUID, UUID) async throws -> (Int, PlaybackSource))? = nil,
+         clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          reporter: (@Sendable (PlaybackWatchReport) async -> Void)? = nil,
          opener: @escaping @MainActor (MPVPlayerSession, PlaybackSource) async throws -> Void = { try await $0.open(source: $1) },
-         sessionFactory: @escaping @MainActor (VideoPlaybackConfiguration) -> MPVPlayerSession = { MPVPlayerSession(configuration: $0) }) {
-        self.telemetry = telemetry
-        loadSource = loader; self.clock = clock; injectedReporter = reporter; openSource = opener
+         sessionFactory: @escaping @MainActor (VideoPlaybackConfiguration) -> MPVPlayerSession = { MPVPlayerSession(configuration: $0) },
+         dependencies: PlaybackDependencies = .live) {
+        self.dependencies = dependencies
+        self.telemetry = telemetry ?? dependencies.services.telemetry
+        loadSource = loader ?? { video, owner, account in
+            guard !RuntimePolicy.isRegression else { throw CancellationError() }
+            return try await HomeInlinePreview.loadPreviewSource(video, owner: owner, account: account,
+                                                                 cache: dependencies.preparation)
+        }; self.clock = clock; injectedReporter = reporter; openSource = opener
         makeSession = sessionFactory
     }
 
@@ -66,7 +72,8 @@ final class HomeInlinePreview {
 
     func select(_ video: VideoSummary) {
         guard video.isLargeRecommendationCard, video.recommendationTarget == nil else { stop(); return }
-        let account = ApplicationServices.live.session.currentID()
+        let services = dependencies.services
+        let account = services.session.currentID()
         guard video.playbackEntry.loginSessionID == nil || video.playbackEntry.loginSessionID == account else { stop(); return }
         if videoID == video.bvid, accountSession == account, current?.playbackEntry == video.playbackEntry { return }
         stop()
@@ -80,7 +87,7 @@ final class HomeInlinePreview {
                 try await Task.sleep(for: .milliseconds(250))
                 let (cid, source) = try await loader(video, owner, account)
                 try Task.checkCancellation()
-                guard let self, self.requestID == id, ApplicationServices.live.session.currentID() == account else { return }
+                guard let self, self.requestID == id, services.session.currentID() == account else { return }
                 // Publishing a session mounts PlayerSurface and initializes mpv,
                 // even before its first frame is visible. Keep that work behind
                 // both the dwell threshold and the cancellable manifest load.
@@ -96,8 +103,8 @@ final class HomeInlinePreview {
                 self.cid = cid; self.duration = source.duration
                 if let reporter = self.injectedReporter { self.reportSender = PlaybackWatchReportSender(report: reporter) }
                 else {
-                    self.reportSender = .shared(loginSessionID: account, bvid: video.bvid, cid: cid, serverReport: { report in
-                        try? await ApplicationServices.live.library.reportAppWatch(bvid: video.bvid, aid: video.aid, cid: cid, report: report, expectedSessionID: account)
+                    self.reportSender = self.dependencies.watchReports.sender(loginSessionID: account, bvid: video.bvid, cid: cid, serverReport: { report in
+                        try? await services.library.reportAppWatch(bvid: video.bvid, aid: video.aid, cid: cid, report: report, expectedSessionID: account)
                     })
                 }
                 try await self.openSource(surface, source)
@@ -116,7 +123,7 @@ final class HomeInlinePreview {
         if let video = current {
             finish()
             let owner = ownerID, account = accountSession, resolvedCID = cid
-            Task { await VideoPreparationCache.shared.cancelPlaybackURL(bvid: video.bvid, cid: resolvedCID,
+            Task { await dependencies.preparation.cancelPlaybackURL(bvid: video.bvid, cid: resolvedCID,
                 ownerID: owner, sessionID: account) }
         }
         requestID = UUID(); task?.cancel(); task = nil
