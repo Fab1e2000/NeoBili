@@ -94,6 +94,7 @@ final class PlayerPlaybackTests: XCTestCase {
         XCTAssertEqual(options["demuxer-max-back-bytes"], "456")
         XCTAssertEqual(options["network-timeout"], "7")
         XCTAssertEqual(options["video-sync"], "audio")
+        XCTAssertEqual(options["audio-exclusive"], "yes")
     }
 
     /// 模拟器没有 VideoToolbox 硬解通道，即便配置里开着硬解也要落到软解，

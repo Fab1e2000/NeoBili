@@ -179,6 +179,15 @@ Cookie 或原始值的持久化哈希。原始重放错误输出不转发。相�
 
 ## CI
 
+Build 工作流的构建与回归任务统一使用 `ci-approval` 环境。所有 PR（包括维护者自己的
+PR）及手动运行先等待环境审批，批准前不启动构建或测试 runner。在 Actions 对应运行中
+选择 **Review deployments → ci-approval → Approve and deploy** 后运行；这与 PR 代码审查
+的 Approve 是两个独立操作。PR 更新后创建新运行，旧运行自动取消，新运行需要重新批准。
+
+仓库 Settings → Environments → `ci-approval` 必须配置 Required reviewers 为
+`Fab1e2000`，允许 self-review，并禁止管理员绕过保护规则。环境名称本身不会启用审批，
+迁移仓库时必须同时配置保护规则。发布工作流不使用此环境，仍按版本标签触发。
+
 每次 PR 或手动运行 Build 在 Xcode 26.2、26.6 编译模拟器目标；26.6 使用
 `bash scripts/verify.sh full` 执行工作流脚本、离线与确定性模拟器回归，与本地使用同一入口。
 CI 固定选择 iOS 26.5 runtime 的 iPhone，记录选中的设备；缺少工具链/runtime 时失败，

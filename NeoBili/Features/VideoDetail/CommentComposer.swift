@@ -42,7 +42,6 @@ private struct CommentComposerHost: ViewModifier {
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.commentBottomInset) private var bottomInset
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var barHeight: CGFloat = 64
     private var savedDraft: CommentDraft { viewModel.commentDraft(root: root?.rpid ?? 0) }
     @State private var sending = false
     @State private var sendError: String?
@@ -59,18 +58,20 @@ private struct CommentComposerHost: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        content
+        // The composer owns real layout space, including when text or a reply
+        // target makes it taller. Keep the scroll viewport above it instead of
+        // overlaying controls and asynchronously compensating with margins.
+        VStack(spacing: 0) {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            inputBar
+                .padding(.bottom, inputBottomInset)
+        }
             .environment(\.replyToComment, replyAction)
             // 处理闭包记着当前的草稿和楼层；换视频（换评论模型、换草稿）或换楼层时重新装一次。
             // 旧草稿被旧闭包持有，新草稿不会和它撞上同一个对象标识。
             .onChange(of: ReplyHandlerKey(draft: ObjectIdentifier(savedDraft), root: root?.rpid), initial: true) {
                 installReplyHandler()
-            }
-            .contentMargins(.bottom, barHeight + inputBottomInset, for: .scrollContent)
-            .overlay(alignment: .bottom) {
-                inputBar
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
-                    .padding(.bottom, inputBottomInset)
             }
             .onChange(of: account.sessionID) {
                 viewModel.clearCommentDrafts()

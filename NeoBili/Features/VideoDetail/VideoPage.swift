@@ -57,6 +57,7 @@ struct VideoPage: View {
     /// 内容区顶部的圆角半径（连续曲率），在预览页里调定。
     private let contentCornerRadius: CGFloat = 21
     @State private var isShowingSeason = false
+    @State private var seasonPickerSnapshot: UgcSeason?
     @State private var isShowingParts = false
     @State private var isShowingFavoriteFolders = false
     @State private var isShowingDanmakuComposer = false
@@ -114,24 +115,15 @@ struct VideoPage: View {
     /// 视频页上弹出的面板：合集、分 P、发弹幕、收藏夹。单独拆出来以减轻主体的类型推断负担。
     private func withSheets(_ content: some View) -> some View {
         content
-        .sheet(isPresented: $isShowingSeason) {
-            if let season = viewModel?.detail?.ugcSeason {
-                UgcSeasonSheet(
-                    season: season,
-                    currentBvid: store.route?.bvid,
-                    onSelect: store.openEpisode
-                )
+        .sheet(isPresented: $isShowingSeason, onDismiss: { seasonPickerSnapshot = nil }) {
+            if let season = seasonPickerSnapshot {
+                UgcSeasonPlaybackSheet(season: season)
                 .appTextSize()
             }
         }
         .sheet(isPresented: $isShowingParts) {
             if let detail = viewModel?.detail, detail.pages.count > 1 {
-                VideoPartsSheet(
-                    parts: detail.pages,
-                    currentCid: store.activeCid ?? detail.cid,
-                    coverURL: store.route?.secureCoverURL,
-                    onSelect: { part in store.selectPart(cid: part.cid) }
-                )
+                VideoPartsPlaybackSheet(parts: detail.pages, coverURL: store.route?.secureCoverURL)
                 .appTextSize()
             }
         }
@@ -515,7 +507,10 @@ struct VideoPage: View {
                     face: detail.owner.face, hasUpdate: false))
             },
             onOpenTag: { spacePath.append(VideoTagSearchRoute(keyword: $0.tagName)) },
-            onShowSeason: { isShowingSeason = true }, onShowParts: { isShowingParts = true },
+            onShowSeason: {
+                seasonPickerSnapshot = detail.ugcSeason
+                isShowingSeason = true
+            }, onShowParts: { isShowingParts = true },
             actionBar: actionBar).make(detail)
     }
 
@@ -591,10 +586,16 @@ struct VideoPage: View {
 
     /// 当前这一集在合集里排第几，用于折叠行右侧的「12/41」。
     private func currentEpisodeIndex(in season: UgcSeason) -> Int? {
-        guard let bvid = store.route?.bvid,
-              let index = season.episodes.firstIndex(where: { $0.bvid == bvid })
-        else { return nil }
-        return index + 1
+        guard let bvid = store.route?.bvid else { return nil }
+        var offset = 0
+        for section in season.sections ?? [] {
+            let episodes = section.episodes ?? []
+            if let index = episodes.firstIndex(where: { $0.bvid == bvid }) {
+                return offset + index + 1
+            }
+            offset += episodes.count
+        }
+        return nil
     }
 
     /// 当前播放的分P排第几（从 1 开始），用于折叠行右侧的「P3/12」。

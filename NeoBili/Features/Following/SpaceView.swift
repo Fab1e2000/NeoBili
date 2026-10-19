@@ -25,7 +25,7 @@ struct SpaceView: View {
     /// 各分页的最新滚动位置。body 不读它，所以放进引用盒子保存：
     /// 消除此字典写入造成的状态失效；头部折叠等其它状态仍可能更新视图。
     @State private var pageOffsets = PageOffsetBox()
-    @State private var headerCollapse: CGFloat = 0
+    @State private var headerMotion = SpaceHeaderMotion()
     @State private var pickerHeight: CGFloat = 0
     @State private var scrollingPages: Set<Tab> = []
     @State private var videoPosition = ScrollPosition(edge: .top)
@@ -68,16 +68,13 @@ struct SpaceView: View {
             .scrollIndicators(.hidden)
             .overlay(alignment: .top) {
                 VStack(spacing: 0) {
-                    header
-                        // 先按完整宽度测量固有高度，再裁掉滚出顶部的部分。
-                        // 折叠不能反过来压缩头图的宽高比或资料区。
-                        .fixedSize(horizontal: false, vertical: true)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                            headerHeight = height
-                        }
-                        .frame(height: headerHeight > 0 ? max(headerHeight - headerCollapse, 0) : nil,
-                               alignment: .bottom)
-                        .clipped()
+                    SpaceCollapsingHeader(motion: headerMotion, height: headerHeight) {
+                        header
+                            .fixedSize(horizontal: false, vertical: true)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                                headerHeight = height
+                            }
+                    }
 
                     tabPicker
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
@@ -101,6 +98,7 @@ struct SpaceView: View {
         .task { await viewModel.loadVideosIfNeeded() }
         .task(id: followContext) { await viewModel.loadCard(followContext) }
         .onChange(of: followContext) { _, context in viewModel.setFollowContext(context) }
+        .onChange(of: tab) { _, selected in synchronizeHeader(in: selected) }
         .task(id: tab) {
             // 切到动态那一栏才去加载它，进页面时不白跑一次请求。
             if tab == .dynamics {
@@ -153,6 +151,9 @@ struct SpaceView: View {
                 scrollingPages.insert(pageTab)
             } else {
                 scrollingPages.remove(pageTab)
+                if pageTab == tab {
+                    synchronizeHeader(in: pageTab == .videos ? .dynamics : .videos)
+                }
             }
         }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -162,9 +163,8 @@ struct SpaceView: View {
             // 只有纵向手势更新共享头部；分页切换和程序同步产生的回调不参与。
             guard pageTab == tab, scrollingPages.contains(pageTab) else { return }
             let collapse = min(max(offset, 0), headerHeight)
-            guard collapse != headerCollapse else { return }
-            headerCollapse = collapse
-            synchronizeHeader(in: pageTab == .videos ? .dynamics : .videos)
+            guard collapse != headerMotion.collapse else { return }
+            headerMotion.collapse = collapse
         }
         .onAppear {
             if pageTab != tab { synchronizeHeader(in: pageTab) }
@@ -181,7 +181,7 @@ struct SpaceView: View {
     private func synchronizeHeader(in pageTab: Tab) {
         let offset = SpaceHeaderLayout.synchronizedOffset(
             pageOffset: pageOffsets.storage[pageTab] ?? 0,
-            collapse: headerCollapse,
+            collapse: headerMotion.collapse,
             headerHeight: headerHeight
         )
         pageOffsets.storage[pageTab] = offset
@@ -435,6 +435,24 @@ struct SpaceView: View {
                 feedback.show(message)
             }
         }
+    }
+}
+
+/// Only the clipping view observes this per-frame value. The page lists do not.
+@MainActor @Observable
+private final class SpaceHeaderMotion {
+    var collapse: CGFloat = 0
+}
+
+private struct SpaceCollapsingHeader<Content: View>: View {
+    let motion: SpaceHeaderMotion
+    let height: CGFloat
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .frame(height: height > 0 ? max(height - motion.collapse, 0) : nil, alignment: .bottom)
+            .clipped()
     }
 }
 

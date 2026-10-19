@@ -98,7 +98,38 @@ final class DanmakuEngine: UIView {
         cache.totalCostLimit = 24 * 1024 * 1024
         return cache
     }()
-    private static let bitmapScaleLimit: CGFloat = 3
+    // 2x keeps text legible while using 4/9 of the pixels of a 3x bitmap.
+    private static let bitmapScaleLimit: CGFloat = 2
+    var renderingTime: () -> TimeInterval = { CACurrentMediaTime() }
+    var isResourceConstrained: () -> Bool = {
+        ProcessInfo.processInfo.isLowPowerModeEnabled ||
+            ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+    }
+    private var rasterWindowStart: TimeInterval = -.infinity
+    private var rasterCount = 0
+#if NEOBILI_REGRESSION
+    private(set) var rasterizationCount = 0
+#endif
+
+    private func hasRasterizationBudget() -> Bool {
+        let now = renderingTime()
+        let constrained = isResourceConstrained()
+        let interval = constrained ? 1.0 / 30 : 1.0 / 60
+        if now - rasterWindowStart >= interval || now < rasterWindowStart {
+            rasterWindowStart = now
+            rasterCount = 0
+        }
+        return rasterCount < (constrained ? 2 : 4)
+    }
+
+    private func admitRasterization() -> Bool {
+        guard hasRasterizationBudget() else { return false }
+        rasterCount += 1
+#if NEOBILI_REGRESSION
+        rasterizationCount += 1
+#endif
+        return true
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -239,7 +270,7 @@ final class DanmakuEngine: UIView {
 
     private func present(_ item: DanmakuItem) {
         if !item.isScroll && (item.isTop ? blockTop : blockBottom) { return }
-        guard bounds.width > 10, activeCount < Self.maximumActiveLayers else { return }
+        guard bounds.width > 10, activeCount < (isResourceConstrained() ? 30 : Self.maximumActiveLayers) else { return }
         rebuildTracks()
         // Reject a saturated lane before text measurement and bitmap drawing.
         // Width-dependent catch-up checks still run in place(scroll:layer:width:).
@@ -257,7 +288,12 @@ final class DanmakuEngine: UIView {
         guard let layer = Self.bitmap(for: item.text, color: coloredEnabled ? item.color : 0xFFFFFF, fontSize: fontSize,
                                       framed: item.isSelf, cache: bitmapCache,
                                       scale: min(window?.screen.scale ?? traitCollection.displayScale,
-                                                 Self.bitmapScaleLimit)) else { return }
+                                                 Self.bitmapScaleLimit),
+                                      canPlace: { [self] width in
+                                          !item.isScroll || scrollTrackIndex(width: width) != nil
+                                      },
+                                      hasBudget: { [self] in hasRasterizationBudget() },
+                                      canRasterize: { [self] in admitRasterization() }) else { return }
         let width = layer.bounds.width
         if item.isScroll {
             place(scroll: item, layer: layer, width: width)
@@ -268,8 +304,8 @@ final class DanmakuEngine: UIView {
 
     /// 滚动弹幕：同轨道前一条右缘必须已让出右入口，且窄的前条不能被宽的新条追尾
     /// （PiliPlus _scrollCanAddToTrack 的两条判定）。找不到轨道就丢弃。
-    private func place(scroll item: DanmakuItem, layer: CALayer, width: CGFloat) {
-        for index in 0..<scrollTracks.count {
+    private func scrollTrackIndex(width: CGFloat) -> Int? {
+        for index in scrollTracks.indices {
             if let previous = scrollTracks[index].last {
                 let previousRight = previous.x + previous.width
                 guard previousRight <= bounds.width else { continue }
@@ -280,6 +316,13 @@ final class DanmakuEngine: UIView {
                     if catchUpTime < exitTime { continue }
                 }
             }
+            return index
+        }
+        return nil
+    }
+
+    private func place(scroll item: DanmakuItem, layer: CALayer, width: CGFloat) {
+        if let index = scrollTrackIndex(width: width) {
             scrollTracks[index].append(ScrollItem(
                 layer: layer, width: width,
                 speed: (bounds.width + width) / CGFloat(max(scrollDuration, 1)),
@@ -392,9 +435,11 @@ final class DanmakuEngine: UIView {
     private static let selfFramePadding: CGFloat = 2
 
     private static func bitmap(for text: String, color: UInt32, fontSize: CGFloat, framed: Bool,
-                               cache: NSCache<NSString, UIImage>, scale: CGFloat) -> CALayer? {
+                               cache: NSCache<NSString, UIImage>, scale: CGFloat,
+                               canPlace: (CGFloat) -> Bool, hasBudget: () -> Bool, canRasterize: () -> Bool) -> CALayer? {
         let key = "\(scale)|\(fontSize)|\(color)|\(framed)|\(text)" as NSString
         if let image = cache.object(forKey: key) {
+            guard canPlace(image.size.width) else { return nil }
             let layer = CALayer()
             layer.bounds = CGRect(origin: .zero, size: image.size)
             layer.contents = image.cgImage
@@ -402,6 +447,7 @@ final class DanmakuEngine: UIView {
             layer.actions = ["position": NSNull(), "bounds": NSNull(), "contents": NSNull()]
             return layer
         }
+        guard hasBudget() else { return nil }
         let font = UIFont.systemFont(ofSize: fontSize, weight: .medium)
         let stroke: CGFloat = 8
         let attributes: [NSAttributedString.Key: Any] = [
@@ -414,6 +460,7 @@ final class DanmakuEngine: UIView {
         let inset: CGFloat = 2
         let horizontalInset = inset + (framed ? selfFramePadding : 0)
         let size = CGSize(width: ceil(rawSize.width) + horizontalInset * 2, height: ceil(rawSize.height) + inset * 2)
+        guard canPlace(size.width), canRasterize() else { return nil }
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = false

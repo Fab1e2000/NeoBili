@@ -210,7 +210,7 @@ final class DanmakuRegressionTests: XCTestCase {
         engine.advance(by: 1)
         XCTAssertLessThan(first.position.x, previousX)
         XCTAssertNil(first.animationKeys())
-        XCTAssertEqual(first.contentsScale, engine.traitCollection.displayScale)
+        XCTAssertEqual(first.contentsScale, min(2, engine.traitCollection.displayScale))
         engine.advance(by: 10)
         XCTAssertTrue(engine.layer.sublayers?.isEmpty ?? true)
     }
@@ -218,32 +218,90 @@ final class DanmakuRegressionTests: XCTestCase {
     func testCompactionPreservesSurvivorIdentityAndAllowsLaneReuse() throws {
         let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 24))
         engine.mode = .live
+        var now = 0.0
+        engine.renderingTime = { now }
+        engine.isResourceConstrained = { false }
+        func advance(by interval: TimeInterval) {
+            now += interval
+            engine.advance(by: interval)
+        }
         engine.enqueue(text: "同宽一", color: 0xFFFFFF)
         let first = try XCTUnwrap(engine.layer.sublayers?.first)
-        engine.advance(by: 2)
+        advance(by: 2)
         engine.enqueue(text: "同宽二", color: 0xFFFFFF)
         let second = try XCTUnwrap(engine.layer.sublayers?.last)
-        engine.advance(by: 2)
+        advance(by: 2)
         engine.enqueue(text: "同宽三", color: 0xFFFFFF)
         let third = try XCTUnwrap(engine.layer.sublayers?.last)
         XCTAssertEqual(engine.layer.sublayers?.count, 3)
         // Two expire in one tick; the third must keep its layer and keep moving.
-        engine.advance(by: 5.1)
+        advance(by: 5.1)
         XCTAssertNil(first.superlayer)
         XCTAssertNil(second.superlayer)
         XCTAssertTrue(third.superlayer === engine.layer)
         let x = third.position.x
         engine.enqueue(text: "同宽四", color: 0xFFFFFF)
         XCTAssertEqual(engine.layer.sublayers?.count, 2)
-        engine.advance(by: 0.1)
+        advance(by: 0.1)
         XCTAssertLessThan(third.position.x, x)
-        engine.advance(by: 10)
+        advance(by: 10)
         XCTAssertTrue(engine.layer.sublayers?.isEmpty ?? true)
         engine.enqueue(text: "清空后复用", color: 0xFFFFFF)
         XCTAssertEqual(engine.layer.sublayers?.count, 1)
     }
 
 #if NEOBILI_REGRESSION
+    func testBurstBoundsRasterizationAndRecoversWithoutDelayingTimeline() {
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 2_400))
+        var now = 0.0
+        engine.renderingTime = { now }
+        engine.isResourceConstrained = { false }
+        engine.prepare(items: (0..<100).map {
+            DanmakuItem(time: 0, text: "密集弹幕 \($0)", mode: 5, color: 0xFFFFFF)
+        } + [DanmakuItem(time: 1, text: "下一秒", mode: 5, color: 0xFFFFFF)])
+        engine.update(currentTime: 0)
+        XCTAssertEqual(engine.rasterizationCount, 4)
+        XCTAssertEqual(engine.layer.sublayers?.count, 4)
+        now = 1
+        engine.update(currentTime: 1)
+        XCTAssertEqual(engine.rasterizationCount, 5)
+        XCTAssertEqual(engine.layer.sublayers?.count, 5, "过载消息丢弃，不排队延迟补发")
+    }
+
+    func testConstrainedBudgetAllowsCachedBitmapsAndRecovers() {
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 2_400))
+        var now = 0.0
+        var constrained = true
+        engine.renderingTime = { now }
+        engine.isResourceConstrained = { constrained }
+        func show(_ text: String) {
+            engine.presentImmediately(DanmakuItem(time: 0, text: text, mode: 5, color: 0xFFFFFF))
+        }
+        show("一"); show("二"); show("三")
+        XCTAssertEqual(engine.rasterizationCount, 2)
+        show("一")
+        XCTAssertEqual(engine.layer.sublayers?.count, 3, "缓存命中不消耗新的光栅化预算")
+        for _ in 0..<100 { show("一") }
+        XCTAssertEqual(engine.layer.sublayers?.count, 30, "高热或低电量限制活动图层")
+        engine.clear(keepTimelineAt: 0)
+        now = 1
+        constrained = false
+        for i in 0..<4 { show("恢复 \(i)") }
+        XCTAssertEqual(engine.rasterizationCount, 6)
+        XCTAssertEqual(engine.layer.sublayers?.count, 4)
+    }
+
+    func testCatchUpCollisionIsRejectedBeforeRasterization() {
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 24))
+        engine.mode = .live
+        engine.isResourceConstrained = { false }
+        engine.enqueue(text: "短", color: 0xFFFFFF)
+        engine.advance(by: 2)
+        engine.enqueue(text: String(repeating: "很长的弹幕", count: 20), color: 0xFFFFFF)
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+        XCTAssertEqual(engine.rasterizationCount, 1)
+    }
+
     func testSaturatedBurstSkipsBitmapWorkAndReopensAfterExpiry() {
         for mode in [1, 4, 5] {
             let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 24))

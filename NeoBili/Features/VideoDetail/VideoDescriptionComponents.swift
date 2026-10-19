@@ -47,15 +47,27 @@ struct VideoDescriptionComponents<ActionBar: View> {
                                viewModel?.displayedIsLiked ?? false, detail.stat.share]) {
             actionBar(detail).padding(.horizontal, contentInset)
         })
-        if let season = detail.ugcSeason, !season.episodes.isEmpty {
-            result.append(VideoDescriptionComponent("season", revision: [AnyHashable(season), AnyHashable(currentEpisodeIndex(season))]) {
-                UgcSeasonRow(season: season, currentIndex: currentEpisodeIndex(season), onTap: onShowSeason)
-                    .padding(.horizontal, contentInset)
-            })
+        if let season = detail.ugcSeason {
+            // The collapsed entry renders a summary, not the entire episode graph.
+            // Count sections without allocating a flattened episode array.
+            let total = (season.sections ?? []).reduce(0) { $0 + ($1.episodes?.count ?? 0) }
+            if total > 0 {
+                let title = season.title ?? ""
+                let currentIndex = currentEpisodeIndex(season)
+                result.append(VideoDescriptionComponent("season", revision: [title, total, AnyHashable(currentIndex)]) {
+                    UgcSeasonRow(title: title, total: total, currentIndex: currentIndex, onTap: onShowSeason)
+                        .padding(.horizontal, contentInset)
+                })
+            }
         }
         if detail.pages.count > 1 {
-            result.append(VideoDescriptionComponent("parts", revision: [AnyHashable(detail.pages), AnyHashable(currentPartIndex(detail))]) {
-                VideoPartsRow(parts: detail.pages, currentIndex: currentPartIndex(detail), onTap: onShowParts)
+            let currentIndex = currentPartIndex(detail)
+            let currentName = currentIndex.flatMap { index in
+                detail.pages.indices.contains(index - 1) ? detail.pages[index - 1].part : nil
+            } ?? String(localized: "视频分集")
+            let total = detail.pages.count
+            result.append(VideoDescriptionComponent("parts", revision: [currentName, total, AnyHashable(currentIndex)]) {
+                VideoPartsRow(currentPartName: currentName, total: total, currentIndex: currentIndex, onTap: onShowParts)
                     .padding(.horizontal, contentInset)
             })
         }

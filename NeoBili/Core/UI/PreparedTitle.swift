@@ -11,7 +11,7 @@ import UIKit
 /// 排版用系统的 NSStringDrawing：字体、行距、末尾省略号都和 SwiftUI `Text` 对齐（行距由
 /// SwiftUI 自己量出），但换行是「逐行排满」。SwiftUI `Text` 用的是系统内部的均衡换行，
 /// 没有公开接口能复现，真实标题里约 1/4 的换行位置会不同；这是有意接受的取舍。
-/// 为了同一个标题每次出现都一样，缓存没命中时就在主线程当场排一次，不退回 `Text`。
+/// 缓存未命中时先显示普通文字，再在后台生成位图；不阻塞首屏和导航转场。
 enum PreparedTitle {
     struct Key: Hashable, Sendable {
         let title: String
@@ -135,13 +135,25 @@ enum PreparedTitle {
         ])
     }
 
-    /// 取缓存；没有就在当前线程（主线程）排一次并存进缓存。预热完成前返回 nil。
+    /// Synchronous callers only read the cache; rendering never runs in a view update.
     @MainActor
-    static func image(for key: Key) -> UIImage? {
-        if let cached = cached(key) { return cached }
-        guard isReady.load(ordering: .acquiring), let image = render(key) else { return nil }
-        storage.setObject(image, forKey: key.cacheKey, cost: cost(of: image, scale: key.scale))
-        return image
+    static func image(for key: Key) -> UIImage? { cached(key) }
+
+    static func load(_ key: Key) async -> UIImage? {
+        guard !Task.isCancelled, isReady.load(ordering: .acquiring), supports(key.title) else { return nil }
+        if let image = cached(key) { return image }
+        return await withCheckedContinuation { continuation in
+            queue.async {
+                // The serial queue also coalesces a visible request with prefetch.
+                if let image = cached(key) {
+                    continuation.resume(returning: image)
+                } else {
+                    let image = render(key)
+                    if let image { storage.setObject(image, forKey: key.cacheKey, cost: cost(of: image, scale: key.scale)) }
+                    continuation.resume(returning: image)
+                }
+            }
+        }
     }
 
     /// 在后台排版并缓存；已缓存或正在排版的标题直接跳过。预热完成前不做。
@@ -150,8 +162,8 @@ enum PreparedTitle {
               pending.withLock({ $0.insert(key).inserted }) else { return }
         queue.async {
             defer { _ = pending.withLock { $0.remove(key) } }
-            // A visible card may have rendered this title while this work waited
-            // behind other titles. Reuse that result instead of drawing it twice.
+            // A visible request may already have rendered this title earlier
+            // on this queue. Reuse that result instead of drawing it twice.
             guard cached(key) == nil else { return }
             if let image = render(key) {
                 storage.setObject(image, forKey: key.cacheKey, cost: cost(of: image, scale: key.scale))
@@ -161,8 +173,8 @@ enum PreparedTitle {
 
     // MARK: 实现
 
-    // Titles are needed by imminent visible cells. Utility priority can leave
-    // prefetch behind scrolling work and force the same layout onto the main thread.
+    // Titles are needed by imminent visible cells. Keep a single worker so
+    // scrolling cannot create a burst of concurrent text layout and rendering.
     private static let queue = DispatchQueue(label: "neobili.prepared-title", qos: .userInitiated)
     private static let pending = Mutex<Set<Key>>([])
     private static let isReady = Atomic<Bool>(false)
@@ -218,7 +230,7 @@ private extension PreparedTitle.Key {
     var cacheKey: NSString { "\(pixelWidth)|\(fontSize)|\(scale)|\(title)" as NSString }
 }
 
-/// 首页卡片的标题：显示预排好的文字图（没命中缓存就当场排一次）。含 emoji 的标题、
+/// 首页卡片的标题：显示预排好的文字图，缓存未命中时异步生成。含 emoji 的标题、
 /// 或这个字号的排版参数还没量好时，用普通 `Text`。
 struct PreparedCardTitle: View {
     let title: String
@@ -226,27 +238,36 @@ struct PreparedCardTitle: View {
     let width: CGFloat
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.displayScale) private var displayScale
+    @State private var prepared: (key: PreparedTitle.Key, image: UIImage)?
 
     var body: some View {
         let fontSize = PreparedTitle.fontSize(for: dynamicTypeSize)
-        if let metrics = PreparedTitle.metrics(fontSize: fontSize),
-           PreparedTitle.supports(title),
-           let key = PreparedTitle.Key(title: title, width: width, fontSize: fontSize, scale: displayScale),
-           let image = PreparedTitle.image(for: key) {
-            Image(uiImage: image)
-                .renderingMode(.template)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .frame(height: metrics.boxHeight, alignment: .topLeading)
-                .accessibilityLabel(title)
-        } else {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2, reservesSpace: true)
-                .foregroundStyle(.primary)
-                // emoji 会把所在行撑高：顶端对齐，多出的高度只往下延伸，不会压到上方的封面。
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .frame(height: PreparedTitle.metrics(fontSize: fontSize)?.boxHeight, alignment: .topLeading)
+        let key = PreparedTitle.Key(title: title, width: width, fontSize: fontSize, scale: displayScale)
+        Group {
+            if let metrics = PreparedTitle.metrics(fontSize: fontSize),
+               PreparedTitle.supports(title),
+               let key,
+               let image = (prepared?.key == key ? prepared?.image : nil) ?? PreparedTitle.image(for: key) {
+                Image(uiImage: image)
+                    .renderingMode(.template)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(height: metrics.boxHeight, alignment: .topLeading)
+                    .accessibilityLabel(title)
+            } else {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2, reservesSpace: true)
+                    .foregroundStyle(.primary)
+                    // emoji 会把所在行撑高：顶端对齐，多出的高度只往下延伸，不会压到上方的封面。
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(height: PreparedTitle.metrics(fontSize: fontSize)?.boxHeight, alignment: .topLeading)
+            }
+        }
+        .task(id: key) {
+            guard let key, PreparedTitle.supports(title) else { prepared = nil; return }
+            guard let image = await PreparedTitle.load(key), !Task.isCancelled else { return }
+            prepared = (key, image)
         }
     }
 }

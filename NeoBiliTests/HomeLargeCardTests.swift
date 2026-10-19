@@ -153,6 +153,7 @@ final class HomeLargeCardTests: XCTestCase {
         var config=VideoPlaybackConfiguration.fastStart;config.silentPreview=true
         let options=Dictionary(uniqueKeysWithValues:MPVPlaybackOptions.make(configuration:config,isSimulator:true,httpHeaderFields:""))
         XCTAssertEqual(options["mute"],"yes");XCTAssertEqual(options["ao"],"null")
+        XCTAssertNil(options["audio-exclusive"])
         XCTAssertNil(Dictionary(uniqueKeysWithValues:MPVPlaybackOptions.make(configuration:.fastStart,isSimulator:true,httpHeaderFields:"")).first { $0.key=="ao" })
         let report=PlaybackWatchReport(position:151,watchedTime:140,pausedTime:0,maximumPosition:151,duration:241,
             startTimestamp:0,sourceFields:["from":"76","spmid":"tm.recommend.0.0"],isInlinePreview:true)

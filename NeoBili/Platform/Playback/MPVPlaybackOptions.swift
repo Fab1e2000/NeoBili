@@ -80,6 +80,10 @@ enum MPVPlaybackOptions {
             ("http-header-fields", httpHeaderFields),
             ("user-agent", BiliHeaders.userAgent)
         ]
-        return options + (configuration.silentPreview ? [("mute", "yes"), ("ao", "null")] : [])
+        // iOS AudioUnit 后端默认添加 mixWithOthers；与应用的非混音会话保持一致，
+        // 避免打开音轨时覆盖 PlaybackAudioSession 的配置。
+        return options + (configuration.silentPreview
+            ? [("mute", "yes"), ("ao", "null")]
+            : [("audio-exclusive", "yes")])
     }
 }

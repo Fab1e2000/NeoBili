@@ -6,7 +6,8 @@ import SwiftUI
 /// 简介里的分P入口。和合集（`UgcSeasonRow`）同一套显示与交互：
 /// 折叠成一行，右侧标「当前第几P / 共几P」，点开弹分P列表。
 struct VideoPartsRow: View {
-    let parts: [VideoPart]
+    let currentPartName: String
+    let total: Int
     /// 当前正在播放的分P序号（从 1 开始）。找不到时不显示序号。
     let currentIndex: Int?
     let onTap: () -> Void
@@ -31,15 +32,7 @@ struct VideoPartsRow: View {
         .accessibilityLabel("分P，\(progressText)，展开分P列表")
     }
 
-    private var currentPartName: String {
-        guard let currentIndex, parts.indices.contains(currentIndex - 1) else {
-            return String(localized: "视频分集")
-        }
-        return parts[currentIndex - 1].part
-    }
-
     private var progressText: String {
-        let total = parts.count
         guard let currentIndex else { return "\(total)" }
         return "P\(currentIndex)/\(total)"
     }
@@ -61,7 +54,6 @@ struct VideoPartsSheet: View {
                     ForEach(parts) { part in
                         Button {
                             onSelect(part)
-                            dismiss()
                         } label: {
                             VideoListCard(
                                 coverURL: coverURL,
@@ -72,12 +64,15 @@ struct VideoPartsSheet: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityAddTraits(part.cid == currentCid ? .isSelected : [])
+                        .videoPickerSelection(part.cid == currentCid)
                         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
                         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
+                        .id(part.id)
                     }
                 }
+                .scrollTargetLayout()
             }
+            .videoPickerInitialPosition(target: parts.first(where: { $0.cid == currentCid })?.id)
             .background(Color(uiColor: .systemGroupedBackground))
             .leftEdgeTapDeadZone()
             .navigationTitle("分P")
@@ -93,5 +88,70 @@ struct VideoPartsSheet: View {
         // backdrop. Keep the half-height picker opaque above a playing video.
         .presentationBackground(Color(uiColor: .systemGroupedBackground))
         .videoCardAnimationSource(.collection)
+    }
+}
+
+/// Position is owned by each presented picker. User scrolling does not change
+/// the playback target, so routine redraws never pull the list back to it.
+private struct VideoPickerInitialPosition<ID: Hashable & Sendable>: ViewModifier {
+    let target: ID?
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content
+                .task(id: target) {
+                    guard let target else { return }
+                    // Let the lazy stack register its row IDs before requesting
+                    // the initial position; no timed animation or delayed jump.
+                    await Task.yield()
+                    guard !Task.isCancelled else { return }
+                    proxy.scrollTo(target, anchor: .center)
+                }
+        }
+    }
+}
+
+private struct VideoPickerSelection: ViewModifier {
+    let selected: Bool
+    @Environment(\.appThemeColor) private var themeColor
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if selected {
+                    RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius)
+                        .fill(themeColor.opacity(0.12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius)
+                                .strokeBorder(themeColor, lineWidth: 1.5)
+                        }
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityIdentifier(selected ? "video-picker.current" : "video-picker.item")
+    }
+}
+
+extension View {
+    func videoPickerInitialPosition<ID: Hashable & Sendable>(target: ID?) -> some View {
+        modifier(VideoPickerInitialPosition(target: target))
+    }
+
+    func videoPickerSelection(_ selected: Bool) -> some View {
+        modifier(VideoPickerSelection(selected: selected))
+    }
+}
+
+struct VideoPartsPlaybackSheet: View {
+    let parts: [VideoPart]
+    let coverURL: URL?
+    @Environment(NowPlayingStore.self) private var store
+
+    var body: some View {
+        VideoPartsSheet(parts: parts, currentCid: store.activeCid, coverURL: coverURL) { part in
+            store.selectPart(cid: part.cid)
+            store.requestPlayback()
+        }
     }
 }

@@ -10,28 +10,43 @@ import XCTest
 @MainActor
 final class VideoPickerPresentationTests: XCTestCase {
     func testPartsPickerRetainsHalfAndFullHeightPresentation() async throws {
-        let parts = (1...20).map {
+        let parts = (1...60).map {
             VideoPart(cid: $0, page: $0, part: "本地分P样例 \($0)", duration: 120)
         }
+        let store = try pickerStore()
+        defer { store.close() }
         try await checkPresentation(name: "parts", content: AnyView(
-            VideoPartsSheet(parts: parts, currentCid: 1, onSelect: { _ in })
-        ))
+            VideoPartsPlaybackSheet(parts: parts, coverURL: nil).environment(store)
+        ), selectionStore: store)
     }
 
     func testSeasonPickerRetainsHalfAndFullHeightPresentation() async throws {
-        let episodes = (1...20).map { (index: Int) in
+        let episodes = (1...60).map { (index: Int) in
             UgcSeasonEpisode(episodeId: index, aid: index, cid: index, bvid: "BVFixture\(index)",
                 title: "本地合集样例 \(index)", arc: nil)
         }
         let season = UgcSeason(id: 1, title: "本地合集", cover: nil, mid: nil,
             sections: [UgcSeasonSection(id: 1, title: nil, episodes: episodes)])
+        let store = try pickerStore()
+        defer { store.close() }
         try await checkPresentation(name: "season", content: AnyView(
-            UgcSeasonSheet(season: season, currentBvid: "BVFixture1", onSelect: { _ in })
+            UgcSeasonPlaybackSheet(season: season).environment(store)
                 .environment(\.hidesPortraitVideos, false)
-        ))
+        ), selectionStore: store)
     }
 
-    private func checkPresentation(name: String, content: AnyView) async throws {
+    private func pickerStore() throws -> NowPlayingStore {
+        let suite = "picker-selection.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(false, forKey: DetailPlaybackSettings.storageKey)
+        let store = NowPlayingStore(defaults: defaults)
+        store.open(VideoDetailRoute(bvid: "BVFixture42", cid: 42), from: "fixture")
+        XCTAssertNil(store.player)
+        return store
+    }
+
+    private func checkPresentation(name: String, content: AnyView, selectionStore: NowPlayingStore) async throws {
         var activeScene: UIWindowScene?
         for _ in 0..<100 {
             activeScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
@@ -78,7 +93,31 @@ final class VideoPickerPresentationTests: XCTestCase {
             let halfFrame = presented.view.convert(presented.view.bounds, to: window)
             XCTAssertGreaterThan(halfFrame.minY, window.bounds.height * 0.2)
             XCTAssertGreaterThan(halfFrame.height, window.bounds.height * 0.3)
+            let scroll = try XCTUnwrap(scrollViews(in: presented.view).first { $0.contentSize.height > $0.bounds.height })
+            let current = try XCTUnwrap(currentItem(in: presented.view), "Playing item must be realized even far down the lazy list")
+            XCTAssertTrue(current.accessibilityTraits.contains(.selected))
+            let selectedFrame = window.convert(current.accessibilityFrame, from: window.screen.coordinateSpace)
+            let visible = scroll.convert(scroll.bounds.inset(by: scroll.adjustedContentInset), to: window)
+            XCTAssertEqual(selectedFrame.midY, visible.midY, accuracy: 12,
+                           "Opening the picker should center the playing item in the visible scroll area")
             try snapshot(window, name: "\(name)-\(style.rawValue)-medium")
+
+            for next in [43, 44] {
+                let item = try XCTUnwrap(accessibilityItem(in: presented.view) {
+                    $0.accessibilityLabel?.contains("样例 \(next)、") == true
+                })
+                XCTAssertTrue(item.accessibilityActivate(), "Select the real row button")
+                try await Task.sleep(for: .milliseconds(250))
+                XCTAssertTrue(host.presentedViewController === presented, "Selection must preserve the presented sheet")
+                XCTAssertTrue(driver.isPresented)
+                XCTAssertEqual(selectionStore.player?.cid, next, "Explicit selection starts playback even with autoplay disabled")
+                if name == "season" {
+                    XCTAssertEqual(selectionStore.route?.bvid, "BVFixture\(next)")
+                    XCTAssertNil(selectionStore.detailViewModel?.detail, "The original list survives unavailable replacement details")
+                }
+                XCTAssertTrue(currentItem(in: presented.view)?.accessibilityLabel?.contains("样例 \(next)、") == true)
+            }
+            try snapshot(window, name: "\(name)-\(style.rawValue)-after-selection")
 
             sheet.animateChanges { sheet.selectedDetentIdentifier = .large }
             try await Task.sleep(for: .milliseconds(450))
@@ -87,6 +126,11 @@ final class VideoPickerPresentationTests: XCTestCase {
             XCTAssertGreaterThan(fullFrame.height, halfFrame.height + 100)
             XCTAssertLessThan(fullFrame.minY, halfFrame.minY - 100)
             try snapshot(window, name: "\(name)-\(style.rawValue)-large")
+
+            // Browsing away from the playing item must not continually recenter.
+            scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+            try await Task.sleep(for: .milliseconds(150))
+            XCTAssertEqual(scroll.contentOffset.y, -scroll.adjustedContentInset.top, accuracy: 1)
 
             let bars = navigationBars(in: presented.view)
             XCTAssertFalse(bars.isEmpty)
@@ -114,6 +158,34 @@ final class VideoPickerPresentationTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func scrollViews(in view: UIView) -> [UIScrollView] {
+        (view as? UIScrollView).map { [$0] } ?? view.subviews.flatMap { scrollViews(in: $0) }
+    }
+
+    private func currentItem(in root: UIView) -> NSObject? {
+        accessibilityItem(in: root) { $0.accessibilityLabel?.contains("正在播放") == true }
+    }
+
+    private func accessibilityItem(in root: UIView, matching: (NSObject) -> Bool) -> NSObject? {
+        var visited = Set<ObjectIdentifier>()
+        var pending: [NSObject] = [root]
+        while let object = pending.popLast() {
+            guard visited.insert(ObjectIdentifier(object)).inserted else { continue }
+            if matching(object) {
+                return object
+            }
+            if let view = object as? UIView { pending.append(contentsOf: view.subviews) }
+            pending.append(contentsOf: (object.accessibilityElements ?? []).compactMap { $0 as? NSObject })
+            let count = object.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                for index in 0..<min(count, 1024) {
+                    if let child = object.accessibilityElement(at: index) as? NSObject { pending.append(child) }
+                }
+            }
+        }
+        return nil
     }
 
     private func navigationBars(in view: UIView) -> [UINavigationBar] {

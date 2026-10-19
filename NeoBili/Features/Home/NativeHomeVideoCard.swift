@@ -27,6 +27,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
         private let cover: CardImageView
         private let avatar: CardImageView
         private var avatarTask: Task<Void, Never>?
+        private var titleTask: Task<Void, Never>?
         private let resolveAvatar: @Sendable (Int) async -> URL?
         private let title = UIImageView()
         private let owner = UILabel()
@@ -97,6 +98,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             badge.layer.cornerCurve = .continuous
             badge.clipsToBounds = true
             badge.isHidden = true
+            title.accessibilityIdentifier = "home.card.title.bitmap"
             title.contentMode = .topLeft
             title.tintColor = .label
             fallbackTitle.numberOfLines = 2
@@ -116,7 +118,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        deinit { avatarTask?.cancel() }
+        deinit { avatarTask?.cancel(); titleTask?.cancel() }
 
         private func updateBorder() {
             layer.borderColor = UIColor.separator.resolvedColor(with: traitCollection).withAlphaComponent(
@@ -129,6 +131,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             let updated = Configuration(video: video, width: titleWidth, typeSize: dynamicTypeSize, scale: scale, aspectRatio: aspectRatio)
             guard configuration != updated else { return }
             configuration = updated
+            titleTask?.cancel()
             coverAspectRatio = aspectRatio
             // Rebinding a reused card changes its content, not its typography.
             // Avoid repeated font lookup and symbol configuration on that path.
@@ -209,6 +212,17 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                 } else {
                     fallbackTitle.font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
                     fallbackTitle.text = video.title
+                }
+            }
+            if !video.isLargeRecommendationCard, title.isHidden, PreparedTitle.supports(video.title),
+               let key = PreparedTitle.Key(title: video.title, width: titleWidth, fontSize: fontSize, scale: scale) {
+                titleTask = Task { [weak self] in
+                    guard let image = await PreparedTitle.load(key), !Task.isCancelled,
+                          let self, self.configuration == updated else { return }
+                    self.title.image = image
+                    self.title.isHidden = false
+                    self.fallbackTitle.isHidden = true
+                    self.fallbackTitle.attributedText = nil
                 }
             }
             let coverSize = CGSize(width: titleWidth + 16, height: (titleWidth + 16) / coverAspectRatio)

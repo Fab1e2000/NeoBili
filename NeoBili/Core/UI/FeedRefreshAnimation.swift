@@ -168,18 +168,9 @@ private struct TimedVideoEntrance<Content: View>: View {
     let start: TimeInterval?
     let enabled: Bool
     @ViewBuilder var content: Content
-    @State private var finishedStart: TimeInterval?
-
-    private var finished: Bool { start != nil && finishedStart == start }
+    @State private var presentationProgress: Double = 0
 
     private var duration: Double { FeedRefreshTuning.fadeIn }
-
-    private var progress: Double {
-        guard enabled, !finished else { return 1 }
-        guard start != nil else { return 0 }
-        let fraction = min(1, elapsed / duration)
-        return fraction * fraction * (3 - 2 * fraction)
-    }
 
     private var elapsed: TimeInterval {
         guard let start else { return 0 }
@@ -187,28 +178,26 @@ private struct TimedVideoEntrance<Content: View>: View {
     }
 
     var body: some View {
-        // Disabled effects never wait for a clock or suppress hit testing.
-        // TimelineView has no running display link once settled or disabled.
-        TimelineView(.animation(paused: !enabled || start == nil || finished || elapsed >= duration)) { _ in
-            content.modifier(FeedFadeInEffect(progress: progress))
-        }
-        .allowsHitTesting(!enabled || finished || start != nil)
-        .onChange(of: enabled) { _, enabled in
-            if !enabled { finishedStart = start }
-        }
-        .task(id: EntranceTaskID(start: start, enabled: enabled)) {
-            if !enabled {
-                finishedStart = start
-                return
+        // Native opacity interpolation avoids one TimelineView/body update per
+        // visible card per frame. Recycled, completed cards are visible immediately.
+        content
+            .modifier(FeedFadeInEffect(progress: !enabled || (start != nil && elapsed >= duration)
+                                      ? 1 : presentationProgress))
+            .allowsHitTesting(!enabled || start != nil)
+            .task(id: EntranceTaskID(start: start, enabled: enabled)) {
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                let initial = !enabled ? 1 : (start == nil ? 0 : min(1, elapsed / duration))
+                withTransaction(transaction) { presentationProgress = initial }
+                guard enabled, let start, initial < 1 else { return }
+                let delay = max(0, start - ProcessInfo.processInfo.systemUptime)
+                // Also yield once for a newly inserted row so the initial opacity
+                // is committed before animating. Cancellation follows row reuse.
+                do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                guard !Task.isCancelled else { return }
+                let remaining = max(0, duration - elapsed)
+                withAnimation(.easeInOut(duration: remaining)) { presentationProgress = 1 }
             }
-            guard enabled, start != nil, !finished else { return }
-            // 滚动时懒加载重新创建的卡片早已淡入：直接返回，不再多写一次状态让整张卡重算。
-            guard elapsed < duration else { return }
-            let delay = max(0, (start ?? 0) - ProcessInfo.processInfo.systemUptime)
-            let remaining = max(0, duration - elapsed) + delay
-            do { try await Task.sleep(for: .seconds(remaining)) } catch { return }
-            finishedStart = start
-        }
     }
 
     private struct EntranceTaskID: Hashable {
