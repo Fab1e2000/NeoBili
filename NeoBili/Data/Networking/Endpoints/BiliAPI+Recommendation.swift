@@ -13,27 +13,38 @@ extension BiliAPI {
             return try await appRecommendFeed(request: request, client: client, identity: identity, session: session,
                                               network: network, clickReporter: clickReporter, filter: filter)
         case .web:
-            let videos = try await webRecommendFeed(freshIndex: request.pageIndex, client: client, filter: filter)
-            return RecommendationBatch(videos: videos, nextRequest: videos.isEmpty ? nil : request.next())
+            return try await webRecommendationBatch(request: request, client: client, filter: filter)
+        case .merged:
+            return try await mergedRecommendFeed(request: request, client: client, identity: identity,
+                session: session, network: network, clickReporter: clickReporter, filter: filter)
         }
     }
 
     /// 网页推荐：Cookie 认证 + WBI 签名，每次 20 条。
     static func webRecommendFeed(freshIndex: Int, client: APIClient,
                                  filter: @Sendable () -> RecommendationFilter) async throws -> [VideoSummary] {
+        try await webRecommendationBatch(request: .init(source: .web, pageIndex: freshIndex),
+                                         client: client, filter: filter).videos
+    }
+
+    static func webRecommendationBatch(request: RecommendationRequest, merged: Bool = false,
+                                       expectedSessionID: UUID? = nil, client: APIClient,
+                                       filter: @Sendable () -> RecommendationFilter) async throws -> RecommendationBatch {
         let page: WebRecommendationPage = try await client.get(
             path: "x/web-interface/wbi/index/top/feed/rcmd",
-            params: WebRecommendationPage.parameters(freshIndex: freshIndex), requiresWBI: true
-        )
-        return page.videos(filter: filter())
+            params: WebRecommendationPage.parameters(freshIndex: request.pageIndex, merged: merged),
+            requiresWBI: true, expectedSessionID: expectedSessionID)
+        return RecommendationBatch(videos: page.videos(filter: filter()),
+                                   nextRequest: page.hasMore ? request.next() : nil)
     }
 
     static func appRecommendFeed(request: RecommendationRequest, client: APIClient, identity: DeviceIdentity,
                               session: AppRecommendationSession, network: AppNetworkMetadata,
                               clickReporter: RecommendationClickReporter,
-                              filter: @Sendable () -> RecommendationFilter) async throws -> RecommendationBatch {
+                              filter: @Sendable () -> RecommendationFilter,
+                              expectedSessionID: UUID? = nil) async throws -> RecommendationBatch {
         Task { await clickReporter.flush() }
-        let account = try await client.appAccount(expectedSessionID: nil)
+        let account = try await client.appAccount(expectedSessionID: expectedSessionID)
         if account.mid != nil, account.accessKey?.isEmpty != false { throw BiliAPIError.missingAccessKey }
         try Task.checkCancellation()
         let headers = try await identity.appRequestHeaders(expectedSessionID: account.sessionID)

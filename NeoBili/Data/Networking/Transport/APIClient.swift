@@ -61,7 +61,8 @@ public struct APIClient: Sendable {
         path: String,
         params: [String: String] = [:],
         requiresWBI: Bool = false,
-        additionalHeaders: [String: String] = [:]
+        additionalHeaders: [String: String] = [:],
+        expectedSessionID: UUID? = nil
     ) async throws -> T {
         var finalParams = params
         if requiresWBI {
@@ -92,13 +93,21 @@ public struct APIClient: Sendable {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
-        await applyCommonHeaders(to: &request)
+        let account = await authentication()
+        try Task.checkCancellation()
+        if let expectedSessionID, account.sessionID != expectedSessionID { throw CancellationError() }
+        request.httpShouldHandleCookies = false
+        request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
+        if !account.cookieHeader.isEmpty { request.setValue(account.cookieHeader, forHTTPHeaderField: "Cookie") }
         // 搜索等接口会校验自己的网页来源。调用方最后覆盖默认值，既让普通
         // API 继续共用全站 Referer，也不必为了一个特殊接口复制整段传输代码。
         for (name, value) in additionalHeaders {
             request.setValue(value, forHTTPHeaderField: name)
         }
-        return try await perform(request, retries: 2)
+        let result: T = try await perform(request, retries: 2)
+        if let expectedSessionID { _ = try await appAccount(expectedSessionID: expectedSessionID) }
+        return result
     }
 
     /// 少数接口不在 api.bilibili.com 上，返回体也没有 `{code, message, data}`

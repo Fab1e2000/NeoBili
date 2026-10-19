@@ -9,14 +9,23 @@ struct RecommendationSettingsView: View {
     /// 设置页盖在主界面之上，全局提示条看不到，失败原因直接写在分组说明里。
     @State private var credentialError: String?
     @State private var showsAppAuthorization = false
-    @AppStorage(RecommendationFilter.appRecommendKey) private var usesAppRecommendation = true
+    @AppStorage(RecommendationRequest.sourceKey) private var savedSource = ""
+    @AppStorage(RecommendationFilter.appRecommendKey) private var legacyUsesApp = true
+    private var source: Binding<RecommendationRequest.Source> {
+        Binding(get: { RecommendationRequest.savedSource(rawValue: savedSource, legacyUsesApp: legacyUsesApp) },
+                set: { savedSource = $0.rawValue })
+    }
     @AppStorage(RecommendationFilter.keepLastDataKey) private var keepsLastData = true
     @AppStorage(RecommendationFilter.lastSeenTipKey) private var showsLastSeenTip = true
 
     var body: some View {
         Form {
             Section {
-                Toggle("首页使用 App 端推荐", isOn: $usesAppRecommendation)
+                Picker(selection: source) {
+                    Text("移动端推荐").tag(RecommendationRequest.Source.app)
+                    Text("网页推荐").tag(RecommendationRequest.Source.web)
+                    Text("混合推荐").tag(RecommendationRequest.Source.merged)
+                } label: { Text("推荐来源") }
                 if account.isLoggedIn { appCredentialRow }
             } footer: {
                 Text(appCredentialFooter)
@@ -61,7 +70,7 @@ struct RecommendationSettingsView: View {
     }
 
     private var appCredentialFooter: String {
-        let base = String(localized: "关闭后改用网页端推荐。若网页端推荐不太符合预期，可切换回 App 端推荐。")
+        let base = String(localized: "切换后完全退出并重新打开应用生效。混合推荐交错显示移动端与网页结果，并去除重复视频。移动端沿用当前 iOS 登录身份。")
         guard account.isLoggedIn, !account.hasAppCredential else { return base }
         if account.needsAppReauthorization {
             return base + String(localized: "App 登录凭据已失效，请使用当前账号的短信验证码重新授权。网页登录状态已保留。")

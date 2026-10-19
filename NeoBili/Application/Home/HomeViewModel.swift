@@ -109,6 +109,7 @@ final class HomeViewModel {
     /// 等用户确认拉黑的 UP 主。
     var pendingBlock: VideoOwner?
     private let defaults: UserDefaults
+    private let source: RecommendationRequest.Source
     private let reportUninterested: (RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason, UUID) async throws -> Void
     private let cancelUninterested: (RecommendationFeedbackOptions, UUID) async throws -> Void
     private let dislikeVideo: (Int, Bool, UUID) async throws -> Void
@@ -260,6 +261,7 @@ final class HomeViewModel {
     }
 
     init(defaults: UserDefaults = .standard,
+         source: RecommendationRequest.Source? = nil,
          filtering: VideoFilterDependencies? = nil,
          reportUninterested: ((RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason) async throws -> Void)? = nil,
          cancelUninterested: ((RecommendationFeedbackOptions) async throws -> Void)? = nil,
@@ -273,6 +275,9 @@ final class HomeViewModel {
         self.filtering = filtering ?? .live
         self.feedbackService = feedbackService
         self.defaults = defaults
+        self.source = source ?? RecommendationRequest.savedSource(
+            rawValue: defaults.string(forKey: RecommendationRequest.sourceKey),
+            legacyUsesApp: defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool)
         self.reportUninterested = { options, reason, session in
             if let reportUninterested { try await reportUninterested(options, reason) }
             else {
@@ -320,8 +325,7 @@ final class HomeViewModel {
     func commitStagedRefresh() {
         guard let batch = pendingRefresh else { return }
         pendingRefresh = nil
-        let usesApp = defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
-        guard batch.session == currentSessionID(), batch.source == (usesApp ? .app : .web) else { return }
+        guard batch.session == currentSessionID(), batch.source == source else { return }
         applyRefresh(batch.videos)
         appRefreshCursor = batch.refreshCursor ?? 0
     }
@@ -387,8 +391,7 @@ final class HomeViewModel {
         do {
             guard activeLoadID == loadID else { return }
             try Task.checkCancellation()
-            let usesApp = defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
-            let source: RecommendationRequest.Source = usesApp ? .app : .web
+            let usesApp = source != .web
             if loadedAccount != account || cursorSession != session || cursorSource != source {
                 appRefreshCursor = 0
                 nextRequest = nil

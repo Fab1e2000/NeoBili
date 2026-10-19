@@ -1,6 +1,56 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+  "切换后完全退出并重新打开应用生效。混合推荐交错显示移动端与网页结果，并去除重复视频。移动端沿用当前 iOS 登录身份。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Changes take effect after quitting and reopening the app. Mixed recommendations interleave mobile and web results and remove duplicates. Mobile requests use your current iOS login."
+        }
+      }
+    }
+  },
+  "混合推荐": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Mixed recommendations"
+        }
+      }
+    }
+  },
+  "网页推荐": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Web recommendations"
+        }
+      }
+    }
+  },
+  "移动端推荐": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Mobile recommendations"
+        }
+      }
+    }
+  },
+  "推荐来源": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Recommendation source"
+        }
+      }
+    }
+  },
     "" : {
 
     },

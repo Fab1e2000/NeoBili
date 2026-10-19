@@ -53,6 +53,7 @@ cp \
     "$APP/Data/Networking/Identity/AppNetworkMetadata.swift" \
     "$APP/Data/Networking/Identity/PasswordCipher.swift" \
     "$APP/Data/Networking/Endpoints/BiliAPI.swift" \
+    "$APP/Data/Networking/Recommendation/MergedRecommendation.swift" \
     "$APP/Data/Networking/Endpoints/BiliAPI+Recommendation.swift" \
     "$APP/Domain/Models/RecommendationBatch.swift" \
     "$APP/Data/Networking/Endpoints/BiliAPI+VideoActions.swift" \

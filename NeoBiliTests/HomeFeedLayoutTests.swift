@@ -84,7 +84,7 @@ final class HomeFeedLayoutTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
-    func testSourceChangeRefreshAndAccountChangeResetAppCursorAndWebPage() async {
+    func testSavedSourceChangeWaitsForRestartAndAccountChangeResetsCursor() async {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         var account = HomeFeedAccount(accountID: 1, hasAppCredential: true)
         var requested: [RecommendationRequest] = []
@@ -106,9 +106,9 @@ final class HomeFeedLayoutTests: XCTestCase {
         await model.loadReplacementPage()
         account = HomeFeedAccount(accountID: 2, hasAppCredential: true)
         await model.refreshIfAccountChanged(to: account)
-        XCTAssertEqual(requested.map(\.source), [.app, .app, .web, .web, .app, .app, .app])
+        XCTAssertEqual(requested.map(\.source), [.app, .app, .app, .app, .app, .app, .app])
         XCTAssertEqual(requested.map(\.pageIndex), [0, 1, 0, 1, 0, 1, 0])
-        XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 0, 0, 0, 1745482992, 0])
+        XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 0, 1745482992, 0, 1745482992, 0])
         XCTAssertEqual(requested.map(\.isRefresh), [false, false, true, false, true, false, true])
     }
 

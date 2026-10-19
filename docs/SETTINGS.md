@@ -62,6 +62,20 @@
 读取偏好；关注与直播始终固定切边。固定切边使用系统 `.hard`；随内容滚动时关闭顶部滚动边缘效果，不叠加渐变模糊。
 播放器手势和控件位置保留各自合法范围及恢复默认逻辑，避免在调用点重复定义常量。
 
+## 推荐来源
+
+“推荐流 → 推荐来源”提供移动端、网页、混合三种模式，保存后完全退出并重新打开应用生效。
+`neobili.rcmd.source` 保存 `app` / `web` / `merged`；缺失或无效时沿用旧
+`neobili.rcmd.useApp`（未设置则移动端）。启动时固定来源，设置变化不会触发当前首页刷新。
+
+网页模式采用 BiliPai 的 `fresh_type=3`、毫秒时间戳 `feed_version` 和 `y_num`；混合模式的
+网页分支使用 `V8` / `fresh_type=4`。混合模式并行获取两路、移动端优先交错、按视频标识去重，
+两路分别推进分页；单路网络失败保留成功结果并在下次分页重试失败位置，两路结束才停止。
+已登录但缺少 App 凭据时，移动端和混合模式提示授权，不自动改成匿名请求。
+移动端保留现有 iOS 身份、签名及服务器游标，没有移植 BiliPai 的 TV/Android HD 登录身份、
+静态 fingerprint 或 session。此实现是合并策略的 iOS 适配，不代表复现 Android 推荐效果。
+参考 [BiliPai 推荐实现](https://github.com/jay3-yy/BiliPai/blob/fba155c985dcf9ba2d4d354ad976f3e89a9f035f/app/src/main/java/com/android/purebilibili/data/repository/VideoRepository.kt)。
+
 ## 设备编号
 
 高级 → 设备编号提供 BUVID 输入与保存。`neobili.appBuvid.custom` 保存用户填写的编号，去除首尾空白并校验 16–128 位 ASCII 字母、数字或连字符；空值使用首次生成后固定保存的随机编号。旧 system/random 偏好不再决定普通应用身份，既有原编号和随机编号缓存保留。进程启动时固定选择，保存后重新打开生效。不同自定义编号的访客登记、fingerprint 和 ticket 按编号隔离，账号登录凭据共用；不混用旧设备回执。

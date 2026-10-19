@@ -16,7 +16,6 @@ struct HomeView: View {
 
     @TitleBarPreference private var titleBarStyle
     private var pinsTitleBar: Bool { titleBarStyle.isPinned }
-    @AppStorage(RecommendationFilter.appRecommendKey) private var usesAppRecommendation = true
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
 
@@ -36,7 +35,7 @@ struct HomeView: View {
 
     init(isSelected: Bool = true, filtering: VideoFilterDependencies = .live) {
         self.isSelected = isSelected
-        _viewModel = State(initialValue: HomeViewModel(filtering: filtering))
+        _viewModel = State(initialValue: HomeViewModel(source: RecommendationSourcePreference.launched, filtering: filtering))
     }
 
     private var animatesExit: Bool {
@@ -64,10 +63,6 @@ struct HomeView: View {
             .onChange(of: HomeFeedAccount(accountID: account.accountID,
                                           hasAppCredential: account.hasAppCredential)) { _, current in
                 Task { await viewModel.refreshIfAccountChanged(to: current) }
-            }
-            // 换了推荐来源，旧的翻页位置对新接口没有意义，从第一页重新取。
-            .onChange(of: usesAppRecommendation) {
-                Task { await viewModel.refresh() }
             }
             .onAppear {
                 // Returning to this tab always restores the app's portrait lock.

@@ -191,7 +191,7 @@ final class AppRecommendationTests: XCTestCase {
         XCTAssertEqual(page.videos(filter: filter).count, 1, "已关注默认豁免")
         filter.exemptFollowed = false
         XCTAssertTrue(page.videos(filter: filter).isEmpty)
-        XCTAssertEqual(WebRecommendationPage.parameters(freshIndex: 3)["brush"], "3")
+        XCTAssertEqual(WebRecommendationPage.parameters(freshIndex: 3, merged: true)["brush"], "3")
     }
 
     func testBlockedOwnersAndMissingCidFollowPiliPlus() throws {
