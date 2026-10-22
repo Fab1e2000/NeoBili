@@ -19,8 +19,6 @@ struct InteractionSettingsView: View {
                 }
             } header: {
                 Text("滚动")
-            } footer: {
-                Text("推荐、直播和关注页共用。距离越短，越容易触发刷新。")
             }
             Section {
                 VStack(alignment: .leading, spacing: 10) {
@@ -35,8 +33,6 @@ struct InteractionSettingsView: View {
                 }
             } header: {
                 Text("防误触")
-            } footer: {
-                Text("屏幕左缘这一窄条内的点按不生效，避免侧滑返回时误点到卡片。拖动滑杆时会高亮显示范围。")
             }
         }
         .settingsPage("滚动与防误触")

@@ -24,8 +24,6 @@ struct CardAnimationSettingsView: View {
                 }
             } header: {
                 Text("视频卡片")
-            } footer: {
-                Text("推荐、直播和搜索页面的卡片以原位淡入方式出现。")
             }
             .disabled(!enabled)
 

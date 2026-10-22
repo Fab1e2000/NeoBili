@@ -31,10 +31,6 @@ struct PlayerChromeSettingsView: View {
                     }
                 }
                 .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
-            } footer: {
-                Text(mode == .fullScreen
-                     ? "按本机屏幕的横屏尺寸等比缩小，圆角和灵动岛为近似示意。"
-                     : "视频页顶部的播放区域，按本机屏幕宽度等比缩小。竖屏视频全屏播放时也使用这组设置。")
             }
 
             // 两组设置各自一组滑条，切换时整组换掉。
@@ -92,12 +88,6 @@ private struct PlayerChromeSliders: View {
             slider(String(localized: "下边距"), value: binding(\.bottomInset, offset: Self.margin),
                    range: Self.visible(PlayerChromeSettings.verticalInsetRange))
             slider(String(localized: "控件间距"), value: binding(\.spacing, offset: 0), range: PlayerChromeSettings.spacingRange)
-        } footer: {
-            if mode == .fullScreen {
-                Text("边距按看得见的控件计算，调到 0 时控件贴着屏幕边缘。左右边距默认跟随系统横屏安全区，正好避开屏幕圆角和灵动岛；调得太小时控件会伸进四角的圆弧里。")
-            } else {
-                Text("边距按看得见的控件计算，调到 0 时控件贴着画面边缘。")
-            }
         }
 
         Section {

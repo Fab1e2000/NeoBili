@@ -17,6 +17,8 @@
 
 新增目的地时同时更新 `SettingsDestination`、类别列表和 `SettingsView.destinationView`；目的地标识用于无障碍和测试，应保持稳定。
 
+设置页以选项为主，说明性文字放入使用手册；需要立即处理的错误、授权状态和重新打开生效提示保留在页面中。
+
 ## 存储与接线
 
 设置入口为 `Features/Settings/SettingsView.swift`，分类和顺序统一由 `SettingsCatalog.swift` 定义。
@@ -77,5 +79,7 @@
 参考 [BiliPai 推荐实现](https://github.com/jay3-yy/BiliPai/blob/fba155c985dcf9ba2d4d354ad976f3e89a9f035f/app/src/main/java/com/android/purebilibili/data/repository/VideoRepository.kt)。
 
 ## 设备编号
+
+首次进入显示推荐影响与自有 BUVID 导入提示，确认后通过 `neobili.deviceIdentity.introductionSeen` 持久化，不因重新打开页面或修改编号再次弹出。
 
 高级 → 设备编号提供 BUVID 输入与保存。`neobili.appBuvid.custom` 保存用户填写的编号，去除首尾空白并校验 16–128 位 ASCII 字母、数字或连字符；空值使用首次生成后固定保存的随机编号。旧 system/random 偏好不再决定普通应用身份，既有原编号和随机编号缓存保留。进程启动时固定选择，保存后重新打开生效。不同自定义编号的访客登记、fingerprint 和 ticket 按编号隔离，账号登录凭据共用；不混用旧设备回执。

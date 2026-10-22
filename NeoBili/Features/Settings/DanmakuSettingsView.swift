@@ -32,8 +32,6 @@ struct DanmakuSettingsView: View {
             Section {
                 Toggle("屏蔽顶部弹幕", isOn: $blockTop)
                 Toggle("屏蔽底部弹幕", isOn: $blockBottom)
-            } footer: {
-                Text("屏蔽顶部或底部的固定弹幕，不影响滚动弹幕。显示设置应用于视频和直播画面上的弹幕。")
             }
             Section {
                 Button("恢复默认设置") {

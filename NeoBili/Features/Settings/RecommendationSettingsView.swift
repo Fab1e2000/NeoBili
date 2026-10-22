@@ -35,8 +35,6 @@ struct RecommendationSettingsView: View {
                 Toggle("刷新后保留上次数据", isOn: $keepsLastData)
                 Toggle("显示上次看到位置提示", isOn: $showsLastSeenTip)
                     .disabled(!keepsLastData)
-            } footer: {
-                Text("开启后，新推荐后面保留旧卡片；关闭后，下次刷新会替换整个列表。默认开启。")
             }
 
             Section {
@@ -70,12 +68,12 @@ struct RecommendationSettingsView: View {
     }
 
     private var appCredentialFooter: String {
-        let base = String(localized: "切换后完全退出并重新打开应用生效。混合推荐交错显示移动端与网页结果，并去除重复视频。移动端沿用当前 iOS 登录身份。")
+        let base = String(localized: "切换后重新打开应用生效。")
         guard account.isLoggedIn, !account.hasAppCredential else { return base }
         if account.needsAppReauthorization {
-            return base + String(localized: "App 登录凭据已失效，请使用当前账号的短信验证码重新授权。网页登录状态已保留。")
+            return base + String(localized: "App 授权已失效，请重新授权。")
         }
-        let hint = base + String(localized: "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。请使用当前账号的短信验证码重新授权。")
+        let hint = base + String(localized: "移动端推荐需要当前账号的验证码授权。")
         guard let credentialError = credentialError ?? account.appCredentialError else { return hint }
         return hint + "\n" + String(localized: "获取失败：\(credentialError)")
     }

@@ -103,12 +103,15 @@ final class VideoPickerPresentationTests: XCTestCase {
             try snapshot(window, name: "\(name)-\(style.rawValue)-medium")
 
             for next in [43, 44] {
+                let offsetBeforeSelection = scroll.contentOffset.y
                 let item = try XCTUnwrap(accessibilityItem(in: presented.view) {
                     $0.accessibilityLabel?.contains("样例 \(next)、") == true
                 })
                 XCTAssertTrue(item.accessibilityActivate(), "Select the real row button")
                 try await Task.sleep(for: .milliseconds(250))
                 XCTAssertTrue(host.presentedViewController === presented, "Selection must preserve the presented sheet")
+                XCTAssertEqual(scroll.contentOffset.y, offsetBeforeSelection, accuracy: 1,
+                               "Changing playback must not recenter the open picker")
                 XCTAssertTrue(driver.isPresented)
                 XCTAssertEqual(selectionStore.player?.cid, next, "Explicit selection starts playback even with autoplay disabled")
                 if name == "season" {

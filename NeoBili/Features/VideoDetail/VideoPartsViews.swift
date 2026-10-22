@@ -95,16 +95,23 @@ struct VideoPartsSheet: View {
 /// the playback target, so routine redraws never pull the list back to it.
 private struct VideoPickerInitialPosition<ID: Hashable & Sendable>: ViewModifier {
     let target: ID?
+    @State private var hasPositioned = false
+
     func body(content: Content) -> some View {
         ScrollViewReader { proxy in
             content
                 .task(id: target) {
-                    guard let target else { return }
+                    guard !hasPositioned, let target else { return }
                     // Let the lazy stack register its row IDs before requesting
                     // the initial position; no timed animation or delayed jump.
                     await Task.yield()
                     guard !Task.isCancelled else { return }
-                    proxy.scrollTo(target, anchor: .center)
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        proxy.scrollTo(target, anchor: .center)
+                    }
+                    hasPositioned = true
                 }
         }
     }
