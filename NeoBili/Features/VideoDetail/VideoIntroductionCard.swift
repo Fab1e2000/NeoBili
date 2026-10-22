@@ -51,11 +51,17 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
         /// 展开箭头占用的宽度，标题为它让出右侧空间。
         private static let arrowWidth: CGFloat = 16
         private static let arrowGap: CGFloat = 8
+        /// 元信息与展开后的正文之间的距离。
+        private static let descriptionGap: CGFloat = 10
+        /// 标题字号，按 title3 的档位随动态字体缩放。
+        private static let titlePointSize: CGFloat = 18
+        /// 元信息与展开箭头相对主文字色的强度，正文用 80%。
+        private static let metadataColor = UIColor.label.withAlphaComponent(0.6)
+        private static let descriptionColor = UIColor.label.withAlphaComponent(0.8)
 
         let titleLabel = UILabel()
         private let metadataLabel = UILabel()
         private let descriptionView = UITextView()
-        private let divider = UIView()
         private let arrow = UIImageView()
         private var typeSize: DynamicTypeSize?
         private var expanded = false
@@ -69,21 +75,20 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
             titleLabel.textColor = .label
             titleLabel.accessibilityIdentifier = "video.introduction.title"
             metadataLabel.numberOfLines = 0
-            metadataLabel.textColor = .secondaryLabel
+            metadataLabel.textColor = Self.metadataColor
             metadataLabel.accessibilityIdentifier = "video.introduction.metadata"
             descriptionView.backgroundColor = .clear
-            descriptionView.textColor = .secondaryLabel
+            descriptionView.textColor = Self.descriptionColor
             descriptionView.isEditable = false
             descriptionView.isSelectable = true
             descriptionView.isScrollEnabled = false
             descriptionView.textContainerInset = .zero
             descriptionView.textContainer.lineFragmentPadding = 0
             descriptionView.accessibilityIdentifier = "video.introduction.description"
-            divider.backgroundColor = .separator
-            arrow.tintColor = .secondaryLabel
+            arrow.tintColor = Self.metadataColor
             arrow.contentMode = .scaleAspectFit
             arrow.isAccessibilityElement = false
-            for view in [titleLabel, metadataLabel, divider, descriptionView, arrow] { addSubview(view) }
+            for view in [titleLabel, metadataLabel, descriptionView, arrow] { addSubview(view) }
             let tap = UITapGestureRecognizer(target: self, action: #selector(toggle))
             tap.cancelsTouchesInView = false
             tap.delegate = self
@@ -95,10 +100,10 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
             if self.typeSize != typeSize {
                 self.typeSize = typeSize
                 let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
-                let titleFont = UIFont.preferredFont(forTextStyle: .title3, compatibleWith: traits)
-                titleLabel.font = .systemFont(ofSize: titleFont.pointSize, weight: .semibold)
+                titleLabel.font = UIFontMetrics(forTextStyle: .title3).scaledFont(
+                    for: .systemFont(ofSize: Self.titlePointSize, weight: .semibold), compatibleWith: traits)
                 metadataLabel.font = .preferredFont(forTextStyle: .footnote, compatibleWith: traits)
-                descriptionView.font = .preferredFont(forTextStyle: .callout, compatibleWith: traits)
+                descriptionView.font = .preferredFont(forTextStyle: .subheadline, compatibleWith: traits)
             }
             // Expansion never assigns or retypesets the title.
             if titleLabel.text != title { titleLabel.text = title }
@@ -107,7 +112,6 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
             self.expanded = expanded
             hasDescription = !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             descriptionView.isHidden = !expanded || !hasDescription
-            divider.isHidden = descriptionView.isHidden
             arrow.isHidden = !hasDescription
             arrow.image = UIImage(systemName: expanded ? "chevron.up" : "chevron.down",
                                   withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold))
@@ -128,7 +132,7 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
             var height = 2 * Self.verticalInset + measured(titleLabel, width: contentWidth - titleTrailingInset)
                 + 6 + measured(metadataLabel, width: contentWidth)
             if expanded && hasDescription {
-                height += 17 + ceil(descriptionView.sizeThatFits(CGSize(width: contentWidth, height: .greatestFiniteMagnitude)).height)
+                height += Self.descriptionGap + ceil(descriptionView.sizeThatFits(CGSize(width: contentWidth, height: .greatestFiniteMagnitude)).height)
             }
             return height
         }
@@ -146,9 +150,9 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
                                      width: Self.arrowWidth, height: titleLabel.font.lineHeight)
                 let metadataHeight = measured(metadataLabel, width: width)
                 metadataLabel.frame = CGRect(x: 0, y: titleLabel.frame.maxY + 6, width: width, height: metadataHeight)
-                divider.frame = CGRect(x: 0, y: metadataLabel.frame.maxY + 8, width: width, height: 1 / max(1, traitCollection.displayScale))
                 let bodyHeight = ceil(descriptionView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
-                descriptionView.frame = CGRect(x: 0, y: divider.frame.maxY + 8, width: width, height: bodyHeight)
+                descriptionView.frame = CGRect(x: 0, y: metadataLabel.frame.maxY + Self.descriptionGap,
+                                               width: width, height: bodyHeight)
             }
         }
         @objc private func toggle() { if hasDescription { onToggle?() } }

@@ -634,16 +634,6 @@
         }
       }
     },
-    "%lld视频" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld videos"
-          }
-        }
-      }
-    },
     "¥%lld" : {
       "localizations" : {
         "en" : {
@@ -5250,16 +5240,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Room Description"
-          }
-        }
-      }
-    },
-    "相关视频" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Related Videos"
           }
         }
       }

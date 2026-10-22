@@ -5,18 +5,39 @@ import SwiftUI
 
 /// 操作栏的排版参数。只想微调界面时改这几个数字就行。
 private enum VideoActionBarLayout {
-    /// 圆和下方数字之间的距离。
+    /// 按钮和下方数字之间的距离。
     static let captionSpacing: CGFloat = 5
+    /// 五颗按钮之间的距离，与标签同一档。
+    static let buttonSpacing: CGFloat = 8
+    static let buttonHeight: CGFloat = 44
+    static let cornerRadius: CGFloat = 12
+    /// 图标画布边长。素材四周带留白，25pt 画布里的字形约 20pt。
+    static let iconSize: CGFloat = 25
+    /// 数字与「不喜欢」相对主文字色的强度。
+    static let captionOpacity: Double = 0.6
+}
+
+/// 点亮状态的配色：浅主题色底，配深一档的主题色图标和数字。
+/// 主题色本身偏浅，直接当前景在浅色底上对比不够，浅色外观下压暗 30%；深色外观下原色已足够亮。
+private enum VideoActionPalette {
+    static func background(theme: UIColor) -> UIColor { theme.withAlphaComponent(0.16) }
+    static func foreground(theme: UIColor) -> UIColor {
+        UIColor { traits in
+            guard traits.userInterfaceStyle != .dark else { return theme }
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+            guard theme.resolvedColor(with: traits).getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return theme }
+            return UIColor(red: red * 0.7, green: green * 0.7, blue: blue * 0.7, alpha: alpha)
+        }
+    }
 }
 
 /// 视频页的操作栏：点赞、不喜欢、投币、收藏、分享。
 ///
-/// 五项等分整行宽度，每项是一颗圆形按钮，数字写在圆下面。
-/// 参考 Apple Music 专辑页的「随机播放 / 添加」：内容里的按钮不用玻璃，平时是浅灰填充，
-/// 点亮后换成主题色实心。轻点执行；点赞和收藏按住 0.5 秒执行扩展操作。
+/// 五颗圆角方块等分整行宽度，左右边缘与上方头像、标题、标签对齐，数字写在按钮下面。
+/// 内容里的按钮不用玻璃：平时与标签同色的浅灰填充，点亮后换成浅主题色底配深一档的
+/// 主题色图标。轻点执行；点赞和收藏按住 0.5 秒执行扩展操作。
 ///
-/// 圆里只放图标：数字放进圆里会把它撑成胶囊，五颗并排也放不下。
-/// 数字挪到圆下方之后，「不喜欢」也能把文字写全。
+/// 按钮里只放图标，数字挪到下方之后，「不喜欢」也能把文字写全，五列的视觉重心一致。
 struct VideoActionBar: View {
     @Environment(\.appThemeColor) private var themeColor
     let likeCount: Int
@@ -44,7 +65,7 @@ struct VideoActionBar: View {
     @State private var showsShare = false
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: VideoActionBarLayout.buttonSpacing) {
             item(
                 icon: "VideoActionLike",
                 caption: likeCount.biliCountText,
@@ -96,12 +117,12 @@ struct VideoActionBar: View {
         longPressAction: (() -> Void)? = nil
     ) -> some View {
         VStack(spacing: VideoActionBarLayout.captionSpacing) {
-            VideoHoldButton(icon: icon,
+            VideoHoldButton(icon: icon, theme: UIColor(themeColor),
                             isActive: isActive, label: label,
                             secondaryLabel: hint, action: action, secondaryAction: longPressAction)
-                .tint(themeColor)
-                .frame(width: 52, height: 52)
-            captionText(caption)
+                .frame(maxWidth: .infinity)
+                .frame(height: VideoActionBarLayout.buttonHeight)
+            captionText(caption, isActive: isActive)
         }
         .frame(maxWidth: .infinity)
     }
@@ -112,10 +133,12 @@ struct VideoActionBar: View {
             .disabled(shareURL == nil)
     }
 
-    private func captionText(_ caption: String) -> some View {
+    private func captionText(_ caption: String, isActive: Bool) -> some View {
         Text(caption)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+            .font(isActive ? .caption.weight(.semibold) : .caption)
+            .foregroundStyle(isActive
+                             ? AnyShapeStyle(Color(uiColor: VideoActionPalette.foreground(theme: UIColor(themeColor))))
+                             : AnyShapeStyle(.primary.opacity(VideoActionBarLayout.captionOpacity)))
             .lineLimit(1)
             // 位数多的时候宁可缩一点，也别把这一列撑宽。
             .minimumScaleFactor(0.75)
@@ -125,6 +148,7 @@ struct VideoActionBar: View {
 /// 原生 UIKit 按钮：轻点执行，按下时的高亮由系统处理。
 private struct VideoHoldButton: UIViewRepresentable {
     let icon: String
+    let theme: UIColor
     let isActive: Bool
     let label: String
     let secondaryLabel: String?
@@ -135,11 +159,13 @@ private struct VideoHoldButton: UIViewRepresentable {
     func makeUIView(context: Context) -> HoldButton { HoldButton() }
 
     func updateUIView(_ button: HoldButton, context: Context) {
-        // 系统按钮样式：平时是系统灰色按钮，点亮后换成跟随主题色（tintColor）的实心按钮。
-        var config: UIButton.Configuration = isActive ? .filled() : .gray()
-        config.baseForegroundColor = isActive ? .white : .label
-        config.image = UIImage(named: icon)
-        config.cornerStyle = .capsule
+        // 系统按钮配置负责按下高亮；底色与前景按点亮状态显式给出，圆角固定 12。
+        var config = UIButton.Configuration.filled()
+        config.background.backgroundColor = isActive ? VideoActionPalette.background(theme: theme) : .tertiarySystemFill
+        config.baseForegroundColor = isActive ? VideoActionPalette.foreground(theme: theme) : .label
+        config.image = Self.image(named: icon)
+        config.cornerStyle = .fixed
+        config.background.cornerRadius = VideoActionBarLayout.cornerRadius
         config.contentInsets = .zero
         button.configuration = config
         button.isEnabled = isEnabled
@@ -150,6 +176,18 @@ private struct VideoHoldButton: UIViewRepresentable {
         button.accessibilityCustomActions = secondaryLabel.map {
             [UIAccessibilityCustomAction(name: $0, target: button, selector: #selector(HoldButton.accessibleSecondary))]
         }
+    }
+
+    /// 矢量素材按固定画布重绘一次后缓存，图标大小不随素材自带尺寸变化。
+    @MainActor private static var images: [String: UIImage] = [:]
+    @MainActor private static func image(named name: String) -> UIImage? {
+        if let cached = images[name] { return cached }
+        guard let source = UIImage(named: name) else { return nil }
+        let size = CGSize(width: VideoActionBarLayout.iconSize, height: VideoActionBarLayout.iconSize)
+        let image = UIGraphicsImageRenderer(size: size).image { _ in source.draw(in: CGRect(origin: .zero, size: size)) }
+            .withRenderingMode(.alwaysTemplate)
+        images[name] = image
+        return image
     }
 }
 

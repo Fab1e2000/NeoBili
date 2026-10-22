@@ -41,9 +41,12 @@ extension Int {
                                          locale: AppLanguage.locale)
     }
 
-    /// 稿件发布时间（秒级时间戳）的完整写法：2026年9月4日 09:00 / Sep 4, 2026 09:00。
+    /// 稿件发布日期（秒级时间戳）：今年的只写月日（9月4日 / Sep 4），往年的带上年份；不写时分。
     var biliPubdateText: String {
-        BiliDateFormatting.string(from: Date(timeIntervalSince1970: TimeInterval(self)),
-                                  template: "yMMMdHHmm", locale: AppLanguage.locale)
+        let date = Date(timeIntervalSince1970: TimeInterval(self))
+        let calendar = Calendar.current
+        let isThisYear = calendar.component(.year, from: date) == calendar.component(.year, from: Date())
+        return BiliDateFormatting.string(from: date, template: isThisYear ? "MMMd" : "yMMMd",
+                                         locale: AppLanguage.locale)
     }
 }

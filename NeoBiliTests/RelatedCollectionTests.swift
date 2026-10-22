@@ -92,7 +92,8 @@ final class RelatedCollectionTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(150))
             host.view.layoutIfNeeded()
             let list = try XCTUnwrap(collection(host.view))
-            let status = try XCTUnwrap(list.cellForItem(at: IndexPath(item: 1, section: 0)))
+            // 相关视频没有分区标题，状态行直接是第一项。
+            let status = try XCTUnwrap(list.cellForItem(at: IndexPath(item: 0, section: 0)))
             XCTAssertEqual(status.accessibilityIdentifier, "description.status")
             XCTAssertGreaterThan(status.bounds.height, 60, "Error message and retry action need visible space")
             let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
@@ -167,13 +168,13 @@ final class RelatedCollectionTests: XCTestCase {
             XCTAssertEqual(labels.count, 3)
             for label in labels {
                 XCTAssertGreaterThanOrEqual(label.frame.height, ceil(label.font.lineHeight), "字号 \(size)")
-                XCTAssertLessThanOrEqual(label.frame.maxY, height - 10, "字号 \(size)")
+                XCTAssertLessThanOrEqual(label.frame.maxY, height - NativeRelatedVideoCard.verticalInset, "字号 \(size)")
             }
             for (earlier, later) in zip(labels, labels.dropFirst()) {
                 XCTAssertLessThanOrEqual(earlier.frame.maxY, later.frame.minY, "字号 \(size)")
             }
             if size.isAccessibilitySize {
-                XCTAssertGreaterThan(height, 110)
+                XCTAssertGreaterThan(height, 102)
                 for scheme in [UIUserInterfaceStyle.light, .dark] {
                     window.overrideUserInterfaceStyle = scheme
                     try await Task.sleep(for: .milliseconds(50))
@@ -262,7 +263,7 @@ final class RelatedCollectionTests: XCTestCase {
         let first = try XCTUnwrap(list.layoutAttributesForItem(at: IndexPath(item: 0, section: 1)))
         XCTAssertEqual(header.size.height, 180, accuracy: 1)
         XCTAssertEqual(first.frame.minY, header.frame.maxY, accuracy: 1)
-        XCTAssertEqual(first.size.height, 110, accuracy: 1)
+        XCTAssertEqual(first.size.height, 102, accuracy: 1)
     }
     func testIntroductionExpansionKeepsOwnerCellAnchored() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)

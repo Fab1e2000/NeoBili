@@ -19,12 +19,14 @@ struct VideoDescriptionComponent {
     let content: AnyView
     var introduction: VideoIntroductionCard? = nil
     var bottomSpacing: CGFloat = 0
-    init<Content: View>(_ id: String, revision: [AnyHashable], @ViewBuilder content: () -> Content) {
+    init<Content: View>(_ id: String, revision: [AnyHashable], bottomSpacing: CGFloat = 0,
+                        @ViewBuilder content: () -> Content) {
         self.id = id
         self.revision = revision
         self.content = AnyView(content())
+        self.bottomSpacing = bottomSpacing
     }
-    @MainActor init(introduction: VideoIntroductionCard, bottomSpacing: CGFloat = 14) {
+    @MainActor init(introduction: VideoIntroductionCard, bottomSpacing: CGFloat = 12) {
         id = "introduction"
         revision = [introduction.title, introduction.desc, AnyHashable(introduction.stat), introduction.pubdate, introduction.isExpanded]
         content = AnyView(EmptyView())
@@ -257,12 +259,18 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
     func makeUIView(context: Context) -> CardView { CardView() }
     func updateUIView(_ view: CardView, context: Context) { view.configure(video, typeSize: typeSize, scale: scale) }
 
+    /// 卡片上下各留 6；卡片之间不画分隔线，相邻两张封面靠这两份留白隔开 12。
+    static let verticalInset: CGFloat = 6
+    /// UP 主与播放数据相对主文字色的强度。
+    static let secondaryTextColor = UIColor.label.withAlphaComponent(0.6)
+
     static func rowHeight(typeSize: DynamicTypeSize) -> CGFloat {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
         let titleHeight = ceil(UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).lineHeight * 2)
         let ownerHeight = ceil(UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traits).lineHeight)
-        let metadataHeight = ceil(UIFont.preferredFont(forTextStyle: .caption2, compatibleWith: traits).lineHeight)
-        return max(110, max(64, 10 + titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight) + 10)
+        let metadataHeight = ceil(UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traits).lineHeight)
+        return max(90 + 2 * verticalInset,
+                   max(60, verticalInset + titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight) + verticalInset)
     }
 
     final class CardView: UIView {
@@ -270,22 +278,20 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
         private let title = UILabel()
         private let owner = UILabel()
         private let metadata = UILabel()
-        private let separator = UIView()
         private var video: VideoSummary?
         private var typeSize: DynamicTypeSize?
         private var scale: CGFloat = 0
         override init(frame: CGRect) {
             super.init(frame: frame)
             isUserInteractionEnabled = false
-            for view in [cover, title, owner, metadata, separator] { addSubview(view) }
+            for view in [cover, title, owner, metadata] { addSubview(view) }
             // 与首页卡片封面同一圆角规格。
             cover.layer.cornerRadius = HomeCardLayout.coverCornerRadius
             cover.layer.cornerCurve = .continuous
             title.numberOfLines = 2
             title.textColor = .label
-            owner.textColor = .secondaryLabel
-            metadata.textColor = .tertiaryLabel
-            separator.backgroundColor = .separator
+            owner.textColor = NativeRelatedVideoCard.secondaryTextColor
+            metadata.textColor = NativeRelatedVideoCard.secondaryTextColor
             isAccessibilityElement = true
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -296,7 +302,7 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
                 let font = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits)
                 title.font = .systemFont(ofSize: font.pointSize, weight: .medium)
                 owner.font = .preferredFont(forTextStyle: .caption1, compatibleWith: traits)
-                metadata.font = .preferredFont(forTextStyle: .caption2, compatibleWith: traits)
+                metadata.font = .preferredFont(forTextStyle: .caption1, compatibleWith: traits)
             }
             self.video = video; self.typeSize = typeSize; self.scale = scale
             title.text = video.title
@@ -305,7 +311,7 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
             for (symbol, value) in [("play.rectangle", video.stat.view.biliCountText), ("clock", video.formattedDuration)] {
                 let attachment = NSTextAttachment()
                 attachment.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: metadata.font.pointSize))?
-                    .withTintColor(.tertiaryLabel, renderingMode: .alwaysOriginal)
+                    .withTintColor(NativeRelatedVideoCard.secondaryTextColor, renderingMode: .alwaysOriginal)
                 let size = metadata.font.pointSize
                 attachment.bounds = CGRect(x: 0, y: -1, width: size, height: size)
                 text.append(NSAttributedString(attachment: attachment))
@@ -318,14 +324,14 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
         }
         override func layoutSubviews() {
             super.layoutSubviews()
-            cover.frame = CGRect(x: 0, y: 10, width: 160, height: 90)
+            let inset = NativeRelatedVideoCard.verticalInset
+            cover.frame = CGRect(x: 0, y: inset, width: 160, height: 90)
             let x: CGFloat = 170, width = max(0, bounds.width - 170)
-            title.frame = CGRect(x: x, y: 10, width: width, height: ceil(title.font.lineHeight * 2))
-            owner.frame = CGRect(x: x, y: max(64, title.frame.maxY + 4), width: width,
+            title.frame = CGRect(x: x, y: inset, width: width, height: ceil(title.font.lineHeight * 2))
+            owner.frame = CGRect(x: x, y: max(60, title.frame.maxY + 4), width: width,
                                  height: max(18, ceil(owner.font.lineHeight)))
             metadata.frame = CGRect(x: x, y: owner.frame.maxY + 1, width: width,
                                     height: max(17, ceil(metadata.font.lineHeight)))
-            separator.frame = CGRect(x: 0, y: bounds.height - 1 / max(1, scale), width: bounds.width, height: 1 / max(1, scale))
         }
     }
 }
@@ -406,16 +412,7 @@ struct VideoDescriptionContent: View {
         let videos = all.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
         let relatedError = viewModel?.relatedErrorMessage
         let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering)
-        // 与原生详情页一样用分区标题组织内容，相关视频不直接接在操作栏下面。
-        let header = VideoDescriptionComponent("relatedHeader", revision: []) {
-            Text("相关视频")
-                .font(.title3.weight(.semibold))
-                .accessibilityAddTraits(.isHeader)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 2)
-        }
+        // 相关视频不加分区标题，直接接在操作栏（或合集、分P 入口）下面，间距由上方组件自带。
         let status = (videos.isEmpty || relatedError != nil ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty, relatedError]) {
             if loading { ProgressView().padding(24) }
             else if let relatedError {
@@ -431,7 +428,7 @@ struct VideoDescriptionContent: View {
                     .font(.subheadline).foregroundStyle(.secondary).padding(16)
             }
         }] : [])
-        let rows = components + [header] + (videos.isEmpty ? status : [])
+        let rows = components + (videos.isEmpty ? status : [])
         VideoDescriptionCollection(videos: videos, components: rows, footers: videos.isEmpty ? [] : status,
                                    scrollState: store.descriptionScroll, onSelect: store.openRelated,
                                    onReachEnd: { Task { await store.detailViewModel?.loadMoreRelated() } },

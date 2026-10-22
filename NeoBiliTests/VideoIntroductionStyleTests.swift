@@ -57,9 +57,9 @@ final class VideoIntroductionStyleTests: XCTestCase {
             }
             // The native-style owner row sits directly on the page. Its old
             // rounded container added 16pt vertical padding; the current design
-            // keeps the 48pt profile hit area and grows only when text needs it.
-            XCTAssertGreaterThanOrEqual(owner.height, 48, name)
-            if typeSize == .large { XCTAssertEqual(owner.height, 48, accuracy: 0.5, name) }
+            // keeps a 44pt profile hit area and grows only when text needs it.
+            XCTAssertGreaterThanOrEqual(owner.height, 44, name)
+            if typeSize == .large { XCTAssertEqual(owner.height, 44, accuracy: 0.5, name) }
             XCTAssertGreaterThanOrEqual(card.minY - owner.maxY, 13.5, name)
             XCTAssertGreaterThanOrEqual(followingContent.minY - card.maxY, 13.5, name)
             if !expanded { collapsedHeight = card.height }
