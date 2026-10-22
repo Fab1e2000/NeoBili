@@ -36,18 +36,31 @@ final class CommentLinksTests: XCTestCase {
         XCTAssertNotNil(CommentLinks.videoRoute(URL(string: "https://m.bilibili.com/video/av170001")!))
     }
 
-    func testOptionalMetadataIsLenientAndLocationIsServerText() throws {
+    func testOptionalMetadataIsLenientAndLocationIsServerPlaceName() throws {
         let comment = try decode(#"""
         {"rpid":1,"ctime":1,"like":0,"rcount":0,"member":{"uname":"甲","avatar":""},
          "content":{"message":"链接 &amp; 时间 01:23","jump_url":{"bad":false,"good":{"title":"标题"}}},
          "reply_control":{"location":"  IP属地：上海  "}}
         """#)
-        XCTAssertEqual(comment.location, "IP属地：上海")
+        XCTAssertEqual(comment.location, "上海")
         XCTAssertEqual(comment.content.jumpURLs.count, 1)
         XCTAssertEqual(comment.message, "链接 & 时间 01:23")
         let malformed = try decode(#"{"rpid":1,"ctime":1,"like":0,"rcount":0,"member":{"uname":"甲","avatar":""},"content":{"message":"正文","jump_url":[]},"reply_control":false}"#)
         XCTAssertNil(malformed.location)
         XCTAssertTrue(malformed.content.jumpURLs.isEmpty)
+    }
+
+    /// 元信息行要和点赞、回复并排放在一行：属地只留地名，一年以前的评论用短日期。
+    func testMetadataUsesShortDateAndPlaceNameOnly() throws {
+        let old = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2025, month: 4, day: 6, hour: 12)))
+        func comment(location: String) throws -> Comment {
+            try decode(#"{"rpid":1,"ctime":\#(Int(old.timeIntervalSince1970)),"like":0,"rcount":0,"member":{"uname":"甲","avatar":""},"content":{"message":"正文"},"reply_control":{"location":"\#(location)"}}"#)
+        }
+        XCTAssertEqual(try comment(location: "IP属地：湖北").relativeTime, "2025.04.06")
+        XCTAssertEqual(try comment(location: "IP属地：湖北").location, "湖北")
+        XCTAssertEqual(try comment(location: "IP 属地: 中国香港").location, "中国香港")
+        XCTAssertEqual(try comment(location: "海外").location, "海外")
+        XCTAssertNil(try comment(location: "IP属地：").location)
     }
 
     private func decode(_ json: String) throws -> Comment {

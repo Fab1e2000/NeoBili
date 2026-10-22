@@ -157,10 +157,14 @@ public struct Comment: Decodable, Identifiable, Hashable, Sendable {
     }
 
     /// 仅展示服务端提供的属地；不推测精确 IP 或当前位置。
+    /// 服务端写作「IP属地：上海」，界面只需要地名，去掉固定前缀后返回「上海」。
     public var location: String? {
-        guard let value = replyControl?.location?.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard var value = replyControl?.location?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty else { return nil }
-        return value
+        if let prefix = value.range(of: #"^IP\s*属地\s*[：:]\s*"#, options: .regularExpression) {
+            value.removeSubrange(prefix)
+        }
+        return value.isEmpty ? nil : value
     }
 
     public var id: Int { rpid }
@@ -177,7 +181,8 @@ public struct Comment: Decodable, Identifiable, Hashable, Sendable {
     /// 因为点完之后不会为了一个按钮把整页评论重新拉一遍。
     public var isLikedByServer: Bool { action == 1 }
 
-    /// 把时间戳变成“3天前”这类相对说法；超过一年就直接显示日期。
+    /// 把时间戳变成“3天前”这类相对说法；超过一年就直接显示「2025.04.26」这样的短日期，
+    /// 和属地并排时也能留在一行里。
     public var relativeTime: String {
         let minute: TimeInterval = 60
         let hour: TimeInterval = 60 * 60
@@ -190,7 +195,8 @@ public struct Comment: Decodable, Identifiable, Hashable, Sendable {
         if elapsed < day * 30 { return String(localized: "\(Int(elapsed / day))天前") }
         if elapsed < day * 365 { return String(localized: "\(Int(elapsed / day / 30))个月前") }
         return Date(timeIntervalSince1970: TimeInterval(ctime))
-            .formatted(.dateTime.year().month().day().locale(AppLanguage.locale))
+            .formatted(.verbatim("\(year: .defaultDigits).\(month: .twoDigits).\(day: .twoDigits)",
+                                 timeZone: .current, calendar: .current))
     }
 }
 

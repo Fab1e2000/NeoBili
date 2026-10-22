@@ -64,9 +64,12 @@ private struct CommentMetaRow: View {
     /// 时间 + 点赞按钮那一行。
     var body: some View {
         HStack(spacing: 12) {
+            // 和点赞、回复并排时只占一行；放不下（大字号）就从末尾省略，不折行把按钮挤开。
             Text([comment.relativeTime, comment.location].compactMap { $0 }.joined(separator: " · "))
                 .font(.caption)
                 .foregroundStyle(.primary.opacity(CommentLayout.metadataOpacity))
+                .lineLimit(1)
+                .truncationMode(.tail)
 
             HStack(spacing: 8) {
                 CommentLikeButton(comment: comment, viewModel: viewModel)
@@ -228,9 +231,6 @@ private struct CommentReplyPreview: View {
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if let location = reply.location {
-                    Text(location).font(.caption2).foregroundStyle(.primary.opacity(CommentLayout.metadataOpacity))
-                }
             }
 
             if viewModel.isLoadingReplies(comment) {
