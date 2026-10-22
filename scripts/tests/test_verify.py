@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -131,6 +132,12 @@ class ValidationWorkflowTests(unittest.TestCase):
 
 
 class SimulatorArgumentTests(unittest.TestCase):
+    @patch.dict(os.environ, {
+        "NEOBILI_SIMULATOR_ID": "ci-device",
+        "NEOBILI_SIMULATOR_NAME": "CI iPhone",
+        "NEOBILI_SIMULATOR_RUNTIME": "iOS-26-5",
+        "NEOBILI_DERIVED_DATA": "/unused-ci-cache",
+    })
     def test_extra_arguments_keep_boundaries_and_default_invocation_works(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -143,7 +150,11 @@ class SimulatorArgumentTests(unittest.TestCase):
             xcode = root / "bin/xcodebuild"
             xcode.write_text('#!/bin/bash\n[[ "$1" == -version ]] && exit 0\nprintf "%s\\n" "$@" > "$CALL_LOG"\nexit 17\n')
             xcode.chmod(0o755)
-            env = dict(os.environ, PATH=str(root / "bin") + os.pathsep + os.environ["PATH"],
+            # Host/CI simulator settings must not select devices or caches outside
+            # this fixture. Keep system settings such as PATH for script tools.
+            fixture_env = {key: value for key, value in os.environ.items()
+                           if not key.startswith("NEOBILI_")}
+            env = dict(fixture_env, PATH=str(root / "bin") + os.pathsep + os.environ["PATH"],
                        TMPDIR=directory, CALL_LOG=str(root / "calls"))
             for arguments in ([], ["SomeTests", "--", "-enableThreadSanitizer", "YES", "OTHER_SWIFT_FLAGS=a b"]):
                 result = subprocess.run(["bash", str(root / "scripts/simulator.sh"), "test", *arguments],
@@ -151,6 +162,8 @@ class SimulatorArgumentTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 17, result.stdout + result.stderr)
                 calls = (root / "calls").read_text().splitlines()
                 self.assertIn("CODE_SIGNING_ALLOWED=NO", calls)
+                self.assertIn("platform=iOS Simulator,id=fixture", calls)
+                self.assertIn(str(root / "DerivedData/Simulator"), calls)
                 if arguments:
                     self.assertIn("OTHER_SWIFT_FLAGS=a b", calls)
                     self.assertIn("-only-testing:NeoBiliTests/SomeTests", calls)
