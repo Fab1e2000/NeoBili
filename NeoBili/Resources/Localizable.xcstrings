@@ -4347,12 +4347,12 @@
         }
       }
     },
-    "查看全部回复" : {
+    "查看全部 %lld 条回复" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "View All Replies"
+            "value" : "View All %lld Replies"
           }
         }
       }

@@ -44,7 +44,7 @@ final class CommentSpacingTests: XCTestCase {
                 window.rootViewController = host
                 window.makeKeyAndVisible()
                 defer { window.isHidden = true; window.rootViewController = nil }
-                var initialHeight: CGFloat = 0
+                var initialInset: CGFloat = 0
                 for expanded in [false, true] {
                     if expanded {
                         model.commentDraft(root: 0).text = "第一行\n第二行\n第三行\n第四行"
@@ -56,15 +56,21 @@ final class CommentSpacingTests: XCTestCase {
                     let input = try XCTUnwrap(descendants.first { $0 is UITextView || $0 is UITextField })
                     let scroll = try XCTUnwrap(descendants.compactMap { $0 as? UIScrollView }
                         .first { !($0 is UITextView) && $0.contentSize.height > $0.bounds.height })
-                    let viewport = scroll.convert(scroll.bounds, to: window)
                     let inputFrame = input.convert(input.bounds, to: window)
-                    XCTAssertLessThanOrEqual(viewport.maxY, inputFrame.minY,
-                                             "The scroll viewport must end above the composer, not underneath it")
+                    // 输入栏叠在列表上，列表内容要能从玻璃下面透出来。
+                    XCTAssertGreaterThan(scroll.convert(scroll.bounds, to: window).maxY, inputFrame.minY,
+                                         "The list must extend underneath the composer so its glass shows content")
                     if expanded {
-                        XCTAssertLessThan(scroll.bounds.height, initialHeight, "Draft growth must shrink the viewport")
-                    } else { initialHeight = scroll.bounds.height }
+                        XCTAssertGreaterThan(scroll.adjustedContentInset.bottom, initialInset,
+                                             "Draft growth must enlarge the list's bottom inset")
+                    } else { initialInset = scroll.adjustedContentInset.bottom }
+                    // 滚到底后，最后一条内容必须完整停在输入栏上方，草稿变高时也一样。
                     scroll.setContentOffset(CGPoint(x: 0, y: max(-scroll.adjustedContentInset.top,
                         scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)), animated: false)
+                    window.layoutIfNeeded()
+                    let contentBottom = scroll.convert(CGPoint(x: 0, y: scroll.contentSize.height), to: window).y
+                    XCTAssertLessThanOrEqual(contentBottom, inputFrame.minY + 0.5,
+                                             "The last comment must stay fully above the composer")
                     let attachment = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
                         window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
                     })
@@ -143,7 +149,8 @@ final class CommentSpacingTests: XCTestCase {
 
     // MARK: - 渲染与取样
 
-    /// 按 `CommentsView` 里那一段的结构渲染：评论行 + 上下留白 + 分隔线。
+    /// 按 `CommentsView` 里那一段的结构渲染：评论行 + 上下留白。列表里评论之间没有分隔线，
+    /// 这里放一条 1pt 的透明标记代表下一条评论的起点，沿用原来分隔线位置的测量约定。
     private func render(_ comment: Comment, viewModel: CommentsViewModel? = nil, dynamicTypeSize: DynamicTypeSize = .large) throws -> CGImage {
         let viewModel = viewModel ?? CommentsViewModel(aid: 1)
         let content = VStack(alignment: .leading, spacing: 0) {
@@ -151,11 +158,10 @@ final class CommentSpacingTests: XCTestCase {
                 .padding(.horizontal, CommentLayout.pageHorizontalInset)
                 .padding(.vertical, CommentLayout.rowVerticalPadding)
 
-            Divider()
-                .padding(.leading, CommentLayout.pageHorizontalInset)
+            Color.clear.frame(height: 1)
                 .anchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { [.divider: $0] }
 
-            // 分隔线后面留一段白，方便扫描时确认线的位置。
+            // 标记后面留一段白，方便扫描时确认标记的位置。
             Color.white.frame(height: 40)
         }
         .frame(width: Self.width)

@@ -218,6 +218,7 @@ struct CommentEmoteText: View {
     let textStyle: Font.TextStyle
     var prefix: String = ""
     var prefixURL: URL? = nil
+    var prefixStyle = PrefixStyle()
     var jumpURLs: [String: CommentJumpLink] = [:]
     /// 隐藏的高度探针共享可见正文的图片请求，仅观察已加载的表情。
     var loadsEmotes = true
@@ -230,6 +231,13 @@ struct CommentEmoteText: View {
     @Environment(\.commentEmoteStore) private var environmentStore
     var store: CommentEmoteStore? = nil
     private var resolvedStore: CommentEmoteStore { store ?? environmentStore }
+
+    /// 前缀（楼中楼里的「名字：」）的字重和颜色。不设置时沿用次级文字色。
+    struct PrefixStyle {
+        var weight: Font.Weight? = nil
+        /// 相对主文字色的强度；为 nil 时用系统次级文字色。
+        var opacity: Double? = nil
+    }
 
     private struct LoadIdentity: Equatable {
         let emotes: [String: CommentEmote]
@@ -259,7 +267,8 @@ struct CommentEmoteText: View {
         let scaledFont = emotes.isEmpty ? nil : scaledFont
         let baseline = ((scaledFont?.descender ?? 0) * Self.baselineOffsetRatio).rounded()
         var prefixText = AttributedString(prefix)
-        prefixText.foregroundColor = .secondary
+        prefixText.foregroundColor = prefixStyle.opacity.map { Color.primary.opacity($0) } ?? .secondary
+        if let weight = prefixStyle.weight { prefixText.font = font.weight(weight) }
         prefixText.link = prefixURL
         if emotes.isEmpty {
             return Text(prefixText + CommentLinks.attributed(message, metadata: jumpURLs, includesTimes: timeJump != nil))

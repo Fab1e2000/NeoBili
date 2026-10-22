@@ -58,15 +58,14 @@ private struct CommentComposerHost: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        // The composer owns real layout space, including when text or a reply
-        // target makes it taller. Keep the scroll viewport above it instead of
-        // overlaying controls and asynchronously compensating with margins.
-        VStack(spacing: 0) {
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            inputBar
-                .padding(.bottom, inputBottomInset)
-        }
+        // 输入栏以底部安全区的形式叠在列表上：列表内容从玻璃下面滑过，
+        // 滚动到底时又能停在输入栏上方。安全区随输入栏高度在同一次布局里更新，
+        // 多行草稿、回复提示或发送错误让它变高时，不需要先测量高度再回填边距。
+        content
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                inputBar
+                    .padding(.bottom, inputBottomInset)
+            }
             .environment(\.replyToComment, replyAction)
             // 处理闭包记着当前的草稿和楼层；换视频（换评论模型、换草稿）或换楼层时重新装一次。
             // 旧草稿被旧闭包持有，新草稿不会和它撞上同一个对象标识。

@@ -73,18 +73,13 @@ struct CommentThreadView: View {
                     sectionHeader
 
                     ForEach(replies) { reply in
-                        VStack(alignment: .leading, spacing: 0) {
-                            CommentRow(comment: reply, viewModel: viewModel, showsReplies: false)
-                                .padding(.horizontal, CommentLayout.pageHorizontalInset)
-                                .padding(.vertical, CommentLayout.rowVerticalPadding)
-                            if reply.id != replies.last?.id {
-                                Divider().padding(.leading, CommentLayout.pageHorizontalInset)
+                        CommentRow(comment: reply, viewModel: viewModel, showsReplies: false)
+                            .padding(.horizontal, CommentLayout.pageHorizontalInset)
+                            .padding(.vertical, CommentLayout.rowVerticalPadding)
+                            .task(id: tailIDs.contains(reply.id) ? replies.last?.id : nil) {
+                                guard tailIDs.contains(reply.id) else { return }
+                                await viewModel.loadMoreRepliesIfNeeded(current: reply, root: root)
                             }
-                        }
-                        .task(id: tailIDs.contains(reply.id) ? replies.last?.id : nil) {
-                            guard tailIDs.contains(reply.id) else { return }
-                            await viewModel.loadMoreRepliesIfNeeded(current: reply, root: root)
-                        }
                     }
 
                     footer
@@ -119,8 +114,8 @@ struct CommentThreadView: View {
     private var sectionHeader: some View {
         let count = viewModel.replyCount(for: root)
         return Text(count > 0 ? String(localized: "全部回复 \(count)") : String(localized: "全部回复"))
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.primary.opacity(CommentLayout.emphasisOpacity))
             .padding(.horizontal, CommentLayout.pageHorizontalInset)
             .padding(.top, 14)
             .padding(.bottom, 6)
