@@ -1,9 +1,11 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 import Synchronization
 
 /// 生命周期标记与横幅缓存独立于分页游标；账号切换后的旧响应不能写入新会话。
-final class AppRecommendationSession: Sendable {
-    static let shared = AppRecommendationSession()
+public final class AppRecommendationSession: Sendable {
     struct Context: Sendable {
         let epoch: UUID
         let openEvent: String
@@ -20,12 +22,12 @@ final class AppRecommendationSession: Sendable {
 
     private let now: @Sendable () -> TimeInterval
 
-    init(now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    public init(now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.now = now
     }
 
-    func didEnterBackground() { state.withLock { $0.backgroundedAt = now() } }
-    func didBecomeActive() {
+    public func didEnterBackground() { state.withLock { $0.backgroundedAt = now() } }
+    public func didBecomeActive() {
         state.withLock {
             if let started = $0.backgroundedAt {
                 if now() - started > 1800 {

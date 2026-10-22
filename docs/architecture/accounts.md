@@ -9,7 +9,7 @@ UA、Referer 与显式 Cookie 仍由它组装。App GET、表单、只读 gRPC �
 `AppRequest` 和已校验的 `AppRequestContext`，不读取凭据存储或发起网络请求。
 `APIClient` 在编码前统一合并设备公共头，并在异步准备后复核登录代际；不感兴趣等无自定义头的 App 接口也使用同一身份。
 `HTTPTransport` 发送已编码请求并记录脱敏诊断、处理已发送 ticket 的失效响应；重试复用同一份请求，写操作使用零重试。
-登录、直播和图片各有独立入口，默认 HTTP 传输使用 `AppNetwork.session`。WBI 与 App 签名各自维护。
+登录、直播和图片各有独立入口，默认 HTTP 传输使用 `AppNetwork.session`。Regression 禁止安全验证 WebKit 的远端初始加载及导航。WBI 与 App 签名各自维护。
 非零业务码先于成功数据解码，列表用宽松解码避免单条异常拖垮整页。
 推荐、直播与「不感兴趣」及撤销共用实测 iPhone 9.13.0 协议身份：
 `build=91300100`、`mobi_app=iphone`、`platform=ios`，客户端参数集中在 `AppClientIdentity`。
@@ -86,3 +86,26 @@ Device protobuf 使用已确认的字段映射，未知首次追踪时间不填�
 
 写操作不自动重试，包括形式为 GET 的推荐反馈。观看上报、推荐反馈和播放准备绑定
 调用时的登录会话；账号切换后的迟到响应不能使用新凭据、返回旧播放清单或回填新缓存。
+
+服务适配器传入的客户端必须沿端点链路传递到底层传输；账号、搜索、视频详情、评论、关注和资料库的读取
+使用该实例的凭据快照与 session。测试用独立客户端调用同一端点，验证账号与传输不会落回生产默认图。
+写入与取流适配器同时传递客户端和身份对象；Cookie、CSRF、签名上下文和账号代际来自同一注入图。
+`HTTPTransport` 接收诊断与响应观察操作，`APIClient` 接收 WBI 签名操作，避免自定义传输回查其他图的状态。
+
+直播与推荐适配器向端点传递所属 client；直播签名复用该 client 的签名器，推荐会话、网络状态、点击队列与过滤配置均可注入，避免独立服务落回另一组全局状态。
+
+认证适配器将同一 URLSession 传给网页和短信登录端点。设备身份的注册、SPI 与续期使用实例持有的原始传输，网络状态也由实例注入；短信响应观察绑定对应身份，不会修改其他服务图的账号状态。
+
+`App/ApplicationServices+Live.swift` 的 `makeLive` 显式组装各个服务适配器；独立图传入自己的 identity、client、session、诊断和上报实例。生产 `live` 通过同一入口组装，普通页面的默认创建方式保持不变。
+
+视频列表的 `VideoFilterDependencies` 绑定同一时长设置与元数据缓存，由 App 组装；列表通过环境传递，Home/Space 模型通过构造器传入。纯时长文本解析属于 Domain 的 `VideoDuration`，持久化设置属于 `Application/Settings`，独立测试使用自己的偏好域与缓存。
+
+身份、WBI 签名、HTTP 客户端、网络状态、推荐会话、诊断和上报队列的生产默认实例在 `App/ApplicationServices+Live.swift` 创建；Data 类型保留显式构造接缝。离线 harness 使用独立的宿主组装与内存凭据，不加载 `ApplicationServices+Live.swift`；复用 `App/NetworkingDefaults.swift` 的便利初始化器，由宿主提供隔离依赖。
+
+`AccountCredentialPersistence` 同步负责账号凭据的格式、兼容存储与写后读回验证。`DeviceIdentity` 保留内存镜像、账号代际和续期任务；只有原子凭据记录验证成功后才发布新登录态，持久化委托不引入新的 await。
+
+身份、签名和传输实现由 `NeoBiliData` 编译。账号凭据快照、服务操作和状态通知名属于 `NeoBiliDomain`；Application 不导入 Data，App 负责将生产身份与客户端交给适配器工厂。
+
+网络会话由 App 组装层持有，Data 通过 `AppNetwork.makeSession()` 保留编译期 Regression 隔离；端点、身份与缓存接收显式传输依赖。离线 harness 创建自己的阻断会话。
+
+首页推荐的成功与失败回调都校验请求所属的账号会话；换号后的旧请求错误不能覆盖当前页面状态。

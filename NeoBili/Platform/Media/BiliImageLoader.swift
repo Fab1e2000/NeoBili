@@ -1,9 +1,14 @@
+#if canImport(NeoBiliCore)
+import NeoBiliCore
+#endif
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// Shared decoded bitmap cache. Both immediate UI reads and async image loads
 /// use this single byte budget; evicting a bitmap releases its only cache owner.
 actor BiliImageCache {
-    static let shared = BiliImageCache()
 
     private struct Key: Hashable, Sendable {
         let url: URL
@@ -14,16 +19,19 @@ actor BiliImageCache {
     private let requests = ImageRequestPool<Key, UIImage>()
     nonisolated(unsafe) private var memoryPressureObserver: (any NSObjectProtocol)?
 
-    init(maximumBytes: Int = 64 * 1_024 * 1_024, maximumEntries: Int = 300) {
+    private let notifications: NotificationCenter
+
+    init(maximumBytes: Int = 64 * 1_024 * 1_024, maximumEntries: Int = 300, notifications: NotificationCenter = .default) {
+        self.notifications = notifications
         let storage = ImageMemoryCache<Key, UIImage>(maximumBytes: maximumBytes, maximumEntries: maximumEntries)
         self.storage = storage
-        memoryPressureObserver = NotificationCenter.default.addObserver(
+        memoryPressureObserver = notifications.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil
         ) { _ in storage.removeAll() }
     }
 
     deinit {
-        if let memoryPressureObserver { NotificationCenter.default.removeObserver(memoryPressureObserver) }
+        if let memoryPressureObserver { notifications.removeObserver(memoryPressureObserver) }
     }
 
     var cachedByteCount: Int { storage.cachedByteCount }
@@ -65,8 +73,7 @@ actor BiliImageCache {
 /// Different visible sizes still share one HTTP transfer. URLSession retains
 /// compressed responses; this pool retains data only during the transfer.
 /// 限制同时进行的图片预取数量。
-private actor PrefetchGate {
-    static let shared = PrefetchGate()
+actor BiliImagePrefetchGate {
     private static let limit = 6
     private var active = 0
 
@@ -79,38 +86,57 @@ private actor PrefetchGate {
     func leave() { active -= 1 }
 }
 
+/// One image dependency graph owns decoding, prefetch admission and bitmap storage.
+struct BiliImagePipeline: Sendable {
+    let cache: BiliImageCache
+    let decodeGate: ImageDecodeGate
+    let prefetchGate: BiliImagePrefetchGate
+    let download: @Sendable (URL) async throws -> Data
+
+    init(cache: BiliImageCache = BiliImageCache(),
+         decodeGate: ImageDecodeGate = ImageDecodeGate(limit: 4),
+         prefetchGate: BiliImagePrefetchGate = BiliImagePrefetchGate(),
+         download: @escaping @Sendable (URL) async throws -> Data) {
+        self.cache = cache
+        self.decodeGate = decodeGate
+        self.prefetchGate = prefetchGate
+        self.download = download
+    }
+}
+
 /// Synchronous access to the same decoded cache used by the loader, so cached
 /// images appear in the first frame without a second independent retention cap.
 enum BiliImageMemoryCache {
-    static func image(for url: URL, pixelSize: ImagePixelSize) -> UIImage? {
-        BiliImageCache.shared.cachedImage(for: url, pixelSize: pixelSize)
-            ?? BiliImageCache.shared.cachedImage(for: url)
+    static func image(for url: URL, pixelSize: ImagePixelSize, pipeline: BiliImagePipeline = .live) -> UIImage? {
+        pipeline.cache.cachedImage(for: url, pixelSize: pixelSize)
+            ?? pipeline.cache.cachedImage(for: url)
     }
 
-    static func insert(_ image: UIImage, for url: URL, pixelSize: ImagePixelSize) {
-        BiliImageCache.shared.insert(image, for: url, pixelSize: pixelSize)
+    static func insert(_ image: UIImage, for url: URL, pixelSize: ImagePixelSize, pipeline: BiliImagePipeline = .live) {
+        pipeline.cache.insert(image, for: url, pixelSize: pixelSize)
     }
 }
 
 enum BiliImageLoader {
     /// The collection owns this handle and cancels it when UIKit drops prefetch.
     @discardableResult
-    static func prefetch(_ url: URL?, pointSize: CGSize, scale: CGFloat) -> Task<Void, Never>? {
+    static func prefetch(_ url: URL?, pointSize: CGSize, scale: CGFloat, pipeline: BiliImagePipeline = .live) -> Task<Void, Never>? {
         guard let url, let pixelSize = ImagePixelSize(points: pointSize, scale: scale),
-              BiliImageMemoryCache.image(for: url, pixelSize: pixelSize) == nil else { return nil }
+              BiliImageMemoryCache.image(for: url, pixelSize: pixelSize, pipeline: pipeline) == nil else { return nil }
         return Task(priority: .utility) {
-            guard await PrefetchGate.shared.tryEnter() else { return }
-            _ = try? await load(url, pixelSize: pixelSize)
-            await PrefetchGate.shared.leave()
+            guard await pipeline.prefetchGate.tryEnter() else { return }
+            _ = try? await load(url, pixelSize: pixelSize, pipeline: pipeline)
+            await pipeline.prefetchGate.leave()
         }
     }
 
     /// nil requests an original; on-screen cards always supply physical pixels.
     static func load(_ url: URL, pixelSize: ImagePixelSize? = nil,
-                     download: @escaping @Sendable (URL) async throws -> Data = ApplicationServices.imageData) async throws -> UIImage {
-        try await BiliImageCache.shared.image(for: url, pixelSize: pixelSize) {
-            let data = try await download(url)
-            try await ImageDecodeGate.shared.enter()
+                     pipeline: BiliImagePipeline = .live,
+                     download: (@Sendable (URL) async throws -> Data)? = nil) async throws -> UIImage {
+        try await pipeline.cache.image(for: url, pixelSize: pixelSize) {
+            let data = try await (download ?? pipeline.download)(url)
+            try await pipeline.decodeGate.enter()
             do {
                 try Task.checkCancellation()
                 let decoding = Task.detached(priority: .userInitiated) {
@@ -124,10 +150,10 @@ enum BiliImageLoader {
                     try await decoding.value
                 } onCancel: { decoding.cancel() }
                 try Task.checkCancellation()
-                await ImageDecodeGate.shared.leave()
+                await pipeline.decodeGate.leave()
                 return image
             } catch {
-                await ImageDecodeGate.shared.leave()
+                await pipeline.decodeGate.leave()
                 throw error
             }
         }

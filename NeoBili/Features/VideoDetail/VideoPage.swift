@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 全屏的视频页。
@@ -54,6 +57,7 @@ struct VideoPage: View {
     /// 内容区顶部的圆角半径（连续曲率），在预览页里调定。
     private let contentCornerRadius: CGFloat = 21
     @State private var isShowingSeason = false
+    @State private var seasonPickerSnapshot: UgcSeason?
     @State private var isShowingParts = false
     @State private var isShowingFavoriteFolders = false
     @State private var isShowingDanmakuComposer = false
@@ -111,24 +115,15 @@ struct VideoPage: View {
     /// 视频页上弹出的面板：合集、分 P、发弹幕、收藏夹。单独拆出来以减轻主体的类型推断负担。
     private func withSheets(_ content: some View) -> some View {
         content
-        .sheet(isPresented: $isShowingSeason) {
-            if let season = viewModel?.detail?.ugcSeason {
-                UgcSeasonSheet(
-                    season: season,
-                    currentBvid: store.route?.bvid,
-                    onSelect: store.openEpisode
-                )
+        .sheet(isPresented: $isShowingSeason, onDismiss: { seasonPickerSnapshot = nil }) {
+            if let season = seasonPickerSnapshot {
+                UgcSeasonPlaybackSheet(season: season)
                 .appTextSize()
             }
         }
         .sheet(isPresented: $isShowingParts) {
             if let detail = viewModel?.detail, detail.pages.count > 1 {
-                VideoPartsSheet(
-                    parts: detail.pages,
-                    currentCid: store.activeCid ?? detail.cid,
-                    coverURL: store.route?.secureCoverURL,
-                    onSelect: { part in store.selectPart(cid: part.cid) }
-                )
+                VideoPartsPlaybackSheet(parts: detail.pages, coverURL: store.route?.secureCoverURL)
                 .appTextSize()
             }
         }
@@ -502,56 +497,21 @@ struct VideoPage: View {
                                 canConsume: canConsumeVideoScroll, canContinue: canContinueCollapseMomentum)
     }
 
-    /// Each component owns one stable cell. Expanding the introduction never
-    /// resizes or rebinds the owner row above it.
     private func infoComponents(_ detail: VideoDetail) -> [VideoDescriptionComponent] {
-        var result: [VideoDescriptionComponent] = []
-        result.append(VideoDescriptionComponent("owner", revision: [AnyHashable(detail.owner), AnyHashable(viewModel?.ownerCard), viewModel?.relation?.isFollowing ?? false]) {
-            VideoOwnerRow(owner: detail.owner, avatarURL: detail.secureAvatarURL,
-                          card: viewModel?.ownerCard,
-                          isFollowing: viewModel?.relation?.isFollowing ?? false,
-                          onToggleFollow: { Task { await viewModel?.toggleFollow(isLoggedIn: account.isLoggedIn) } },
-                          onOpenSpace: {
-                              spacePath.append(FollowedUp(mid: detail.owner.mid, uname: detail.owner.name,
-                                                          face: detail.owner.face, hasUpdate: false))
-                          })
-                .padding(.horizontal, Self.contentInset)
-                .padding(.top, 14)
-
-        })
-        result.append(VideoDescriptionComponent(introduction:
-            VideoIntroductionCard(title: detail.title, stat: detail.stat, pubdate: detail.pubdate, desc: detail.desc,
-                                  isExpanded: Binding(get: { store.isDescriptionExpanded }, set: { store.isDescriptionExpanded = $0 }))))
-        if let tags = viewModel?.tags, !tags.isEmpty {
-            result.append(VideoDescriptionComponent("tags", revision: [AnyHashable(tags)]) {
-                VideoTagsRow(tags: tags, horizontalInset: Self.contentInset) { tag in
-                    spacePath.append(VideoTagSearchRoute(keyword: tag.tagName))
-                }
-            })
-        }
-        result.append(VideoDescriptionComponent("actions", revision: [AnyHashable(viewModel?.relation),
-                               viewModel?.likeCount ?? 0, viewModel?.coinCount ?? 0, viewModel?.favoriteCount ?? 0,
-                               viewModel?.displayedIsLiked ?? false, detail.stat.share]) {
-            actionBar(detail).padding(.horizontal, Self.contentInset)
-        })
-        if let season = detail.ugcSeason, !season.episodes.isEmpty {
-            result.append(VideoDescriptionComponent("season", revision: [AnyHashable(season), AnyHashable(currentEpisodeIndex(in: season))]) {
-                UgcSeasonRow(season: season, currentIndex: currentEpisodeIndex(in: season), onTap: { isShowingSeason = true })
-                    .padding(.horizontal, Self.contentInset)
-            })
-        }
-        if detail.pages.count > 1 {
-            result.append(VideoDescriptionComponent("parts", revision: [AnyHashable(detail.pages), AnyHashable(currentPartIndex(in: detail))]) {
-                VideoPartsRow(parts: detail.pages, currentIndex: currentPartIndex(in: detail), onTap: { isShowingParts = true })
-                    .padding(.horizontal, Self.contentInset)
-            })
-        }
-        return result.enumerated().map { index, component in
-            if component.introduction != nil { return component }
-            return VideoDescriptionComponent(component.id, revision: component.revision) {
-                component.content.padding(.bottom, index == result.count - 1 ? 6 : 14)
-            }
-        }
+        VideoDescriptionComponents(viewModel: viewModel, contentInset: Self.contentInset,
+            descriptionExpanded: Binding(get: { store.isDescriptionExpanded }, set: { store.isDescriptionExpanded = $0 }),
+            currentEpisodeIndex: currentEpisodeIndex, currentPartIndex: currentPartIndex,
+            onToggleFollow: { Task { await viewModel?.toggleFollow(isLoggedIn: account.isLoggedIn) } },
+            onOpenSpace: {
+                spacePath.append(FollowedUp(mid: detail.owner.mid, uname: detail.owner.name,
+                    face: detail.owner.face, hasUpdate: false))
+            },
+            onOpenTag: { spacePath.append(VideoTagSearchRoute(keyword: $0.tagName)) },
+            onShowSeason: {
+                seasonPickerSnapshot = detail.ugcSeason
+                isShowingSeason = true
+            }, onShowParts: { isShowingParts = true },
+            actionBar: actionBar).make(detail)
     }
 
     private func actionBar(_ detail: VideoDetail) -> some View {
@@ -609,8 +569,8 @@ struct VideoPage: View {
     private func sendDanmaku(_ text: String, mode: DanmakuMode) async throws {
         guard let detail = viewModel?.detail else { return }
         let player = store.player
-        try await ApplicationServices.live.comment.shootDanmaku(cid: store.activeCid ?? detail.cid, bvid: detail.bvid, message: text,
-                                       progress: player?.currentTime ?? 0, mode: mode.rawValue)
+        try await viewModel?.sendDanmaku(text, cid: store.activeCid ?? detail.cid,
+                                        progress: player?.currentTime ?? 0, mode: mode.rawValue)
         player?.danmaku?.appendSent(text: text, mode: mode)
         feedback.show(String(localized: "弹幕已发送"))
     }
@@ -626,10 +586,16 @@ struct VideoPage: View {
 
     /// 当前这一集在合集里排第几，用于折叠行右侧的「12/41」。
     private func currentEpisodeIndex(in season: UgcSeason) -> Int? {
-        guard let bvid = store.route?.bvid,
-              let index = season.episodes.firstIndex(where: { $0.bvid == bvid })
-        else { return nil }
-        return index + 1
+        guard let bvid = store.route?.bvid else { return nil }
+        var offset = 0
+        for section in season.sections ?? [] {
+            let episodes = section.episodes ?? []
+            if let index = episodes.firstIndex(where: { $0.bvid == bvid }) {
+                return offset + index + 1
+            }
+            offset += episodes.count
+        }
+        return nil
     }
 
     /// 当前播放的分P排第几（从 1 开始），用于折叠行右侧的「P3/12」。

@@ -1,21 +1,24 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// Credentials are captured by APIClient after checking the caller's login session.
 /// Encoders have no access to Keychain, DeviceIdentity or a network connection.
-struct AppAccountSnapshot: Sendable {
+public struct AppAccountSnapshot: Sendable {
     let accessKey: String?
     let mid: Int?
     let sessionID: UUID
 }
 
-struct AppRequestContext: Sendable {
+public struct AppRequestContext: Sendable {
     let account: AppAccountSnapshot
     var headers: [String: String] = [:]
 }
 
 /// Only currently implemented wire formats. New verified protocols belong here,
 /// while APIClient retains authentication, response handling and retry decisions.
-enum AppRequest: Sendable {
+public enum AppRequest: Sendable {
     case get(path: String, parameters: [String: String], requiresAccountCredential: Bool, usesAPIHost: Bool = false)
     case form(path: String, parameters: [String: String], usesAPIHost: Bool)
     case grpc(path: String, payload: Data)
@@ -36,18 +39,18 @@ enum AppRequest: Sendable {
     }
 }
 
-protocol AppRequestEncoding: Sendable {
+public protocol AppRequestEncoding: Sendable {
     func encode(_ operation: AppRequest, context: AppRequestContext) throws -> URLRequest
 }
 
-struct AppRequestEncoder: AppRequestEncoding {
+public struct AppRequestEncoder: AppRequestEncoding {
     private let timestamp: @Sendable () -> Int
 
-    init(timestamp: @escaping @Sendable () -> Int = { Int(Date().timeIntervalSince1970) }) {
+    public init(timestamp: @escaping @Sendable () -> Int = { Int(Date().timeIntervalSince1970) }) {
         self.timestamp = timestamp
     }
 
-    func encode(_ operation: AppRequest, context: AppRequestContext) throws -> URLRequest {
+    public func encode(_ operation: AppRequest, context: AppRequestContext) throws -> URLRequest {
         let account = context.account
         try operation.validate(account: account)
         let key = account.accessKey.flatMap { $0.isEmpty ? nil : $0 }

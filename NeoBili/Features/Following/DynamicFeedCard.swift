@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 把点赞观察和可见性任务限制在行内，避免牵动整个动态列表及头像条。
@@ -12,6 +15,8 @@ struct DynamicFeedCard: View {
     let onOpenDetail: () -> Void
     var showsAuthor = true
 
+    @Environment(\.videoPreparation) private var preparation
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @State private var isVisible = false
 
@@ -24,7 +29,7 @@ struct DynamicFeedCard: View {
 
     var body: some View {
         let video = entry.video
-        let preparationID = isVisible && (video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos) ?? false)
+        let preparationID = isVisible && (video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) ?? false)
             ? video?.bvid : nil
         let pagination = isVisible ? PaginationRequest(feedID: ObjectIdentifier(feed), generation: feed.entriesGeneration,
                                                         count: feed.entries.count, lastVisibleID: lastVisibleID) : nil
@@ -45,7 +50,7 @@ struct DynamicFeedCard: View {
         // 离开视口即取消停留等待；滑过的卡片不抢播放地址预取名额。
         .task(id: preparationID) {
             guard let preparationID else { return }
-            await VideoPreparationCache.shared.prefetchWhenSettled(bvid: preparationID)
+            await preparation.prefetchWhenSettled(bvid: preparationID)
         }
         .task(id: pagination) {
             guard pagination != nil else { return }

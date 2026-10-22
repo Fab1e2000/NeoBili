@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 import Observation
 
@@ -8,6 +11,7 @@ typealias LivePlaybackLoader = @Sendable (Int, Int) async throws -> LivePlayback
 @MainActor
 @Observable
 final class LivePlayerModel {
+    private let systemMedia: any SystemMediaControlling
     private(set) var room: LiveRoom
     private(set) var session: MPVPlayerSession
     private(set) var isLoading = true
@@ -48,7 +52,9 @@ final class LivePlayerModel {
          playbackLoader: @escaping LivePlaybackLoader = { try await ApplicationServices.live.streaming.playback(roomID: $0, quality: $1) },
          sourceOpener: @escaping PlaybackSourceOpener = { session, source, _ in try await session.open(source: source) },
          publishesSystemMedia: Bool = true,
-         startupTimeout: Duration = .seconds(10)) {
+         startupTimeout: Duration = .seconds(10),
+         systemMedia: (any SystemMediaControlling)? = nil) {
+        self.systemMedia = systemMedia ?? PlaybackDependencies.live.systemMedia
         self.room = room
         self.roomLoader = roomLoader
         self.playbackLoader = playbackLoader
@@ -67,7 +73,7 @@ final class LivePlayerModel {
             timeoutTask?.cancel()
             session.onEvent = nil
             session.stop()
-            if publishesSystemMedia { SystemNowPlayingCenter.shared.deactivate(sessionID: mediaSessionID) }
+            if publishesSystemMedia { systemMedia.deactivate(sessionID: mediaSessionID) }
         }
     }
 
@@ -122,7 +128,7 @@ final class LivePlayerModel {
                 isLoading = false
                 session.stop()
                 canUsePreparedSession = false
-                if publishesSystemMedia { SystemNowPlayingCenter.shared.deactivate(sessionID: mediaSessionID) }
+                if publishesSystemMedia { systemMedia.deactivate(sessionID: mediaSessionID) }
                 return
             }
             qualities = playback.qualities
@@ -170,7 +176,7 @@ final class LivePlayerModel {
         session.onEvent = nil
         session.stop()
         isPlaying = false
-        if publishesSystemMedia { SystemNowPlayingCenter.shared.deactivate(sessionID: mediaSessionID) }
+        if publishesSystemMedia { systemMedia.deactivate(sessionID: mediaSessionID) }
     }
 
     private func openCandidate(request: Int) async {
@@ -277,7 +283,7 @@ final class LivePlayerModel {
 
     private func activateSystemMedia() {
         guard publishesSystemMedia else { return }
-        SystemNowPlayingCenter.shared.activate(
+        systemMedia.activate(
             sessionID: mediaSessionID,
             metadata: SystemMediaMetadata(identifier: "live:\(room.roomID)", title: room.title,
                                           artist: room.username, artworkURL: room.coverURL, isLiveStream: true),
@@ -288,6 +294,6 @@ final class LivePlayerModel {
 
     private func publishPlaybackState() {
         guard publishesSystemMedia else { return }
-        SystemNowPlayingCenter.shared.updatePlaybackState(isPlaying: isPlaying, sessionID: mediaSessionID)
+        systemMedia.updatePlaybackState(isPlaying: isPlaying, sessionID: mediaSessionID)
     }
 }

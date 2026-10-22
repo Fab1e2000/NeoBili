@@ -1,9 +1,13 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 @MainActor
 @Observable
 final class SearchViewModel {
     @ObservationIgnored private let services: ApplicationServices
+    let history: SearchHistory
     var query: String = ""
     private(set) var hotSearches: [HotSearchItem] = []
     private(set) var isLoadingHotSearches = false
@@ -48,11 +52,13 @@ final class SearchViewModel {
 
     init(services: ApplicationServices = .live, searchVideos: ((String, Int) async throws -> SearchResultPage)? = nil,
          searchSuggestions: ((String) async throws -> [SearchSuggestion])? = nil,
-         recordHistory: @escaping @MainActor (String) -> Void = { SearchHistory.shared.record($0) }) {
+         recordHistory: (@MainActor (String) -> Void)? = nil,
+         history: SearchHistory = .shared) {
+        self.history = history
         self.services = services
         self.searchVideos = searchVideos ?? { try await services.search.searchVideos(keyword: $0, page: $1) }
         self.searchSuggestions = searchSuggestions ?? { try await services.search.searchSuggestions(term: $0) }
-        self.recordHistory = recordHistory
+        self.recordHistory = recordHistory ?? { history.record($0) }
     }
 
     var trimmedQuery: String {

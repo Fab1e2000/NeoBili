@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 单条评论。`internal` 而不是 `private`，因为楼中楼那块的上下间距要靠

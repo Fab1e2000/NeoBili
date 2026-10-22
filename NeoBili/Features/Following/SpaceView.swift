@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// UP 主空间页。头图 + 名片在上，下面用分段控件在「投稿」和「动态」之间切换。
@@ -5,10 +8,10 @@ import SwiftUI
 /// 排版参考 B 站客户端的空间页，但只保留看内容需要的部分：充电、大航海、
 /// 特别关注这些和播放无关的入口都不做。
 struct SpaceView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appThemeColor) private var themeColor
     let up: FollowedUp
 
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
@@ -22,7 +25,7 @@ struct SpaceView: View {
     /// 各分页的最新滚动位置。body 不读它，所以放进引用盒子保存：
     /// 消除此字典写入造成的状态失效；头部折叠等其它状态仍可能更新视图。
     @State private var pageOffsets = PageOffsetBox()
-    @State private var headerCollapse: CGFloat = 0
+    @State private var headerMotion = SpaceHeaderMotion()
     @State private var pickerHeight: CGFloat = 0
     @State private var scrollingPages: Set<Tab> = []
     @State private var videoPosition = ScrollPosition(edge: .top)
@@ -41,9 +44,10 @@ struct SpaceView: View {
         var storage: [Tab: CGFloat] = [:]
     }
 
-    init(up: FollowedUp) {
+    init(up: FollowedUp, filtering: VideoFilterDependencies = .live,
+         services: ApplicationServices = .live, likeStore: VideoLikeStore = .shared) {
         self.up = up
-        _viewModel = State(initialValue: SpaceViewModel(mid: up.mid))
+        _viewModel = State(initialValue: SpaceViewModel(mid: up.mid, services: services, filtering: filtering, likeStore: likeStore))
     }
 
     var body: some View {
@@ -64,16 +68,13 @@ struct SpaceView: View {
             .scrollIndicators(.hidden)
             .overlay(alignment: .top) {
                 VStack(spacing: 0) {
-                    header
-                        // 先按完整宽度测量固有高度，再裁掉滚出顶部的部分。
-                        // 折叠不能反过来压缩头图的宽高比或资料区。
-                        .fixedSize(horizontal: false, vertical: true)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                            headerHeight = height
-                        }
-                        .frame(height: headerHeight > 0 ? max(headerHeight - headerCollapse, 0) : nil,
-                               alignment: .bottom)
-                        .clipped()
+                    SpaceCollapsingHeader(motion: headerMotion, height: headerHeight) {
+                        header
+                            .fixedSize(horizontal: false, vertical: true)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                                headerHeight = height
+                            }
+                    }
 
                     tabPicker
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
@@ -92,10 +93,12 @@ struct SpaceView: View {
         .toolbarBackground(Color(uiColor: .secondarySystemGroupedBackground), for: .navigationBar)
         // 进了 UP 主页就把底部标签栏收起来，整屏都留给他的内容。
         .toolbarVisibility(.hidden, for: .tabBar)
+        .environment(\.videoFiltering, viewModel.filtering)
         .imageViewerHost()
         .task { await viewModel.loadVideosIfNeeded() }
         .task(id: followContext) { await viewModel.loadCard(followContext) }
         .onChange(of: followContext) { _, context in viewModel.setFollowContext(context) }
+        .onChange(of: tab) { _, selected in synchronizeHeader(in: selected) }
         .task(id: tab) {
             // 切到动态那一栏才去加载它，进页面时不白跑一次请求。
             if tab == .dynamics {
@@ -148,6 +151,9 @@ struct SpaceView: View {
                 scrollingPages.insert(pageTab)
             } else {
                 scrollingPages.remove(pageTab)
+                if pageTab == tab {
+                    synchronizeHeader(in: pageTab == .videos ? .dynamics : .videos)
+                }
             }
         }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -157,9 +163,8 @@ struct SpaceView: View {
             // 只有纵向手势更新共享头部；分页切换和程序同步产生的回调不参与。
             guard pageTab == tab, scrollingPages.contains(pageTab) else { return }
             let collapse = min(max(offset, 0), headerHeight)
-            guard collapse != headerCollapse else { return }
-            headerCollapse = collapse
-            synchronizeHeader(in: pageTab == .videos ? .dynamics : .videos)
+            guard collapse != headerMotion.collapse else { return }
+            headerMotion.collapse = collapse
         }
         .onAppear {
             if pageTab != tab { synchronizeHeader(in: pageTab) }
@@ -176,7 +181,7 @@ struct SpaceView: View {
     private func synchronizeHeader(in pageTab: Tab) {
         let offset = SpaceHeaderLayout.synchronizedOffset(
             pageOffset: pageOffsets.storage[pageTab] ?? 0,
-            collapse: headerCollapse,
+            collapse: headerMotion.collapse,
             headerHeight: headerHeight
         )
         pageOffsets.storage[pageTab] = offset
@@ -204,107 +209,7 @@ struct SpaceView: View {
     // MARK: - 头部
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            banner
-
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(viewModel.card?.name ?? up.uname)
-                        .font(.title3.weight(.semibold))
-                        .lineLimit(1)
-
-                    if let level = viewModel.card?.level, level > 0 {
-                        Text("LV\(level)")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(themeColor, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    }
-
-                    if viewModel.card?.isVIP == true {
-                        Text("大会员")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.pink, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    }
-
-                    Spacer(minLength: 0)
-
-                    followButton
-                }
-
-                statsRow
-
-                if let sign = viewModel.card?.sign, !sign.isEmpty {
-                    Text(sign)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                }
-            }
-            .padding(.horizontal, SpaceHeaderLayout.horizontalInset)
-        }
-        .padding(.bottom, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-    }
-
-    /// 头图。头像压在它的左下角，一半探出到下面的信息区里。
-    private var banner: some View {
-        Group {
-            if let url = viewModel.card?.bannerURL(isDark: colorScheme == .dark) {
-                CoverThumbnail(url: url, aspectRatio: SpaceHeaderLayout.bannerAspectRatio)
-            } else {
-                // 没设置过头图（或者名片还没回来）时给一层渐变，
-                // 比让图片控件显示「图裂了」的占位好看得多。
-                LinearGradient(
-                    colors: [themeColor.opacity(0.55), themeColor.opacity(0.15)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .aspectRatio(SpaceHeaderLayout.bannerAspectRatio, contentMode: .fit)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .clipped()
-        .overlay(alignment: .bottomLeading) {
-            BiliImage(url: viewModel.card?.secureAvatarURL ?? up.secureAvatarURL)
-                .aspectRatio(contentMode: .fill)
-                .frame(width: SpaceHeaderLayout.avatarSize, height: SpaceHeaderLayout.avatarSize)
-                .clipShape(Circle())
-                .overlay {
-                    Circle().stroke(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 3)
-                }
-                // 头像不要顶在屏幕左缘，和下面的名字、签名对齐。
-                .padding(.leading, SpaceHeaderLayout.horizontalInset)
-                .offset(y: SpaceHeaderLayout.avatarSize / 2)
-        }
-        // 给探出来的那半个头像让出高度。
-        .padding(.bottom, SpaceHeaderLayout.avatarSize / 2 + 8)
-    }
-
-    private var statsRow: some View {
-        HStack(spacing: 22) {
-            stat(count: viewModel.card?.follower, label: String(localized: "粉丝"))
-            stat(count: viewModel.card?.followingCount, label: String(localized: "关注"))
-            stat(count: viewModel.card?.likeCount, label: String(localized: "获赞"))
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func stat(count: Int?, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(count.map(\.biliCountText) ?? "—")
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
+        SpaceProfileHeader(card: viewModel.card, up: up, themeColor: themeColor) { followButton }
     }
 
     private var followContext: SpaceViewModel.FollowContext {
@@ -365,7 +270,7 @@ struct SpaceView: View {
 
     @ViewBuilder
     private var videoList: some View {
-        let visibleVideos = viewModel.videos.hidingKnownPortraitVideos(hidesPortraitVideos)
+        let visibleVideos = viewModel.videos.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: viewModel.filtering)
 
         if let message = viewModel.videosError, !viewModel.videos.isEmpty {
             HStack(alignment: .top, spacing: 12) {
@@ -382,7 +287,7 @@ struct SpaceView: View {
             .padding(.vertical, 12)
         }
 
-        if visibleVideos.isEmpty, viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos) {
+        if visibleVideos.isEmpty, viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos, filtering: viewModel.filtering) {
             LoadingTaskAnchor().padding(.vertical, 40)
         } else if viewModel.isLoadingVideos, viewModel.videos.isEmpty {
             LoadingTaskAnchor().padding(.vertical, 40)
@@ -443,7 +348,7 @@ struct SpaceView: View {
                     )
                 }
                 // 空间投稿列表里没有 cid，预取要先取一次详情再取播放地址。
-                .task { await VideoPreparationCache.shared.prefetchWhenSettled(bvid: video.bvid) }
+                .task { await preparation.prefetchWhenSettled(bvid: video.bvid) }
             }
 
             if viewModel.isLoadingMoreVideos {
@@ -473,9 +378,9 @@ struct SpaceView: View {
             ContentUnavailableView("还没有动态", systemImage: "bell.slash", description: Text("这位 UP 主还没有发过动态。"))
                 .padding(.vertical, 20)
         } else {
-            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos) ?? true }
+            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: viewModel.filtering) ?? true }
             if visibleEntries.isEmpty {
-                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos) {
+                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos, filtering: viewModel.filtering) {
                     LoadingTaskAnchor().padding()
                 } else {
                     Button("继续加载动态") { Task { await feed.loadReplacementPage() } }
@@ -497,7 +402,7 @@ struct SpaceView: View {
                 .videoTransitionSource("space-dynamic-\(entry.id)", in: dynamicTransition)
                 .contextMenu {
                     if let video = entry.video,
-                       video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
+                       video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: viewModel.filtering) {
                         WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
                     }
                 }
@@ -530,6 +435,24 @@ struct SpaceView: View {
                 feedback.show(message)
             }
         }
+    }
+}
+
+/// Only the clipping view observes this per-frame value. The page lists do not.
+@MainActor @Observable
+private final class SpaceHeaderMotion {
+    var collapse: CGFloat = 0
+}
+
+private struct SpaceCollapsingHeader<Content: View>: View {
+    let motion: SpaceHeaderMotion
+    let height: CGFloat
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .frame(height: height > 0 ? max(height - motion.collapse, 0) : nil, alignment: .bottom)
+            .clipped()
     }
 }
 

@@ -1,4 +1,8 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import SwiftUI
+import UIKit
 import XCTest
 @testable import NeoBili
 
@@ -9,6 +13,73 @@ import XCTest
 #if DEBUG
 @MainActor
 final class CommentSpacingTests: XCTestCase {
+    func testComposerReservesViewportAcrossDraftGrowthAndVideoCanvas() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previous = scene.keyWindow
+        defer { previous?.makeKey() }
+        for canvas in [false, true] {
+            for size in [DynamicTypeSize.large, .accessibility1] {
+                let model = CommentsViewModel(aid: 1)
+                let window = UIWindow(windowScene: scene)
+                let list = ScrollView {
+                    VStack {
+                        ForEach(0..<30) { index in Text("评论内容 \(index)").frame(height: 50) }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .commentComposer(viewModel: model)
+                .environment(\.commentBottomInset, canvas ? 34 : 0)
+                let host = UIHostingController(rootView: Group {
+                    if canvas {
+                        VideoScrollCanvas(height: 650, content: list).frame(height: 450)
+                    } else {
+                        list
+                    }
+                }
+                .environment(AccountStore())
+                .environment(ActionFeedback())
+                .environment(\.dynamicTypeSize, size))
+                window.overrideUserInterfaceStyle = canvas ? .dark : .light
+                window.rootViewController = host
+                window.makeKeyAndVisible()
+                defer { window.isHidden = true; window.rootViewController = nil }
+                var initialHeight: CGFloat = 0
+                for expanded in [false, true] {
+                    if expanded {
+                        model.commentDraft(root: 0).text = "第一行\n第二行\n第三行\n第四行"
+                        model.commentDraft(root: 0).target = CommentReplyTarget(root: 1, parent: 1, name: "回复对象")
+                    }
+                    try await Task.sleep(for: .milliseconds(300))
+                    window.layoutIfNeeded()
+                    let descendants = composerDescendants(window)
+                    let input = try XCTUnwrap(descendants.first { $0 is UITextView || $0 is UITextField })
+                    let scroll = try XCTUnwrap(descendants.compactMap { $0 as? UIScrollView }
+                        .first { !($0 is UITextView) && $0.contentSize.height > $0.bounds.height })
+                    let viewport = scroll.convert(scroll.bounds, to: window)
+                    let inputFrame = input.convert(input.bounds, to: window)
+                    XCTAssertLessThanOrEqual(viewport.maxY, inputFrame.minY,
+                                             "The scroll viewport must end above the composer, not underneath it")
+                    if expanded {
+                        XCTAssertLessThan(scroll.bounds.height, initialHeight, "Draft growth must shrink the viewport")
+                    } else { initialHeight = scroll.bounds.height }
+                    scroll.setContentOffset(CGPoint(x: 0, y: max(-scroll.adjustedContentInset.top,
+                        scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)), animated: false)
+                    let attachment = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                    })
+                    attachment.name = "composer-canvas-\(canvas)-\(size)-expanded-\(expanded)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+            }
+        }
+    }
+
+    private func composerDescendants(_ view: UIView) -> [UIView] {
+        [view] + view.subviews.flatMap { composerDescendants($0) }
+    }
+
     private static let width: CGFloat = 390
 
     func testReplyBlockToDividerGapIsIdenticalAcrossComments() throws {

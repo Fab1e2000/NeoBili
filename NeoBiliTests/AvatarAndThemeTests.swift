@@ -1,3 +1,9 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
 import SwiftUI
 @testable import NeoBili
@@ -57,6 +63,45 @@ final class AvatarAndThemeTests: XCTestCase {
         XCTAssertTrue(avatar.subviews.compactMap { ($0 as? UIImageView)?.image }.contains { $0 === blue })
         XCTAssertFalse(avatar.subviews.compactMap { ($0 as? UIImageView)?.image }.contains { $0 === red })
         XCTAssertTrue(card.bounds.contains(avatar.frame))
+    }
+
+    func testTitleCacheMissDoesNotRenderSynchronouslyAndLoadsShareBitmap() async throws {
+        PreparedTitle.warmUp(dynamicTypeSize: .large)
+        let key = try XCTUnwrap(PreparedTitle.Key(title: UUID().uuidString + " 两行标题",
+            width: 172, fontSize: PreparedTitle.fontSize(for: .large), scale: 3))
+        XCTAssertNil(PreparedTitle.image(for: key))
+        XCTAssertNil(PreparedTitle.cached(key), "同步显示路径不能生成位图")
+        async let first = PreparedTitle.load(key)
+        async let second = PreparedTitle.load(key)
+        let (one, two) = await (first, second)
+        let image = try XCTUnwrap(one)
+        XCTAssertTrue(image === two, "预取与可见请求共用串行队列和同一缓存结果")
+        XCTAssertTrue(PreparedTitle.image(for: key) === image)
+    }
+
+    func testReusedCardDisplaysOnlyLatestAsynchronousTitle() async throws {
+        PreparedTitle.warmUp(dynamicTypeSize: .large)
+        let card = NativeHomeVideoCard.CardView(resolveAvatar: { _ in nil })
+        let prefix = UUID().uuidString
+        func video(_ index: Int) -> VideoSummary {
+            .init(bvid: "BV-title-\(index)", aid: index, cid: index,
+                  title: prefix + " 标题 \(index)", pic: "", desc: "", duration: 10,
+                  pubdate: 0, owner: .init(mid: 0, name: "UP", face: ""),
+                  stat: .init(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0))
+        }
+        card.configure(video: video(1), titleWidth: 172, dynamicTypeSize: .large, scale: 3)
+        await Task.yield()
+        card.configure(video: video(2), titleWidth: 172, dynamicTypeSize: .large, scale: 3)
+        let key = try XCTUnwrap(PreparedTitle.Key(title: video(2).title, width: 172,
+            fontSize: PreparedTitle.fontSize(for: .large), scale: 3))
+        let expected = await PreparedTitle.load(key)
+        let title = try XCTUnwrap(card.subviews.first { $0.accessibilityIdentifier == "home.card.title.bitmap" } as? UIImageView)
+        for _ in 0..<100 where title.isHidden {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertNotNil(expected)
+        XCTAssertFalse(title.isHidden)
+        XCTAssertTrue(title.image === expected)
     }
 
     func testHotSearchDecodingKeepsSearchKeywordSeparateFromDisplayTitle() throws {

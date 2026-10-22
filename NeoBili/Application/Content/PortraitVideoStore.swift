@@ -1,10 +1,12 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 import Observation
 
 /// 全列表共用的画幅判断。详情沿用播放预取的请求合并，过滤本身不请求播放地址。
 @MainActor @Observable
 final class PortraitVideoStore {
-    static let shared = PortraitVideoStore(metadataLoader: loadMetadata)
     // 旧值 50：一次滚一页（20 张无缓存画幅卡片）就是 20 路并发详情请求，
     // 带宽和 CPU 双尖峰，还极易触发接口风控连累正常请求。限制后台补查，
     // 为用户主动打开的视频留出带宽。
@@ -18,11 +20,6 @@ final class PortraitVideoStore {
     struct Metadata {
         let dimension: VideoDimension?
         let durationSeconds: Int?
-    }
-
-    private static func loadMetadata(_ bvid: String) async throws -> Metadata {
-        let detail = try await VideoPreparationCache.shared.detail(for: bvid)
-        return Metadata(dimension: detail.dimension, durationSeconds: detail.duration)
     }
 
     private struct Entry: Codable, Sendable {

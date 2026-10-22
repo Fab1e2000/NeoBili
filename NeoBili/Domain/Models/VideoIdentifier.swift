@@ -1,7 +1,7 @@
 import Foundation
 
-enum VideoIdentifier {
-    static func bvid(aid: Int) -> String? {
+public enum VideoIdentifier {
+    public static func bvid(aid: Int) -> String? {
         guard aid > 0, aid < (1 << 51) else { return nil }
         let alphabet = Array("FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf")
         var result = Array("BV1000000000")

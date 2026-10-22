@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 动态卡片的排版参数。
@@ -40,6 +43,7 @@ struct DynamicCard: View {
     var showsAuthor = true
 
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @State private var isTextExpanded = false
 
@@ -78,7 +82,7 @@ struct DynamicCard: View {
             }
 
             if let video = entry.video,
-               video.canDisplayVideo(hidingPortrait: hidesPortraitVideos) {
+               video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) {
                 videoBlock(video)
                     .videoEntranceIdentity(video.bvid)
             }

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 @MainActor
@@ -102,7 +105,7 @@ final class CommentsViewModel {
             try await services.comment.likeComment(oid: oid, type: type, rpid: comment.rpid, like: !wasLiked)
         } catch {
             likeOverrides[comment.rpid] = wasLiked
-            actionMessage = error.localizedDescription
+            if !error.isCancellation { actionMessage = error.localizedDescription }
         }
     }
 

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 原生按钮、菜单与滑杆组成媒体控制层；手势区域与稳定的视频渲染层分别管理。

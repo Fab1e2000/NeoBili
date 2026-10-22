@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 设置目录只负责导航与摘要；存储键和默认值由各设置类型维护。
@@ -14,7 +17,8 @@ struct SettingsView: View {
     @AppStorage(RecommendationFilter.minPlayKey) private var minPlay = 0
     @AppStorage(RecommendationFilter.titleBanWordKey) private var titleKeywords = ""
     @AppStorage(RecommendationFilter.zoneBanWordKey) private var zoneKeywords = ""
-    @State private var durationFilter = VideoDurationFilterSettings.shared
+    @Environment(\.videoFiltering) private var filtering
+    private var durationFilter: VideoDurationFilterSettings { filtering.duration }
     @AppStorage(AppLanguage.storageKey) private var language = AppLanguage.system
 
     var body: some View {

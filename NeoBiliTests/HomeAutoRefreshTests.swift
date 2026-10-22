@@ -1,3 +1,9 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
 @testable import NeoBili
 
@@ -93,6 +99,34 @@ final class HomeAutoRefreshTests: XCTestCase {
         let message = await model.block(video.owner)
         XCTAssertNil(message)
         XCTAssertEqual(model.videos.count, 1)
+    }
+
+    func testLateFailureIsPublishedOnlyForRequestAccountSession() async {
+        for changesAccount in [false, true] {
+            let suite = "neobili.home.late-failure.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            var session = UUID()
+            let started = expectation(description: "Recommendation request suspended")
+            var response: CheckedContinuation<RecommendationBatch, any Error>?
+            let model = HomeViewModel(defaults: defaults,
+                currentAccount: { HomeFeedAccount(accountID: nil, hasAppCredential: false) },
+                currentSessionID: { session }, fetchRecommendations: { _ in
+                    try await withCheckedThrowingContinuation {
+                        response = $0
+                        started.fulfill()
+                    }
+                })
+            let load = Task { await model.loadInitial() }
+            await fulfillment(of: [started], timeout: 2)
+            if changesAccount { session = UUID() }
+            let failure = URLError(.timedOut)
+            response?.resume(throwing: failure)
+            await load.value
+            XCTAssertEqual(model.errorMessage, changesAccount ? nil : failure.localizedDescription)
+            XCTAssertTrue(model.videos.isEmpty)
+            XCTAssertFalse(model.isLoading)
+        }
     }
 
 }

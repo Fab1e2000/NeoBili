@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 struct BiliResponse<T: Decodable>: Decodable {
@@ -19,29 +22,24 @@ struct BiliResponse<T: Decodable>: Decodable {
 
 /// Thin async wrapper around URLSession for talking to Bilibili's public web
 /// endpoints as an anonymous (logged-out) client.
-struct APIClient {
-    static let shared = APIClient()
+public struct APIClient: Sendable {
 
     private static let baseURL = URL(string: "https://api.bilibili.com")!
+    let signWebParameters: @Sendable ([String: String]) async throws -> [String: String]
     private let transport: HTTPTransport
     private let appEncoder: any AppRequestEncoding
     private let authentication: @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot
     private let appAuthentication: @Sendable () async -> DeviceIdentity.AppRequestAccount
     private let appHeaders: @Sendable (UUID) async throws -> [String: String]
 
-    init(session: URLSession = AppNetwork.session,
+    public init(transport: HTTPTransport,
          appEncoder: any AppRequestEncoding = AppRequestEncoder(),
-         authentication: @escaping @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot = {
-             await DeviceIdentity.shared.authenticatedRequestSnapshot()
-         },
-         appAuthentication: @escaping @Sendable () async -> DeviceIdentity.AppRequestAccount = {
-             await DeviceIdentity.shared.appAccount()
-         },
-         appHeaders: @escaping @Sendable (UUID) async throws -> [String: String] = { session in
-             guard !AppNetwork.isRegression else { return [:] }
-             return try await DeviceIdentity.shared.appRequestHeaders(expectedSessionID: session)
-         }) {
-        self.transport = HTTPTransport(session: session)
+         authentication: @escaping @Sendable () async -> DeviceIdentity.AuthenticatedRequestSnapshot,
+         appAuthentication: @escaping @Sendable () async -> DeviceIdentity.AppRequestAccount,
+         appHeaders: @escaping @Sendable (UUID) async throws -> [String: String],
+         signWebParameters: @escaping @Sendable ([String: String]) async throws -> [String: String]) {
+        self.transport = transport
+        self.signWebParameters = signWebParameters
         self.appEncoder = appEncoder
         self.authentication = authentication
         self.appAuthentication = appAuthentication
@@ -63,11 +61,12 @@ struct APIClient {
         path: String,
         params: [String: String] = [:],
         requiresWBI: Bool = false,
-        additionalHeaders: [String: String] = [:]
+        additionalHeaders: [String: String] = [:],
+        expectedSessionID: UUID? = nil
     ) async throws -> T {
         var finalParams = params
         if requiresWBI {
-            finalParams = try await WBISigner.shared.sign(params: params)
+            finalParams = try await signWebParameters(params)
         }
 
         guard var components = URLComponents(url: Self.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
@@ -94,13 +93,21 @@ struct APIClient {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
-        await applyCommonHeaders(to: &request)
+        let account = await authentication()
+        try Task.checkCancellation()
+        if let expectedSessionID, account.sessionID != expectedSessionID { throw CancellationError() }
+        request.httpShouldHandleCookies = false
+        request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
+        if !account.cookieHeader.isEmpty { request.setValue(account.cookieHeader, forHTTPHeaderField: "Cookie") }
         // 搜索等接口会校验自己的网页来源。调用方最后覆盖默认值，既让普通
         // API 继续共用全站 Referer，也不必为了一个特殊接口复制整段传输代码。
         for (name, value) in additionalHeaders {
             request.setValue(value, forHTTPHeaderField: name)
         }
-        return try await perform(request, retries: 2)
+        let result: T = try await perform(request, retries: 2)
+        if let expectedSessionID { _ = try await appAccount(expectedSessionID: expectedSessionID) }
+        return result
     }
 
     /// 少数接口不在 api.bilibili.com 上，返回体也没有 `{code, message, data}`
@@ -223,7 +230,7 @@ struct APIClient {
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             var formComponents = URLComponents()
             formComponents.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
-            request.httpBody = formComponents.percentEncodedQuery?.data(using: .utf8)
+            request.httpBody = formComponents.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B").data(using: .utf8)
         }
 
         return try await perform(request)
@@ -238,7 +245,9 @@ struct APIClient {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
         let request = try await encodeAppRequest(.get(path: path, parameters: params,
             requiresAccountCredential: requiresAccountCredential, usesAPIHost: usesAPIHost), context: .init(account: account, headers: headers))
-        return try await perform(request, retries: retries)
+        let result: T = try await perform(request, retries: retries)
+        _ = try await appAccount(expectedSessionID: account.sessionID)
+        return result
     }
 
     /// Unary App gRPC uses the same account/device as recommendation and watch feedback.

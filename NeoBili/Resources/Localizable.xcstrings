@@ -1,6 +1,126 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "设备编号与推荐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device ID and recommendations"
+          }
+        }
+      }
+    },
+    "知道了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Got it"
+          }
+        }
+      }
+    },
+    "设备编号（BUVID）可能影响推荐流。想尝试让推荐更接近官方 App，可通过抓包查看自己官方 App 请求头中的 buvid，复制后在此填写并保存，再退出并重新打开 NeoBili。仅使用自己的编号；使用相同编号也不能保证推荐完全一致。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your device ID (BUVID) may affect recommendations. To try recommendations closer to the official app, capture requests from your own official app and copy the buvid request header. Enter and save it here, then quit and reopen NeoBili. Use only your own ID; matching IDs do not guarantee identical recommendations."
+          }
+        }
+      }
+    },
+    "切换后重新打开应用生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reopen the app to apply changes."
+          }
+        }
+      }
+    },
+    "App 授权已失效，请重新授权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App authorization has expired. Please authorize again."
+          }
+        }
+      }
+    },
+    "移动端推荐需要当前账号的验证码授权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mobile recommendations require SMS authorization for the current account."
+          }
+        }
+      }
+    },
+    "留空使用默认编号，保存后重新打开应用生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave blank to use the default ID. Reopen the app after saving."
+          }
+        }
+      }
+    },
+  "切换后完全退出并重新打开应用生效。混合推荐交错显示移动端与网页结果，并去除重复视频。移动端沿用当前 iOS 登录身份。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Changes take effect after quitting and reopening the app. Mixed recommendations interleave mobile and web results and remove duplicates. Mobile requests use your current iOS login."
+        }
+      }
+    }
+  },
+  "混合推荐": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Mixed recommendations"
+        }
+      }
+    }
+  },
+  "网页推荐": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Web recommendations"
+        }
+      }
+    }
+  },
+  "移动端推荐": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Mobile recommendations"
+        }
+      }
+    }
+  },
+  "推荐来源": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Recommendation source"
+        }
+      }
+    }
+  },
     "" : {
 
     },
@@ -2034,16 +2154,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pinned - Hard Edge"
-          }
-        }
-      }
-    },
-    "固定·渐变" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pinned - Gradient"
           }
         }
       }
@@ -6695,12 +6805,12 @@
         }
       }
     },
-    "随内容滚动时，标题随页面滚走；固定时可选择边界清晰的切边背景或柔和的渐变背景。搜索框始终保留在顶部。关注和直播始终使用固定切边导航栏，不受此设置影响。" : {
+    "随内容滚动时，标题随页面滚走，顶部不添加渐变模糊；固定时使用边界清晰的切边背景。搜索框始终保留在顶部。关注和直播始终使用固定切边导航栏，不受此设置影响。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The scrolling title moves with the page. Pinned titles can use a defined edge or a soft gradient. The search field stays at the top. Following and Live always use a pinned header with a defined edge, regardless of this setting."
+            "value" : "The scrolling title moves with the page without a top gradient blur. Pinned titles use a defined edge. The search field stays at the top. Following and Live always use a pinned header with a defined edge, regardless of this setting."
           }
         }
       }

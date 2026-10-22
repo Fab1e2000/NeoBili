@@ -1,11 +1,14 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 @MainActor
-enum LiveExposureReporting {
-    static func record(_ event: RecommendationExposureEvent) {
+public enum LiveExposureReporting {
+    public static func record(_ event: RecommendationExposureEvent, currentSessionID: UUID, reporter: AppBehaviorReporter) {
         guard !AppNetwork.isRegression,
               let session = event.card.video.playbackEntry.loginSessionID,
-              session == ApplicationServices.live.session.currentID(),
+              session == currentSessionID,
               let track = event.card.video.playbackEntry.trackID, !track.isEmpty,
               var fields = event.card.video.recommendationClickFields else { return }
         fields["track_id"] = track; fields["event_policy"] = "1"
@@ -16,7 +19,7 @@ enum LiveExposureReporting {
             fields["card_start_time"] = String(start); fields["card_end_time"] = String(end)
         }
         let values = fields
-        Task { await AppBehaviorReporter.shared.record(name: event.name, category: 3, fields: values,
+        Task { await reporter.record(name: event.name, category: 3, fields: values,
             session: session, timestamp: event.timestamp) }
     }
 }

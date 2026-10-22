@@ -1,20 +1,23 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 extension BiliAPI {
     /// 加入稍后再看。avid 和 bvid 给一个就行——搜索结果只有 bvid。
-    static func addWatchLater(aid: Int?, bvid: String?) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
+    static func addWatchLater(aid: Int?, bvid: String?, client: APIClient, identity: DeviceIdentity) async throws {
+        let csrf = await identity.csrfToken ?? ""
         var form = ["csrf": csrf]
         if let aid { form["aid"] = String(aid) }
         if let bvid { form["bvid"] = bvid }
-        try await APIClient.shared.post(path: "x/v2/history/toview/add", form: form)
+        try await client.post(path: "x/v2/history/toview/add", form: form)
     }
 
-    static func watchLaterList() async throws -> WatchLaterPage {
-        try await APIClient.shared.get(path: "x/v2/history/toview")
+    static func watchLaterList(client: APIClient) async throws -> WatchLaterPage {
+        try await client.get(path: "x/v2/history/toview")
     }
 
-    static func watchLaterPage(startKey: String, splitKey: String, expectedSessionID: UUID, client: APIClient = .shared) async throws -> WatchLaterListPage {
+    static func watchLaterPage(startKey: String, splitKey: String, expectedSessionID: UUID, client: APIClient) async throws -> WatchLaterListPage {
         let page: WatchLaterV2Page = try await client.getApp(
             path: "x/v2/history/toview/v2/list",
             params: ["start_key": startKey, "split_key": splitKey, "asc": "false", "sort_field": "1"],
@@ -23,9 +26,9 @@ extension BiliAPI {
     }
 
     /// 移出稍后再看。
-    static func removeWatchLater(aid: Int, expectedSessionID: UUID? = nil) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
+    static func removeWatchLater(aid: Int, expectedSessionID: UUID? = nil, client: APIClient, identity: DeviceIdentity) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(
             path: "x/v2/history/toview/del",
             form: ["aid": String(aid), "csrf": csrf],
             expectedSessionID: expectedSessionID

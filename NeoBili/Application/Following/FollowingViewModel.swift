@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 关注页头像条中的一个筛选目标：全部动态，或某一位 UP 主。
@@ -42,13 +45,21 @@ final class FollowingViewModel {
     private(set) var ups: [FollowedUp] = []
     let liveDirectory: FollowedLiveDirectory
     private let readStore: FollowingReadStore
-    private let accountSessionID = VideoLikeStore.shared.sessionID
+    private let accountSessionID: UUID
+    private let likeStore: VideoLikeStore
 
-    init(services: ApplicationServices = .live, readStore: FollowingReadStore = .shared, liveDirectory: FollowedLiveDirectory = FollowedLiveDirectory()) {
-        self.feed = DynamicFeedModel(source: .following, services: services)
+    init(services: ApplicationServices = .live, readStore: FollowingReadStore = .shared, liveDirectory: FollowedLiveDirectory? = nil,
+         likeStore: VideoLikeStore = .shared) {
+        self.likeStore = likeStore
+        self.accountSessionID = likeStore.sessionID
+        self.feed = DynamicFeedModel(source: .following, likeStore: likeStore, services: services)
         self.services = services
         self.readStore = readStore
-        self.liveDirectory = liveDirectory
+        self.liveDirectory = liveDirectory ?? FollowedLiveDirectory(loader: { _ in try await services.streaming.followedUsers() })
+    }
+
+    func configureAccount(_ accountID: Int?) {
+        readStore.configure(accountID: accountID)
     }
 
     /// 当前提交给下方列表的选择。
@@ -126,7 +137,7 @@ final class FollowingViewModel {
     func feed(for target: FollowingSelection) -> DynamicFeedModel {
         guard case .up(let up) = target else { return feed }
         if let cached = upFeeds[up.mid] { return cached }
-        let model = DynamicFeedModel(source: .followedUp(hostMid: up.mid), services: services)
+        let model = DynamicFeedModel(source: .followedUp(hostMid: up.mid), likeStore: likeStore, services: services)
         upFeeds[up.mid] = model
         return model
     }
@@ -152,7 +163,7 @@ final class FollowingViewModel {
 
     /// 账号变化后不能继续展示上一个账号的头像或缓存动态。
     func resetForAccountChange() {
-        feed = DynamicFeedModel(source: .following, services: services)
+        feed = DynamicFeedModel(source: .following, likeStore: likeStore, services: services)
         ups = []
         liveDirectory.reset()
         upFeeds = [:]
@@ -168,7 +179,7 @@ final class FollowingViewModel {
     /// 动态流本身还能正常显示。
     private func loadUps() async {
         guard let list = try? await services.community.followedUps(),
-              VideoLikeStore.shared.sessionID == accountSessionID, !Task.isCancelled else { return }
+              likeStore.sessionID == accountSessionID, !Task.isCancelled else { return }
         replaceUps(list)
     }
 

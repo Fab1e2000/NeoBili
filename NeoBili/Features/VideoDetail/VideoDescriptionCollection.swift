@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 
@@ -21,7 +24,7 @@ struct VideoDescriptionComponent {
         self.revision = revision
         self.content = AnyView(content())
     }
-    init(introduction: VideoIntroductionCard, bottomSpacing: CGFloat = 14) {
+    @MainActor init(introduction: VideoIntroductionCard, bottomSpacing: CGFloat = 14) {
         id = "introduction"
         revision = [introduction.title, introduction.desc, AnyHashable(introduction.stat), introduction.pubdate, introduction.isExpanded]
         content = AnyView(EmptyView())
@@ -236,8 +239,9 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             cell.accessibilityIdentifier = "related.\(video.bvid)"
             let key = ObjectIdentifier(cell)
             preparations.removeValue(forKey: key)?.cancel()
+            let preparation = environment.videoPreparation
             preparations[key] = Task {
-                await VideoPreparationCache.shared.prefetchWhenSettled(bvid: video.bvid, cid: video.cid)
+                await preparation.prefetchWhenSettled(bvid: video.bvid, cid: video.cid)
             }
         }
         func collectionView(_ view: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt path: IndexPath) {
@@ -376,7 +380,7 @@ final class DescriptionComponentCell: UICollectionViewCell {
     override func layoutSubviews() {
         UIView.performWithoutAnimation {
             super.layoutSubviews()
-            func settle(_ surface: UIView) {
+            @MainActor func settle(_ surface: UIView) {
                 for key in ["position", "bounds", "bounds.size"] { surface.layer.removeAnimation(forKey: key) }
                 surface.subviews.forEach(settle)
             }
@@ -394,13 +398,14 @@ struct VideoDescriptionContent: View {
     let end: () -> Void
     let canConsume: (CGFloat) -> Bool
     let canContinue: () -> Bool
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     var body: some View {
         let all = viewModel?.related ?? []
-        let videos = all.hidingKnownPortraitVideos(hidesPortraitVideos)
+        let videos = all.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
         let relatedError = viewModel?.relatedErrorMessage
-        let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos)
+        let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering)
         // 与原生详情页一样用分区标题组织内容，相关视频不直接接在操作栏下面。
         let header = VideoDescriptionComponent("relatedHeader", revision: []) {
             Text("相关视频")
@@ -436,5 +441,6 @@ struct VideoDescriptionContent: View {
             // 自动计入顶部边距，不用另外补。
             .ignoresSafeArea(.container, edges: .top)
             .resolvePortraitVideos(all)
+            .environment(\.videoPreparation, store.preparationCache)
     }
 }

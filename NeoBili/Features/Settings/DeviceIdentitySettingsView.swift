@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 struct DeviceIdentitySettingsView: View {
@@ -5,7 +8,11 @@ struct DeviceIdentitySettingsView: View {
     @AppStorage(DeviceIdentityPreferences.customKey) private var savedBuvid = ""
     @State private var input = ""
     @State private var currentBuvid = ""
-    @State private var saved = false
+    static let introductionSeenKey = "neobili.deviceIdentity.introductionSeen"
+    @AppStorage(introductionSeenKey) private var hasSeenIntroduction = false
+    @State private var activeAlert: DeviceIdentityAlert?
+
+    private enum DeviceIdentityAlert { case introduction, saved }
 
     private var trimmed: String { input.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var valid: Bool { trimmed.isEmpty || DeviceIdentityPreferences.normalizedCustomBuvid(input) != nil }
@@ -20,7 +27,7 @@ struct DeviceIdentitySettingsView: View {
                 Button("保存") {
                     savedBuvid = trimmed
                     input = trimmed
-                    saved = true
+                    activeAlert = .saved
                 }
                 .disabled(!valid || trimmed == savedBuvid)
                 .accessibilityIdentifier("settings.deviceIdentity.save")
@@ -29,7 +36,7 @@ struct DeviceIdentitySettingsView: View {
                         .foregroundStyle(.red)
                 }
             } footer: {
-                Text("填写后保存并持续使用。留空时随机生成一次，之后复用。保存后退出并重新打开 App 生效。")
+                Text("留空使用默认编号，保存后重新打开应用生效。")
             }
             Section("当前使用的 BUVID") {
                 Text(currentBuvid.isEmpty ? "—" : currentBuvid)
@@ -39,12 +46,26 @@ struct DeviceIdentitySettingsView: View {
             }
         }
         .settingsPage("设备编号")
-        .onAppear { input = savedBuvid }
+        .onAppear {
+            input = savedBuvid
+            if !hasSeenIntroduction { activeAlert = .introduction }
+        }
         .task { currentBuvid = await services.currentAppBuvid() }
-        .alert("已保存", isPresented: $saved) {
-            Button("好", role: .cancel) {}
+        .alert(activeAlert == .introduction ? "设备编号与推荐" : "已保存", isPresented: Binding(
+            get: { activeAlert != nil },
+            set: { if !$0 { activeAlert = nil } }
+        )) {
+            if activeAlert == .introduction {
+                Button("知道了") { hasSeenIntroduction = true }
+            } else {
+                Button("好", role: .cancel) {}
+            }
         } message: {
-            Text("退出并重新打开 App 后生效")
+            if activeAlert == .introduction {
+                Text("设备编号（BUVID）可能影响推荐流。想尝试让推荐更接近官方 App，可通过抓包查看自己官方 App 请求头中的 buvid，复制后在此填写并保存，再退出并重新打开 NeoBili。仅使用自己的编号；使用相同编号也不能保证推荐完全一致。")
+            } else {
+                Text("退出并重新打开 App 后生效")
+            }
         }
     }
 }

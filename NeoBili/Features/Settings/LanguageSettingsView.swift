@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 界面语言：跟随系统、简体中文或 English。系统的本地化在启动时确定，改动下次打开 App 生效。
@@ -19,7 +22,6 @@ struct LanguageSettingsView: View {
                 .labelsHidden()
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("跟随系统时，系统语言为中文则显示中文，其它语言显示英文。B 站返回的内容（标题、评论、热搜等）保持原文。")
                     if selection != AppLanguage.launched {
                         Text("完全退出并重新打开 NeoBili 后生效。")
                             .foregroundStyle(.orange)

@@ -74,7 +74,7 @@ enum IOSFingerprintProtocol {
     }
 }
 
-actor AppDeviceRegistration {
+public actor AppDeviceRegistration {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     typealias Material = @Sendable (String, Int?) async -> Data?
     private struct Cache: Codable { let buvid: String; let id: String; let expiry: TimeInterval }
@@ -88,7 +88,7 @@ actor AppDeviceRegistration {
     private var retryAfter: TimeInterval = 0
     private static let storageKey = "neobili.ios.fingerprint.registration"
 
-    init(credentials: CredentialStorage, transport: @escaping Transport = { try await AppNetwork.session.data(for: $0) },
+    init(credentials: CredentialStorage, transport: @escaping Transport,
          material: @escaping Material = { await IOSFingerprintProtocol.material(buvid: $0, mid: $1) },
          clock: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 }) {
         self.credentials = credentials; self.transport = transport; self.material = material; self.clock = clock
@@ -103,7 +103,7 @@ actor AppDeviceRegistration {
         if let cache, cache.buvid == buvid, cache.expiry > clock() { return cache.id }
         if let pending {
             guard pendingBuvid == buvid else { return cachedID(buvid: buvid) }
-            return await pending.value
+            return await pending.value ?? cachedID(buvid: buvid)
         }
         guard clock() >= retryAfter else { return cachedID(buvid: buvid) }
         retryAfter = clock() + 120

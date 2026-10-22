@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 struct HomeView: View {
@@ -13,11 +16,10 @@ struct HomeView: View {
 
     @TitleBarPreference private var titleBarStyle
     private var pinsTitleBar: Bool { titleBarStyle.isPinned }
-    @AppStorage(RecommendationFilter.appRecommendKey) private var usesAppRecommendation = true
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
 
-    @State private var viewModel = HomeViewModel()
+    @State private var viewModel: HomeViewModel
     @State private var feedController = HomeFeedScrollController()
     /// 列表要避让的上下距离（状态栏 + 固定标题栏、标签栏），量好交给 UIKit 列表。
     @State private var safeInsets = EdgeInsets()
@@ -31,8 +33,9 @@ struct HomeView: View {
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
 
-    init(isSelected: Bool = true) {
+    init(isSelected: Bool = true, filtering: VideoFilterDependencies = .live) {
         self.isSelected = isSelected
+        _viewModel = State(initialValue: HomeViewModel(source: RecommendationSourcePreference.launched, filtering: filtering))
     }
 
     private var animatesExit: Bool {
@@ -51,7 +54,8 @@ struct HomeView: View {
                         .padding(.horizontal, 20)
                 }
             }
-            .scrollEdgeEffectStyle(titleBarStyle.scrollEdgeStyle, for: .top)
+            .scrollEdgeEffectStyle(.hard, for: .top)
+            .scrollEdgeEffectHidden(!titleBarStyle.isPinned, for: .top)
             .background(Color(uiColor: .systemGroupedBackground))
             .task { await viewModel.loadInitial() }
             // 登录/退出/拿到 App 凭据后服务端会切到个性化/通用推流，
@@ -59,10 +63,6 @@ struct HomeView: View {
             .onChange(of: HomeFeedAccount(accountID: account.accountID,
                                           hasAppCredential: account.hasAppCredential)) { _, current in
                 Task { await viewModel.refreshIfAccountChanged(to: current) }
-            }
-            // 换了推荐来源，旧的翻页位置对新接口没有意义，从第一页重新取。
-            .onChange(of: usesAppRecommendation) {
-                Task { await viewModel.refresh() }
             }
             .onAppear {
                 // Returning to this tab always restores the app's portrait lock.
@@ -94,6 +94,7 @@ struct HomeView: View {
                 await viewModel.loadReplacementPage()
                 return viewModel.videos
             }
+            .environment(\.videoFiltering, viewModel.filtering)
             .videoCardAnimationSource(.recommendation)
             .onChange(of: animatesExit) { _, enabled in
                 guard !enabled else { return }
@@ -122,7 +123,6 @@ struct HomeView: View {
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
                 onOpenMine: { openMine?(()) },
                 pinsTitleBar: pinsTitleBar,
-                hardTitleBarEdge: titleBarStyle == .pinnedHard,
                 safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity,
                 // 补位整段 0.3 秒，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。
@@ -218,7 +218,7 @@ private struct HomeFeedStatusOverlay: View {
     let onRefresh: () -> Void
 
     var body: some View {
-        if viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos),
+        if viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos, filtering: viewModel.filtering),
            !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
             LoadingTaskAnchor()
         } else if viewModel.isLoading, viewModel.videos.isEmpty {

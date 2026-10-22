@@ -1,0 +1,36 @@
+import Foundation
+
+/// 全 App 共享的视频点赞差量状态：aid -> 是否已赞。
+///
+/// 视频的「已赞」会在多个界面同时出现：关注流里的视频动态卡片、视频
+/// 详情页的操作栏，之后可能还有搜索、相关视频等。它们各自的接口快照
+/// 互不相通，本地乐观更新又只写自己那份，于是同一个稿件在不同页面显
+/// 示的点赞状态会打架。这里按 aid 记一份会话级差量，所有界面读写同
+/// 一份，接口快照只作为没有差量时的回退值。
+///
+/// 点赞写入成功后接口的回读有延迟（立刻查多半还是旧值），所以差量
+/// 一旦写入就保留到会话结束，不被新到的快照覆盖。
+@MainActor
+@Observable
+final class VideoLikeStore {
+    private(set) var sessionID = UUID()
+
+    func resetSession() {
+        sessionID = UUID()
+        overrides.removeAll()
+    }
+
+    private var overrides: [Int: Bool] = [:]
+
+    /// 展示用状态：本地差量优先，没有差量时用接口快照。
+    func isLiked(aid: Int, serverValue: Bool) -> Bool {
+        overrides[aid] ?? serverValue
+    }
+
+    /// 乐观更新。请求失败时用同一方法把旧值写回去。
+    func setOverride(aid: Int, liked: Bool, sessionID: UUID? = nil) {
+        if let sessionID, sessionID != self.sessionID { return }
+        overrides[aid] = liked
+    }
+
+}

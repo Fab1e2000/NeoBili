@@ -2,10 +2,9 @@ import Foundation
 import ImageIO
 import CryptoKit
 
-actor ImageFileCache {
-    static let shared = ImageFileCache()
+public actor ImageFileCache {
 
-    typealias Download = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    public typealias Download = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     private let directory: URL
     private let byteLimit: Int
     private let maxAge: TimeInterval
@@ -23,10 +22,10 @@ actor ImageFileCache {
 
     // 文件缓存独立于 URLCache。活动查看器持有所有已请求文件（含分享面板），
     // 释放后按最近访问顺序回到预算；仅在访问/写入/释放时清理，不后台轮询。
-    init(directory: URL? = nil, byteLimit: Int = 256 * 1024 * 1024,
+    public init(directory: URL? = nil, byteLimit: Int = 256 * 1024 * 1024,
          maxAge: TimeInterval = 30 * 24 * 60 * 60,
          now: @escaping @Sendable () -> Date = { Date() },
-         download: @escaping Download = { try await AppNetwork.session.data(for: $0) }) {
+         download: @escaping Download) {
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appending(path: "ImageViewer", directoryHint: .isDirectory)
         self.byteLimit = max(0, byteLimit)
@@ -35,7 +34,7 @@ actor ImageFileCache {
         self.downloadData = download
     }
 
-    func localFile(for remote: URL, owner: UUID? = nil) async throws -> URL {
+    public func localFile(for remote: URL, owner: UUID? = nil) async throws -> URL {
         indexIfNeeded()
         if let owner { owners[owner, default: []].insert(Self.digest(of: remote)) }
         if let cached = cachedFile(for: remote) {
@@ -46,17 +45,21 @@ actor ImageFileCache {
         trim()
         let task = Task<URL, Error> { try await download(remote) }
         inFlight[remote] = task
-        defer { inFlight[remote] = nil }
+        defer {
+            inFlight[remote] = nil
+            // An unowned caller still needs its returned file. A released viewer does not.
+            if let owner, owners[owner] == nil { trim() }
+        }
         return try await task.value
     }
 
-    func release(owner: UUID) {
+    public func release(owner: UUID) {
         owners[owner] = nil
         trim()
     }
 
     /// 每次下载使用独立版本 URL，迟到的旧解码失败只能删除旧版本。
-    func invalidate(_ remote: URL, file: URL) {
+    public func invalidate(_ remote: URL, file: URL) {
         guard file.deletingLastPathComponent().standardizedFileURL.path == directory.standardizedFileURL.path,
               Self.key(for: file) == Self.digest(of: remote) else { return }
         try? FileManager.default.removeItem(at: file)

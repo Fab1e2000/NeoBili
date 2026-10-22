@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import LinkPresentation
 import SwiftUI
 import UIKit

@@ -2,16 +2,16 @@ import Foundation
 
 // MARK: - Play URL (DASH)
 
-struct DashStream: Decodable, Hashable, Sendable {
-    let id: Int
-    let baseUrl: String
-    let backupUrl: [String]?
-    let bandwidth: Int
-    let mimeType: String
-    let codecs: String
-    let width: Int?
-    let height: Int?
-    let frameRate: String?
+public struct DashStream: Decodable, Hashable, Sendable {
+    public let id: Int
+    public let baseUrl: String
+    public let backupUrl: [String]?
+    public let bandwidth: Int
+    public let mimeType: String
+    public let codecs: String
+    public let width: Int?
+    public let height: Int?
+    public let frameRate: String?
 }
 
 extension DashStream {
@@ -26,7 +26,7 @@ extension DashStream {
         case frameRate, frameRateSnake = "frame_rate"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(Int.self, forKey: .id)
         baseUrl = try container.decodeIfPresent(String.self, forKey: .baseURLSnake)
@@ -44,17 +44,17 @@ extension DashStream {
     }
 }
 
-struct DashPayload: Decodable, Hashable, Sendable {
-    let duration: Int
-    let video: [DashStream]
-    let audio: [DashStream]
-    var flac: LosslessAudio? = nil
-    var dolby: DolbyAudio? = nil
+public struct DashPayload: Decodable, Hashable, Sendable {
+    public let duration: Int
+    public let video: [DashStream]
+    public let audio: [DashStream]
+    public var flac: LosslessAudio? = nil
+    public var dolby: DolbyAudio? = nil
 
-    struct LosslessAudio: Decodable, Hashable, Sendable { let audio: DashStream? }
-    struct DolbyAudio: Decodable, Hashable, Sendable { let audio: [DashStream]? }
+    public struct LosslessAudio: Decodable, Hashable, Sendable { public let audio: DashStream? }
+    public struct DolbyAudio: Decodable, Hashable, Sendable { public let audio: [DashStream]? }
 
-    var allAudio: [DashStream] {
+    public var allAudio: [DashStream] {
         audio + (flac?.audio.map { [$0] } ?? []) + (dolby?.audio ?? [])
     }
 }
@@ -64,7 +64,7 @@ struct DashPayload: Decodable, Hashable, Sendable {
 extension DashPayload {
     private enum CodingKeys: String, CodingKey { case duration, video, audio, flac, dolby }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         duration = try values.decode(Int.self, forKey: .duration)
         video = try values.decode([DashStream].self, forKey: .video)
@@ -77,11 +77,11 @@ extension DashPayload {
 /// A legacy "progressive" (already muxed audio+video) stream. Requesting this
 /// format instead of DASH keeps MVP playback to a single file URL, with no
 /// client-side track merging required.
-struct DurlItem: Decodable, Hashable, Sendable {
-    let url: String
-    let backupUrl: [String]?
-    let length: Int?
-    let size: Int?
+public struct DurlItem: Decodable, Hashable, Sendable {
+    public let url: String
+    public let backupUrl: [String]?
+    public let length: Int?
+    public let size: Int?
 }
 
 extension DurlItem {
@@ -91,7 +91,7 @@ extension DurlItem {
         case backupURLSnake = "backup_url"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         url = try container.decode(String.self, forKey: .url)
         backupUrl = try container.decodeIfPresent([String].self, forKey: .backupURLSnake)
@@ -101,21 +101,21 @@ extension DurlItem {
     }
 }
 
-struct PlayURLData: Decodable, Hashable, Sendable {
+public struct PlayURLData: Decodable, Hashable, Sendable {
     /// 返回档位和声明列表。风控响应可能缺少它们，保留可选解码才能
     /// 将服务端挑战准确呈现为风控错误，而不是误报「数据解析失败」。
-    let quality: Int?
-    let acceptQuality: [Int]?
-    let acceptDescription: [String]?
-    let durl: [DurlItem]?
-    let dash: DashPayload?
+    public let quality: Int?
+    public let acceptQuality: [Int]?
+    public let acceptDescription: [String]?
+    public let durl: [DurlItem]?
+    public let dash: DashPayload?
     /// 风控挑战。B 站拦下请求时 `code` 仍然是 0，
     /// 但 `data` 里只有这一个字段，没有任何播放地址。
-    let vVoucher: String?
-    var supportFormats: [PlayURLSupportFormat]? = nil
+    public let vVoucher: String?
+    public var supportFormats: [PlayURLSupportFormat]? = nil
 
     /// 服务端声明的画质列表不等于当前账号已取得的轨道；选择缺失档位时仍需按 qn 取流。
-    var declaredVideoQualities: [Int] {
+    public var declaredVideoQualities: [Int] {
         var values = Set(acceptQuality ?? [])
         values.formUnion(supportFormats?.map(\.quality) ?? [])
         values.formUnion(dash?.video.filter { Self.isMediaURL($0.baseUrl) }.map(\.id) ?? [])
@@ -123,12 +123,12 @@ struct PlayURLData: Decodable, Hashable, Sendable {
         return values.filter { $0 > 0 }.sorted(by: >)
     }
 
-    func hasVideoStream(quality: Int) -> Bool {
+    public func hasVideoStream(quality: Int) -> Bool {
         if dash?.video.contains(where: { $0.id == quality && Self.isMediaURL($0.baseUrl) }) == true { return true }
         return self.quality == quality && durl?.contains(where: { Self.isMediaURL($0.url) }) == true
     }
 
-    func preservingDeclaredQualities(from previous: PlayURLData) -> PlayURLData {
+    public func preservingDeclaredQualities(from previous: PlayURLData) -> PlayURLData {
         var merged = PlayURLData(quality: quality,
             acceptQuality: Array(Set((acceptQuality ?? []) + (previous.acceptQuality ?? []))).sorted(by: >),
             acceptDescription: acceptDescription, durl: durl, dash: dash, vVoucher: vVoucher)
@@ -144,11 +144,11 @@ struct PlayURLData: Decodable, Hashable, Sendable {
     }
 
     /// 这次返回是被风控拦下的，不是视频本身不支持播放。
-    var isRiskControlled: Bool {
+    public var isRiskControlled: Bool {
         vVoucher != nil && durl == nil && dash == nil
     }
 
-    var hasPlayableStream: Bool {
+    public var hasPlayableStream: Bool {
         durl?.isEmpty == false || dash != nil
     }
 
@@ -161,11 +161,11 @@ struct PlayURLData: Decodable, Hashable, Sendable {
     }
 }
 
-struct PlayURLSupportFormat: Decodable, Hashable, Sendable {
-    let quality: Int
-    let description: String?
-    let needsVIP: Bool?
-    let needsLogin: Bool?
+public struct PlayURLSupportFormat: Decodable, Hashable, Sendable {
+    public let quality: Int
+    public let description: String?
+    public let needsVIP: Bool?
+    public let needsLogin: Bool?
 
     enum CodingKeys: String, CodingKey {
         case quality
@@ -174,7 +174,7 @@ struct PlayURLSupportFormat: Decodable, Hashable, Sendable {
         case needsLogin = "need_login"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         quality = try values.decode(Int.self, forKey: .quality)
         description = try values.decodeIfPresent(String.self, forKey: .description)

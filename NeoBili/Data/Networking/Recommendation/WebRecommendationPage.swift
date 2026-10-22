@@ -1,13 +1,18 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 网页推荐接口的一页，规则照 PiliPlus `VideoHttp.rcmdVideoList`：
 /// 只留普通视频（直播、广告等 `goto` 不是 av 的都去掉），再按推荐流设置做本地过滤。
 struct WebRecommendationPage: Decodable {
     let cards: [WebRecommendationCard]
+    let hasMore: Bool
     private enum Keys: String, CodingKey { case item }
 
     init(from decoder: Decoder) throws {
         var items = try decoder.container(keyedBy: Keys.self).nestedUnkeyedContainer(forKey: .item)
+        hasMore = !items.isAtEnd
         var result: [WebRecommendationCard] = []
         while !items.isAtEnd {
             let decoder = try items.superDecoder()
@@ -26,8 +31,14 @@ struct WebRecommendationPage: Decodable {
         .map(\.video)
     }
 
-    static func parameters(freshIndex: Int) -> [String: String] {
-        ["version": "1", "feed_version": "V8", "homepage_ver": "1", "ps": "20",
+    static func parameters(freshIndex: Int, merged: Bool = false,
+                           timestampMilliseconds: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) -> [String: String] {
+        if !merged {
+            // BiliPai fetchWebFeed: fresh_type=3, timestamp feed_version, y_num.
+            return ["ps": "20", "fresh_type": "3", "fresh_idx": String(freshIndex),
+                    "feed_version": String(timestampMilliseconds), "y_num": String(freshIndex)]
+        }
+        return ["version": "1", "feed_version": "V8", "homepage_ver": "1", "ps": "20",
          "fresh_idx": String(freshIndex), "brush": String(freshIndex), "fresh_type": "4"]
     }
 }

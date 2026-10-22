@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 收藏夹列表（账号创建的全部收藏夹，含默认收藏夹）。
@@ -155,9 +158,11 @@ struct FavoriteFolderView: View {
     let folder: FavFolder
 
     @Environment(AccountStore.self) private var account
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     @State private var videos: [FavMedia] = []
@@ -175,14 +180,14 @@ struct FavoriteFolderView: View {
     @State private var isRemovingSelected = false
 
     private var visibleVideos: [FavMedia] {
-        videos.hidingKnownPortraitVideos(hidesPortraitVideos)
+        videos.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
         let visibleVideos = visibleVideos
         let paginationIDs = Set(visibleVideos.suffix(5).map(\.id))
         Group {
-            if visibleVideos.isEmpty, videos.hasPendingVideoDimensions(hidesPortraitVideos) {
+            if visibleVideos.isEmpty, videos.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
                 LoadingTaskAnchor()
             } else if let errorMessage, videos.isEmpty {
                 ContentUnavailableView {
@@ -327,7 +332,7 @@ struct FavoriteFolderView: View {
             if loadsNextPage { await loadMoreIfNeeded() }
             if !isSelecting, let summary {
                 // 收藏没有 cid，预取会先取一次详情再取播放地址。
-                await VideoPreparationCache.shared.prefetchWhenSettled(bvid: summary.bvid)
+                await preparation.prefetchWhenSettled(bvid: summary.bvid)
             }
         }
     }

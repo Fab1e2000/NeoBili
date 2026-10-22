@@ -468,7 +468,7 @@ AppBehaviorEncoder的日志version/build使用AppClientIdentity的9.13协议身�
 开始。Inline可覆盖service默认policy（写入口 0x1148890dc 等），状态raw值尚未全部映射业务名称，不能断言
 所有暂停都结束或所有后台都发finish/前台都发start；这些是8.89方法证据。
 
-**NeoBili 实际行为**：[PlaybackWatchProgress](../../../NeoBili/Features/Player/PlaybackWatchProgress.swift)
+**NeoBili 实际行为**：[PlaybackWatchProgress](../../../NeoBili/Application/Player/PlaybackWatchProgress.swift)
 及PlayerViewModel只认可真实推进；确认观看且aid>0才排全零start，
 退出/完成且已排start才有finish。aid始终缺失则只有网页历史checkpoint，迟到aid可补排
 start；普通App首页视频卡保证有效aid，该限制主要影响其他资料补全路径。历史
@@ -969,11 +969,11 @@ AppWatchProtocol 的历史 progress 和移动播放位置仍用整数秒，观�
 | R10 | [HomeFeedCollection](../../../NeoBili/Features/Home/HomeFeedCollection.swift) |
 | R11 | [AppRecommendationPage](../../../NeoBili/Data/Networking/Recommendation/AppRecommendationPage.swift) |
 | R12 | [RecommendationClick](../../../NeoBili/Data/Networking/Reporting/RecommendationClick.swift)、[AppBehaviorEncoder](../../../NeoBili/Data/Networking/Reporting/AppBehaviorEncoder.swift)、[APIClient](../../../NeoBili/Data/Networking/Transport/APIClient.swift) |
-| R13 | [PlaybackWatchProgress](../../../NeoBili/Features/Player/PlaybackWatchProgress.swift)、[PlayerViewModel](../../../NeoBili/Application/Player/PlayerViewModel.swift)、[AppWatchProtocol](../../../NeoBili/Data/Networking/Reporting/AppWatchProtocol.swift)、[BiliAPI+History](../../../NeoBili/Data/Networking/Endpoints/BiliAPI+History.swift) |
+| R13 | [PlaybackWatchProgress](../../../NeoBili/Application/Player/PlaybackWatchProgress.swift)、[PlayerViewModel](../../../NeoBili/Application/Player/PlayerViewModel.swift)、[AppWatchProtocol](../../../NeoBili/Data/Networking/Reporting/AppWatchProtocol.swift)、[BiliAPI+History](../../../NeoBili/Data/Networking/Endpoints/BiliAPI+History.swift) |
 | R14 | [AppRecommendationPage](../../../NeoBili/Data/Networking/Recommendation/AppRecommendationPage.swift)、[HomeViewModel](../../../NeoBili/Application/Home/HomeViewModel.swift)、[VideoPreparationCache](../../../NeoBili/Application/Player/VideoPreparationCache.swift) |
 | R15 | [HomeViewModel](../../../NeoBili/Application/Home/HomeViewModel.swift)、[BiliAPI+Recommendation](../../../NeoBili/Data/Networking/Endpoints/BiliAPI+Recommendation.swift)、[VideoModels](../../../NeoBili/Domain/Models/VideoModels.swift) |
 | R16 | [DeviceIdentity:37,69-71](../../../NeoBili/Data/Networking/Identity/DeviceIdentity.swift)、[DeviceIdentity](../../../NeoBili/Data/Networking/Identity/DeviceIdentity.swift)、[SMSPassport](../../../NeoBili/Data/Networking/Identity/SMSPassport.swift)、[PlayerViewModel](../../../NeoBili/Application/Player/PlayerViewModel.swift)、[BiliAPI+History](../../../NeoBili/Data/Networking/Endpoints/BiliAPI+History.swift) |
-| R17 | [PlaybackWatchProgress](../../../NeoBili/Features/Player/PlaybackWatchProgress.swift)、[PlayerViewModel](../../../NeoBili/Application/Player/PlayerViewModel.swift)、[PlayerViewModel](../../../NeoBili/Application/Player/PlayerViewModel.swift) |
+| R17 | [PlaybackWatchProgress](../../../NeoBili/Application/Player/PlaybackWatchProgress.swift)、[PlayerViewModel](../../../NeoBili/Application/Player/PlayerViewModel.swift)、[PlayerViewModel](../../../NeoBili/Application/Player/PlayerViewModel.swift) |
 | R18 | [AppDeviceProtocol](../../../NeoBili/Data/Networking/Identity/AppDeviceProtocol.swift)、[BiliHeaders](../../../NeoBili/Data/Networking/Transport/BiliHeaders.swift)、[AppRequestEncoding](../../../NeoBili/Data/Networking/Transport/AppRequestEncoding.swift)、[AppProto](../../../NeoBili/Data/Networking/Transport/AppProto.swift) |
 | R19 | [AppSigner](../../../NeoBili/Data/Networking/Identity/AppSigner.swift) |
 | R20 | [HomeViewModel](../../../NeoBili/Application/Home/HomeViewModel.swift) |

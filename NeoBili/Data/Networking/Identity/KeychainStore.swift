@@ -46,13 +46,13 @@ enum KeychainStore {
 }
 
 /// Injectable credential storage. Each memory instance has independent lifetime and contents.
-struct CredentialStorage: Sendable {
+public struct CredentialStorage: Sendable {
     var read: @Sendable (String) -> String?
     var write: @Sendable (String?, String) -> Void
 
-    static let keychain = CredentialStorage(read: { KeychainStore.string(for: $0) },
+    public static let keychain = CredentialStorage(read: { KeychainStore.string(for: $0) },
                                             write: { KeychainStore.set($0, for: $1) })
-    static func memory() -> CredentialStorage {
+    public static func memory() -> CredentialStorage {
         let values = Mutex<[String: String]>([:])
         return CredentialStorage(read: { key in values.withLock { $0[key] } },
                                  write: { value, key in values.withLock { $0[key] = value } })

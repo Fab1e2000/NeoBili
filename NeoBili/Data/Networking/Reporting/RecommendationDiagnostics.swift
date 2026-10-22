@@ -1,11 +1,14 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// Local experiment preferences never replace the application's own identity.
-enum RecommendationExperiment {
+public enum RecommendationExperiment {
     static let buvidKey = DiagnosticsPreferences.buvidKey
     static let loggingKey = DiagnosticsPreferences.loggingKey
 
-    static func configure(environment: [String: String], defaults: UserDefaults = .standard) {
+    public static func configure(environment: [String: String], defaults: UserDefaults = .standard) {
         #if DEBUG
         guard !AppNetwork.isRegression else { return }
         if let value = environment["NEOBILI_EXPERIMENT_BUVID"],
@@ -20,8 +23,7 @@ enum RecommendationExperiment {
 }
 
 /// Stores only explicitly selected diagnostic fields. Credentials and raw payloads never reach disk.
-actor RecommendationDiagnostics {
-    static let shared = RecommendationDiagnostics()
+public actor RecommendationDiagnostics {
     private let directory: URL
     private let limit: Int
     private let enabled: @Sendable () -> Bool
@@ -41,10 +43,10 @@ actor RecommendationDiagnostics {
         "client_attr", "qn_policy", "player_net", "guidance", "soft_fnval", "teenagers_age", "fnver",
         "force_host", "https_url_req", "voice_balance", "disable_rcmd", "recsys_mode", "fourk"
     ]
-    init(directory: URL? = nil, limit: Int = 2 * 1024 * 1024,
+    public init(directory: URL? = nil, limit: Int = 2 * 1024 * 1024,
          enabled: @escaping @Sendable () -> Bool = {
              #if DEBUG
-             !AppNetwork.isRegression && UserDefaults.standard.bool(forKey: RecommendationExperiment.loggingKey)
+             !AppNetwork.isRegression && UserDefaults.standard.bool(forKey: DiagnosticsPreferences.loggingKey)
              #else
              false
              #endif
@@ -134,7 +136,7 @@ actor RecommendationDiagnostics {
             writeFailed = false
         } catch { writeFailed = true }
     }
-    func export() throws -> URL {
+    public func export() throws -> URL {
         if writeFailed { throw CocoaError(.fileWriteUnknown) }
         var combined = Data()
         for name in ["3.jsonl", "2.jsonl", "1.jsonl", "current.jsonl"] {

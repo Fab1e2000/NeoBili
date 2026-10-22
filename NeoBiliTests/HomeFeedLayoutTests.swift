@@ -1,3 +1,9 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
 @testable import NeoBili
 
@@ -78,7 +84,7 @@ final class HomeFeedLayoutTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
-    func testSourceChangeRefreshAndAccountChangeResetAppCursorAndWebPage() async {
+    func testSavedSourceChangeWaitsForRestartAndAccountChangeResetsCursor() async {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         var account = HomeFeedAccount(accountID: 1, hasAppCredential: true)
         var requested: [RecommendationRequest] = []
@@ -100,9 +106,9 @@ final class HomeFeedLayoutTests: XCTestCase {
         await model.loadReplacementPage()
         account = HomeFeedAccount(accountID: 2, hasAppCredential: true)
         await model.refreshIfAccountChanged(to: account)
-        XCTAssertEqual(requested.map(\.source), [.app, .app, .web, .web, .app, .app, .app])
+        XCTAssertEqual(requested.map(\.source), [.app, .app, .app, .app, .app, .app, .app])
         XCTAssertEqual(requested.map(\.pageIndex), [0, 1, 0, 1, 0, 1, 0])
-        XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 0, 0, 0, 1745482992, 0])
+        XCTAssertEqual(requested.map(\.appCursor), [0, 1745482992, 0, 1745482992, 0, 1745482992, 0])
         XCTAssertEqual(requested.map(\.isRefresh), [false, false, true, false, true, false, true])
     }
 
@@ -295,6 +301,28 @@ final class HomeFeedLayoutTests: XCTestCase {
         XCTAssertEqual(blocked, [42])
         XCTAssertTrue(model.videos.isEmpty)
         XCTAssertEqual(RecommendationFilter.current(defaults).blockedMids, [42])
+    }
+
+    func testRefreshRetentionBoundaryAndDuplicateCardsPreserveOrder() async {
+        for oldCount in [200, 201] {
+            let suite = "home-retention.\(UUID())"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            defaults.set(true, forKey: RecommendationFilter.keepLastDataKey)
+            defaults.set(true, forKey: RecommendationFilter.lastSeenTipKey)
+            var calls = 0
+            let model = HomeViewModel(defaults: defaults, fetchRecommendations: { request in
+                calls += 1
+                let values = calls == 1 ? (1...oldCount).map { self.video($0) }
+                    : [self.video(999), self.video(1), self.video(999)]
+                return RecommendationBatch(videos: values, nextRequest: request.next(appCursor: calls))
+            })
+            await model.loadInitial()
+            await model.refresh()
+            let kept = oldCount > 200 ? 50 : oldCount
+            XCTAssertEqual(model.videos.map(\.aid), [999, 1] + Array(2...kept))
+            XCTAssertEqual(model.lastRefreshAt, 2)
+        }
     }
 
     func testRefreshWithoutKeepingLastDataReplacesFeed() async {

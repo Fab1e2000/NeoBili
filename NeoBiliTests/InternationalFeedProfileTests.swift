@@ -1,3 +1,6 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
 #if DEBUG
 import XCTest
 @testable import NeoBili

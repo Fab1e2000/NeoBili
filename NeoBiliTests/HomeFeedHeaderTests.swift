@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import SwiftUI
 import XCTest
 @testable import NeoBili
@@ -6,7 +9,7 @@ import XCTest
 final class HomeFeedHeaderTests: XCTestCase {
     func testTitleBarModesPreserveLegacySelectionAndNewChoiceWins() {
         XCTAssertEqual(TitleBarSettings.selected("", legacyPinned: false), .scrolling)
-        XCTAssertEqual(TitleBarSettings.selected("", legacyPinned: true), .pinnedGradient)
+        XCTAssertEqual(TitleBarSettings.selected("", legacyPinned: true), .pinnedHard)
         XCTAssertEqual(TitleBarSettings.selected("unknown", legacyPinned: false), .scrolling)
         for style in TitleBarSettings.Style.allCases {
             for legacy in [false, true] {
@@ -15,7 +18,8 @@ final class HomeFeedHeaderTests: XCTestCase {
         }
         XCTAssertFalse(TitleBarSettings.Style.scrolling.isPinned)
         XCTAssertTrue(TitleBarSettings.Style.pinnedHard.isPinned)
-        XCTAssertTrue(TitleBarSettings.Style.pinnedGradient.isPinned)
+        XCTAssertEqual(TitleBarSettings.selected("pinnedGradient", legacyPinned: false), .pinnedHard)
+        XCTAssertEqual(TitleBarSettings.Style.allCases.map(\.rawValue), ["scrolling", "pinnedHard"])
     }
 
     func testPullDownKeepsHeaderStationaryWhileCardsMoveAndUpwardScrollHidesHeader() async throws {
@@ -51,6 +55,7 @@ final class HomeFeedHeaderTests: XCTestCase {
             return view.subviews.lazy.compactMap { collection(in: $0) }.first
         }
         let feed = try XCTUnwrap(collection(in: host.view))
+        XCTAssertTrue(feed.topEdgeEffect.isHidden, "Scrolling headers must not add a top gradient blur")
         let top = -feed.adjustedContentInset.top
         feed.setContentOffset(CGPoint(x: 0, y: top), animated: false)
         feed.layoutIfNeeded()
@@ -70,5 +75,17 @@ final class HomeFeedHeaderTests: XCTestCase {
         feed.layoutIfNeeded()
         XCTAssertEqual(screenY(header), headerY - 30, accuracy: 1, "向上浏览时不应吸顶")
         XCTAssertEqual(header.transform, .identity)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            window.overrideUserInterfaceStyle = style
+            window.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = style == .dark ? "HeaderWithoutGradient-Dark" : "HeaderWithoutGradient-Light"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
     }
 }

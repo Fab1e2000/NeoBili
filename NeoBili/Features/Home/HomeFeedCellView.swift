@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 
@@ -20,6 +23,8 @@ struct HomeFeedCellView: View {
     let onOpenLastSeen: () -> Void
     var preview: HomeInlinePreview? = nil
 
+    @Environment(\.applicationServices) private var services
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
@@ -60,7 +65,7 @@ struct HomeFeedCellView: View {
             case .dynamic(let id):
                 viewModel.sheet = .dynamic(id: id)
             case nil:
-                ApplicationServices.live.telemetry.click(video)
+                services.telemetry.click(video)
                 nowPlaying.open(
                     VideoDetailRoute(bvid: video.bvid, cid: video.cid > 0 ? video.cid : nil, cover: video.pic,
                                      title: video.title, artist: video.owner.name, aid: video.aid, playbackEntry: video.playbackEntry),
@@ -133,7 +138,7 @@ struct HomeFeedCellView: View {
             guard video.recommendationTarget == nil else { return }
             // 快速滑过的卡片不预取：停留一会儿才请求播放地址，
             // 免得一次甩动排进几十个网络请求和解析。
-            await VideoPreparationCache.shared.prefetchWhenSettled(bvid: video.bvid, cid: video.cid > 0 ? video.cid : nil)
+            await preparation.prefetchWhenSettled(bvid: video.bvid, cid: video.cid > 0 ? video.cid : nil)
         }
     }
 

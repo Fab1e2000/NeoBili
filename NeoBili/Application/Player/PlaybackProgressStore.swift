@@ -3,7 +3,6 @@ import Foundation
 /// 本机续播记录不依赖登录或历史记录接口；分 P 用 cid 分开保存。
 @MainActor
 final class PlaybackProgressStore {
-    static let shared = PlaybackProgressStore()
     private static let legacyStorageKey = "neobili.playbackProgress.v1"
     private static let indexKey = "neobili.playbackProgress.v2.keys"
     private static let entryPrefix = "neobili.playbackProgress.v2.entry."

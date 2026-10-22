@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 首页推荐的数据来源、授权状态和刷新行为。
@@ -6,14 +9,23 @@ struct RecommendationSettingsView: View {
     /// 设置页盖在主界面之上，全局提示条看不到，失败原因直接写在分组说明里。
     @State private var credentialError: String?
     @State private var showsAppAuthorization = false
-    @AppStorage(RecommendationFilter.appRecommendKey) private var usesAppRecommendation = true
+    @AppStorage(RecommendationRequest.sourceKey) private var savedSource = ""
+    @AppStorage(RecommendationFilter.appRecommendKey) private var legacyUsesApp = true
+    private var source: Binding<RecommendationRequest.Source> {
+        Binding(get: { RecommendationRequest.savedSource(rawValue: savedSource, legacyUsesApp: legacyUsesApp) },
+                set: { savedSource = $0.rawValue })
+    }
     @AppStorage(RecommendationFilter.keepLastDataKey) private var keepsLastData = true
     @AppStorage(RecommendationFilter.lastSeenTipKey) private var showsLastSeenTip = true
 
     var body: some View {
         Form {
             Section {
-                Toggle("首页使用 App 端推荐", isOn: $usesAppRecommendation)
+                Picker(selection: source) {
+                    Text("移动端推荐").tag(RecommendationRequest.Source.app)
+                    Text("网页推荐").tag(RecommendationRequest.Source.web)
+                    Text("混合推荐").tag(RecommendationRequest.Source.merged)
+                } label: { Text("推荐来源") }
                 if account.isLoggedIn { appCredentialRow }
             } footer: {
                 Text(appCredentialFooter)
@@ -23,8 +35,6 @@ struct RecommendationSettingsView: View {
                 Toggle("刷新后保留上次数据", isOn: $keepsLastData)
                 Toggle("显示上次看到位置提示", isOn: $showsLastSeenTip)
                     .disabled(!keepsLastData)
-            } footer: {
-                Text("开启后，新推荐后面保留旧卡片；关闭后，下次刷新会替换整个列表。默认开启。")
             }
 
             Section {
@@ -58,12 +68,12 @@ struct RecommendationSettingsView: View {
     }
 
     private var appCredentialFooter: String {
-        let base = String(localized: "关闭后改用网页端推荐。若网页端推荐不太符合预期，可切换回 App 端推荐。")
+        let base = String(localized: "切换后重新打开应用生效。")
         guard account.isLoggedIn, !account.hasAppCredential else { return base }
         if account.needsAppReauthorization {
-            return base + String(localized: "App 登录凭据已失效，请使用当前账号的短信验证码重新授权。网页登录状态已保留。")
+            return base + String(localized: "App 授权已失效，请重新授权。")
         }
-        let hint = base + String(localized: "当前账号还没有 App 登录凭据，App 端推荐会暂停并提示授权，不会静默切换为访客。请使用当前账号的短信验证码重新授权。")
+        let hint = base + String(localized: "移动端推荐需要当前账号的验证码授权。")
         guard let credentialError = credentialError ?? account.appCredentialError else { return hint }
         return hint + "\n" + String(localized: "获取失败：\(credentialError)")
     }

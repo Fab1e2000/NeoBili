@@ -1,20 +1,28 @@
 import Foundation
 import CoreGraphics
 
-struct VideoPreviewID: Hashable {
-    let bvid: String
-    let cid: Int
+public struct VideoPreviewID: Hashable, Sendable {
+    public let bvid: String
+    public let cid: Int
+
+    public init(
+        bvid: String,
+        cid: Int
+    ) {
+        self.bvid = bvid
+        self.cid = cid
+    }
 }
 
 /// Bilibili's storyboard tiles; the first two index entries precede tile zero.
 /// Matches PiliPlus updatePreviewIndex, including the leading sentinel.
-struct VideoStoryboard: Decodable {
-    let imgXLen: Int
-    let imgYLen: Int
-    let imgXSize: Double
-    let imgYSize: Double
-    let image: [String]
-    let index: [Double]
+public struct VideoStoryboard: Decodable, Sendable {
+    public let imgXLen: Int
+    public let imgYLen: Int
+    public let imgXSize: Double
+    public let imgYSize: Double
+    public let image: [String]
+    public let index: [Double]
 
     enum CodingKeys: String, CodingKey {
         case imgXLen = "img_x_len", imgYLen = "img_y_len"
@@ -22,12 +30,12 @@ struct VideoStoryboard: Decodable {
         case image, index
     }
 
-    struct Tile: Equatable {
-        let url: URL
-        let rect: CGRect
+    public struct Tile: Equatable {
+        public let url: URL
+        public let rect: CGRect
     }
 
-    func tile(at seconds: Double) -> Tile? {
+    public func tile(at seconds: Double) -> Tile? {
         guard seconds.isFinite, !index.isEmpty, imgXLen > 0, imgYLen > 0,
               imgXLen <= 100, imgYLen <= 100,
               imgXSize.isFinite, imgYSize.isFinite, imgXSize > 0, imgYSize > 0, !image.isEmpty else { return nil }

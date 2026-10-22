@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 推荐流里点开的图文卡：按编号取动态详情，复用关注页的动态详情页。

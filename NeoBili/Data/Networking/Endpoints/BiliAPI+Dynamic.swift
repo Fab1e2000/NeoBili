@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 extension BiliAPI {
@@ -5,13 +8,13 @@ extension BiliAPI {
 
     /// 动态页顶上那一排关注的 UP 主，附带「有没有更新」用来画小红点。
     /// 未登录时接口直接回 -101，由调用方转成登录提示。
-    static func dynamicVoteInfo(id: Int) async throws -> DynamicVoteResponse {
-        try await APIClient.shared.get(path: "x/vote/vote_info", params: ["vote_id": String(id)])
+    static func dynamicVoteInfo(id: Int, client: APIClient) async throws -> DynamicVoteResponse {
+        try await client.get(path: "x/vote/vote_info", params: ["vote_id": String(id)])
     }
 
-    static func submitDynamicVote(id: Int, options: [Int], voterMID: Int, dynamicID: String) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.postJSON(
+    static func submitDynamicVote(id: Int, options: [Int], voterMID: Int, dynamicID: String, client: APIClient, identity: DeviceIdentity) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.postJSON(
             path: "x/vote/do_vote",
             query: ["csrf": csrf],
             json: ["vote_id": id, "votes": options, "voter_uid": voterMID,
@@ -20,8 +23,8 @@ extension BiliAPI {
         )
     }
 
-    static func followedUps() async throws -> [FollowedUp] {
-        let payload: DynamicPortalPayload = try await APIClient.shared.get(
+    static func followedUps(client: APIClient) async throws -> [FollowedUp] {
+        let payload: DynamicPortalPayload = try await client.get(
             path: "x/polymer/web-dynamic/v1/portal",
             params: ["web_location": "333.1365"],
             additionalHeaders: DynamicRequest.headers
@@ -30,8 +33,8 @@ extension BiliAPI {
     }
 
     /// 自己关注的全部 UP 主，按关注时间倒序分页，每页 50 个。
-    static func followings(mid: Int, page: Int) async throws -> FollowingsPage {
-        try await APIClient.shared.get(
+    static func followings(mid: Int, page: Int, client: APIClient) async throws -> FollowingsPage {
+        try await client.get(
             path: "x/relation/followings",
             params: ["vmid": String(mid), "pn": String(page), "ps": String(FollowingsPage.pageSize), "order": "desc"]
         )
@@ -45,7 +48,7 @@ extension BiliAPI {
     ///
     /// 传 `hostMid` 时只取这一位关注 UP 主的动态，等同网页动态页点头像：
     /// 服务端据此清除他在 portal 头像列表里的 `has_update` 红点（与 PiliPlus 一致）。
-    static func followedDynamics(page: Int, offset: String?, hostMid: Int? = nil) async throws -> DynamicFeedPage {
+    static func followedDynamics(page: Int, offset: String?, hostMid: Int? = nil, client: APIClient) async throws -> DynamicFeedPage {
         var params = [
             "timezone_offset": "-480",
             "platform": "web",
@@ -61,7 +64,7 @@ extension BiliAPI {
         if let offset, !offset.isEmpty {
             params["offset"] = offset
         }
-        return try await APIClient.shared.get(
+        return try await client.get(
             path: "x/polymer/web-dynamic/v1/feed/all",
             params: params,
             additionalHeaders: DynamicRequest.headers
@@ -70,8 +73,8 @@ extension BiliAPI {
 
     /// 按编号取单条动态（推荐流里的图文卡点开用）。参数照 PiliPlus `DynamicsHttp.dynamicDetail`，
     /// `features` 与关注流一致，解析沿用 `DynamicItem`。
-    static func dynamicDetail(id: String) async throws -> DynamicItem {
-        let payload: DynamicDetailPayload = try await APIClient.shared.get(
+    static func dynamicDetail(id: String, client: APIClient) async throws -> DynamicItem {
+        let payload: DynamicDetailPayload = try await client.get(
             path: "x/polymer/web-dynamic/v1/detail",
             params: ["id": id, "timezone_offset": "-480", "features": "itemOpusStyle", "gaia_source": "Athena",
                      "web_location": "333.1330",
@@ -82,7 +85,7 @@ extension BiliAPI {
     }
 
     /// 某个 UP 主自己的动态。结构和关注流完全一样，只是换了个端点。
-    static func spaceDynamics(hostMid: Int, offset: String?) async throws -> DynamicFeedPage {
+    static func spaceDynamics(hostMid: Int, offset: String?, client: APIClient) async throws -> DynamicFeedPage {
         var params = [
             "host_mid": String(hostMid),
             "timezone_offset": "-480",
@@ -93,7 +96,7 @@ extension BiliAPI {
         if let offset, !offset.isEmpty {
             params["offset"] = offset
         }
-        return try await APIClient.shared.get(
+        return try await client.get(
             path: "x/polymer/web-dynamic/v1/feed/space",
             params: params,
             additionalHeaders: DynamicRequest.headers
@@ -104,9 +107,9 @@ extension BiliAPI {
     ///
     /// 该接口只认 JSON body：表单编码会报 4100001 参数错误。csrf 按惯例
     /// 放 query，body 里带 spmid（对齐 PiliPlus 的请求格式）。
-    static func likeDynamic(id: String, like: Bool) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.postJSON(
+    static func likeDynamic(id: String, like: Bool, client: APIClient, identity: DeviceIdentity) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.postJSON(
             path: "x/dynamic/feed/dyn/thumb",
             query: ["csrf": csrf],
             json: [

@@ -1,9 +1,12 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 extension BiliAPI {
     /// 观看历史按游标翻页：首页 max=0 / view_at=0，之后带上上一页返回的游标。
-    static func historyPage(max: Int, viewAt: Int) async throws -> HistoryCursorPage {
-        try await APIClient.shared.get(
+    static func historyPage(max: Int, viewAt: Int, client: APIClient) async throws -> HistoryCursorPage {
+        try await client.get(
             path: "x/web-interface/history/cursor",
             params: [
                 "type": "archive",
@@ -20,8 +23,8 @@ extension BiliAPI {
     /// 格式对齐 PiliPlus：UGC 稿件 type=3，`played_time` 传秒数，
     /// 看完时传 -1。未登录（拿不到 csrf）时直接不发。
     static func reportWatchProgress(bvid: String, cid: Int, playedTime: Double,
-                                    expectedSessionID: UUID, client: APIClient = .shared,
-                                    identity: DeviceIdentity = .shared) async throws {
+                                    expectedSessionID: UUID, client: APIClient,
+                                    identity: DeviceIdentity) async throws {
         guard !bvid.isEmpty, cid > 0, playedTime.isFinite,
               playedTime == -1 || (playedTime >= 1 && playedTime < Double(Int.max)) else { return }
         let account = await identity.authenticatedRequestSnapshot()
@@ -44,9 +47,9 @@ extension BiliAPI {
     ///
     /// 端点是 `x/v2/history/delete`——之前写成了 `x/web-interface/history/del`，
     /// 那个路径根本不存在，所以返回的是 HTTP 404 而不是业务错误码。
-    static func deleteHistory(kid: String, expectedSessionID: UUID? = nil) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
+    static func deleteHistory(kid: String, expectedSessionID: UUID? = nil, client: APIClient, identity: DeviceIdentity) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(
             path: "x/v2/history/delete",
             form: ["kid": kid, "jsonp": "jsonp", "csrf": csrf], expectedSessionID: expectedSessionID
         )
@@ -61,8 +64,8 @@ extension BiliAPI {
     /// App 授权存在时使用移动心跳与独立历史同步，不再同时发网页心跳。
     @discardableResult
     static func reportAppWatch(bvid: String, aid: Int, cid: Int, report: PlaybackWatchReport,
-                               expectedSessionID: UUID, client: APIClient = .shared,
-                               identity: DeviceIdentity = .shared) async throws -> Int? {
+                               expectedSessionID: UUID, client: APIClient,
+                               identity: DeviceIdentity) async throws -> Int? {
         guard aid > 0, cid > 0, report.watchedTime.isFinite,
               (report.delivery == .start ? report.watchedTime == 0 : report.watchedTime > 0),
               report.position.isFinite,

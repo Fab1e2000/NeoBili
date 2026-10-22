@@ -4,12 +4,25 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 ACTION=${1:-help}
 if [[ "$ACTION" == help || "$ACTION" == --help ]]; then
-  echo 'Usage: bash scripts/simulator.sh list|run|test|network [TestClass[/testMethod] ...]'
+  echo 'Usage: bash scripts/simulator.sh list|run|test|network [TestClass[/testMethod] ...] [-- xcodebuild arguments...]'
   echo 'Select with NEOBILI_SIMULATOR_ID or NEOBILI_SIMULATOR_NAME (default: iPhone 18 Pro).'
   echo 'Optional: NEOBILI_SIMULATOR_RUNTIME (e.g. iOS-27-0), NEOBILI_DERIVED_DATA.'
   exit 0
 fi
 shift
+# Keep each argument intact; never evaluate shell text supplied by the caller.
+SELECTORS=()
+EXTRA_ARGS=()
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == -- ]]; then
+    shift
+    EXTRA_ARGS=("$@")
+    break
+  fi
+  SELECTORS+=("$1")
+  shift
+done
+set -- ${SELECTORS[@]+"${SELECTORS[@]}"}
 case "$ACTION" in list) exec xcrun simctl list devices available;; run|test|network) ;; *) echo 'Unknown action' >&2; exit 2;; esac
 if [[ "$ACTION" != test && $# -ne 0 ]]; then echo 'Test selectors are only supported by test.' >&2; exit 2; fi
 DEVICE=$(xcrun simctl list devices available -j | python3 -c '
@@ -40,9 +53,12 @@ mkdir -p "$RESULT"
 CACHE=${NEOBILI_DERIVED_DATA:-$ROOT/DerivedData/Simulator}
 SCHEME=NeoBili
 [[ "$ACTION" == network ]] && SCHEME=NeoBili-Network
-ARGS=(-project "$ROOT/NeoBili.xcodeproj" -scheme "$SCHEME" -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$CACHE" CODE_SIGNING_ALLOWED=NO)
+ARGS=(-project "$ROOT/NeoBili.xcodeproj" -scheme "$SCHEME" -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$CACHE" CODE_SIGNING_ALLOWED=NO ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"})
 printf 'Simulator: %s\nResults: %s\n' "$DEVICE" "$RESULT"
 xcodebuild -version > "$RESULT/environment.txt"
+printf 'Additional xcodebuild arguments:' >> "$RESULT/environment.txt"
+printf ' %q' ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >> "$RESULT/environment.txt"
+printf '\n' >> "$RESULT/environment.txt"
 xcrun simctl list devices available >> "$RESULT/environment.txt"
 if [[ "$ACTION" == run ]]; then
   xcodebuild "${ARGS[@]}" -configuration Debug build > "$RESULT/build.log" 2>&1 || { tail -80 "$RESULT/build.log"; exit 1; }
@@ -58,10 +74,15 @@ else
     [[ "$SELECTOR" != -* ]] || { echo 'Invalid test selector' >&2; exit 2; }
     ARGS+=("-only-testing:NeoBiliTests/$SELECTOR")
   done
-  if xcodebuild "${ARGS[@]}" -parallel-testing-enabled NO -resultBundlePath "$RESULT/tests.xcresult" test > "$RESULT/test.log" 2>&1; then
+  if xcodebuild "${ARGS[@]}" -parallel-testing-enabled NO -collect-test-diagnostics "${NEOBILI_TEST_DIAGNOSTICS:-on-failure}" -resultBundlePath "$RESULT/tests.xcresult" test > "$RESULT/test.log" 2>&1; then
     STATUS=0
   else
     STATUS=$?
+  fi
+  if [[ "${NEOBILI_FAIL_RUNTIME_ISSUES:-0}" == 1 ]] &&
+     grep -Eq 'Main Thread Checker:|WARNING: ThreadSanitizer:|ERROR: AddressSanitizer:|runtime error:' "$RESULT/test.log"; then
+    echo 'Runtime checker reported an issue; inspect test.log.' >&2
+    STATUS=1
   fi
   tail -30 "$RESULT/test.log"
   if [[ -d "$RESULT/tests.xcresult" ]]; then

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 全屏时铺在直播画面上的实时飘幕层。引擎挂在模型上，

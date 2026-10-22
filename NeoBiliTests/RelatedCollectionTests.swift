@@ -1,3 +1,9 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 import XCTest
@@ -5,6 +11,53 @@ import XCTest
 
 @MainActor
 final class RelatedCollectionTests: XCTestCase {
+    func testPickerEntryUpdatesOnlyForVisibleSummaryChanges() throws {
+        func entries(_ detail: VideoDetail, index: Int?) -> [VideoDescriptionComponent] {
+            VideoDescriptionComponents(viewModel: nil, contentInset: 16, descriptionExpanded: .constant(false),
+                currentEpisodeIndex: { _ in index }, currentPartIndex: { _ in index },
+                onToggleFollow: {}, onOpenSpace: {}, onOpenTag: { _ in }, onShowSeason: {}, onShowParts: {},
+                actionBar: { _ in EmptyView() }).make(detail).filter { ["season", "parts"].contains($0.id) }
+        }
+        let original = entries(pickerDetail(), index: 1)
+        let hiddenChanges = entries(pickerDetail(hiddenTitle: "后台更新的另一集"), index: 1)
+        XCTAssertEqual(original.map(\.revision), hiddenChanges.map(\.revision),
+                       "Offscreen episode metadata must not rebind or remeasure the collapsed entries")
+        XCTAssertNotEqual(original.map(\.revision), entries(pickerDetail(), index: 2).map(\.revision))
+        XCTAssertNotEqual(original.map(\.revision), entries(pickerDetail(count: 21), index: 1).map(\.revision))
+        XCTAssertNotEqual(original.last?.revision, entries(pickerDetail(currentTitle: "新分P名称"), index: 1).last?.revision)
+        XCTAssertEqual(entries(pickerDetail(count: 0), index: nil).count, 0)
+        XCTAssertEqual(entries(pickerDetail(count: 1), index: nil).map(\.id), ["season"])
+    }
+
+    func testLongSeasonDescriptionAssemblyPerformance() {
+        let detail = pickerDetail(count: 1000)
+        let builder = VideoDescriptionComponents(viewModel: nil, contentInset: 16, descriptionExpanded: .constant(false),
+            currentEpisodeIndex: { _ in 1 }, currentPartIndex: { _ in 1 },
+            onToggleFollow: {}, onOpenSpace: {}, onOpenTag: { _ in }, onShowSeason: {}, onShowParts: {},
+            actionBar: { _ in EmptyView() })
+        measure {
+            for _ in 0..<200 {
+                XCTAssertEqual(builder.make(detail).count, 5)
+            }
+        }
+    }
+
+    private func pickerDetail(count: Int = 20, hiddenTitle: String = "另一集", currentTitle: String = "当前集") -> VideoDetail {
+        let episodes = (0..<count).map { index in
+            UgcSeasonEpisode(episodeId: index, aid: index, cid: index, bvid: "BVFixture\(index)",
+                title: index == 0 ? currentTitle : hiddenTitle, arc: nil)
+        }
+        let parts = (0..<count).map { index in
+            VideoPart(cid: index, page: index + 1, part: index == 0 ? currentTitle : hiddenTitle, duration: 120)
+        }
+        return VideoDetail(bvid: "BVFixture0", aid: 1, cid: 0, title: "视频", desc: "正文", pic: "", duration: 120, pubdate: 0,
+            owner: .init(mid: 1, name: "UP", face: ""),
+            stat: .init(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0),
+            pages: parts, tname: nil, copyright: nil,
+            ugcSeason: UgcSeason(id: 1, title: "合集", cover: nil, mid: nil,
+                sections: [UgcSeasonSection(id: 1, title: nil, episodes: episodes)]))
+    }
+
     private func video(_ id: Int) -> VideoSummary {
         VideoSummary(bvid: "BV-related-test-\(id)", aid: id, cid: 0, title: "推荐视频 \(id)",
                      pic: "", desc: "", duration: 60, pubdate: 0,

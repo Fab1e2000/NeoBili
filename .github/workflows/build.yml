@@ -15,6 +15,8 @@ concurrency:
 jobs:
   build:
     name: Xcode ${{ matrix.xcode }}
+    # ci-approval 的 required reviewers 在仓库 Settings → Environments 中维护。
+    environment: ci-approval
     runs-on: macos-26
     timeout-minutes: 30
     strategy:
@@ -40,6 +42,7 @@ jobs:
 
   regression:
     name: Deterministic regression (Xcode 26.6)
+    environment: ci-approval
     runs-on: macos-26
     timeout-minutes: 45
     steps:

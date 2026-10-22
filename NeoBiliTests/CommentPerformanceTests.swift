@@ -1,9 +1,13 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import SwiftUI
 import XCTest
 @testable import NeoBili
 
 @MainActor
 final class CommentPerformanceTests: XCTestCase {
+    private let emoteStore = CommentEmoteStore(loader: { _ in throw URLError(.notConnectedToInternet) })
     func testEmoteCacheTracksMetadataAndPreservesUnknownText() {
         let small = CommentEmote(url: "https://example.invalid/a.png", meta: .init(size: 1))
         let large = CommentEmote(url: "https://example.invalid/b.png", meta: .init(size: 2))
@@ -24,7 +28,7 @@ final class CommentPerformanceTests: XCTestCase {
             UIColor.red.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 32, height: 32))
         }
-        CommentEmoteStore.shared.insertOriginalForTesting(image, for: url)
+        emoteStore.insertOriginalForTesting(image, for: url)
         let emotes = ["[表情]": CommentEmote(url: url.absoluteString, meta: .init(size: 2))]
         let samples = [
             "简短评论 👨‍💻", String(repeating: "中文 English emoji😂 混合文字。", count: 50),
@@ -39,7 +43,7 @@ final class CommentPerformanceTests: XCTestCase {
                         let view = CommentEmoteText(message: message, emotes: emotes, font: .subheadline,
                                                     textStyle: .subheadline, loadsEmotes: false)
                             .lineLimit(limit).fixedSize(horizontal: false, vertical: true)
-                            .frame(width: width).environment(\.dynamicTypeSize, size)
+                            .frame(width: width).environment(\.dynamicTypeSize, size).environment(\.commentEmoteStore, emoteStore)
                         let renderer = ImageRenderer(content: view)
                         renderer.scale = 2
                         return try XCTUnwrap(renderer.cgImage).height
@@ -194,13 +198,13 @@ final class CommentPerformanceTests: XCTestCase {
         let bitmap = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { context in
             UIColor.systemPink.setFill(); context.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
         }
-        CommentEmoteStore.shared.insertOriginalForTesting(bitmap, for: try XCTUnwrap(URL(string: "https://example.invalid/layout.png")))
+        emoteStore.insertOriginalForTesting(bitmap, for: try XCTUnwrap(URL(string: "https://example.invalid/layout.png")))
         for size in [DynamicTypeSize.large, .accessibility3] {
             var durations: [Double] = []
             for iteration in 0..<45 {
                 let start = CACurrentMediaTime()
                 let renderer = ImageRenderer(content: ExpandableCommentMessage(comment: comment)
-                    .frame(width: 316).environment(\.dynamicTypeSize, size))
+                    .frame(width: 316).environment(\.dynamicTypeSize, size).environment(\.commentEmoteStore, emoteStore))
                 renderer.scale = 3
                 XCTAssertGreaterThan(try XCTUnwrap(renderer.cgImage).height, 0)
                 if iteration >= 5 { durations.append((CACurrentMediaTime() - start) * 1000) }
@@ -234,7 +238,7 @@ final class CommentPerformanceTests: XCTestCase {
             let comment = try JSONDecoder().decode(Comment.self, from: data)
             window.overrideUserInterfaceStyle = style
             host.rootView = AnyView(ExpandableCommentMessage(comment: comment).id(name)
-                .environment(\.dynamicTypeSize, size)
+                .environment(\.dynamicTypeSize, size).environment(\.commentEmoteStore, emoteStore)
                 .environment(\.commentTimeJump, EnvironmentAction { _ in })
                 .frame(width: width, alignment: .leading).padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

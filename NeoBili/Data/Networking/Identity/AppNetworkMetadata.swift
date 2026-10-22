@@ -5,7 +5,7 @@ import Network
 
 /// One coherent read of the local connection, shared by query and header builders.
 /// Unknown/offline connections must never be reported as Wi-Fi.
-struct AppNetworkMetadataSnapshot: Equatable, Sendable {
+public struct AppNetworkMetadataSnapshot: Equatable, Sendable {
     enum Connection: Equatable, Sendable {
         case unknown, wifi, mobile
     }
@@ -38,8 +38,7 @@ struct AppNetworkMetadataSnapshot: Equatable, Sendable {
 /// Nonblocking, process-local path monitoring. No location, SSID or carrier access.
 /// The first request may precede the first path callback and truthfully omit the
 /// binary header. Regression instances never start a system monitor.
-final class AppNetworkMetadata: @unchecked Sendable {
-    static let shared = AppNetworkMetadata(monitoring: !AppNetwork.isRegression)
+public final class AppNetworkMetadata: @unchecked Sendable {
 
     private let lock = NSLock()
     private var current = AppNetworkMetadataSnapshot(connection: .unknown)
@@ -47,7 +46,7 @@ final class AppNetworkMetadata: @unchecked Sendable {
     private var monitor: NWPathMonitor?
     #endif
 
-    init(monitoring: Bool = false) {
+    public init(monitoring: Bool = false) {
         #if canImport(Network)
         if monitoring {
             let monitor = NWPathMonitor()
@@ -68,7 +67,7 @@ final class AppNetworkMetadata: @unchecked Sendable {
         #endif
     }
 
-    func snapshot() -> AppNetworkMetadataSnapshot {
+    public func snapshot() -> AppNetworkMetadataSnapshot {
         lock.lock()
         defer { lock.unlock() }
         return current

@@ -1,7 +1,7 @@
 import Foundation
 
-enum RuntimePolicy {
-    static var isRegression: Bool {
+public enum RuntimePolicy {
+    public static var isRegression: Bool {
         #if NEOBILI_REGRESSION
         true
         #else

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 头像条红点以服务端 portal 的 `has_update` 为准（与 PiliPlus 一致）。
@@ -6,7 +9,6 @@ import Foundation
 @MainActor
 @Observable
 final class FollowingReadStore {
-    static let shared = FollowingReadStore()
     /// 本地已清除红点的 UP 主及清除时间，等服务端列表确认后移除。
     private(set) var cleared: [Int: Double] = [:]
     private(set) var priorityUntil: [String: Double] = [:]

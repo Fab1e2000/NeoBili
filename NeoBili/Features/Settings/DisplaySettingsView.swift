@@ -30,8 +30,6 @@ struct DisplaySettingsView: View {
                 .dynamicTypeSize(.large)
                 Button("恢复标准") { textSizeIndex = AppTextSize.defaultIndex }
                     .disabled(textSizeIndex == AppTextSize.defaultIndex)
-            } footer: {
-                Text("App 内统一使用这里的文字大小，不跟随系统设置。")
             }
         }
         .settingsPage("文字大小")

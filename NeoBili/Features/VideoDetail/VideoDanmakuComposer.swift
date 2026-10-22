@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 发弹幕的输入面板（参考 PiliPlus 的 SendDanmakuPanel）：一行输入框、发送按钮和弹幕位置。

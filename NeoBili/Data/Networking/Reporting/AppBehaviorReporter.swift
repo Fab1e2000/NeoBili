@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// Immutable event-time facts. Credentials are acquired only when sending.
@@ -16,10 +19,12 @@ struct AppBehaviorEvent: Codable, Sendable {
     }
 }
 
-actor AppBehaviorReporter {
-    static let shared = AppBehaviorReporter(directory: AppNetwork.isRegression ? nil :
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("BehaviorQueue", isDirectory: true))
+public actor AppBehaviorReporter {
+    public init(identity: DeviceIdentity, client: APIClient, directory: URL?) {
+        self.init(identity: identity, client: client, directory: directory, automaticScheduling: true,
+                  now: { Date().timeIntervalSince1970 }, sender: nil, snapshotProvider: nil)
+    }
+
     typealias Sender = @Sendable ([AppBehaviorEvent]) async throws -> Void
     private let identity: DeviceIdentity
     private let client: APIClient
@@ -36,7 +41,7 @@ actor AppBehaviorReporter {
     private var background = false
     private var retryAfter: TimeInterval = 0
 
-    init(identity: DeviceIdentity = .shared, client: APIClient = .shared, directory: URL? = nil,
+    init(identity: DeviceIdentity, client: APIClient, directory: URL? = nil,
          automaticScheduling: Bool = true, now: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 },
          sender: Sender? = nil,
          snapshotProvider: (@Sendable (UUID) async throws -> AppDeviceSnapshot)? = nil) {
@@ -85,7 +90,7 @@ actor AppBehaviorReporter {
         if now() >= retryAfter { schedule() }
     }
 
-    func setBackground(_ value: Bool) async {
+    public func setBackground(_ value: Bool) async {
         background = value
         scheduled?.cancel(); scheduled = nil; scheduleID = nil
         if value { await checkpoint() } else { await flush() }

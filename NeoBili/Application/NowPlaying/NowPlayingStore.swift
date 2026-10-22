@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 import SwiftUI
 
@@ -44,7 +47,11 @@ final class NowPlayingStore {
     func openLive(_ room: LiveRoom, from sourceID: String) {
         if livePlayer?.room.roomID != room.roomID {
             close()
-            let model = LivePlayerModel(room: room)
+            let services = dependencies.services
+            let model = LivePlayerModel(room: room,
+                roomLoader: { try await services.streaming.roomInfo(roomID: $0) },
+                playbackLoader: { try await services.streaming.playback(roomID: $0, quality: $1) },
+                systemMedia: dependencies.systemMedia)
             livePlayer = model
             model.requestLoad()
         }
@@ -117,28 +124,34 @@ final class NowPlayingStore {
     }
 
     /// 视频页里点相关视频是就地替换，这里记着来路，供左上角返回按钮逐级回退。
-    private var history: [VideoDetailRoute] = []
+    private var history = PlaybackNavigationHistory()
     private var loadTasks: [Task<Void, Never>] = []
     private var playerLoadTask: Task<Void, Never>?
     private var detailLoadTask: Task<Void, Never>?
     private let detailModelFactory: @MainActor (VideoDetailRoute) -> VideoDetailViewModel
 
+    var preparationCache: VideoPreparationCache { dependencies.preparation }
+    private let dependencies: PlaybackDependencies
     private let defaults: UserDefaults
 
     init(configuration: VideoPlaybackConfiguration = .fastStart, defaults: UserDefaults = .standard,
-         detailModelFactory: @escaping @MainActor (VideoDetailRoute) -> VideoDetailViewModel = {
-             VideoDetailViewModel(bvid: $0.bvid, aid: $0.aid ?? 0, playbackEntry: $0.playbackEntry)
-         }) {
+         detailModelFactory: (@MainActor (VideoDetailRoute) -> VideoDetailViewModel)? = nil,
+         dependencies: PlaybackDependencies = .live) {
         // configuration 形参保留给测试注入使用；线上路径每次都读 `.current`。
         _ = configuration
         self.defaults = defaults
-        self.detailModelFactory = detailModelFactory
+        self.dependencies = dependencies
+        self.detailModelFactory = detailModelFactory ?? { route in
+            VideoDetailViewModel(bvid: route.bvid, aid: route.aid ?? 0, playbackEntry: route.playbackEntry,
+                likeStore: dependencies.likes, services: dependencies.services,
+                fetchDetail: { try await dependencies.preparation.detail(for: $0) })
+        }
     }
 
     /// 服务 sheet 打开期间，由它承载视频模态，根 TabView 暂停呈现。
     var isServiceSheetPresented = false
 
-    var canGoBack: Bool { !history.isEmpty }
+    var canGoBack: Bool { history.canGoBack }
 
     /// 正在播放的分P。入口已经给了 cid 时立刻有值，播放器不必等详情接口。
     var activeCid: Int? {
@@ -158,7 +171,7 @@ final class NowPlayingStore {
             requestPageExpansion(from: sourceID)
             return
         }
-        history.removeAll()
+        history.reset()
         start(newRoute)
         requestPageExpansion(from: sourceID)
     }
@@ -170,14 +183,14 @@ final class NowPlayingStore {
             return
         }
         guard route?.bvid != newRoute.bvid else { return }
-        if let route { history.append(historySnapshot(route)) }
+        if let route { history.record(route, activeCid: activeCid) }
         start(newRoute)
     }
 
     /// 视频页里点相关视频：就地换掉当前视频，旧的压进历史。
     func openRelated(_ video: VideoSummary) {
         if let route {
-            history.append(historySnapshot(route))
+            history.record(route, activeCid: activeCid)
         }
         start(
             VideoDetailRoute(
@@ -195,7 +208,7 @@ final class NowPlayingStore {
     func openEpisode(_ episode: UgcSeasonEpisode) {
         guard let bvid = episode.bvid else { return }
         if let route {
-            history.append(historySnapshot(route))
+            history.record(route, activeCid: activeCid)
         }
         start(
             VideoDetailRoute(
@@ -210,7 +223,7 @@ final class NowPlayingStore {
 
     /// 左上角返回：先在历史里逐级回退，退到底了退出视频页并继续在底部播放条播放。
     func goBack() {
-        if let previous = history.popLast() {
+        if let previous = history.pop() {
             start(previous)
         } else {
             dismissVideoPage()
@@ -302,7 +315,7 @@ final class NowPlayingStore {
         detailViewModel = nil
         commentsViewModel = nil
         route = nil
-        history.removeAll()
+        history.reset()
         isExpanded = false
         isMiniPlayerPresented = false
         isVideoPageDismissalInProgress = false
@@ -400,12 +413,6 @@ final class NowPlayingStore {
         }
     }
 
-    private func historySnapshot(_ route: VideoDetailRoute) -> VideoDetailRoute {
-        var snapshot = route
-        snapshot.cid = activeCid ?? route.cid
-        return snapshot
-    }
-
     private func startPlayerIfPossible() {
         guard hasRequestedPlayback, let route, let cid = activeCid else { return }
         // 已经在放这一个了就不要重建，否则会打断正在进行的播放。
@@ -421,7 +428,7 @@ final class NowPlayingStore {
             bvid: route.bvid,
             cid: cid,
             aid: route.aid ?? detailViewModel?.detail?.aid ?? 0, playbackEntry: route.playbackEntry,
-            configuration: playbackConfiguration
+            configuration: playbackConfiguration, dependencies: dependencies
         )
         newPlayer.session.surfacePresentation = isMiniPlayerPresented && !isVideoPageDismissalInProgress ? .mini : .page
         player = newPlayer
@@ -455,7 +462,7 @@ final class NowPlayingStore {
         guard let aid = detailViewModel?.detail?.aid else { return }
         // 评论接口要用 av 号，所以只能等详情回来才能建这个视图模型。
         if commentsViewModel?.oid != aid {
-            commentsViewModel = CommentsViewModel(aid: aid)
+            commentsViewModel = CommentsViewModel(oid: aid, type: 1, services: dependencies.services)
         }
     }
 

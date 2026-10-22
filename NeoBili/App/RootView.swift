@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 列表卡片需要用同一个命名空间登记自己是 zoom 转场的起点，
@@ -92,6 +95,7 @@ struct RootView: View {
         .appTheme()
         .modifier(AppAuthorizationRecovery(account: account))
         .environment(nowPlaying)
+        .environment(\.videoPreparation, nowPlaying.preparationCache)
         .environment(account)
         .environment(feedback)
         .environment(themeIcon)

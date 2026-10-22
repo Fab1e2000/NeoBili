@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
 @testable import NeoBili
 
@@ -85,6 +88,63 @@ final class PlaybackNavigationRepairTests: XCTestCase {
         XCTAssertNil(store.player)
     }
 
+    func testLateDetailPreservesLatestSelectedPartOfSameVideo() async throws {
+        let gate = NavigationDetailGate()
+        let store = try makeStore(loader: { _ in try await gate.load() })
+        defer { store.close(); gate.cancelAll() }
+        store.open(VideoDetailRoute(bvid: "BVParts"), from: "search")
+        try await waitUntil { gate.pending[1] != nil }
+        store.selectPart(cid: 11)
+        store.selectPart(cid: 12)
+        store.selectPart(cid: 13)
+        gate.resolve(1, value: detail(bvid: "BVParts", aid: 7, cid: 11))
+        try await waitUntil { store.commentsViewModel?.oid == 7 }
+        XCTAssertEqual(store.activeCid, 13)
+        XCTAssertNil(store.player)
+        store.requestPlayback()
+        XCTAssertEqual(store.player?.cid, 13)
+    }
+
+    func testClosedNavigationReleasesModelsAfterCancelledWorkFinishes() async throws {
+        var store: NowPlayingStore? = try makeStore()
+        weak var releasedStore = store
+        store?.open(VideoDetailRoute(bvid: "BVFirst"), from: "card")
+        weak var first = store?.detailViewModel
+        store?.openEpisode(.init(episodeId: 2, aid: 2, cid: 21, bvid: "BVSecond", title: "Second", arc: nil))
+        weak var second = store?.detailViewModel
+        store?.isExpanded = true
+        store?.openCommentVideo(VideoDetailRoute(bvid: "BVThird"))
+        weak var third = store?.detailViewModel
+        store?.goBack()
+        weak var restored = store?.detailViewModel
+        XCTAssertEqual(store?.route?.bvid, "BVSecond")
+        store?.close()
+        store = nil
+        try await waitUntil {
+            releasedStore == nil && first == nil && second == nil && third == nil && restored == nil
+        }
+    }
+
+    func testClosedDetailReleasesAfterPendingRequestCompletes() async throws {
+        for completesSuccessfully in [false, true] {
+            let gate = NavigationDetailGate()
+            defer { gate.cancelAll() }
+            var store: NowPlayingStore? = try makeStore(loader: { _ in try await gate.load() })
+            weak var releasedStore = store
+            store?.open(VideoDetailRoute(bvid: "BVPending"), from: "card")
+            weak var releasedDetail = store?.detailViewModel
+            try await waitUntil { gate.pending[1] != nil }
+            store?.close()
+            store = nil
+            if completesSuccessfully {
+                gate.resolve(1, value: detail(bvid: "BVPending", aid: 1, cid: 11))
+            } else {
+                gate.cancelAll()
+            }
+            try await waitUntil { releasedStore == nil && releasedDetail == nil }
+        }
+    }
+
     private func makeStore(loader: @escaping @MainActor (String) async throws -> VideoDetail = { _ in
         throw URLError(.notConnectedToInternet)
     }) throws -> NowPlayingStore {
@@ -92,9 +152,11 @@ final class PlaybackNavigationRepairTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         defaults.set(false, forKey: DetailPlaybackSettings.storageKey)
+        let dependencies = PlaybackDependencies.isolated(defaults: defaults)
         return NowPlayingStore(defaults: defaults, detailModelFactory: {
-            VideoDetailViewModel(bvid: $0.bvid, fetchDetail: loader)
-        })
+            VideoDetailViewModel(bvid: $0.bvid, likeStore: dependencies.likes,
+                                 services: dependencies.services, fetchDetail: loader)
+        }, dependencies: dependencies)
     }
 
     private func detail(bvid: String, aid: Int, cid: Int) -> VideoDetail {

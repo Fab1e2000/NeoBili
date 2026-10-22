@@ -1,9 +1,11 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 提前保存视频详情和播放地址，点进卡片时就不必重复等待相同请求。
 /// 这里只缓存接口返回的小段文字数据，不会提前下载整段视频。
 actor VideoPreparationCache {
-    static let shared = VideoPreparationCache()
 
     private struct DetailKey: Hashable, Sendable {
         let sessionID: UUID

@@ -1,9 +1,12 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 播放时间的统一写法（`分:秒`），进度条和时间文字共用，避免两处显示不一致。
 enum PlaybackTime {
     static func text(_ seconds: Double) -> String {
-        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
+        guard seconds.isFinite, seconds >= 0, seconds < Double(Int.max) else { return "0:00" }
         let total = Int(seconds)
         return String(format: "%d:%02d", total / 60, total % 60)
     }

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import AVFAudio
 import MediaPlayer
 import UIKit
@@ -7,46 +10,47 @@ import XCTest
 @MainActor
 final class SystemNowPlayingCenterTests: XCTestCase {
     func testIdleTimerFollowsCurrentMediaAndIgnoresOldSessionEvents() {
-        let center = SystemNowPlayingCenter.shared
+        let notifications = NotificationCenter()
+        var idleDisabled = false
+        let center = SystemNowPlayingCenter(output: .init(), notifications: notifications,
+            interruptionObject: nil,
+            idleTimer: PlaybackIdleTimer(isApplicationActive: true, setDisabled: { idleDisabled = $0 }),
+            artworkLoader: { _ in throw URLError(.notConnectedToInternet) })
         let oldSession = UUID()
         let currentSession = UUID()
-        let originalIdleTimer = UIApplication.shared.isIdleTimerDisabled
-        defer {
-            center.deactivate(sessionID: currentSession)
-            center.deactivate(sessionID: oldSession)
-            if UIApplication.shared.applicationState != .active {
-                NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
-            }
-            UIApplication.shared.isIdleTimerDisabled = originalIdleTimer
-        }
-        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        notifications.post(name: UIApplication.didBecomeActiveNotification, object: nil)
         let metadata = SystemMediaMetadata(identifier: "idle-timer", title: "Video", artist: "", artworkURL: nil)
         center.activate(sessionID: oldSession, metadata: metadata,
                         onPlay: {}, onPause: {}, onToggle: {}, onSeek: { _ in })
         center.updatePlaybackState(isPlaying: true, sessionID: oldSession)
-        XCTAssertTrue(UIApplication.shared.isIdleTimerDisabled)
+        XCTAssertTrue(idleDisabled)
 
         center.activate(sessionID: currentSession, metadata: metadata,
                         onPlay: {}, onPause: {}, onToggle: {}, onSeek: { _ in })
-        XCTAssertFalse(UIApplication.shared.isIdleTimerDisabled)
+        XCTAssertFalse(idleDisabled)
         center.updatePlaybackState(isPlaying: true, sessionID: currentSession)
         center.updatePlaybackState(isPlaying: false, sessionID: oldSession)
         center.deactivate(sessionID: oldSession)
-        XCTAssertTrue(UIApplication.shared.isIdleTimerDisabled)
+        XCTAssertTrue(idleDisabled)
 
-        NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
-        XCTAssertFalse(UIApplication.shared.isIdleTimerDisabled)
-        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
-        XCTAssertTrue(UIApplication.shared.isIdleTimerDisabled)
+        notifications.post(name: UIApplication.willResignActiveNotification, object: nil)
+        XCTAssertFalse(idleDisabled)
+        notifications.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        XCTAssertTrue(idleDisabled)
         center.updatePlaybackState(isPlaying: false, sessionID: currentSession)
-        XCTAssertFalse(UIApplication.shared.isIdleTimerDisabled)
+        XCTAssertFalse(idleDisabled)
         center.updatePlaybackState(isPlaying: true, sessionID: currentSession)
         center.deactivate(sessionID: currentSession)
-        XCTAssertFalse(UIApplication.shared.isIdleTimerDisabled)
+        XCTAssertFalse(idleDisabled)
     }
 
     func testAudioInterruptionPausesActivePlayerWithoutAutomaticallyResuming() {
-        let center = SystemNowPlayingCenter.shared
+        let notifications = NotificationCenter()
+        var idleDisabled = false
+        let center = SystemNowPlayingCenter(output: .init(), notifications: notifications,
+            interruptionObject: nil,
+            idleTimer: PlaybackIdleTimer(isApplicationActive: true, setDisabled: { idleDisabled = $0 }),
+            artworkLoader: { _ in throw URLError(.notConnectedToInternet) })
         let sessionID = UUID()
         var pauses = 0
         var plays = 0
@@ -56,21 +60,21 @@ final class SystemNowPlayingCenterTests: XCTestCase {
             onPlay: { plays += 1 }, onPause: { pauses += 1 }, onToggle: {}, onSeek: { _ in }
         )
         defer { center.deactivate(sessionID: sessionID) }
-        NotificationCenter.default.post(
-            name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(),
+        notifications.post(
+            name: AVAudioSession.interruptionNotification, object: nil,
             userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue]
         )
         XCTAssertEqual(pauses, 1)
-        NotificationCenter.default.post(
-            name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(),
+        notifications.post(
+            name: AVAudioSession.interruptionNotification, object: nil,
             userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
                        AVAudioSessionInterruptionOptionKey: AVAudioSession.InterruptionOptions.shouldResume.rawValue]
         )
         XCTAssertEqual(pauses, 1)
         XCTAssertEqual(plays, 0)
         center.deactivate(sessionID: sessionID)
-        NotificationCenter.default.post(
-            name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(),
+        notifications.post(
+            name: AVAudioSession.interruptionNotification, object: nil,
             userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue]
         )
         XCTAssertEqual(pauses, 1)

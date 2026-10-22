@@ -2,13 +2,13 @@ import Foundation
 
 /// MainConfig values used by the official feed's independent show/duration checks.
 /// A zero show threshold still requires a nonempty visible intersection.
-struct RecommendationExposurePolicy: Decodable, Equatable, Sendable {
-    var durationStartRatio: Double = 0.8
-    var durationEndRatio: Double = 0.8
-    var minimumDurationMilliseconds: Int = 0
-    var showRatio: Double = 0
+public struct RecommendationExposurePolicy: Decodable, Equatable, Sendable {
+    public var durationStartRatio: Double = 0.8
+    public var durationEndRatio: Double = 0.8
+    public var minimumDurationMilliseconds: Int = 0
+    public var showRatio: Double = 0
 
-    init(durationStartRatio: Double = 0.8, durationEndRatio: Double = 0.8,
+    public init(durationStartRatio: Double = 0.8, durationEndRatio: Double = 0.8,
          minimumDurationMilliseconds: Int = 0, showRatio: Double = 0) {
         self.durationStartRatio = durationStartRatio
         self.durationEndRatio = durationEndRatio
@@ -23,7 +23,7 @@ struct RecommendationExposurePolicy: Decodable, Equatable, Sendable {
         case visibleArea = "visible_area"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         func number(_ key: CodingKeys, fallback: Double) -> Double {
             guard let value = try? values.decode(Double.self, forKey: key), value.isFinite else { return fallback }

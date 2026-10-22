@@ -34,7 +34,7 @@ private struct IgnoredValue: Decodable {
 extension KeyedDecodingContainer {
     /// B 站有些字段同一个含义在不同接口、不同稿件上一会儿是数字、一会儿是
     /// 字符串（动态流的 `aid`、隐藏播放量时的 `--`），两种都试一遍。
-    func flexibleInt(forKey key: Key) -> Int? {
+    public func flexibleInt(forKey key: Key) -> Int? {
         if let value = try? decodeIfPresent(Int.self, forKey: key) { return value }
         if let value = try? decodeIfPresent(Double.self, forKey: key) { return Int(value) }
         if let text = try? decodeIfPresent(String.self, forKey: key) { return Int(text) }
@@ -42,7 +42,7 @@ extension KeyedDecodingContainer {
     }
 
     /// 同上，反过来：本该是文字的字段偶尔会回一个数字（动态 id、播放量）。
-    func flexibleString(forKey key: Key) -> String? {
+    public func flexibleString(forKey key: Key) -> String? {
         if let value = try? decodeIfPresent(String.self, forKey: key) { return value }
         if let value = try? decodeIfPresent(Int.self, forKey: key) { return String(value) }
         if let value = try? decodeIfPresent(Bool.self, forKey: key) { return String(value) }
@@ -50,7 +50,7 @@ extension KeyedDecodingContainer {
     }
 
     /// 开关字段有时是 true/false，有时是 1/0，也见过 "true"。
-    func flexibleBool(forKey key: Key) -> Bool? {
+    public func flexibleBool(forKey key: Key) -> Bool? {
         if let value = try? decodeIfPresent(Bool.self, forKey: key) { return value }
         if let value = try? decodeIfPresent(Int.self, forKey: key) { return value != 0 }
         if let text = try? decodeIfPresent(String.self, forKey: key) {

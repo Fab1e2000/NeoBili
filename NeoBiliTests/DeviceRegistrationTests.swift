@@ -1,5 +1,9 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
 import XCTest
 import Security
+import Synchronization
 import CommonCrypto
 @testable import NeoBili
 
@@ -62,6 +66,41 @@ final class DeviceRegistrationTests: XCTestCase {
         XCTAssertEqual(restoredValue,first)
         let other = await restored.cachedID(buvid:"different")
         XCTAssertNil(other)
+    }
+
+    func testSharedFailedRefreshPreservesPreviouslyRegisteredIDForEveryWaiter() async {
+        let state = Mutex<(time: TimeInterval, calls: Int, onRead: (@Sendable () -> Void)?)>((1000, 0, nil))
+        let gate = RegistrationRefreshGate()
+        let started = expectation(description: "refresh started")
+        let joined = expectation(description: "second caller checked expired cache")
+        let registration = AppDeviceRegistration(credentials: .memory(), transport: { request in
+            let call = state.withLock { $0.calls += 1; return $0.calls }
+            if call > 1 {
+                await gate.wait(started: started)
+                throw URLError(.notConnectedToInternet)
+            }
+            return (Data(#"{"code":0,"data":{"bili_deviceId":"server-own"}}"#.utf8),
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, material: { _, _ in AppProto.string(1, "ios") }, clock: {
+            let snapshot = state.withLock { ($0.time, $0.onRead) }
+            snapshot.1?()
+            return snapshot.0
+        })
+        let initial = await registration.register(buvid: "local", mid: 1, headers: [:])
+        XCTAssertEqual(initial, "server-own")
+        state.withLock { $0.time += 86401 }
+        let first = Task { await registration.register(buvid: "local", mid: 1, headers: [:]) }
+        await fulfillment(of: [started], timeout: 2)
+        state.withLock { $0.onRead = { joined.fulfill() } }
+        let second = Task { await registration.register(buvid: "local", mid: 1, headers: [:]) }
+        await fulfillment(of: [joined], timeout: 2)
+        state.withLock { $0.onRead = nil }
+        await gate.release()
+        let firstResult = await first.value
+        let secondResult = await second.value
+        XCTAssertEqual(firstResult, initial)
+        XCTAssertEqual(secondResult, initial)
+        XCTAssertEqual(state.withLock { $0.calls }, 2)
     }
 
     func testRejectedRegistrationNeverInventsDeviceID() async {
@@ -129,4 +168,12 @@ final class DeviceRegistrationTests: XCTestCase {
 private actor RegistrationRecorder {
     var requests: [URLRequest] = []
     func append(_ request: URLRequest) { requests.append(request) }
+}
+
+private actor RegistrationRefreshGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    func wait(started: XCTestExpectation) async {
+        await withCheckedContinuation { continuation = $0; started.fulfill() }
+    }
+    func release() { continuation?.resume(); continuation = nil }
 }

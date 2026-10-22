@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 extension BiliAPI {
@@ -7,8 +10,8 @@ extension BiliAPI {
     /// `comment_id_str` 和它自己的 `comment_type`（图文 11、纯文字 17）。
     /// `sort: 1` 是按点赞数排序，也就是网页端默认的「热门」。
     /// 每条一级评论会顺带返回最多 3 条楼中楼，展示它们不需要再发请求。
-    static func comments(oid: Int, type: Int, page: Int) async throws -> CommentPage {
-        try await APIClient.shared.get(
+    static func comments(oid: Int, type: Int, page: Int, client: APIClient) async throws -> CommentPage {
+        try await client.get(
             path: "x/v2/reply",
             params: [
                 "type": String(type),
@@ -23,9 +26,9 @@ extension BiliAPI {
     /// 展开某条评论下的全部回复（楼中楼）。`root` 传那条一级评论的 `rpid`。
     ///
     /// 和一级评论不同，这个接口对未登录用户没有条数限制，可以正常一页页翻。
-    static func sendComment(oid: Int, type: Int, message: String, root: Int, parent: Int) async throws -> CommentSubmission {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        let result: CommentSubmission = try await APIClient.shared.post(path: "x/v2/reply/add", form: [
+    static func sendComment(oid: Int, type: Int, message: String, root: Int, parent: Int, client: APIClient, identity: DeviceIdentity) async throws -> CommentSubmission {
+        let csrf = await identity.csrfToken ?? ""
+        let result: CommentSubmission = try await client.post(path: "x/v2/reply/add", form: [
             "oid": String(oid), "type": String(type), "message": message,
             "root": String(root), "parent": String(parent), "plat": "1", "csrf": csrf
         ])
@@ -33,8 +36,8 @@ extension BiliAPI {
         return result
     }
 
-    static func commentReplies(oid: Int, type: Int, rootId: Int, page: Int) async throws -> CommentReplyPage {
-        try await APIClient.shared.get(
+    static func commentReplies(oid: Int, type: Int, rootId: Int, page: Int, client: APIClient) async throws -> CommentReplyPage {
+        try await client.get(
             path: "x/v2/reply/reply",
             params: [
                 "type": String(type),
@@ -48,9 +51,9 @@ extension BiliAPI {
     }
 
     /// 给评论点赞 / 取消点赞。`oid` 和 `type` 的含义与拉取评论时相同。
-    static func likeComment(oid: Int, type: Int, rpid: Int, like: Bool) async throws {
-        let csrf = await DeviceIdentity.shared.csrfToken ?? ""
-        try await APIClient.shared.post(
+    static func likeComment(oid: Int, type: Int, rpid: Int, like: Bool, client: APIClient, identity: DeviceIdentity) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(
             path: "x/v2/reply/action",
             form: [
                 "type": String(type),

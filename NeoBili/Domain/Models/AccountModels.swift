@@ -4,14 +4,14 @@ import Foundation
 
 /// 登录用户信息。nav 对访客也返回 code 0（`isLogin: false` + 空字段），
 /// 所以除 `isLogin` 外全部按可选解码，由 `AccountStore` 统一判空。
-struct AccountProfilePayload: Decodable, Sendable {
-    let isLogin: Bool?
-    let mid: Int?
-    let uname: String?
-    let face: String?
-    let money: Double?
-    let vipStatus: Int?
-    let levelInfo: LevelInfo?
+public struct AccountProfilePayload: Decodable, Sendable {
+    public let isLogin: Bool?
+    public let mid: Int?
+    public let uname: String?
+    public let face: String?
+    public let money: Double?
+    public let vipStatus: Int?
+    public let levelInfo: LevelInfo?
 
     enum CodingKeys: String, CodingKey {
         case isLogin, mid, uname, face, money
@@ -19,8 +19,8 @@ struct AccountProfilePayload: Decodable, Sendable {
         case levelInfo = "level_info"
     }
 
-    struct LevelInfo: Decodable, Sendable {
-        let currentLevel: Int?
+    public struct LevelInfo: Decodable, Sendable {
+        public let currentLevel: Int?
 
         enum CodingKeys: String, CodingKey {
             case currentLevel = "current_level"
@@ -31,22 +31,22 @@ struct AccountProfilePayload: Decodable, Sendable {
 // MARK: - 收藏（x/v3/fav/folder/*）
 
 /// `list-all` 的 data 不是裸数组，而是 `{"count": N, "list": [...]}`。
-struct FavFolderList: Decodable, Sendable {
-    let count: Int?
-    let list: [FavFolder]?
+public struct FavFolderList: Decodable, Sendable {
+    public let count: Int?
+    public let list: [FavFolder]?
 }
 
 /// 账号创建的收藏夹（含默认收藏夹）。`id` 是 media_id，查收藏内容用它。
-struct FavFolder: Decodable, Identifiable, Hashable, Sendable {
-    let id: Int
-    let title: String
-    let mediaCount: Int
+public struct FavFolder: Decodable, Identifiable, Hashable, Sendable {
+    public let id: Int
+    public let title: String
+    public let mediaCount: Int
     /// 查询时带上 `rid`（稿件 avid）才有这个字段：1 表示这个收藏夹里已经有该视频。
     /// 收藏夹选择弹窗据此决定哪几项默认打勾。
-    let favState: Int?
+    public let favState: Int?
 
     /// 这个收藏夹当前是否已收藏了所查询的视频。
-    var containsQueriedVideo: Bool { favState == 1 }
+    public var containsQueriedVideo: Bool { favState == 1 }
 
     enum CodingKeys: String, CodingKey {
         case id, title
@@ -55,13 +55,13 @@ struct FavFolder: Decodable, Identifiable, Hashable, Sendable {
     }
 }
 
-struct FavResourceList: Decodable, Sendable {
-    let info: Info?
-    let medias: [FavMedia]?
+public struct FavResourceList: Decodable, Sendable {
+    public let info: Info?
+    public let medias: [FavMedia]?
 
-    struct Info: Decodable, Sendable {
-        let title: String?
-        let mediaCount: Int?
+    public struct Info: Decodable, Sendable {
+        public let title: String?
+        public let mediaCount: Int?
 
         enum CodingKeys: String, CodingKey {
             case title
@@ -72,25 +72,25 @@ struct FavResourceList: Decodable, Sendable {
 
 /// 收藏夹里的一条内容。`type == 2` 才是普通视频稿件；课程、合集等其它类型
 /// 字段缺失、详情页打不开，统一在列表层过滤掉。
-struct FavMedia: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
-    let id: Int
-    let bvid: String?
-    let type: Int?
-    let title: String
-    let cover: String?
-    let duration: Int?
-    let cntInfo: CntInfo?
-    let upper: Upper?
-    var dimension: VideoDimension? = nil
+public struct FavMedia: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
+    public let id: Int
+    public let bvid: String?
+    public let type: Int?
+    public let title: String
+    public let cover: String?
+    public let duration: Int?
+    public let cntInfo: CntInfo?
+    public let upper: Upper?
+    public var dimension: VideoDimension? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, bvid, type, title, cover, duration, upper, dimension
         case cntInfo = "cnt_info"
     }
 
-    var isVideo: Bool { type == 2 }
+    public var isVideo: Bool { type == 2 }
 
-    var asVideoSummary: VideoSummary? {
+    public var asVideoSummary: VideoSummary? {
         guard isVideo, let bvid, !bvid.isEmpty, let upper else { return nil }
         let counts = cntInfo
         return VideoSummary(
@@ -117,32 +117,32 @@ struct FavMedia: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProv
         )
     }
 
-    struct CntInfo: Decodable, Hashable, Sendable {
-        let play: Int?
-        let danmaku: Int?
+    public struct CntInfo: Decodable, Hashable, Sendable {
+        public let play: Int?
+        public let danmaku: Int?
     }
 
-    struct Upper: Decodable, Hashable, Sendable {
-        let mid: Int?
-        let name: String?
-        let face: String?
+    public struct Upper: Decodable, Hashable, Sendable {
+        public let mid: Int?
+        public let name: String?
+        public let face: String?
     }
 }
 
 // MARK: - 历史（x/web-interface/history/cursor）
 
-struct HistoryCursorPage: Decodable, Sendable {
+public struct HistoryCursorPage: Decodable, Sendable {
     /// 大坑：文档写的是 `items`，实际接口返回的键名是 `list`
     /// （PiliPlus 也是按 `list` 解析的）。两个键都解，谁在用谁。
-    let items: [HistoryItem]?
-    let list: [HistoryItem]?
-    let cursor: Cursor?
+    public let items: [HistoryItem]?
+    public let list: [HistoryItem]?
+    public let cursor: Cursor?
 
-    var allItems: [HistoryItem] { items ?? list ?? [] }
+    public var allItems: [HistoryItem] { items ?? list ?? [] }
 
-    struct Cursor: Decodable, Sendable {
+    public struct Cursor: Decodable, Sendable {
         /// 下一页游标；-1 表示没有更多内容。
-        let max: Int?
+        public let max: Int?
         private let viewAt: Int?
         private let maxViewAt: Int?
 
@@ -152,7 +152,7 @@ struct HistoryCursorPage: Decodable, Sendable {
             case maxViewAt = "max_view_at"
         }
 
-        init(from decoder: Decoder) throws {
+        public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             max = try container.decodeIfPresent(Int.self, forKey: .max)
             // 文档里是 view_at；max_view_at 兼容个别版本的字段名。
@@ -160,23 +160,23 @@ struct HistoryCursorPage: Decodable, Sendable {
             maxViewAt = try container.decodeIfPresent(Int.self, forKey: .maxViewAt)
         }
 
-        var resolvedViewAt: Int? { viewAt ?? maxViewAt }
+        public var resolvedViewAt: Int? { viewAt ?? maxViewAt }
     }
 }
 
 /// 一条观看历史。真正的视频定位信息在 `history` 节点里。
-struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
-    let title: String
-    let longTitle: String?
-    let cover: String?
-    let duration: Int?
-    let authorName: String?
-    let viewAt: Int?
-    let progress: Int?
-    let history: HistoryNode
+public struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
+    public let title: String
+    public let longTitle: String?
+    public let cover: String?
+    public let duration: Int?
+    public let authorName: String?
+    public let viewAt: Int?
+    public let progress: Int?
+    public let history: HistoryNode
     /// 接口在条目上直接给出 kid（archive 类型就是 aid），删除时优先用它。
-    let kid: Int?
-    var dimension: VideoDimension? = nil
+    public let kid: Int?
+    public var dimension: VideoDimension? = nil
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -187,24 +187,24 @@ struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensionP
         case progress, history, kid, dimension
     }
 
-    struct HistoryNode: Decodable, Hashable, Sendable {
-        let business: String?
-        let oid: Int?
-        let bvid: String?
-        let cid: Int?
-        let type: Int?
+    public struct HistoryNode: Decodable, Hashable, Sendable {
+        public let business: String?
+        public let oid: Int?
+        public let bvid: String?
+        public let cid: Int?
+        public let type: Int?
     }
 
-    var id: String { "\(history.business ?? "?")-\(history.oid ?? 0)" }
+    public var id: String { "\(history.business ?? "?")-\(history.oid ?? 0)" }
 
     /// 有的条目 title 是「已清空的稿件」之类的占位文本，真正标题在 long_title。
-    var displayTitle: String {
+    public var displayTitle: String {
         let fallback = longTitle ?? ""
         return title.isEmpty ? fallback : title
     }
 
     /// 只展示普通视频稿件（business == "archive"）；直播/专栏等打不开详情页。
-    var isVideo: Bool { history.business == "archive" && history.bvid?.isEmpty == false }
+    public var isVideo: Bool { history.business == "archive" && history.bvid?.isEmpty == false }
 
     /// 删除单条历史用的 kid 字符串：优先用接口直接给的值，
     /// 缺失时按 `<type>_<oid>` 自行拼接（archive 的 type 是 3）。
@@ -212,12 +212,12 @@ struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensionP
     ///
     /// 格式是「业务名_条目号」，例如 `archive_114514`——普通视频的业务名就是
     /// `archive`。之前传的是裸数字（或者拿 `type` 当前缀），接口一律回 -400。
-    var kidParam: String {
+    public var kidParam: String {
         let business = history.business ?? "archive"
         return "\(business)_\(kid ?? history.oid ?? 0)"
     }
 
-    var asVideoSummary: VideoSummary? {
+    public var asVideoSummary: VideoSummary? {
         guard isVideo, let bvid = history.bvid else { return nil }
         return VideoSummary(
             bvid: bvid,
@@ -237,29 +237,29 @@ struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensionP
 
 // MARK: - 稍后再看（x/v2/history/toview）
 
-struct WatchLaterPage: Decodable, Sendable {
-    let count: Int?
-    let list: [WatchLaterItem]?
+public struct WatchLaterPage: Decodable, Sendable {
+    public let count: Int?
+    public let list: [WatchLaterItem]?
 }
 
-struct WatchLaterItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
-    let aid: Int?
-    let bvid: String?
-    let cid: Int?
-    let title: String
-    let pic: String?
-    let duration: Int?
-    let addAt: Int?
+public struct WatchLaterItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
+    public let aid: Int?
+    public let bvid: String?
+    public let cid: Int?
+    public let title: String
+    public let pic: String?
+    public let duration: Int?
+    public let addAt: Int?
     /// toview/web 变体返回 `owner`（与视频详情一致），老接口是 `upper`，两者都解。
-    let upper: Upper?
-    let dimension: VideoDimension?
+    public let upper: Upper?
+    public let dimension: VideoDimension?
 
     enum CodingKeys: String, CodingKey {
         case aid, bvid, cid, title, pic, duration, upper, owner, dimension
         case addAt = "add_at"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         aid = try container.decodeIfPresent(Int.self, forKey: .aid)
         bvid = try container.decodeIfPresent(String.self, forKey: .bvid)
@@ -276,9 +276,9 @@ struct WatchLaterItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensi
         }
     }
 
-    var id: Int { aid ?? bvid.hashValue }
+    public var id: Int { aid ?? bvid.hashValue }
 
-    var asVideoSummary: VideoSummary? {
+    public var asVideoSummary: VideoSummary? {
         guard let bvid, !bvid.isEmpty else { return nil }
         return VideoSummary(
             bvid: bvid,
@@ -299,9 +299,9 @@ struct WatchLaterItem: Decodable, Identifiable, Hashable, Sendable, VideoDimensi
         )
     }
 
-    struct Upper: Decodable, Hashable, Sendable {
-        let mid: Int?
-        let name: String?
-        let face: String?
+    public struct Upper: Decodable, Hashable, Sendable {
+        public let mid: Int?
+        public let name: String?
+        public let face: String?
     }
 }

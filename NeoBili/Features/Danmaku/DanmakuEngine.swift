@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import UIKit
 
 /// 弹幕渲染引擎。
@@ -84,6 +87,10 @@ final class DanmakuEngine: UIView {
     /// 活动图层硬上限：防御异常刷屏把合成器压垮，超出的直接丢弃。
     private static let maximumActiveLayers = 90
     private var activeCount = 0
+#if NEOBILI_REGRESSION
+    /// Deterministic workload evidence for burst admission, without timing noise.
+    private(set) var bitmapRequestCount = 0
+#endif
 
     private let bitmapCache: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
@@ -91,7 +98,38 @@ final class DanmakuEngine: UIView {
         cache.totalCostLimit = 24 * 1024 * 1024
         return cache
     }()
-    private static let bitmapScaleLimit: CGFloat = 3
+    // 2x keeps text legible while using 4/9 of the pixels of a 3x bitmap.
+    private static let bitmapScaleLimit: CGFloat = 2
+    var renderingTime: () -> TimeInterval = { CACurrentMediaTime() }
+    var isResourceConstrained: () -> Bool = {
+        ProcessInfo.processInfo.isLowPowerModeEnabled ||
+            ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+    }
+    private var rasterWindowStart: TimeInterval = -.infinity
+    private var rasterCount = 0
+#if NEOBILI_REGRESSION
+    private(set) var rasterizationCount = 0
+#endif
+
+    private func hasRasterizationBudget() -> Bool {
+        let now = renderingTime()
+        let constrained = isResourceConstrained()
+        let interval = constrained ? 1.0 / 30 : 1.0 / 60
+        if now - rasterWindowStart >= interval || now < rasterWindowStart {
+            rasterWindowStart = now
+            rasterCount = 0
+        }
+        return rasterCount < (constrained ? 2 : 4)
+    }
+
+    private func admitRasterization() -> Bool {
+        guard hasRasterizationBudget() else { return false }
+        rasterCount += 1
+#if NEOBILI_REGRESSION
+        rasterizationCount += 1
+#endif
+        return true
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -232,12 +270,30 @@ final class DanmakuEngine: UIView {
 
     private func present(_ item: DanmakuItem) {
         if !item.isScroll && (item.isTop ? blockTop : blockBottom) { return }
-        guard bounds.width > 10, activeCount < Self.maximumActiveLayers else { return }
+        guard bounds.width > 10, activeCount < (isResourceConstrained() ? 30 : Self.maximumActiveLayers) else { return }
         rebuildTracks()
+        // Reject a saturated lane before text measurement and bitmap drawing.
+        // Width-dependent catch-up checks still run in place(scroll:layer:width:).
+        if item.isScroll {
+            guard scrollTracks.contains(where: { track in
+                guard let previous = track.last else { return true }
+                return previous.x + previous.width <= bounds.width
+            }) else { return }
+        } else {
+            guard staticTracks.contains(where: { $0 == nil }) else { return }
+        }
+#if NEOBILI_REGRESSION
+        bitmapRequestCount += 1
+#endif
         guard let layer = Self.bitmap(for: item.text, color: coloredEnabled ? item.color : 0xFFFFFF, fontSize: fontSize,
                                       framed: item.isSelf, cache: bitmapCache,
                                       scale: min(window?.screen.scale ?? traitCollection.displayScale,
-                                                 Self.bitmapScaleLimit)) else { return }
+                                                 Self.bitmapScaleLimit),
+                                      canPlace: { [self] width in
+                                          !item.isScroll || scrollTrackIndex(width: width) != nil
+                                      },
+                                      hasBudget: { [self] in hasRasterizationBudget() },
+                                      canRasterize: { [self] in admitRasterization() }) else { return }
         let width = layer.bounds.width
         if item.isScroll {
             place(scroll: item, layer: layer, width: width)
@@ -248,8 +304,8 @@ final class DanmakuEngine: UIView {
 
     /// 滚动弹幕：同轨道前一条右缘必须已让出右入口，且窄的前条不能被宽的新条追尾
     /// （PiliPlus _scrollCanAddToTrack 的两条判定）。找不到轨道就丢弃。
-    private func place(scroll item: DanmakuItem, layer: CALayer, width: CGFloat) {
-        for index in 0..<scrollTracks.count {
+    private func scrollTrackIndex(width: CGFloat) -> Int? {
+        for index in scrollTracks.indices {
             if let previous = scrollTracks[index].last {
                 let previousRight = previous.x + previous.width
                 guard previousRight <= bounds.width else { continue }
@@ -260,6 +316,13 @@ final class DanmakuEngine: UIView {
                     if catchUpTime < exitTime { continue }
                 }
             }
+            return index
+        }
+        return nil
+    }
+
+    private func place(scroll item: DanmakuItem, layer: CALayer, width: CGFloat) {
+        if let index = scrollTrackIndex(width: width) {
             scrollTracks[index].append(ScrollItem(
                 layer: layer, width: width,
                 speed: (bounds.width + width) / CGFloat(max(scrollDuration, 1)),
@@ -327,17 +390,7 @@ final class DanmakuEngine: UIView {
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         for index in scrollTracks.indices {
-            scrollTracks[index] = scrollTracks[index].compactMap { original in
-                var item = original
-                item.x -= CGFloat(max(0, dt)) * item.speed
-                if item.x + item.width <= 0 {
-                    item.layer.removeFromSuperlayer()
-                    activeCount -= 1
-                    return nil
-                }
-                item.layer.position.x = item.x + item.width / 2
-                return item
-            }
+            activeCount -= Self.advanceTrack(&scrollTracks[index], by: CGFloat(max(0, dt)))
         }
         for index in staticTracks.indices {
             guard var item = staticTracks[index] else { continue }
@@ -353,6 +406,27 @@ final class DanmakuEngine: UIView {
         if activeCount == 0 { stopTicking() }
     }
 
+    /// Stable in-place compaction keeps each lane's buffer across display-link
+    /// ticks, including frames that expire multiple comments. The last survivor
+    /// must remain the newest one because admission uses it for collision checks.
+    private static func advanceTrack(_ track: inout [ScrollItem], by dt: CGFloat) -> Int {
+        var survivorCount = 0
+        for index in track.indices {
+            var item = track[index]
+            item.x -= dt * item.speed
+            if item.x + item.width <= 0 {
+                item.layer.removeFromSuperlayer()
+            } else {
+                item.layer.position.x = item.x + item.width / 2
+                track[survivorCount] = item
+                survivorCount += 1
+            }
+        }
+        let expiredCount = track.count - survivorCount
+        if expiredCount > 0 { track.removeLast(expiredCount) }
+        return expiredCount
+    }
+
     // MARK: - 位图渲染
 
     /// 自己发送的弹幕外框：颜色、线宽与 PiliPlus（canvas_danmaku）一致，左右比文字多留一点空隙。
@@ -361,9 +435,11 @@ final class DanmakuEngine: UIView {
     private static let selfFramePadding: CGFloat = 2
 
     private static func bitmap(for text: String, color: UInt32, fontSize: CGFloat, framed: Bool,
-                               cache: NSCache<NSString, UIImage>, scale: CGFloat) -> CALayer? {
+                               cache: NSCache<NSString, UIImage>, scale: CGFloat,
+                               canPlace: (CGFloat) -> Bool, hasBudget: () -> Bool, canRasterize: () -> Bool) -> CALayer? {
         let key = "\(scale)|\(fontSize)|\(color)|\(framed)|\(text)" as NSString
         if let image = cache.object(forKey: key) {
+            guard canPlace(image.size.width) else { return nil }
             let layer = CALayer()
             layer.bounds = CGRect(origin: .zero, size: image.size)
             layer.contents = image.cgImage
@@ -371,6 +447,7 @@ final class DanmakuEngine: UIView {
             layer.actions = ["position": NSNull(), "bounds": NSNull(), "contents": NSNull()]
             return layer
         }
+        guard hasBudget() else { return nil }
         let font = UIFont.systemFont(ofSize: fontSize, weight: .medium)
         let stroke: CGFloat = 8
         let attributes: [NSAttributedString.Key: Any] = [
@@ -383,6 +460,7 @@ final class DanmakuEngine: UIView {
         let inset: CGFloat = 2
         let horizontalInset = inset + (framed ? selfFramePadding : 0)
         let size = CGSize(width: ceil(rawSize.width) + horizontalInset * 2, height: ceil(rawSize.height) + inset * 2)
+        guard canPlace(size.width), canRasterize() else { return nil }
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = false

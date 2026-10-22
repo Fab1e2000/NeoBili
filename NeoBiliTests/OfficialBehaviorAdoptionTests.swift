@@ -1,3 +1,9 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
 import Synchronization
 @testable import NeoBili
@@ -78,6 +84,30 @@ final class OfficialBehaviorAdoptionTests: XCTestCase {
             vendorIdentifier: { vendor },purgeCookies: {})
         let value = await identity.appBuvid()
         XCTAssertEqual(value, "existing-device")
+    }
+
+    func testConcurrentFirstBuvidRequestsKeepTheFirstCompletedIdentity() async throws {
+        let suite = "buvid-reentry.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let gate = BuvidVendorGate()
+        let firstEntered = expectation(description: "first vendor lookup")
+        let secondEntered = expectation(description: "second vendor lookup")
+        let identity = DeviceIdentity(defaults: defaults, randomBuvidExperiment: false,
+            credentials: .memory(), allowsNetwork: false,
+            vendorIdentifier: { await gate.load(first: firstEntered, second: secondEntered) }, purgeCookies: {})
+        let first = Task { await identity.appBuvid() }
+        await fulfillment(of: [firstEntered], timeout: 2)
+        let second = Task { await identity.appBuvid() }
+        await fulfillment(of: [secondEntered], timeout: 2)
+        let vendor = "01234567-89AB-CDEF-0123-456789ABCDEF"
+        await gate.release(index: 1, value: vendor)
+        let chosen = await second.value
+        await gate.release(index: 0, value: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")
+        let late = await first.value
+        XCTAssertEqual(chosen, AppBuvid.generate(idfv: vendor))
+        XCTAssertEqual(late, chosen)
+        XCTAssertEqual(defaults.string(forKey: "neobili.appBuvid"), chosen)
     }
 
     func testDeviceModePreferenceAppliesOnlyToNewIdentity() async throws {
@@ -192,4 +222,15 @@ private final class AdoptionProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+}
+
+private actor BuvidVendorGate {
+    private var pending: [CheckedContinuation<String?, Never>] = []
+    func load(first: XCTestExpectation, second: XCTestExpectation) async -> String? {
+        await withCheckedContinuation {
+            pending.append($0)
+            (pending.count == 1 ? first : second).fulfill()
+        }
+    }
+    func release(index: Int, value: String) { pending[index].resume(returning: value) }
 }

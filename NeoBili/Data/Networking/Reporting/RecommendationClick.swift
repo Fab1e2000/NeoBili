@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// A captured-at-click snapshot. No access key, Cookie or ticket is stored here.
@@ -34,17 +37,14 @@ struct RecommendationClick: Codable, Sendable {
     }
 }
 
-actor RecommendationClickReporter {
-    static let shared = RecommendationClickReporter(directory: AppNetwork.isRegression ? nil :
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("RecommendationClickQueue", isDirectory: true))
+public actor RecommendationClickReporter {
     private let directory: URL?
     private let identity: DeviceIdentity
     private let client: APIClient
     private var queue: [RecommendationClick] = []
     private var sending = false
 
-    init(directory: URL? = nil, identity: DeviceIdentity = .shared, client: APIClient = .shared) {
+    public init(directory: URL? = nil, identity: DeviceIdentity, client: APIClient) {
         self.directory = directory; self.identity = identity; self.client = client
         if let url = directory?.appendingPathComponent("pending.json"),
            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
@@ -56,10 +56,10 @@ actor RecommendationClickReporter {
     }
 
     /// UI calls this only from the actual video Button action, never a preload.
-    @MainActor static func record(_ video: VideoSummary) {
-        let session = DeviceIdentity.shared.loginSessionID
+    @MainActor static func record(_ video: VideoSummary, identity: DeviceIdentity, reporter: RecommendationClickReporter) {
+        let session = identity.loginSessionID
         let time = Int(Date().timeIntervalSince1970 * 1000)
-        Task { await shared.record(video, session: session, timestamp: time) }
+        Task { await reporter.record(video, session: session, timestamp: time) }
     }
     func record(_ video: VideoSummary, session: UUID, timestamp: Int) async {
         guard let context = try? await identity.nextBehaviorSnapshot(expectedSessionID: session),

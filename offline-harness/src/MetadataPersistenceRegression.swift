@@ -108,3 +108,13 @@ struct MetadataPersistenceRegression {
         }
     }
 }
+
+extension VideoFilterDependencies {
+    @MainActor static let live: Self = {
+        let defaults = UserDefaults(suiteName: "neobili.offline.filters.\(UUID().uuidString)")!
+        return Self(duration: VideoDurationFilterSettings(defaults: defaults),
+                    metadata: PortraitVideoStore(defaults: defaults, metadataLoader: { _ in
+                        throw URLError(.unsupportedURL)
+                    }))
+    }()
+}

@@ -1,3 +1,9 @@
+#if canImport(NeoBiliCore)
+import NeoBiliCore
+#endif
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 
@@ -13,7 +19,6 @@ import UIKit
 @MainActor
 @Observable
 final class CommentEmoteStore {
-    static let shared = CommentEmoteStore()
 
     @Observable
     final class Original {
@@ -222,7 +227,9 @@ struct CommentEmoteText: View {
     @Environment(\.commentTimeJump) private var timeJump
     @Environment(\.openURL) private var openURL
 
-    var store: CommentEmoteStore = .shared
+    @Environment(\.commentEmoteStore) private var environmentStore
+    var store: CommentEmoteStore? = nil
+    private var resolvedStore: CommentEmoteStore { store ?? environmentStore }
 
     private struct LoadIdentity: Equatable {
         let emotes: [String: CommentEmote]
@@ -243,7 +250,7 @@ struct CommentEmoteText: View {
             })
             .task(id: LoadIdentity(emotes: emotes, typeSize: typeSize, scale: displayScale)) {
                 guard loadsEmotes, !emotes.isEmpty else { return }
-                await store.preload(Array(emotes.values))
+                await resolvedStore.preload(Array(emotes.values))
             }
     }
 
@@ -265,7 +272,7 @@ struct CommentEmoteText: View {
             case .emote(let literal, let emote):
                 guard let url = emote.secureURL,
                       let font = scaledFont,
-                      let image = store.image(for: url, height: emoteHeight(for: emote, font: font), scale: displayScale)
+                      let image = resolvedStore.image(for: url, height: emoteHeight(for: emote, font: font), scale: displayScale)
                 else {
                     // 还没下载好就先显示原来那段文字，不留空洞。
                     return partial + Text(literal)

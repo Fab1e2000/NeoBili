@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
 @testable import NeoBili
 
@@ -19,10 +22,11 @@ final class PortraitVideoFilterTests: XCTestCase {
         let square = video("square", dimension: .init(width: 720, height: 720))
         let unknown = video("unknown", dimension: nil)
         let videos = [portrait, landscape, square, unknown]
+        let filtering = fixture()
 
-        XCTAssertEqual(videos.hidingKnownPortraitVideos(false).map(\.bvid), videos.map(\.bvid))
+        XCTAssertEqual(videos.hidingKnownPortraitVideos(false, filtering: filtering).map(\.bvid), videos.map(\.bvid))
         XCTAssertEqual(
-            videos.hidingKnownPortraitVideos(true).map(\.bvid),
+            videos.hidingKnownPortraitVideos(true, filtering: filtering).map(\.bvid),
             // 尺寸未知时等待详情补齐，严格过滤只放行已确认非竖屏的条目。
             ["landscape", "square"]
         )
@@ -45,6 +49,29 @@ final class PortraitVideoFilterTests: XCTestCase {
         XCTAssertNil(video.recommendationFeedback)
         XCTAssertNil(video.recommendationBadge)
         XCTAssertNil(video.recommendationTarget)
+    }
+
+    func testIndependentFilterSettingsAndMetadataDoNotAffectAnotherGraph() async {
+        let first = fixture(), second = fixture()
+        let landscape = video("landscape", dimension: .init(width: 1280, height: 720))
+        first.duration.minimumMinutes = 10
+        XCTAssertFalse(landscape.canDisplayVideo(hidingPortrait: false, filtering: first))
+        XCTAssertTrue(landscape.canDisplayVideo(hidingPortrait: false, filtering: second))
+        first.duration.minimumMinutes = 0
+        let unknown = video("unknown", dimension: nil)
+        await first.metadata.resolve(["unknown"])
+        XCTAssertTrue(unknown.canDisplayVideo(hidingPortrait: true, filtering: first))
+        XCTAssertFalse(unknown.canDisplayVideo(hidingPortrait: true, filtering: second))
+    }
+
+    private func fixture() -> VideoFilterDependencies {
+        let suite = "neobili.filter-tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return VideoFilterDependencies(duration: VideoDurationFilterSettings(defaults: defaults),
+            metadata: PortraitVideoStore(defaults: defaults, metadataLoader: { _ in
+                .init(dimension: .init(width: 1920, height: 1080), durationSeconds: 700)
+            }))
     }
 
     private func video(_ id: String, dimension: VideoDimension?) -> VideoSummary {

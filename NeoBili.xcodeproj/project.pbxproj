@@ -7,10 +7,44 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		089129F18DDA15809B445E82 /* NeoBiliCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A05E7D2B1024CDB04AB6D750 /* NeoBiliCore.framework */; };
 		1BCB12C63849A7269EA61E45 /* MPVKit in Frameworks */ = {isa = PBXBuildFile; productRef = CBAABE12ECEECC935ABD1F3A /* MPVKit */; };
+		200C5FCC8406BA91EE11095E /* NeoBiliData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 698DC32A3CF4F4FE4030E1B3 /* NeoBiliData.framework */; };
+		29CA942BD622B6A72EA96AE1 /* NeoBiliCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A05E7D2B1024CDB04AB6D750 /* NeoBiliCore.framework */; };
+		8A560DA9F2B79F975FD8EE51 /* NeoBiliDomain.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D9412E749798909D5F11DB8B /* NeoBiliDomain.framework */; };
+		A64A8D8C137D9E89765680F8 /* NeoBiliData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 698DC32A3CF4F4FE4030E1B3 /* NeoBiliData.framework */; };
+		F6A246E482530CAB7FF7573B /* NeoBiliDomain.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D9412E749798909D5F11DB8B /* NeoBiliDomain.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		317D131DB4F1416D1BA0A5FA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D12FEEA5F9455D4526A50F3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F2CEDFDC0BD3451F561C9F56;
+			remoteInfo = NeoBiliCore;
+		};
+		47D234E3B715FCABCBDC98F3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D12FEEA5F9455D4526A50F3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F2CEDFDC0BD3451F561C9F56;
+			remoteInfo = NeoBiliCore;
+		};
+		65FE4D1BD2C1D442A49844DB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D12FEEA5F9455D4526A50F3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0AE288E5FD586F646B18E669;
+			remoteInfo = NeoBiliDomain;
+		};
+		B03CA60BDC2B28C4AF39AAD8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D12FEEA5F9455D4526A50F3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0AE288E5FD586F646B18E669;
+			remoteInfo = NeoBiliDomain;
+		};
 		C3227A2F74CA546CCD706A8B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5D12FEEA5F9455D4526A50F3 /* Project object */;
@@ -18,36 +52,135 @@
 			remoteGlobalIDString = DC8260599C780FF4FF9C30D5;
 			remoteInfo = NeoBili;
 		};
+		ECCFD13882CBD04B620D2FB5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D12FEEA5F9455D4526A50F3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F2CEDFDC0BD3451F561C9F56;
+			remoteInfo = NeoBiliCore;
+		};
+		F23F61F4B0037256FAE9CF78 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D12FEEA5F9455D4526A50F3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DF2707E452494ECD0A745753;
+			remoteInfo = NeoBiliData;
+		};
+		FDE5B3807D6823E53CF1360C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D12FEEA5F9455D4526A50F3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DF2707E452494ECD0A745753;
+			remoteInfo = NeoBiliData;
+		};
+		FE293C27F26A4CF8ABF8F3BF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D12FEEA5F9455D4526A50F3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0AE288E5FD586F646B18E669;
+			remoteInfo = NeoBiliDomain;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		2F97654CD063B68F1B420F87 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		4A8C9E3102B8330370E325F2 /* NeoBiliTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = NeoBiliTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		698DC32A3CF4F4FE4030E1B3 /* NeoBiliData.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = NeoBiliData.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A05E7D2B1024CDB04AB6D750 /* NeoBiliCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = NeoBiliCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BCD9220735EC3C9EF5F23D46 /* NeoBili.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NeoBili.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF57E3CE003F57057CDC98F7 /* Regression.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Regression.xcconfig; sourceTree = "<group>"; };
+		D9412E749798909D5F11DB8B /* NeoBiliDomain.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = NeoBiliDomain.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		2CD481F3DCA28231E72D491B /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = DC8260599C780FF4FF9C30D5 /* NeoBili */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		7D41E51288F6941F65B5193F /* NeoBili */ = {
+		02E162E65124C11658F73F5C /* Extensions */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				2CD481F3DCA28231E72D491B /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
-			);
 			explicitFileTypes = {
 			};
 			explicitFolders = (
 			);
-			path = NeoBili;
+			name = Extensions;
+			path = Extensions;
+			sourceTree = "<group>";
+		};
+		2D84DA573FDF2B5208B10D3F /* App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = App;
+			path = App;
+			sourceTree = "<group>";
+		};
+		366326BBA8A6492232CF24DF /* Formatting */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = Formatting;
+			path = Formatting;
+			sourceTree = "<group>";
+		};
+		415D6B742DB5F4A4B2AF414A /* Application */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = Application;
+			path = Application;
+			sourceTree = "<group>";
+		};
+		42FAFFC0D7BF7EEA406058FC /* Resources */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = Resources;
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		4520AFAB6AA7B13127AD4DEA /* Diagnostics */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = Diagnostics;
+			path = Diagnostics;
+			sourceTree = "<group>";
+		};
+		510DDD3CC2DC976F4EF507E8 /* Domain */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = Domain;
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		93314A976439AFEA47901088 /* Features */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = Features;
+			path = Features;
+			sourceTree = "<group>";
+		};
+		936855C13C19412B57A47CBD /* Data */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = Data;
+			path = Data;
 			sourceTree = "<group>";
 		};
 		B76F1D97FEA77A09E40DFEB8 /* NeoBiliTests */ = {
@@ -59,13 +192,56 @@
 			path = NeoBiliTests;
 			sourceTree = "<group>";
 		};
+		C4984C99226E83F1B21027B7 /* UI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = UI;
+			path = UI;
+			sourceTree = "<group>";
+		};
+		C65D9DDC08FBF71875A0ADCB /* Caching */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = Caching;
+			path = Caching;
+			sourceTree = "<group>";
+		};
+		D311833C7E7F6083A9D6DAD4 /* Platform */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			name = Platform;
+			path = Platform;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		73C694950C0FF3447D930D1D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8A560DA9F2B79F975FD8EE51 /* NeoBiliDomain.framework in Frameworks */,
+				089129F18DDA15809B445E82 /* NeoBiliCore.framework in Frameworks */,
+				200C5FCC8406BA91EE11095E /* NeoBiliData.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		7DA732EB1F31CDC4225AE7EE /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F6A246E482530CAB7FF7573B /* NeoBiliDomain.framework in Frameworks */,
+				29CA942BD622B6A72EA96AE1 /* NeoBiliCore.framework in Frameworks */,
+				A64A8D8C137D9E89765680F8 /* NeoBiliData.framework in Frameworks */,
 				1BCB12C63849A7269EA61E45 /* MPVKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -77,9 +253,27 @@
 			isa = PBXGroup;
 			children = (
 				BCD9220735EC3C9EF5F23D46 /* NeoBili.app */,
+				A05E7D2B1024CDB04AB6D750 /* NeoBiliCore.framework */,
+				698DC32A3CF4F4FE4030E1B3 /* NeoBiliData.framework */,
+				D9412E749798909D5F11DB8B /* NeoBiliDomain.framework */,
 				4A8C9E3102B8330370E325F2 /* NeoBiliTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		59AD72DC8DD9D219284262FF /* NeoBili */ = {
+			isa = PBXGroup;
+			children = (
+				2D84DA573FDF2B5208B10D3F /* App */,
+				415D6B742DB5F4A4B2AF414A /* Application */,
+				A1FD5506F47CF0CA7E73C0C4 /* Core */,
+				936855C13C19412B57A47CBD /* Data */,
+				510DDD3CC2DC976F4EF507E8 /* Domain */,
+				93314A976439AFEA47901088 /* Features */,
+				D311833C7E7F6083A9D6DAD4 /* Platform */,
+				42FAFFC0D7BF7EEA406058FC /* Resources */,
+			);
+			path = NeoBili;
 			sourceTree = "<group>";
 		};
 		75B8B63F88A0DA31B691C93F /* Config */ = {
@@ -91,11 +285,23 @@
 			path = Config;
 			sourceTree = "<group>";
 		};
+		A1FD5506F47CF0CA7E73C0C4 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				C65D9DDC08FBF71875A0ADCB /* Caching */,
+				4520AFAB6AA7B13127AD4DEA /* Diagnostics */,
+				02E162E65124C11658F73F5C /* Extensions */,
+				366326BBA8A6492232CF24DF /* Formatting */,
+				C4984C99226E83F1B21027B7 /* UI */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
 		B26BFA13DC2C5853944C71C5 = {
 			isa = PBXGroup;
 			children = (
 				75B8B63F88A0DA31B691C93F /* Config */,
-				7D41E51288F6941F65B5193F /* NeoBili */,
+				59AD72DC8DD9D219284262FF /* NeoBili */,
 				B76F1D97FEA77A09E40DFEB8 /* NeoBiliTests */,
 				275BFB2691EB7653AA782816 /* Products */,
 			);
@@ -104,17 +310,42 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0AE288E5FD586F646B18E669 /* NeoBiliDomain */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 42DE39C36F5930F12F32CAC0 /* Build configuration list for PBXNativeTarget "NeoBiliDomain" */;
+			buildPhases = (
+				A82AE270EB479F0E90800EAE /* Sources */,
+				196CFDC3CA2B3B571D328826 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				510DDD3CC2DC976F4EF507E8 /* Domain */,
+			);
+			name = NeoBiliDomain;
+			packageProductDependencies = (
+			);
+			productName = NeoBiliDomain;
+			productReference = D9412E749798909D5F11DB8B /* NeoBiliDomain.framework */;
+			productType = "com.apple.product-type.framework";
+		};
 		A3CF3B66D543AA90E0660785 /* NeoBiliTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 3438169FE830682BABFE64FE /* Build configuration list for PBXNativeTarget "NeoBiliTests" */;
 			buildPhases = (
 				2AF91769B90DD9E3AEB74B76 /* Sources */,
 				8D4D1F62C937E2265C9FD28F /* Resources */,
+				73C694950C0FF3447D930D1D /* Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				7E442B2C65FC0CF033C4D442 /* PBXTargetDependency */,
+				D85F39303EDDFC15BC7379D3 /* PBXTargetDependency */,
+				925E50DD6B737DBF7A9AA1E2 /* PBXTargetDependency */,
+				5073126BBC277E6C51672488 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B76F1D97FEA77A09E40DFEB8 /* NeoBiliTests */,
@@ -137,9 +368,19 @@
 			buildRules = (
 			);
 			dependencies = (
+				AB05FA0370BD5B0BEC0C97E8 /* PBXTargetDependency */,
+				AFEC2202D3E782C53EF873CD /* PBXTargetDependency */,
+				AD5A8ADD67583AAE075C6C09 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				7D41E51288F6941F65B5193F /* NeoBili */,
+				2D84DA573FDF2B5208B10D3F /* App */,
+				415D6B742DB5F4A4B2AF414A /* Application */,
+				4520AFAB6AA7B13127AD4DEA /* Diagnostics */,
+				02E162E65124C11658F73F5C /* Extensions */,
+				93314A976439AFEA47901088 /* Features */,
+				D311833C7E7F6083A9D6DAD4 /* Platform */,
+				42FAFFC0D7BF7EEA406058FC /* Resources */,
+				C4984C99226E83F1B21027B7 /* UI */,
 			);
 			name = NeoBili;
 			packageProductDependencies = (
@@ -148,6 +389,51 @@
 			productName = NeoBili;
 			productReference = BCD9220735EC3C9EF5F23D46 /* NeoBili.app */;
 			productType = "com.apple.product-type.application";
+		};
+		DF2707E452494ECD0A745753 /* NeoBiliData */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B31DFFA4249A7EACEFD86C07 /* Build configuration list for PBXNativeTarget "NeoBiliData" */;
+			buildPhases = (
+				FE928A57AC13225EB92EB311 /* Sources */,
+				2CA4AB689999DB5E7FFA648F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2E37174E9F745AD76DF1B8FD /* PBXTargetDependency */,
+				CE6E3275EA8D95F976DF3DE1 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				936855C13C19412B57A47CBD /* Data */,
+			);
+			name = NeoBiliData;
+			packageProductDependencies = (
+			);
+			productName = NeoBiliData;
+			productReference = 698DC32A3CF4F4FE4030E1B3 /* NeoBiliData.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		F2CEDFDC0BD3451F561C9F56 /* NeoBiliCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3002AB0C37330CE38202E6E9 /* Build configuration list for PBXNativeTarget "NeoBiliCore" */;
+			buildPhases = (
+				CFFEFF5B634703E5D23AF4B1 /* Sources */,
+				34DEC794F5DA573AD647D3CE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C65D9DDC08FBF71875A0ADCB /* Caching */,
+				366326BBA8A6492232CF24DF /* Formatting */,
+			);
+			name = NeoBiliCore;
+			packageProductDependencies = (
+			);
+			productName = NeoBiliCore;
+			productReference = A05E7D2B1024CDB04AB6D750 /* NeoBiliCore.framework */;
+			productType = "com.apple.product-type.framework";
 		};
 /* End PBXNativeTarget section */
 
@@ -182,13 +468,37 @@
 			projectRoot = "";
 			targets = (
 				DC8260599C780FF4FF9C30D5 /* NeoBili */,
+				0AE288E5FD586F646B18E669 /* NeoBiliDomain */,
+				F2CEDFDC0BD3451F561C9F56 /* NeoBiliCore */,
+				DF2707E452494ECD0A745753 /* NeoBiliData */,
 				A3CF3B66D543AA90E0660785 /* NeoBiliTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		196CFDC3CA2B3B571D328826 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2B3755D1D486E529F327278F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2CA4AB689999DB5E7FFA648F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		34DEC794F5DA573AD647D3CE /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -212,7 +522,28 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A82AE270EB479F0E90800EAE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CFFEFF5B634703E5D23AF4B1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EB65F1CBB24421212413167E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FE928A57AC13225EB92EB311 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -222,10 +553,50 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2E37174E9F745AD76DF1B8FD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0AE288E5FD586F646B18E669 /* NeoBiliDomain */;
+			targetProxy = FE293C27F26A4CF8ABF8F3BF /* PBXContainerItemProxy */;
+		};
+		5073126BBC277E6C51672488 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DF2707E452494ECD0A745753 /* NeoBiliData */;
+			targetProxy = F23F61F4B0037256FAE9CF78 /* PBXContainerItemProxy */;
+		};
 		7E442B2C65FC0CF033C4D442 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = DC8260599C780FF4FF9C30D5 /* NeoBili */;
 			targetProxy = C3227A2F74CA546CCD706A8B /* PBXContainerItemProxy */;
+		};
+		925E50DD6B737DBF7A9AA1E2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F2CEDFDC0BD3451F561C9F56 /* NeoBiliCore */;
+			targetProxy = ECCFD13882CBD04B620D2FB5 /* PBXContainerItemProxy */;
+		};
+		AB05FA0370BD5B0BEC0C97E8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0AE288E5FD586F646B18E669 /* NeoBiliDomain */;
+			targetProxy = 65FE4D1BD2C1D442A49844DB /* PBXContainerItemProxy */;
+		};
+		AD5A8ADD67583AAE075C6C09 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DF2707E452494ECD0A745753 /* NeoBiliData */;
+			targetProxy = FDE5B3807D6823E53CF1360C /* PBXContainerItemProxy */;
+		};
+		AFEC2202D3E782C53EF873CD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F2CEDFDC0BD3451F561C9F56 /* NeoBiliCore */;
+			targetProxy = 317D131DB4F1416D1BA0A5FA /* PBXContainerItemProxy */;
+		};
+		CE6E3275EA8D95F976DF3DE1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F2CEDFDC0BD3451F561C9F56 /* NeoBiliCore */;
+			targetProxy = 47D234E3B715FCABCBDC98F3 /* PBXContainerItemProxy */;
+		};
+		D85F39303EDDFC15BC7379D3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0AE288E5FD586F646B18E669 /* NeoBiliDomain */;
+			targetProxy = B03CA60BDC2B28C4AF39AAD8 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -243,10 +614,64 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliTests;
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG NEOBILI_REGRESSION";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/NeoBili.app/NeoBili";
 			};
 			name = Regression;
+		};
+		0A67A0C19FACA34995C04CA5 /* Regression */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliCore;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG NEOBILI_REGRESSION";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Regression;
+		};
+		0C9E66601800AD21FEA71254 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACH_O_TYPE = staticlib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliDomain;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
 		};
 		10C964686F31382C6CF4DDDB /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -265,6 +690,34 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/NeoBili.app/NeoBili";
 			};
 			name = Release;
+		};
+		21ED180F4385E5E1A9EE496B /* Regression */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACH_O_TYPE = staticlib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliDomain;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG NEOBILI_REGRESSION";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Regression;
 		};
 		270E3EDAF68D524DF3652FBF /* Regression */ = {
 			isa = XCBuildConfiguration;
@@ -344,6 +797,113 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/NeoBili.app/NeoBili";
+			};
+			name = Debug;
+		};
+		33633179ABD287A6F948AFD0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACH_O_TYPE = staticlib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliData;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		3EB638FF6F698AFF2A6B9D9F /* Regression */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACH_O_TYPE = staticlib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliData;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG NEOBILI_REGRESSION";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Regression;
+		};
+		4835A1BD84D24C1E4664FEF7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACH_O_TYPE = staticlib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliDomain;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		6180D27CFF397B069B19A9F5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliCore;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
 		};
@@ -464,6 +1024,58 @@
 			};
 			name = Debug;
 		};
+		C022138007A2BA3233077EC3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliCore;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		DBB599B131120A39DC840555 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACH_O_TYPE = staticlib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elsterlee.NeoBiliData;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
 		FABE0B0A2EF919A72ABED2FC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -560,6 +1172,16 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		3002AB0C37330CE38202E6E9 /* Build configuration list for PBXNativeTarget "NeoBiliCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6180D27CFF397B069B19A9F5 /* Debug */,
+				0A67A0C19FACA34995C04CA5 /* Regression */,
+				C022138007A2BA3233077EC3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		3438169FE830682BABFE64FE /* Build configuration list for PBXNativeTarget "NeoBiliTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -570,12 +1192,32 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		42DE39C36F5930F12F32CAC0 /* Build configuration list for PBXNativeTarget "NeoBiliDomain" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0C9E66601800AD21FEA71254 /* Debug */,
+				21ED180F4385E5E1A9EE496B /* Regression */,
+				4835A1BD84D24C1E4664FEF7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		8C61DF232D5CBCDA951046A7 /* Build configuration list for PBXNativeTarget "NeoBili" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				8973EE6DD242F15B2AA483CF /* Debug */,
 				816BA6629564DFBFEEACC875 /* Regression */,
 				FD849950D7F08FEC5DE31FAE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B31DFFA4249A7EACEFD86C07 /* Build configuration list for PBXNativeTarget "NeoBiliData" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				33633179ABD287A6F948AFD0 /* Debug */,
+				3EB638FF6F698AFF2A6B9D9F /* Regression */,
+				DBB599B131120A39DC840555 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

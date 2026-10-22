@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 
@@ -24,10 +27,9 @@ struct HomeFeedCollection: UIViewRepresentable {
     var onOpenMine: () -> Void = {}
     /// 标题栏固定在外层时，列表里不再插入页头行。
     var pinsTitleBar = TitleBarSettings.defaultValue
-    var hardTitleBarEdge = false
     /// 列表忽略安全区铺满全屏，状态栏（+ 固定标题栏）和标签栏的高度由外层量好传入。
     var safeInsets = EdgeInsets()
-    /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身不透明，顶部模糊不受影响。
+    /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身保持不透明。
     var contentOpacity: Double = 1
     /// 移除卡片（不感兴趣、点踩、拉黑）时，后面的卡片挪过来补位的动画时长；nil 表示不做动画
     /// （卡片动画关闭或系统开启了「减弱动态效果」）。
@@ -53,7 +55,8 @@ struct HomeFeedCollection: UIViewRepresentable {
         view.contentInsetAdjustmentBehavior = .never
         applyInsets(to: view)
         // 卡片从顶部滑过时的 iOS 26 scroll edge effect，底部不加。
-        view.topEdgeEffect.style = topEdgeStyle
+        view.topEdgeEffect.style = .hard
+        view.topEdgeEffect.isHidden = !pinsTitleBar
         view.bottomEdgeEffect.isHidden = true
         view.delegate = coordinator
         view.prefetchDataSource = coordinator
@@ -80,7 +83,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         coordinator.removalAnimationDuration = removalAnimationDuration
         coordinator.showsHeaderRow = !pinsTitleBar
         applyInsets(to: view)
-        if view.topEdgeEffect.style != topEdgeStyle { view.topEdgeEffect.style = topEdgeStyle }
+        view.topEdgeEffect.isHidden = !pinsTitleBar
         coordinator.state.setRefreshing(isRefreshing)
         coordinator.pull.threshold = CGFloat(HomeRefreshSettings.clamped(refreshDistance))
         coordinator.pull.enabled = !isRefreshing
@@ -94,8 +97,6 @@ struct HomeFeedCollection: UIViewRepresentable {
         coordinator.apply(rows)
         DispatchQueue.main.async { [weak coordinator] in coordinator?.updateExposure() }
     }
-
-    private var topEdgeStyle: UIScrollEdgeEffect.Style { pinsTitleBar && hardTitleBarEdge ? .hard : .soft }
 
     /// 列表内的页头自带上下留白，紧贴状态栏下方，与其它页面的页头位置一致；
     /// 固定标题栏时卡片紧贴栏下，补回网格留白。
@@ -140,6 +141,8 @@ struct HomeFeedCollection: UIViewRepresentable {
         var namespace: Namespace.ID?
         var animationSource: VideoCardAnimationSource?
         var animationOverrides = VideoCardAnimationOverrides()
+        var services: ApplicationServices = .live
+        var imagePipeline: BiliImagePipeline = .live
         var hidesPortraitVideos = false
 
         /// 这些值变了，已显示的格子要重新配置；只有设置改变时才会变。
@@ -189,6 +192,12 @@ struct HomeFeedCollection: UIViewRepresentable {
         private weak var collectionView: UICollectionView?
         private var dataSource: UICollectionViewDiffableDataSource<Section, String>?
         private var itemsByID: [String: HomeFeedItem] = [:]
+        // Retain the value-semantic input so unrelated page updates can skip
+        // flattening, deduplication, dictionary construction and snapshot reads.
+        private var appliedRows: [HomeFeedRow]?
+        #if NEOBILI_REGRESSION
+        private(set) var rowPreparationCount = 0
+        #endif
         private var latestIDs: [String] = []
         private var earlierIDs: [String] = []
         private var hasMarker = false
@@ -202,8 +211,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         private weak var clock: VideoEntranceClock?
         /// 每一行配置时拿到的入场起点，用来判断哪些行需要重新配置。
         private var configuredStarts: [String: [TimeInterval?]] = [:]
-        private var imagePrefetches: [IndexPath: [Task<Void, Never>]] = [:]
-        private var displayedImagePrefetches: [ObjectIdentifier: [Task<Void, Never>]] = [:]
+        private let imagePrefetcher = HomeFeedImagePrefetcher()
         /// App 的文字档位，决定标题预排版用的字号。
         private var dynamicTypeSize: DynamicTypeSize = .large
         var removalAnimationDuration: Double?
@@ -274,6 +282,8 @@ struct HomeFeedCollection: UIViewRepresentable {
                 namespace: values.videoTransitionNamespace,
                 animationSource: values.videoCardAnimationSource,
                 animationOverrides: values.videoCardAnimationOverrides,
+                services: values.applicationServices,
+                imagePipeline: values.imagePipeline,
                 hidesPortraitVideos: hidesPortraitVideos
             )
             if updated.signature != environment.signature { needsReconfigureAll = true }
@@ -289,6 +299,11 @@ struct HomeFeedCollection: UIViewRepresentable {
 
         func apply(_ rows: [HomeFeedRow]) {
             guard let dataSource else { return }
+            guard appliedRows != rows || needsReconfigureAll || showsHeaderRow != hasHeaderRow else { return }
+            appliedRows = rows
+            #if NEOBILI_REGRESSION
+            rowPreparationCount += 1
+            #endif
             let items = HomeFeedRow.collectionItems(rows)
             var seen = Set<String>()
             var byID: [String: HomeFeedItem] = [:]
@@ -439,6 +454,8 @@ struct HomeFeedCollection: UIViewRepresentable {
                 .environment(\.videoCardAnimationSource, environment.animationSource)
                 .environment(\.videoCardAnimationOverrides, environment.animationOverrides)
                 .environment(\.hidesPortraitVideos, environment.hidesPortraitVideos)
+                .environment(\.imagePipeline, environment.imagePipeline)
+                .environment(\.applicationServices, environment.services)
                 .appTextSize()
             if let cell = cell as? PersistentFeedHostingCell {
                 cell.setContent(AnyView(content))
@@ -508,32 +525,18 @@ struct HomeFeedCollection: UIViewRepresentable {
             let scale = collectionView.traitCollection.displayScale
             prepareTitles(for: indexPaths.compactMap { dataSource.itemIdentifier(for: $0).flatMap { itemsByID[$0] } })
             for indexPath in indexPaths {
-                guard imagePrefetches[indexPath] == nil else { continue }
                 guard let id = dataSource.itemIdentifier(for: indexPath),
                       case .video(let video)? = itemsByID[id] else { continue }
-                let cover = video.isLargeRecommendationCard
-                    ? CGSize(width: collectionView.bounds.width - HomeCardLayout.horizontalInset * 2,
-                             height: (collectionView.bounds.width - HomeCardLayout.horizontalInset * 2) / HomeCardLayout.largeCoverAspectRatio)
-                    : HomeCardLayout.coverSize(for: collectionView.bounds.width)
-                imagePrefetches[indexPath] = [
-                    BiliImageLoader.prefetch(video.secureCoverURL, pointSize: cover, scale: scale),
-                    BiliImageLoader.prefetch(video.secureAvatarURL, pointSize: HomeCardLayout.avatarSize, scale: scale)
-                ].compactMap { $0 }
+                imagePrefetcher.prefetch(indexPath: indexPath, video: video,
+                    width: collectionView.bounds.width, scale: scale, pipeline: environment.imagePipeline)
             }
         }
 
         func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
-            for indexPath in indexPaths {
-                imagePrefetches.removeValue(forKey: indexPath)?.forEach { $0.cancel() }
-            }
+            imagePrefetcher.cancel(indexPaths: indexPaths)
         }
 
-        func cancelImagePrefetches() {
-            imagePrefetches.values.forEach { $0.forEach { $0.cancel() } }
-            imagePrefetches.removeAll()
-            displayedImagePrefetches.values.forEach { $0.forEach { $0.cancel() } }
-            displayedImagePrefetches.removeAll()
-        }
+        func cancelImagePrefetches() { imagePrefetcher.cancelAll() }
 
         // MARK: 切换淡入
 
@@ -585,9 +588,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             // Keep the prefetch consumer cancellable until this cell leaves.
             // Key visible handles by cell identity: a snapshot may reuse the
             // old index path for a different card before didEndDisplaying.
-            let cellID = ObjectIdentifier(cell)
-            displayedImagePrefetches.removeValue(forKey: cellID)?.forEach { $0.cancel() }
-            displayedImagePrefetches[cellID] = imagePrefetches.removeValue(forKey: indexPath)
+            imagePrefetcher.willDisplay(cellID: ObjectIdentifier(cell), indexPath: indexPath)
             applyContentOpacity(to: cell, id: dataSource?.itemIdentifier(for: indexPath))
             if dataSource?.itemIdentifier(for: indexPath) == Self.headerID {
                 positionHeader(cell, in: collectionView)
@@ -609,7 +610,7 @@ struct HomeFeedCollection: UIViewRepresentable {
 
         func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell,
                             forItemAt indexPath: IndexPath) {
-            displayedImagePrefetches.removeValue(forKey: ObjectIdentifier(cell))?.forEach { $0.cancel() }
+            imagePrefetcher.didEndDisplaying(cellID: ObjectIdentifier(cell))
             updateExposure()
         }
 
@@ -652,52 +653,5 @@ struct HomeFeedCollection: UIViewRepresentable {
             }
             if let video = candidates.first { preview.select(video) } else { preview.stop() }
         }
-    }
-}
-
-/// 标签栏「下滑收起」要知道页面的主滚动视图。推荐页外面没有导航栈替它登记，
-/// 放进窗口时由列表自己登记给所在的视图控制器。
-private final class HomeFeedCollectionView: UICollectionView {
-    var onWindowChanged: (() -> Void)?
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        onWindowChanged?()
-        guard window != nil else { return }
-        var responder: UIResponder? = next
-        while let current = responder {
-            if let controller = current as? UIViewController {
-                if controller.contentScrollView(for: .bottom) !== self {
-                    controller.setContentScrollView(self)
-                }
-                return
-            }
-            responder = current.next
-        }
-    }
-}
-
-/// 首页的网格布局。只在移除卡片的补位动画里，让被删掉的那张缩小淡出；
-/// 移动到新位置的卡片照常平移，不受影响。
-final class HomeFeedLayout: UICollectionViewCompositionalLayout {
-    var shrinksDeletedItems = false
-    private var deletedIndexPaths: Set<IndexPath> = []
-
-    override func prepare(forCollectionViewUpdates updateItems: [UICollectionViewUpdateItem]) {
-        super.prepare(forCollectionViewUpdates: updateItems)
-        deletedIndexPaths = Set(updateItems.filter { $0.updateAction == .delete }.compactMap(\.indexPathBeforeUpdate))
-    }
-
-    override func finalizeCollectionViewUpdates() {
-        super.finalizeCollectionViewUpdates()
-        deletedIndexPaths = []
-    }
-
-    override func finalLayoutAttributesForDisappearingItem(at itemIndexPath: IndexPath) -> UICollectionViewLayoutAttributes? {
-        let attributes = super.finalLayoutAttributesForDisappearingItem(at: itemIndexPath)
-        guard shrinksDeletedItems, deletedIndexPaths.contains(itemIndexPath),
-              let shrunk = attributes?.copy() as? UICollectionViewLayoutAttributes else { return attributes }
-        shrunk.alpha = 0
-        shrunk.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
-        return shrunk
     }
 }

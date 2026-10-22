@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 import XCTest
@@ -19,7 +22,8 @@ final class SettingsOrganizationTests: XCTestCase {
             ("light-portrait", ColorScheme.light, DynamicTypeSize.large, CGRect(x: 0, y: 0, width: 390, height: 844)),
             ("dark-large-landscape", .dark, .accessibility3, CGRect(x: 0, y: 0, width: 844, height: 390))
         ] {
-            for (page, content) in [("root", AnyView(SettingsView())), ("filter", AnyView(RecommendationFilterSettingsView()))] {
+            for (page, content) in [("root", AnyView(SettingsView())), ("filter", AnyView(RecommendationFilterSettingsView())),
+                                    ("playback", AnyView(PlaybackSettingsView()))] {
                 let window = UIWindow(windowScene: scene)
                 let host = UIHostingController(rootView: NavigationStack { content }
                     .defaultAppStorage(defaults).preferredColorScheme(scheme).environment(\.dynamicTypeSize, size))

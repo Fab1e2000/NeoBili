@@ -2,7 +2,7 @@
 import Foundation
 
 /// Explicitly enabled diagnostic build, executed before any identity singleton loads.
-enum IdentityResetDiagnostic {
+public enum IdentityResetDiagnostic {
     static let marker = "neobili.diagnostic.identityReset.once.9e8fe49a"
     static let registrationKeys = ["neobili.ios.fingerprint.registration", "neobili.ios.guest.id",
                                    "neobili.ios.guest.firstRunMilliseconds", "neobili.app.ticket"]
@@ -18,7 +18,7 @@ enum IdentityResetDiagnostic {
     enum Failure: Error { case credentialDeletion }
 
     @discardableResult
-    static func resetOnce(defaults: UserDefaults, credentials: CredentialStorage,
+    public static func resetOnce(defaults: UserDefaults, credentials: CredentialStorage,
                           sequenceDefaults: UserDefaults, clearNetworking: () throws -> Void) throws -> Bool {
         guard !defaults.bool(forKey: marker) else { return false }
         for key in credentialKeys { credentials.write(nil, key) }
@@ -38,7 +38,7 @@ enum IdentityResetDiagnostic {
         return true
     }
 
-    static func clearNetworkingCaches() throws {
+    public static func clearNetworkingCaches() throws {
         for cookie in HTTPCookieStorage.shared.cookies ?? [] {
             let domain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")).lowercased()
             if domain == "bilibili.com" || domain.hasSuffix(".bilibili.com")

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 一组可点开查看的图片。动态卡片、动态详情、评论配图共用同一套排版和交互。

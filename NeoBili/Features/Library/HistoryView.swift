@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 观看历史，游标翻页。
@@ -7,9 +10,11 @@ import SwiftUI
 struct HistoryView: View {
     @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     @State private var items: [HistoryItem] = []
@@ -28,14 +33,14 @@ struct HistoryView: View {
     @State private var isRemovingSelected = false
 
     private var visibleItems: [HistoryItem] {
-        items.hidingKnownPortraitVideos(hidesPortraitVideos)
+        items.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
         let visibleItems = visibleItems
         let paginationIDs = Set(visibleItems.suffix(5).map(\.id))
         Group {
-            if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos) {
+            if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
                 LoadingTaskAnchor()
                     .scrollingPageHeaderAbove()
             } else if let errorMessage, items.isEmpty {
@@ -184,7 +189,7 @@ struct HistoryView: View {
         .task {
             if loadsNextPage { await loadMoreIfNeeded() }
             if !isSelecting, let summary {
-                await VideoPreparationCache.shared.prefetchWhenSettled(
+                await preparation.prefetchWhenSettled(
                     bvid: summary.bvid,
                     cid: summary.cid > 0 ? summary.cid : nil
                 )

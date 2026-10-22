@@ -2,41 +2,41 @@ import Foundation
 
 // MARK: - UP 主投稿列表（x/space/wbi/arc/search）
 
-struct SpaceVideoPage: Decodable, Sendable {
-    let list: List?
-    let page: Page?
+public struct SpaceVideoPage: Decodable, Sendable {
+    public let list: List?
+    public let page: Page?
 
-    var videos: [SpaceVideo] { list?.vlist ?? [] }
+    public var videos: [SpaceVideo] { list?.vlist ?? [] }
 
     /// 这一页之后还有没有内容。`count` 是投稿总数。
-    func hasMore(after loadedCount: Int) -> Bool {
+    public func hasMore(after loadedCount: Int) -> Bool {
         guard let total = page?.count else { return false }
         return loadedCount < total
     }
 
-    struct List: Decodable, Sendable {
-        let vlist: [SpaceVideo]?
+    public struct List: Decodable, Sendable {
+        public let vlist: [SpaceVideo]?
 
         enum CodingKeys: String, CodingKey {
             case vlist
         }
 
-        init(from decoder: Decoder) throws {
+        public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             vlist = (try? container.decodeIfPresent(LenientList<SpaceVideo>.self, forKey: .vlist))??.elements
         }
     }
 
-    struct Page: Decodable, Sendable {
-        let count: Int?
-        let pn: Int?
-        let ps: Int?
+    public struct Page: Decodable, Sendable {
+        public let count: Int?
+        public let pn: Int?
+        public let ps: Int?
 
         enum CodingKeys: String, CodingKey {
             case count, pn, ps
         }
 
-        init(from decoder: Decoder) throws {
+        public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             count = container.flexibleInt(forKey: .count)
             pn = container.flexibleInt(forKey: .pn)
@@ -46,25 +46,25 @@ struct SpaceVideoPage: Decodable, Sendable {
 }
 
 /// 空间投稿列表里的一条视频。时长是 `12:34` 这样的字符串，播放量是裸数字。
-struct SpaceVideo: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
-    let aid: Int
-    let bvid: String
-    let title: String
-    let pic: String
-    let length: String
-    let play: Int
-    let author: String
-    let mid: Int
-    let created: Int
-    let dimension: VideoDimension?
+public struct SpaceVideo: Decodable, Identifiable, Hashable, Sendable, VideoDimensionProviding {
+    public let aid: Int
+    public let bvid: String
+    public let title: String
+    public let pic: String
+    public let length: String
+    public let play: Int
+    public let author: String
+    public let mid: Int
+    public let created: Int
+    public let dimension: VideoDimension?
 
-    var id: String { bvid }
+    public var id: String { bvid }
 
     enum CodingKeys: String, CodingKey {
         case aid, bvid, title, pic, length, play, author, mid, created, dimension
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         aid = container.flexibleInt(forKey: .aid) ?? 0
         bvid = container.flexibleString(forKey: .bvid) ?? ""
@@ -78,63 +78,46 @@ struct SpaceVideo: Decodable, Identifiable, Hashable, Sendable, VideoDimensionPr
         created = container.flexibleInt(forKey: .created) ?? 0
         dimension = try? container.decodeIfPresent(VideoDimension.self, forKey: .dimension)
     }
-
-    func asFollowedVideo(avatar: String) -> FollowedVideo {
-        FollowedVideo(
-            id: bvid,
-            bvid: bvid,
-            aid: aid,
-            title: title,
-            cover: pic,
-            durationText: length,
-            playText: play > 0 ? play.biliCountText : "",
-            authorMid: mid,
-            authorName: author,
-            authorFace: avatar,
-            publishedText: created > 0 ? created.biliRelativeTimeText : "",
-            dimension: dimension
-        )
-    }
 }
 
 // MARK: - UP 主名片（x/web-interface/card）
 
 /// UP 主空间页头部要显示的东西。
-struct SpaceCard: Hashable, Sendable {
-    let mid: Int
-    let name: String
-    let face: String
-    let sign: String
-    let level: Int
-    let isVIP: Bool
+public struct SpaceCard: Hashable, Sendable {
+    public let mid: Int
+    public let name: String
+    public let face: String
+    public let sign: String
+    public let level: Int
+    public let isVIP: Bool
     /// 空间页顶上那张头图。没设置过的账号会是 B 站的默认图。
-    let banner: String?
-    let follower: Int
-    let followingCount: Int
-    let likeCount: Int
-    let archiveCount: Int
+    public let banner: String?
+    public let follower: Int
+    public let followingCount: Int
+    public let likeCount: Int
+    public let archiveCount: Int
     /// 当前账号有没有关注他。未登录时恒为 false。
-    let isFollowing: Bool
+    public let isFollowing: Bool
 
-    var appBackground: SpaceBackgroundPayload.Images? = nil
+    public var appBackground: SpaceBackgroundPayload.Images? = nil
 
-    func bannerURL(isDark: Bool) -> URL? {
+    public func bannerURL(isDark: Bool) -> URL? {
         appBackground?.url(isDark: isDark) ?? secureBannerURL
     }
 
-    var secureAvatarURL: URL? { URL.biliSecure(face) }
-    var secureBannerURL: URL? { banner.flatMap { URL.biliSecure($0) } }
+    public var secureAvatarURL: URL? { URL.biliSecure(face) }
+    public var secureBannerURL: URL? { banner.flatMap { URL.biliSecure($0) } }
 }
 
-struct SpaceCardPayload: Decodable, Sendable {
-    let card: Card?
+public struct SpaceCardPayload: Decodable, Sendable {
+    public let card: Card?
     /// 头图在这个接口里出现过两个位置：`data.space` 和 `data.card.space`。
     /// 只解其中一个的话，另一种响应就没有头图可显示。
-    let space: Card.Space?
-    let following: Bool?
-    let follower: Int?
-    let likeNum: Int?
-    let archiveCount: Int?
+    public let space: Card.Space?
+    public let following: Bool?
+    public let follower: Int?
+    public let likeNum: Int?
+    public let archiveCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case card, space, following, follower
@@ -142,7 +125,7 @@ struct SpaceCardPayload: Decodable, Sendable {
         case archiveCount = "archive_count"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         card = try? container.decodeIfPresent(Card.self, forKey: .card)
         space = try? container.decodeIfPresent(Card.Space.self, forKey: .space)
@@ -152,7 +135,7 @@ struct SpaceCardPayload: Decodable, Sendable {
         archiveCount = container.flexibleInt(forKey: .archiveCount)
     }
 
-    func asSpaceCard(mid: Int) -> SpaceCard {
+    public func asSpaceCard(mid: Int) -> SpaceCard {
         SpaceCard(
             mid: mid,
             name: card?.name ?? "",
@@ -169,22 +152,22 @@ struct SpaceCardPayload: Decodable, Sendable {
         )
     }
 
-    struct Card: Decodable, Sendable {
-        let name: String?
-        let face: String?
-        let sign: String?
-        let fans: Int?
-        let attention: Int?
-        let levelInfo: LevelInfo?
-        let vip: Vip?
-        let space: Space?
+    public struct Card: Decodable, Sendable {
+        public let name: String?
+        public let face: String?
+        public let sign: String?
+        public let fans: Int?
+        public let attention: Int?
+        public let levelInfo: LevelInfo?
+        public let vip: Vip?
+        public let space: Space?
 
         enum CodingKeys: String, CodingKey {
             case name, face, sign, fans, attention, vip, space
             case levelInfo = "level_info"
         }
 
-        init(from decoder: Decoder) throws {
+        public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             name = container.flexibleString(forKey: .name)
             face = container.flexibleString(forKey: .face)
@@ -196,39 +179,39 @@ struct SpaceCardPayload: Decodable, Sendable {
             space = try? container.decodeIfPresent(Space.self, forKey: .space)
         }
 
-        struct LevelInfo: Decodable, Sendable {
-            let currentLevel: Int?
+        public struct LevelInfo: Decodable, Sendable {
+            public let currentLevel: Int?
 
             enum CodingKeys: String, CodingKey {
                 case currentLevel = "current_level"
             }
 
-            init(from decoder: Decoder) throws {
+            public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 currentLevel = container.flexibleInt(forKey: .currentLevel)
             }
         }
 
-        struct Vip: Decodable, Sendable {
-            let status: Int?
+        public struct Vip: Decodable, Sendable {
+            public let status: Int?
 
             enum CodingKeys: String, CodingKey { case status }
 
-            init(from decoder: Decoder) throws {
+            public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 status = container.flexibleInt(forKey: .status)
             }
         }
 
-        struct Space: Decodable, Sendable {
+        public struct Space: Decodable, Sendable {
             /// 大图，也就是空间页顶部那张头图。
-            let largeImage: String?
+            public let largeImage: String?
 
             enum CodingKeys: String, CodingKey {
                 case largeImage = "l_img"
             }
 
-            init(from decoder: Decoder) throws {
+            public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 largeImage = container.flexibleString(forKey: .largeImage)
             }
@@ -237,14 +220,14 @@ struct SpaceCardPayload: Decodable, Sendable {
 }
 
 /// App 空间响应只读取静态头图，不加载 images 中的装扮或播放资源。
-struct SpaceBackgroundPayload: Decodable, Sendable {
-    let images: Images?
+public struct SpaceBackgroundPayload: Decodable, Sendable {
+    public let images: Images?
 
-    struct Images: Decodable, Hashable, Sendable {
-        let imgUrl: String?
-        let night_imgurl: String?
+    public struct Images: Decodable, Hashable, Sendable {
+        public let imgUrl: String?
+        public let night_imgurl: String?
 
-        func url(isDark: Bool) -> URL? {
+        public func url(isDark: Bool) -> URL? {
             if isDark, let night = Self.imageURL(night_imgurl) { return night }
             return Self.imageURL(imgUrl)
         }

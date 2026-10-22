@@ -1,9 +1,27 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
 @testable import NeoBili
 
 /// 注入直播目录，不请求真实账号、动态或关注接口。
 @MainActor
 final class FollowingLiveTests: XCTestCase {
+    func testDefaultDirectoryUsesInjectedLiveService() async throws {
+        let suite = "neobili.following.service-graph.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let expected = page([room(17)], number: 1)
+        let session = UUID()
+        let services = ApplicationServices(session: .init(currentID: { session },
+            homeAccount: { .init(accountID: nil, hasAppCredential: false) }),
+            streaming: .init(followedUsersOperation: { expected }))
+        let model = FollowingViewModel(services: services,
+            readStore: FollowingReadStore(defaults: defaults), likeStore: VideoLikeStore())
+        await model.liveDirectory.refresh()
+        XCTAssertEqual(model.liveDirectory.rooms, expected.rooms)
+    }
+
     func testLiveUpsPrecedeUnreadUpdatesAndKeepPortalOrderWithinGroups() async throws {
         let fixture = try FollowingLiveFixture(pages: [1: page([room(3), room(4)], number: 1)])
         defer { fixture.cleanUp() }

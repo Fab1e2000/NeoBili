@@ -1,8 +1,30 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
+import Synchronization
 @testable import NeoBili
 
 @MainActor
 final class VideoActionStateRepairTests: XCTestCase {
+    func testDanmakuUsesInjectedDetailServiceAndPlaybackSnapshot() async throws {
+        let captured = Mutex<[(Int, String, String, TimeInterval, Int)]>([])
+        let sessionID = UUID()
+        var services = ApplicationServices(session: SessionService(currentID: { sessionID }, homeAccount: { HomeFeedAccount(accountID: nil, hasAppCredential: false) }))
+        services.comment.shootDanmakuOperation = { cid, bvid, text, progress, mode in
+            captured.withLock { $0.append((cid, bvid, text, progress, mode)) }
+            return 1
+        }
+        let model = VideoDetailViewModel(bvid: "BV-fixture", likeStore: VideoLikeStore(), services: services)
+        try await model.sendDanmaku("fixture message", cid: 42, progress: 12.5, mode: 1)
+        let request = try XCTUnwrap(captured.withLock { $0.first })
+        XCTAssertEqual(request.0, 42)
+        XCTAssertEqual(request.1, "BV-fixture")
+        XCTAssertEqual(request.2, "fixture message")
+        XCTAssertEqual(request.3, 12.5)
+        XCTAssertEqual(request.4, 1)
+    }
+
     func testRemovingOneOfTwoFoldersKeepsFavoriteAndCount() async throws {
         let calls = ActionCalls()
         let model = try await model(favorited: true, calls: calls)
@@ -98,8 +120,43 @@ final class VideoActionStateRepairTests: XCTestCase {
         XCTAssertNotNil(model.actionMessage)
     }
 
+    func testLateUnfavoriteSuccessCannotShowMessageAfterAccountChange() async throws {
+        let current = Mutex(UUID())
+        let gate = DetailActionGate()
+        let started = expectation(description: "unfavorite started")
+        let model = try await model(favorited: true) { services in
+            services.session.currentID = { current.withLock { $0 } }
+            services.library.unfavoriteEverywhereOperation = { _ in await gate.wait(started: started) }
+        }
+        let action = Task { await model.unfavoriteEverywhere(isLoggedIn: true) }
+        await fulfillment(of: [started], timeout: 2)
+        current.withLock { $0 = UUID() }
+        await gate.release()
+        await action.value
+        XCTAssertNil(model.actionMessage)
+    }
+
+    func testCancelledExtrasDoNotPublishLateTags() async throws {
+        let gate = DetailActionGate()
+        let started = expectation(description: "tags started")
+        let model = try await model { services in
+            services.video.videoTagsOperation = { _ in
+                await gate.wait(started: started)
+                return [VideoTag(tagId: 1, tagName: "late")]
+            }
+            services.video.memberCardOperation = { _ in MemberCard(follower: 42, archiveCount: 1) }
+        }
+        let extras = Task { await model.loadExtras() }
+        await fulfillment(of: [started], timeout: 2)
+        extras.cancel()
+        await gate.release()
+        await extras.value
+        XCTAssertTrue(model.tags.isEmpty)
+        XCTAssertNil(model.ownerCard)
+    }
+
     private func model(favorited: Bool = false, disliked: Bool = false,
-                       calls: ActionCalls = ActionCalls()) async throws -> VideoDetailViewModel {
+                       calls: ActionCalls = ActionCalls(), configure: (inout ApplicationServices) -> Void = { _ in }) async throws -> VideoDetailViewModel {
         let generation = UUID()
         var services = ApplicationServices(session: SessionService(currentID: { generation },
             homeAccount: { HomeFeedAccount(accountID: 42, hasAppCredential: true) }))
@@ -107,6 +164,7 @@ final class VideoActionStateRepairTests: XCTestCase {
             try await calls.updateFavorites(add: add, remove: remove, session: session)
         }
         services.video.tripleActionOperation = { _, _, _ in try await calls.triple() }
+        configure(&services)
         let detail = try JSONDecoder().decode(VideoDetail.self, from: Data(#"""
         {"bvid":"BVTest","aid":9,"cid":1,"title":"test","desc":"","pic":"","duration":60,
         "pubdate":1,"owner":{"mid":42,"name":"test","face":""},
@@ -157,4 +215,12 @@ private actor ActionCalls {
         if fails { throw URLError(.timedOut) }
         return result
     }
+}
+
+private actor DetailActionGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    func wait(started: XCTestExpectation) async {
+        await withCheckedContinuation { continuation = $0; started.fulfill() }
+    }
+    func release() { continuation?.resume(); continuation = nil }
 }

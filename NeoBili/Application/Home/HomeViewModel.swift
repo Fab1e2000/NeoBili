@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 首页网格中可能出现普通视频，也可能出现“上次看到这里”提示卡。
@@ -14,7 +17,7 @@ enum HomeFeedItem: Identifiable {
     }
 }
 
-enum HomeFeedRow: Identifiable {
+enum HomeFeedRow: Identifiable, Equatable {
     case videos([VideoSummary])
     case lastSeen
 
@@ -91,6 +94,7 @@ enum HomeSheet: Identifiable, Hashable {
 @MainActor
 @Observable
 final class HomeViewModel {
+    @ObservationIgnored let filtering: VideoFilterDependencies
     @ObservationIgnored private let feedbackService: RecommendationService
     private(set) var videos: [VideoSummary] = []
     private(set) var exposurePolicy = RecommendationExposurePolicy()
@@ -105,6 +109,7 @@ final class HomeViewModel {
     /// 等用户确认拉黑的 UP 主。
     var pendingBlock: VideoOwner?
     private let defaults: UserDefaults
+    private let source: RecommendationRequest.Source
     private let reportUninterested: (RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason, UUID) async throws -> Void
     private let cancelUninterested: (RecommendationFeedbackOptions, UUID) async throws -> Void
     private let dislikeVideo: (Int, Bool, UUID) async throws -> Void
@@ -221,13 +226,13 @@ final class HomeViewModel {
     func feedRows(hidingKnownPortraitVideos hidesPortraitVideos: Bool) -> [HomeFeedRow] {
         let visibleItems = feedItems.filter { item in
             guard case .video(let video) = item else { return true }
-            return video.canDisplayVideo(hidingPortrait: hidesPortraitVideos)
+            return video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: self.filtering)
         }
         return HomeFeedRow.group(visibleItems)
     }
 
     func hasVisibleVideos(hidingKnownPortraitVideos hidesPortraitVideos: Bool) -> Bool {
-        videos.contains { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos) }
+        videos.contains { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: self.filtering) }
     }
 
 
@@ -256,6 +261,8 @@ final class HomeViewModel {
     }
 
     init(defaults: UserDefaults = .standard,
+         source: RecommendationRequest.Source? = nil,
+         filtering: VideoFilterDependencies? = nil,
          reportUninterested: ((RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason) async throws -> Void)? = nil,
          cancelUninterested: ((RecommendationFeedbackOptions) async throws -> Void)? = nil,
          dislikeVideo: ((Int, Bool) async throws -> Void)? = nil,
@@ -264,9 +271,13 @@ final class HomeViewModel {
          currentSessionID: @escaping () -> UUID = { ApplicationServices.live.session.currentID() },
          feedbackService: RecommendationService = ApplicationServices.live.recommendation,
          videoService: VideoService = ApplicationServices.live.video,
-         fetchRecommendations: @escaping (RecommendationRequest) async throws -> RecommendationBatch = ApplicationServices.live.recommendation.recommendFeed) {
+         fetchRecommendations: @escaping (RecommendationRequest) async throws -> RecommendationBatch = ApplicationServices.homeRecommendations) {
+        self.filtering = filtering ?? .live
         self.feedbackService = feedbackService
         self.defaults = defaults
+        self.source = source ?? RecommendationRequest.savedSource(
+            rawValue: defaults.string(forKey: RecommendationRequest.sourceKey),
+            legacyUsesApp: defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool)
         self.reportUninterested = { options, reason, session in
             if let reportUninterested { try await reportUninterested(options, reason) }
             else {
@@ -290,15 +301,7 @@ final class HomeViewModel {
         self.blockUser = blockUser
         self.currentAccount = currentAccount
         self.currentSessionID = currentSessionID
-        #if PERFORMANCE_DEMO
-        if ProcessInfo.processInfo.arguments.contains("--feed-record") || ProcessInfo.processInfo.arguments.contains("--feed-replay") {
-            self.fetchRecommendations = { try await PerformanceFeedSource.shared.fetch($0) }
-        } else {
-            self.fetchRecommendations = fetchRecommendations
-        }
-        #else
         self.fetchRecommendations = fetchRecommendations
-        #endif
     }
 
     func loadInitial() async {
@@ -322,8 +325,7 @@ final class HomeViewModel {
     func commitStagedRefresh() {
         guard let batch = pendingRefresh else { return }
         pendingRefresh = nil
-        let usesApp = defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
-        guard batch.session == currentSessionID(), batch.source == (usesApp ? .app : .web) else { return }
+        guard batch.session == currentSessionID(), batch.source == source else { return }
         applyRefresh(batch.videos)
         appRefreshCursor = batch.refreshCursor ?? 0
     }
@@ -333,7 +335,7 @@ final class HomeViewModel {
         // 每张卡出现都会调用：只从末尾往前看最后 5 张可见视频，
         // 不在滚动时把整个列表过滤一遍。
         let tail = videos.reversed().lazy
-            .filter { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos) }
+            .filter { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: self.filtering) }
             .prefix(5)
         guard tail.contains(where: { $0.bvid == video.bvid }) else { return }
         await startLoad(reason: .loadMore, replacingActiveLoad: false)
@@ -384,13 +386,12 @@ final class HomeViewModel {
             }
         }
 
+        let account = await currentAccount()
+        let session = currentSessionID()
         do {
-            let account = await currentAccount()
-            let session = currentSessionID()
             guard activeLoadID == loadID else { return }
             try Task.checkCancellation()
-            let usesApp = defaults.object(forKey: RecommendationFilter.appRecommendKey) as? Bool ?? true
-            let source: RecommendationRequest.Source = usesApp ? .app : .web
+            let usesApp = source != .web
             if loadedAccount != account || cursorSession != session || cursorSource != source {
                 appRefreshCursor = 0
                 nextRequest = nil
@@ -431,7 +432,7 @@ final class HomeViewModel {
                 if wasEmpty, !videos.isEmpty { appRefreshCursor = response.refreshCursor ?? 0 }
             }
         } catch {
-            guard activeLoadID == loadID, !Self.isCancellation(error) else { return }
+            guard activeLoadID == loadID, currentSessionID() == session, !Self.isCancellation(error) else { return }
             // 与 PiliPlus 一致：已有推荐时刷新失败也保留旧内容，不把页面替换成错误页。
             errorMessage = error.localizedDescription
         }

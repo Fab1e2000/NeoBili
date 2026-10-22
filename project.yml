@@ -22,11 +22,30 @@ targets:
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      # syncedFolder：Xcode 直接跟踪整个 NeoBili 文件夹。
-      # 以后新增 .swift 文件会被自动编译，不需要再手动登记或重新生成项目。
-      - path: NeoBili
+      # 每层自动同步；Domain、Core 纯工具与 Data 由独立模块编译。
+      - path: NeoBili/App
+        type: syncedFolder
+      - path: NeoBili/Application
+        type: syncedFolder
+      - path: NeoBili/Core/UI
+        type: syncedFolder
+      - path: NeoBili/Core/Extensions
+        type: syncedFolder
+      - path: NeoBili/Core/Diagnostics
+        type: syncedFolder
+      - path: NeoBili/Features
+        type: syncedFolder
+      - path: NeoBili/Platform
+        type: syncedFolder
+      - path: NeoBili/Resources
         type: syncedFolder
     dependencies:
+      - target: NeoBiliDomain
+        embed: false
+      - target: NeoBiliCore
+        embed: false
+      - target: NeoBiliData
+        embed: false
       - package: MPVKit
         product: MPVKit
     info:
@@ -42,8 +61,8 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         CFBundleDisplayName: NeoBili
-        CFBundleShortVersionString: "1.2.3"
-        CFBundleVersion: "16"
+        CFBundleShortVersionString: "1.3.0"
+        CFBundleVersion: "17"
         NSPhotoLibraryAddUsageDescription: 保存登录二维码到相册，便于在哔哩哔哩 App 的扫一扫里从相册识别登录。
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -70,6 +89,65 @@ targets:
         CODE_SIGN_IDENTITY: "$(NEOBILI_CODE_SIGN_IDENTITY)"
         PROVISIONING_PROFILE_SPECIFIER: "$(NEOBILI_PROVISIONING_PROFILE)"
 
+  NeoBiliDomain:
+    type: framework
+    platform: iOS
+    sources:
+      - path: NeoBili/Domain
+        type: syncedFolder
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACH_O_TYPE: staticlib
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+      configs:
+        Regression:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG NEOBILI_REGRESSION"
+
+  NeoBiliCore:
+    type: framework
+    platform: iOS
+    sources:
+      - path: NeoBili/Core/Caching
+        type: syncedFolder
+      - path: NeoBili/Core/Formatting
+        type: syncedFolder
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACH_O_TYPE: staticlib
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+      configs:
+        Regression:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG NEOBILI_REGRESSION"
+
+  NeoBiliData:
+    type: framework
+    platform: iOS
+    sources:
+      - path: NeoBili/Data
+        type: syncedFolder
+    dependencies:
+      - target: NeoBiliDomain
+        embed: false
+      - target: NeoBiliCore
+        embed: false
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACH_O_TYPE: staticlib
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+      configs:
+        Regression:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG NEOBILI_REGRESSION"
+
   NeoBiliTests:
     type: bundle.unit-test
     platform: iOS
@@ -79,9 +157,18 @@ targets:
         type: syncedFolder
     dependencies:
       - target: NeoBili
+      - target: NeoBiliDomain
+        embed: false
+      - target: NeoBiliCore
+        embed: false
+      - target: NeoBiliData
+        embed: false
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+      configs:
+        Regression:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG NEOBILI_REGRESSION"
 
 # 共享运行方案：Debug + LLDB，重新生成工程时也保留。
 schemes:

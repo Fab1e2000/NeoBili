@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import SwiftUI
 import XCTest
 @testable import NeoBili
@@ -12,6 +15,7 @@ import XCTest
 #if DEBUG
 @MainActor
 final class CommentSpacingEmoteTests: XCTestCase {
+    private let emoteStore = CommentEmoteStore(loader: { _ in throw URLError(.notConnectedToInternet) })
     private static let width: CGFloat = 390
     /// 与注入的表情图同一个 URL。
     private static let emoteURLString = "https://i0.hdslb.com/bfs/emote/test-emote.png"
@@ -27,7 +31,7 @@ final class CommentSpacingEmoteTests: XCTestCase {
             context.fill(CGRect(origin: .zero, size: size))
         }
         let url = try! XCTUnwrap(URL(string: Self.emoteURLString))
-        CommentEmoteStore.shared.insertOriginalForTesting(square, for: url)
+        emoteStore.insertOriginalForTesting(square, for: url)
     }
 
     private func render(_ comment: Comment, viewModel: CommentsViewModel) throws -> CGImage {
@@ -45,7 +49,7 @@ final class CommentSpacingEmoteTests: XCTestCase {
         .frame(width: Self.width)
         .background(Color.white)
         .environment(AccountStore())
-        .environment(\.colorScheme, .light)
+        .environment(\.colorScheme, .light).environment(\.commentEmoteStore, emoteStore)
         .commentReplyLayoutMarkers()
 
         let renderer = ImageRenderer(content: content)

@@ -1,17 +1,20 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 struct ContentFilterSettingsView: View {
-    @Bindable private var durationFilter = VideoDurationFilterSettings.shared
+    @Environment(\.videoFiltering) private var filtering
+    private var durationFilter: VideoDurationFilterSettings { filtering.duration }
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
 
     var body: some View {
+        @Bindable var durationFilter = filtering.duration
         Form {
             Section {
                 Toggle("隐藏竖屏视频", isOn: $hidesPortraitVideos)
             } header: {
                 Text("画幅")
-            } footer: {
-                Text("应用于推荐、关注、搜索、收藏、历史等视频列表。")
             }
             Section {
                 // 原来是 1 分钟一档的步进器，想设到 10 分钟要连点十次；改为常用档位。
@@ -22,15 +25,11 @@ struct ContentFilterSettingsView: View {
                 }
             } header: {
                 Text("时长")
-            } footer: {
-                Text("短于这个时长的视频会从这些列表中隐藏。")
             }
             Section {
                 NavigationLink("推荐内容过滤") { RecommendationFilterSettingsView() }
             } header: {
                 Text("首页推荐")
-            } footer: {
-                Text("点赞率、播放量、关键词及关注豁免仅影响首页推荐。全局画幅和时长规则仍会生效。")
             }
         }
         .settingsPage("内容过滤")

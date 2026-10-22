@@ -1,68 +1,138 @@
 import Foundation
 
-struct VideoOwner: Decodable, Hashable, Sendable {
-    let mid: Int
-    let name: String
-    let face: String
+public struct VideoOwner: Decodable, Hashable, Sendable {
+    public let mid: Int
+    public let name: String
+    public let face: String
+
+    public init(
+        mid: Int,
+        name: String,
+        face: String
+    ) {
+        self.mid = mid
+        self.name = name
+        self.face = face
+    }
 }
 
-struct VideoStat: Decodable, Hashable, Sendable {
-    let view: Int
-    let danmaku: Int
-    let like: Int
-    let favorite: Int
-    let coin: Int
-    let share: Int
-    let reply: Int
+public struct VideoStat: Decodable, Hashable, Sendable {
+    public let view: Int
+    public let danmaku: Int
+    public let like: Int
+    public let favorite: Int
+    public let coin: Int
+    public let share: Int
+    public let reply: Int
+
+    public init(
+        view: Int,
+        danmaku: Int,
+        like: Int,
+        favorite: Int,
+        coin: Int,
+        share: Int,
+        reply: Int
+    ) {
+        self.view = view
+        self.danmaku = danmaku
+        self.like = like
+        self.favorite = favorite
+        self.coin = coin
+        self.share = share
+        self.reply = reply
+    }
 }
 
 /// A single entry in a video feed (popular / recommend lists).
-struct VideoSummary: Decodable, Identifiable, Hashable, VideoDimensionProviding {
-    let bvid: String
-    let aid: Int
-    let cid: Int
-    let title: String
-    let pic: String
-    let desc: String
-    let duration: Int
-    let pubdate: Int
-    let owner: VideoOwner
-    let stat: VideoStat
+public struct VideoSummary: Decodable, Identifiable, Hashable, VideoDimensionProviding, Sendable {
+    public let bvid: String
+    public let aid: Int
+    public let cid: Int
+    public let title: String
+    public let pic: String
+    public let desc: String
+    public let duration: Int
+    public let pubdate: Int
+    public let owner: VideoOwner
+    public let stat: VideoStat
 
     /// 部分列表接口会直接返回画面尺寸；缺失时由内容过滤服务补查详情。
-    var dimension: VideoDimension? = nil
+    public var dimension: VideoDimension? = nil
 
     /// App 推荐卡片的「不感兴趣」选项，反馈时原样带回卡片的 goto 和 param。
-    var recommendationFeedback: RecommendationFeedbackOptions? = nil
-    var playbackEntry: PlaybackEntry = .other
+    public var recommendationFeedback: RecommendationFeedbackOptions? = nil
+    public var playbackEntry: PlaybackEntry = .other
     /// Original feed fields for an actual card click, never reconstructed from playback.
-    var recommendationClickFields: [String: String]? = nil
-    var recommendationPosition: Int? = nil
+    public var recommendationClickFields: [String: String]? = nil
+    public var recommendationPosition: Int? = nil
     /// Retains the server's full-width video presentation through local filters.
-    var isLargeRecommendationCard = false
+    public var isLargeRecommendationCard = false
     /// 来自网页推荐：没有原因可选，「不感兴趣」和 PiliPlus 一样只能点踩。
-    var isWebRecommendation = false
+    public var isWebRecommendation = false
     /// 推荐卡上 UP 主名字前的小标签，如「已关注」「4万点赞」，和 PiliPlus 一样。
-    var recommendationBadge: String? = nil
+    public var recommendationBadge: String? = nil
     /// 推荐流里的直播、图文卡借用视频卡片的外观，点开时去直播间或动态详情，不是视频。
     /// 它们的 `bvid` 是 `live-房间号`、`dynamic-动态编号` 这样的本地标识，只用来区分卡片。
-    var recommendationTarget: RecommendationTarget? = nil
+    public var recommendationTarget: RecommendationTarget? = nil
 
-    var id: String { bvid }
+    public var id: String { bvid }
 
-    var secureCoverURL: URL? { URL.biliSecure(pic) }
-    var secureAvatarURL: URL? { URL.biliSecure(owner.face) }
+    public var secureCoverURL: URL? { URL.biliSecure(pic) }
+    public var secureAvatarURL: URL? { URL.biliSecure(owner.face) }
 
     /// 封面右下角的文字：视频是时长，直播卡是「直播」。
-    var coverCornerText: String {
+    public var coverCornerText: String {
         if case .live = recommendationTarget { return String(localized: "直播") }
         return recommendationTarget == nil ? formattedDuration : ""
     }
 
-    var formattedDuration: String {
+    public var formattedDuration: String {
         let minutes = duration / 60
         let seconds = duration % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    public init(
+        bvid: String,
+        aid: Int,
+        cid: Int,
+        title: String,
+        pic: String,
+        desc: String,
+        duration: Int,
+        pubdate: Int,
+        owner: VideoOwner,
+        stat: VideoStat,
+        dimension: VideoDimension? = nil,
+        recommendationFeedback: RecommendationFeedbackOptions? = nil,
+        playbackEntry: PlaybackEntry = .other,
+        recommendationClickFields: [String: String]? = nil,
+        recommendationPosition: Int? = nil,
+        isLargeRecommendationCard: Bool = false,
+        isWebRecommendation: Bool = false,
+        recommendationBadge: String? = nil,
+        recommendationTarget: RecommendationTarget? = nil
+    ) {
+        self.bvid = bvid
+        self.aid = aid
+        self.cid = cid
+        self.title = title
+        self.pic = pic
+        self.desc = desc
+        self.duration = duration
+        self.pubdate = pubdate
+        self.owner = owner
+        self.stat = stat
+        self.dimension = dimension
+        self.recommendationFeedback = recommendationFeedback
+        self.playbackEntry = playbackEntry
+        self.recommendationClickFields = recommendationClickFields
+        self.recommendationPosition = recommendationPosition
+        self.isLargeRecommendationCard = isLargeRecommendationCard
+        self.isWebRecommendation = isWebRecommendation
+        self.recommendationBadge = recommendationBadge
+        self.recommendationTarget = recommendationTarget
     }
 }
 
@@ -74,7 +144,7 @@ extension VideoSummary {
 
     /// `isWebRecommendation` is local presentation metadata, absent from normal
     /// video-list responses. A stored Swift default is not a Decodable default.
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         bvid = try values.decode(String.self, forKey: .bvid)
         aid = try values.decode(Int.self, forKey: .aid)
@@ -94,46 +164,78 @@ extension VideoSummary {
     }
 }
 
-enum RecommendationTarget: Decodable, Hashable, Sendable {
+public enum RecommendationTarget: Decodable, Hashable, Sendable {
     case live(LiveRoom)
     /// 图文动态的编号，点开时再取详情。
     case dynamic(id: String)
 }
 
 /// App 推荐卡片 `three_point_v2` 里的两组原因：「我不想看」与「反馈」。
-struct RecommendationFeedbackOptions: Decodable, Hashable, Sendable {
-    struct Reason: Decodable, Hashable, Sendable {
-        let id: Int
-        let name: String?
-        let toast: String?
+public struct RecommendationFeedbackOptions: Decodable, Hashable, Sendable {
+    public struct Reason: Decodable, Hashable, Sendable {
+        public let id: Int
+        public let name: String?
+        public let toast: String?
+
+        public init(
+            id: Int,
+            name: String? = nil,
+            toast: String? = nil
+        ) {
+            self.id = id
+            self.name = name
+            self.toast = toast
+        }
     }
 
     /// 反馈接口要求原样带回卡片的 `card_goto` 与 `param`。
-    let goto: String
-    let param: Int
-    var dislikeReasons: [Reason]?
-    var feedbacks: [Reason]?
+    public let goto: String
+    public let param: Int
+    public var dislikeReasons: [Reason]?
+    public var feedbacks: [Reason]?
     /// Bound when the card is received, not when a later account taps its menu.
-    var requestContext: RequestContext? = nil
+    public var requestContext: RequestContext? = nil
 
-    struct RequestContext: Decodable, Hashable, Sendable {
-        let loginSessionID: UUID
-        let parameters: [String: String]
+    public struct RequestContext: Decodable, Hashable, Sendable {
+        public let loginSessionID: UUID
+        public let parameters: [String: String]
+
+        public init(
+            loginSessionID: UUID,
+            parameters: [String: String]
+        ) {
+            self.loginSessionID = loginSessionID
+            self.parameters = parameters
+        }
     }
 
-    var hasReasons: Bool { dislikeReasons != nil || feedbacks != nil }
+    public var hasReasons: Bool { dislikeReasons != nil || feedbacks != nil }
+
+    public init(
+        goto: String,
+        param: Int,
+        dislikeReasons: [Reason]? = nil,
+        feedbacks: [Reason]? = nil,
+        requestContext: RequestContext? = nil
+    ) {
+        self.goto = goto
+        self.param = param
+        self.dislikeReasons = dislikeReasons
+        self.feedbacks = feedbacks
+        self.requestContext = requestContext
+    }
 }
 
-struct VideoPart: Decodable, Identifiable, Hashable, Sendable {
-    let cid: Int
-    let page: Int
-    let part: String
-    let duration: Int
+public struct VideoPart: Decodable, Identifiable, Hashable, Sendable {
+    public let cid: Int
+    public let page: Int
+    public let part: String
+    public let duration: Int
     /// 各分P可能采用不同画幅，不能一直沿用稿件第一P的尺寸。
-    var dimension: VideoDimension? = nil
-    var id: Int { cid }
+    public var dimension: VideoDimension? = nil
+    public var id: Int { cid }
 
-    var formattedDuration: String {
+    public var formattedDuration: String {
         guard duration > 0 else { return "" }
         let hours = duration / 3600
         let minutes = (duration % 3600) / 60
@@ -145,25 +247,25 @@ struct VideoPart: Decodable, Identifiable, Hashable, Sendable {
     }
 }
 
-struct VideoDetail: Decodable, Hashable, Sendable, VideoDimensionProviding {
-    let bvid: String
-    let aid: Int
-    let cid: Int
-    let title: String
-    let desc: String
-    let pic: String
-    let duration: Int
-    let pubdate: Int
-    let owner: VideoOwner
-    let stat: VideoStat
-    let pages: [VideoPart]
-    var dimension: VideoDimension? = nil
+public struct VideoDetail: Decodable, Hashable, Sendable, VideoDimensionProviding {
+    public let bvid: String
+    public let aid: Int
+    public let cid: Int
+    public let title: String
+    public let desc: String
+    public let pic: String
+    public let duration: Int
+    public let pubdate: Int
+    public let owner: VideoOwner
+    public let stat: VideoStat
+    public let pages: [VideoPart]
+    public var dimension: VideoDimension? = nil
     /// 分区名（「单机游戏」这类）。
-    let tname: String?
+    public let tname: String?
     /// 1 是自制，2 是转载。界面上据此显示「未经作者授权禁止转载」。
-    let copyright: Int?
+    public let copyright: Int?
     /// 稿件所属的合集。大多数视频没有合集，所以是可选的。
-    let ugcSeason: UgcSeason?
+    public let ugcSeason: UgcSeason?
 
     enum CodingKeys: String, CodingKey {
         case bvid, aid, cid, title, desc, pic, duration, pubdate, owner, stat, pages, dimension
@@ -171,18 +273,18 @@ struct VideoDetail: Decodable, Hashable, Sendable, VideoDimensionProviding {
         case ugcSeason = "ugc_season"
     }
 
-    var secureCoverURL: URL? { URL.biliSecure(pic) }
-    var secureAvatarURL: URL? { URL.biliSecure(owner.face) }
+    public var secureCoverURL: URL? { URL.biliSecure(pic) }
+    public var secureAvatarURL: URL? { URL.biliSecure(owner.face) }
 }
 
 // MARK: - 标签、互动状态、UP 主名片
 
 /// 稿件标签，展示在简介的操作栏上方。
-struct VideoTag: Decodable, Identifiable, Hashable, Sendable {
-    let tagId: Int
-    let tagName: String
+public struct VideoTag: Decodable, Identifiable, Hashable, Sendable {
+    public let tagId: Int
+    public let tagName: String
 
-    var id: Int { tagId }
+    public var id: Int { tagId }
 
     enum CodingKeys: String, CodingKey {
         case tagId = "tag_id"
@@ -194,72 +296,94 @@ struct VideoTag: Decodable, Identifiable, Hashable, Sendable {
 /// 一次请求把五个按钮的高亮状态全拿回来，不必逐个接口去问。
 ///
 /// 未登录时接口仍返回 code 0，但所有布尔值都是 false、`coin` 是 0。
-struct VideoRelation: Decodable, Hashable, Sendable {
+public struct VideoRelation: Decodable, Hashable, Sendable {
     /// 是否已关注 UP 主。
-    let attention: Bool?
-    let favorite: Bool?
-    let like: Bool?
-    let dislike: Bool?
+    public let attention: Bool?
+    public let favorite: Bool?
+    public let like: Bool?
+    public let dislike: Bool?
     /// 已投的硬币数，不是布尔值。
-    let coin: Int?
+    public let coin: Int?
 
-    var isLiked: Bool { like == true }
-    var isDisliked: Bool { dislike == true }
-    var isFavorited: Bool { favorite == true }
-    var isCoined: Bool { (coin ?? 0) > 0 }
-    var isFollowing: Bool { attention == true }
+    public var isLiked: Bool { like == true }
+    public var isDisliked: Bool { dislike == true }
+    public var isFavorited: Bool { favorite == true }
+    public var isCoined: Bool { (coin ?? 0) > 0 }
+    public var isFollowing: Bool { attention == true }
+
+    public init(
+        attention: Bool? = nil,
+        favorite: Bool? = nil,
+        like: Bool? = nil,
+        dislike: Bool? = nil,
+        coin: Int? = nil
+    ) {
+        self.attention = attention
+        self.favorite = favorite
+        self.like = like
+        self.dislike = dislike
+        self.coin = coin
+    }
 }
 
 /// 一键三连的结果。三步是分别判定的：硬币不够时 `coin` 为 false，
 /// 但点赞和收藏照样成功，所以界面要按字段分别更新，不能一把当成全成功。
-struct TripleResult: Decodable, Hashable, Sendable {
-    let like: Bool?
-    let coin: Bool?
-    let fav: Bool?
+public struct TripleResult: Decodable, Hashable, Sendable {
+    public let like: Bool?
+    public let coin: Bool?
+    public let fav: Bool?
     /// 实际投出去的硬币数。
-    let multiply: Int?
+    public let multiply: Int?
 
-    var didLike: Bool { like == true }
-    var didCoin: Bool { coin == true }
-    var didFavorite: Bool { fav == true }
+    public var didLike: Bool { like == true }
+    public var didCoin: Bool { coin == true }
+    public var didFavorite: Bool { fav == true }
 }
 
 /// UP 主名片，用来显示「X 万粉丝 · N 视频」。
-struct MemberCard: Decodable, Hashable, Sendable {
-    let follower: Int?
-    let archiveCount: Int?
+public struct MemberCard: Decodable, Hashable, Sendable {
+    public let follower: Int?
+    public let archiveCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case follower
         case archiveCount = "archive_count"
     }
+
+    public init(
+        follower: Int? = nil,
+        archiveCount: Int? = nil
+    ) {
+        self.follower = follower
+        self.archiveCount = archiveCount
+    }
 }
 
 /// 来源由实际入口指定。未知入口不伪装成推荐点击；追踪值只来自当前卡片。
-struct PlaybackEntry: Hashable, Sendable {
-    enum Source: String, Sendable {
+public struct PlaybackEntry: Hashable, Sendable {
+    public enum Source: String, Sendable {
         case recommendation, related, history, search, favorites, watchLater
         case following, dynamicDetail, spaceVideo, spaceDynamic, collection, other
     }
-    let source: Source
-    var trackID: String? = nil
-    var reportFlowData: String? = nil
-    var loginSessionID: UUID? = nil
-    static let other = Self(source: .other)
-    static let history = Self(source: .history)
-    static let search = Self(source: .search)
-    static let favorites = Self(source: .favorites)
-    static let watchLater = Self(source: .watchLater)
-    static let following = Self(source: .following)
-    static let dynamicDetail = Self(source: .dynamicDetail)
-    static let spaceVideo = Self(source: .spaceVideo)
-    static let spaceDynamic = Self(source: .spaceDynamic)
-    static let collection = Self(source: .collection)
-    static let related = Self(source: .related)
-    static func recommendation(trackID: String?, reportFlowData: String?) -> Self {
+    public let source: Source
+    public var trackID: String? = nil
+    public var reportFlowData: String? = nil
+    public var loginSessionID: UUID? = nil
+    public static let other = Self(source: .other)
+    public static let history = Self(source: .history)
+    public static let search = Self(source: .search)
+    public static let favorites = Self(source: .favorites)
+    public static let watchLater = Self(source: .watchLater)
+    public static let following = Self(source: .following)
+    public static let dynamicDetail = Self(source: .dynamicDetail)
+    public static let spaceVideo = Self(source: .spaceVideo)
+    public static let spaceDynamic = Self(source: .spaceDynamic)
+    public static let collection = Self(source: .collection)
+    public static let related = Self(source: .related)
+    public static func recommendation(trackID: String?, reportFlowData: String?) -> Self {
         Self(source: .recommendation, trackID: trackID, reportFlowData: reportFlowData)
     }
-    func parameters(for sessionID: UUID? = nil) -> [String: String] {
+    public func parameters(for sessionID: UUID? = nil) -> [String: String] {
         var result: [String: String] = [:]
         switch source {
         case .recommendation: result["from"] = "7"; result["from_spmid"] = "tm.recommend.0.0"
@@ -277,5 +401,17 @@ struct PlaybackEntry: Hashable, Sendable {
         if permitsTracking, let trackID, !trackID.isEmpty { result["track_id"] = trackID }
         if permitsTracking, let reportFlowData, !reportFlowData.isEmpty { result["report_flow_data"] = reportFlowData }
         return result
+    }
+
+    public init(
+        source: Source,
+        trackID: String? = nil,
+        reportFlowData: String? = nil,
+        loginSessionID: UUID? = nil
+    ) {
+        self.source = source
+        self.trackID = trackID
+        self.reportFlowData = reportFlowData
+        self.loginSessionID = loginSessionID
     }
 }

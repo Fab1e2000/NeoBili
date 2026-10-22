@@ -1,3 +1,6 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
 import SwiftUI
 import UIKit
 import XCTest

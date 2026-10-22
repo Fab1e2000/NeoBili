@@ -1,26 +1,29 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// 仅包含浏览和播放接口；复用现有网页身份与 App 登录，不在风控后切换身份重试。
 enum LiveAPI {
-    static func recommended(page: Int = 1) async throws -> LiveRoomPage {
+    static func recommended(page: Int = 1, client: APIClient, identity: DeviceIdentity) async throws -> LiveRoomPage {
         let page = max(1, page)
         // 直播 iOS 推荐必须携带屏幕倍率；匿名请求也需要此参数。
-        let accessKey = await DeviceIdentity.shared.accessKey
+        let accessKey = await identity.accessKey
         let scale = await AppRecommendationDisplay.currentScale()
-        let payload: LiveAppFeedPayload = try await requestApp(url: makeAppFeedURL(page: page, accessKey: accessKey, scale: scale))
+        let payload: LiveAppFeedPayload = try await requestApp(url: makeAppFeedURL(page: page, accessKey: accessKey, scale: scale), client: client)
         return payload.page(number: page)
     }
 
-    static func followed(page: Int = 1) async throws -> LiveRoomPage {
+    static func followed(page: Int = 1, client: APIClient) async throws -> LiveRoomPage {
         let page = max(1, page)
         let payload: LiveListingPayload = try await request(path: "xlive/web-ucenter/user/following", params: [
             "page": String(page), "page_size": "9", "ignoreRecord": "1", "hit_ab": "true"
-        ])
+        ], client: client)
         return payload.page(number: page, size: 9, onlyLive: true)
     }
 
-    static func followedUsers() async throws -> LiveRoomPage {
-        let payload: FollowedLiveUsersPayload = try await APIClient.shared.get(
+    static func followedUsers(client: APIClient) async throws -> LiveRoomPage {
+        let payload: FollowedLiveUsersPayload = try await client.get(
             path: "x/polymer/web-dynamic/v1/portal",
             params: ["up_list_more": "1", "web_location": "333.1365"],
             additionalHeaders: DynamicRequest.headers
@@ -28,31 +31,31 @@ enum LiveAPI {
         return LiveRoomPage(rooms: payload.live_users.items, page: 1, hasMore: false)
     }
 
-    static func roomInfo(roomID: Int) async throws -> LiveRoom {
+    static func roomInfo(roomID: Int, client: APIClient) async throws -> LiveRoom {
         guard roomID > 0 else { throw BiliAPIError.invalidURL }
         let payload: LiveRoomInfoPayload = try await request(path: "xlive/web-room/v1/index/getH5InfoByRoom", params: [
             "room_id": String(roomID)
-        ], roomID: roomID)
+        ], roomID: roomID, client: client)
         return payload.room
     }
 
     /// 弹幕服务器的认证 token 与候选地址（PiliPlus live.dart:159 的同一端点）。
-    static func danmuInfo(roomID: Int) async throws -> LiveDanmuInfoPayload {
+    static func danmuInfo(roomID: Int, client: APIClient) async throws -> LiveDanmuInfoPayload {
         guard roomID > 0 else { throw BiliAPIError.invalidURL }
         return try await request(path: "xlive/web-room/v1/index/getDanmuInfo", params: [
             "id": String(roomID), "type": "0", "web_location": "444.8"
-        ], roomID: roomID, signed: true)
+        ], roomID: roomID, signed: true, client: client)
     }
 
     /// 有效期内的 SC 列表（开播中进房时补齐已有 SC）。返回原始字典，
     /// 字段与 WS 的 SUPER_CHAT_MESSAGE.data 完全同构，走同一条解析路径。
-    static func superChatList(roomID: Int) async throws -> [[String: Any]] {
+    static func superChatList(roomID: Int, session: URLSession) async throws -> [[String: Any]] {
         guard roomID > 0 else { return [] }
         let url = try makeURL(path: "av/v1/SuperChat/getMessageList", params: ["room_id": String(roomID)])
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("https://live.bilibili.com/\(roomID)", forHTTPHeaderField: "Referer")
-        let (data, response) = try await AppNetwork.session.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               root["code"] as? Int == 0,
@@ -62,13 +65,13 @@ enum LiveAPI {
     }
 
     /// PiliPlus live.dart 的同一套播放参数，公开 nav 密钥仍由现有 WBISigner 管理。
-    static func playback(roomID: Int, quality: Int = 10000) async throws -> LivePlayback {
+    static func playback(roomID: Int, quality: Int = 10000, client: APIClient) async throws -> LivePlayback {
         guard roomID > 0 else { throw BiliAPIError.invalidURL }
         let payload: LivePlaybackPayload = try await request(path: "xlive/web-room/v2/index/getRoomPlayInfo", params: [
             "room_id": String(roomID), "protocol": "0,1", "format": "0,1,2", "codec": "0,1,2",
             "qn": String(max(0, quality)), "platform": "web", "ptype": "8", "dolby": "5",
             "panorama": "1", "web_location": "444.8"
-        ], roomID: roomID, signed: true)
+        ], roomID: roomID, signed: true, client: client)
         let playback = payload.playback(fallbackRoomID: roomID)
         if playback.isLive, playback.candidates.isEmpty {
             throw BiliAPIError.apiError(code: -1, message: String(localized: "直播地址暂不可用，请稍后重试"))
@@ -77,17 +80,17 @@ enum LiveAPI {
     }
 
     private static func request<T: Decodable>(path: String, params: [String: String] = [:],
-                                              roomID: Int? = nil, signed: Bool = false) async throws -> T {
-        let params = signed ? try await WBISigner.shared.sign(params: params) : params
-        let envelope: LiveResponse<T> = try await APIClient.shared.getRaw(
+                                              roomID: Int? = nil, signed: Bool = false, client: APIClient) async throws -> T {
+        let params = signed ? try await client.signWebParameters(params) : params
+        let envelope: LiveResponse<T> = try await client.getRaw(
             url: makeURL(path: path, params: params),
             additionalHeaders: ["Referer": "https://live.bilibili.com/" + (roomID.map(String.init) ?? "")]
         )
         return try envelope.value()
     }
 
-    private static func requestApp<T: Decodable>(url: URL) async throws -> T {
-        let envelope: LiveResponse<T> = try await APIClient.shared.getRaw(url: url, additionalHeaders: [
+    private static func requestApp<T: Decodable>(url: URL, client: APIClient) async throws -> T {
+        let envelope: LiveResponse<T> = try await client.getRaw(url: url, additionalHeaders: [
             "User-Agent": BiliHeaders.appUserAgent,
             "Referer": "https://live.bilibili.com/",
             // 与 APIClient.postApp 一致，App 端身份只由 access_key 表明。

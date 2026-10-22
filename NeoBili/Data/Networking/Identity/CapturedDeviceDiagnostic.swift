@@ -2,13 +2,13 @@ import Foundation
 import CryptoKit
 
 /// Private resource is added only to the explicitly authorized local Debug artifact.
-enum CapturedDeviceDiagnostic {
+public enum CapturedDeviceDiagnostic {
     #if DEBUG && NEOBILI_CAPTURED_DEVICE_DIAGNOSTIC
-    static let isEnabled = true
+    public static let isEnabled = true
     #else
-    static let isEnabled = false
+    public static let isEnabled = false
     #endif
-    struct Configuration: Codable {
+    public struct Configuration: Codable, Sendable {
         var buvid: String
         let guestID: String
         var generationSeedIDFV: String? = nil
@@ -16,7 +16,7 @@ enum CapturedDeviceDiagnostic {
         var registrationScopeGuestID: String? = nil
         var parsedGuestID: Int64 { Int64(guestID)! }
     }
-    static let configuration: Configuration? = {
+    public static let configuration: Configuration? = {
         guard isEnabled, let url = Bundle.main.url(forResource: "DeviceIdentityComparison", withExtension: "json"),
               let data = try? Data(contentsOf: url) else { return nil }
         return decode(data)

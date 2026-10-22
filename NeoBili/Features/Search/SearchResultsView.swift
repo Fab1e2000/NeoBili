@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 搜索结果列表。
@@ -7,12 +10,14 @@ struct SearchResultsView: View {
     /// 和搜索入口共用视图模型，保留查询与结果状态。
     let viewModel: SearchViewModel
 
+    @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(\.videoTransitionNamespace) private var videoTransition
+    @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
     private var visibleResults: [SearchResultItem] {
-        viewModel.results.hidingKnownPortraitVideos(hidesPortraitVideos)
+        viewModel.results.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
@@ -52,7 +57,7 @@ struct SearchResultsView: View {
                         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
                         // 搜索结果里没有 cid，所以预取要先取一次详情再取播放地址。
                         // 详情会一起缓存下来，进入视频页时不会重复请求。
-                        .task { await VideoPreparationCache.shared.prefetchWhenSettled(bvid: item.bvid) }
+                        .task { await preparation.prefetchWhenSettled(bvid: item.bvid) }
                     }
                 }
                 if let message = viewModel.loadMoreError {
@@ -74,7 +79,7 @@ struct SearchResultsView: View {
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
         .overlay {
-            if viewModel.isLoading || (visibleResults.isEmpty && viewModel.results.hasPendingVideoDimensions(hidesPortraitVideos)) {
+            if viewModel.isLoading || (visibleResults.isEmpty && viewModel.results.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering)) {
                 LoadingTaskAnchor()
             } else if let message = viewModel.errorMessage {
                 ContentUnavailableView {

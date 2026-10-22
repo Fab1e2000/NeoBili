@@ -1,3 +1,6 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
 import XCTest
 import UIKit
 @testable import NeoBili
@@ -41,6 +44,25 @@ final class ImageCacheBudgetTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
     }
 
+    func testReleasedViewerDoesNotRetainLateDownloadBeyondBudget() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let data = try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }.pngData())
+        let started = expectation(description: "download started")
+        let gate = BudgetDownloadGate()
+        let cache = ImageFileCache(directory: directory, byteLimit: 0) { request in
+            await gate.wait(started: started)
+            return (data, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let owner = UUID()
+        let loading = Task { try await cache.localFile(for: URL(string: "https://example.invalid/late.png")!, owner: owner) }
+        await fulfillment(of: [started], timeout: 2)
+        await cache.release(owner: owner)
+        await gate.release()
+        let file = try await loading.value
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    }
+
     func testExpiredFilesAreRemovedOnNextCacheActivity() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -61,4 +83,12 @@ private final class ImageCacheClock: @unchecked Sendable {
     private var value = Date(timeIntervalSince1970: 1_000_000)
     var date: Date { lock.withLock { value } }
     func advance(by seconds: TimeInterval = 1) { lock.withLock { value.addTimeInterval(seconds) } }
+}
+
+private actor BudgetDownloadGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    func wait(started: XCTestExpectation) async {
+        await withCheckedContinuation { continuation = $0; started.fulfill() }
+    }
+    func release() { continuation?.resume(); continuation = nil }
 }

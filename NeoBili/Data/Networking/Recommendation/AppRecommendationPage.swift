@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// App 推荐接口的一页。基础解析源自 PiliPlus，广告位信息按官方响应区分：

@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 extension BiliAPI {
@@ -7,7 +10,7 @@ extension BiliAPI {
     /// 输入，见 `PlaybackSourceBuilder.edlURL`），不需要像 AVFoundation 那样
     /// 先探测再拼 composition，所以 DASH 和 durl 对首帧速度没有区别——直接
     /// 按编码能力和画质优先选 DASH，durl 只在稿件不提供 DASH 时才用到。
-    static func playURL(bvid: String, cid: Int, quality: Int = 127) async throws -> PlayURLData {
+    static func playURL(bvid: String, cid: Int, quality: Int = 127, client: APIClient, identity: DeviceIdentity) async throws -> PlayURLData {
         let quality = String(max(1, quality))
         let formats: [[String: String]] = [
             ["qn": quality, "fnval": "4048", "fnver": "0", "fourk": "1", "otype": "json", "platform": "pc"],
@@ -19,7 +22,7 @@ extension BiliAPI {
 
         for extraParams in formats {
             do {
-                let payload = try await requestPlayURL(bvid: bvid, cid: cid, extraParams: extraParams)
+                let payload = try await requestPlayURL(bvid: bvid, cid: cid, extraParams: extraParams, client: client, identity: identity)
                 if payload.isRiskControlled {
                     throw BiliAPIError.riskControlled
                 }
@@ -39,14 +42,15 @@ extension BiliAPI {
     private static func requestPlayURL(
         bvid: String,
         cid: Int,
-        extraParams: [String: String]
+        extraParams: [String: String],
+        client: APIClient, identity: DeviceIdentity
     ) async throws -> PlayURLData {
         var params = extraParams
         params["bvid"] = bvid
         params["cid"] = String(cid)
-        let isLoggedIn = await DeviceIdentity.shared.isLoggedIn
+        let isLoggedIn = await identity.isLoggedIn
         params.merge(playbackContextParams(isLoggedIn: isLoggedIn)) { current, _ in current }
-        return try await APIClient.shared.get(
+        return try await client.get(
             path: "x/player/wbi/playurl",
             params: params,
             requiresWBI: true

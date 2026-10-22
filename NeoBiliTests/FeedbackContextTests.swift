@@ -1,3 +1,9 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
 @testable import NeoBili
 
@@ -61,13 +67,14 @@ final class FeedbackContextTests: XCTestCase {
 
     func testBothDirectFeedbackAPIsRejectMismatchedGenerationBeforeNetwork() async throws {
         let original = UUID(), current = UUID()
+        let client = TestNetworking.client(identity: TestNetworking.identity())
         let options = try XCTUnwrap(BiliAPI.feedbackOptions(for: card(session: original), expectedSessionID: original))
         do {
-            try await BiliAPI.feedDislike(options, reason: reason, expectedSessionID: current)
+            try await BiliAPI.feedDislike(options, reason: reason, expectedSessionID: current, client: client)
             XCTFail("Old login context must not be sent")
         } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
         do {
-            try await BiliAPI.feedDislikeCancel(options, expectedSessionID: current)
+            try await BiliAPI.feedDislikeCancel(options, expectedSessionID: current, client: client)
             XCTFail("Old login undo must not be sent")
         } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
     }

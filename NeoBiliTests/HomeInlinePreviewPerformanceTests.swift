@@ -1,3 +1,9 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import Observation
 import Synchronization
 import XCTest
@@ -17,6 +23,23 @@ final class HomeInlinePreviewPerformanceTests: XCTestCase {
     nonisolated private static func source() -> PlaybackSource {
         .init(video: .init(primary: URL(string: "https://example.invalid/preview")!, backups: []),
               audio: nil, duration: 120)
+    }
+
+    func testPreviewEventsUseTheInjectedAccountSession() async throws {
+        let suite = "neobili.preview-session.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let opened = expectation(description: "preview opened")
+        let preview = HomeInlinePreview(loader: { _, _, _ in (1, Self.source()) },
+            opener: { _, _ in opened.fulfill() }, dependencies: .isolated(defaults: defaults))
+        defer { preview.stop() }
+        preview.select(video(1))
+        await fulfillment(of: [opened], timeout: 2)
+        let session = try XCTUnwrap(preview.session)
+        session.onEvent?(.firstFrame)
+        session.onEvent?(.duration(180))
+        XCTAssertTrue(preview.hasFirstFrame)
+        XCTAssertEqual(preview.duration, 180)
     }
 
     func testRapidlyPassingCardsAllocatesNoSessions() async throws {
@@ -101,7 +124,11 @@ final class HomeInlinePreviewPerformanceTests: XCTestCase {
         let card = video(10, cid: 0)
         let started = expectation(description: "Resolved manifest started")
         let cancelled = expectation(description: "Underlying resolved manifest cancelled")
-        let account = DeviceIdentity.shared.loginSessionID
+        let suite = "neobili.preview-cancellation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dependencies = PlaybackDependencies.isolated(defaults: defaults)
+        let account = dependencies.services.session.currentID()
         let cache = VideoPreparationCache(detailLoader: { bvid in
             VideoDetail(bvid: bvid, aid: 10, cid: 777, title: "Fixture", desc: "", pic: "",
                 duration: 120, pubdate: 0, owner: .init(mid: 0, name: "Fixture", face: ""),
@@ -117,7 +144,7 @@ final class HomeInlinePreviewPerformanceTests: XCTestCase {
         }, sessionProvider: { account })
         let preview = HomeInlinePreview(loader: { video, owner, account in
             try await HomeInlinePreview.loadPreviewSource(video, owner: owner, account: account, cache: cache)
-        })
+        }, dependencies: dependencies)
         defer { preview.stop() }
         preview.select(card)
         await fulfillment(of: [started], timeout: 2)

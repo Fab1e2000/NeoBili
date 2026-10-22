@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 
@@ -9,7 +12,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.displayScale) private var displayScale
 
-    func makeUIView(context: Context) -> CardView { CardView() }
+    func makeUIView(context: Context) -> CardView { CardView(pipeline: context.environment.imagePipeline) }
 
     func updateUIView(_ view: CardView, context: Context) {
         view.configure(video: video, titleWidth: titleWidth, dynamicTypeSize: dynamicTypeSize, scale: displayScale, aspectRatio: coverAspectRatio)
@@ -21,9 +24,10 @@ struct NativeHomeVideoCard: UIViewRepresentable {
     }
 
     final class CardView: UIView {
-        private let cover = CardImageView()
-        private let avatar = CardImageView(symbol: "person.crop.circle")
+        private let cover: CardImageView
+        private let avatar: CardImageView
         private var avatarTask: Task<Void, Never>?
+        private var titleTask: Task<Void, Never>?
         private let resolveAvatar: @Sendable (Int) async -> URL?
         private let title = UIImageView()
         private let owner = UILabel()
@@ -55,7 +59,9 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             let aspectRatio: CGFloat
         }
 
-        init(resolveAvatar: @escaping @Sendable (Int) async -> URL? = { await OwnerAvatarCache.shared.url(for: $0) }) {
+        init(pipeline: BiliImagePipeline = .live, resolveAvatar: @escaping @Sendable (Int) async -> URL? = { await OwnerAvatarCache.shared.url(for: $0) }) {
+            cover = CardImageView(pipeline: pipeline)
+            avatar = CardImageView(symbol: "person.crop.circle", pipeline: pipeline)
             self.resolveAvatar = resolveAvatar
             super.init(frame: .zero)
             isUserInteractionEnabled = false
@@ -92,6 +98,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             badge.layer.cornerCurve = .continuous
             badge.clipsToBounds = true
             badge.isHidden = true
+            title.accessibilityIdentifier = "home.card.title.bitmap"
             title.contentMode = .topLeft
             title.tintColor = .label
             fallbackTitle.numberOfLines = 2
@@ -111,7 +118,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        deinit { avatarTask?.cancel() }
+        deinit { avatarTask?.cancel(); titleTask?.cancel() }
 
         private func updateBorder() {
             layer.borderColor = UIColor.separator.resolvedColor(with: traitCollection).withAlphaComponent(
@@ -124,6 +131,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             let updated = Configuration(video: video, width: titleWidth, typeSize: dynamicTypeSize, scale: scale, aspectRatio: aspectRatio)
             guard configuration != updated else { return }
             configuration = updated
+            titleTask?.cancel()
             coverAspectRatio = aspectRatio
             // Rebinding a reused card changes its content, not its typography.
             // Avoid repeated font lookup and symbol configuration on that path.
@@ -206,6 +214,17 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                     fallbackTitle.text = video.title
                 }
             }
+            if !video.isLargeRecommendationCard, title.isHidden, PreparedTitle.supports(video.title),
+               let key = PreparedTitle.Key(title: video.title, width: titleWidth, fontSize: fontSize, scale: scale) {
+                titleTask = Task { [weak self] in
+                    guard let image = await PreparedTitle.load(key), !Task.isCancelled,
+                          let self, self.configuration == updated else { return }
+                    self.title.image = image
+                    self.title.isHidden = false
+                    self.fallbackTitle.isHidden = true
+                    self.fallbackTitle.attributedText = nil
+                }
+            }
             let coverSize = CGSize(width: titleWidth + 16, height: (titleWidth + 16) / coverAspectRatio)
             cover.load(video.secureCoverURL, size: coverSize, scale: scale)
             avatarTask?.cancel()
@@ -280,7 +299,10 @@ struct NativeHomeVideoCard: UIViewRepresentable {
         private var task: Task<Void, Never>?
         private struct Request: Equatable { let url: URL?; let pixels: ImagePixelSize? }
 
-        init(symbol: String = "photo") {
+        private let pipeline: BiliImagePipeline
+
+        init(symbol: String = "photo", pipeline: BiliImagePipeline = .live) {
+            self.pipeline = pipeline
             failure = UIImageView(image: UIImage(systemName: symbol))
             super.init(frame: .zero)
             clipsToBounds = true
@@ -320,15 +342,15 @@ struct NativeHomeVideoCard: UIViewRepresentable {
         private func start(_ request: Request) {
             guard let url = request.url, let pixels = request.pixels else { return }
             failure.isHidden = true
-            if let cached = BiliImageMemoryCache.image(for: url, pixelSize: pixels) {
+            if let cached = BiliImageMemoryCache.image(for: url, pixelSize: pixels, pipeline: pipeline) {
                 imageView.image = cached
                 backgroundColor = .clear
                 return
             }
-            task = Task { [weak self] in
+            task = Task { [weak self, pipeline] in
                 for attempt in 0..<3 {
                     do {
-                        let image = try await BiliImageLoader.load(url, pixelSize: pixels)
+                        let image = try await BiliImageLoader.load(url, pixelSize: pixels, pipeline: pipeline)
                         guard !Task.isCancelled, let self, self.request == request else { return }
                         self.imageView.image = image
                         self.failure.isHidden = true

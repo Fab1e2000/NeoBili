@@ -1,3 +1,9 @@
+#if canImport(NeoBiliData)
+@testable import NeoBiliData
+#endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 import XCTest
@@ -34,7 +40,7 @@ final class VideoQualityDeviceSmokeTests: XCTestCase {
             bvid: "BV1po4y177z8", cid: 1_163_679_532,
             playbackURLLoader: { bvid, cid in
                 do {
-                    let payload = try await BiliAPI.playURL(bvid: bvid, cid: cid)
+                    let payload = try await BiliAPI.playURL(bvid: bvid, cid: cid, client: .shared, identity: .shared)
                     await evidence.record(payload, requested: 127)
                     return payload
                 } catch {
@@ -44,7 +50,7 @@ final class VideoQualityDeviceSmokeTests: XCTestCase {
             },
             qualityPlaybackURLLoader: { bvid, cid, quality in
                 do {
-                    let payload = try await BiliAPI.playURL(bvid: bvid, cid: cid, quality: quality)
+                    let payload = try await BiliAPI.playURL(bvid: bvid, cid: cid, quality: quality, client: .shared, identity: .shared)
                     await evidence.record(payload, requested: quality)
                     return payload
                 } catch {

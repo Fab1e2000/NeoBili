@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 struct PlaybackSettingsView: View {
@@ -21,22 +24,10 @@ struct PlaybackSettingsView: View {
                     }
                 }
             }
-            Section {
+            Section("播放方式") {
                 Toggle("详情页直接播放", isOn: $detailAutoPlay)
-            } footer: {
-                Text("关闭后打开视频详情页只加载页面内容，点击播放键后才开始播放。")
-            }
-            Section {
                 Toggle("缩略播放器", isOn: $miniPlayerEnabled)
-            } header: {
-                Text("播放方式")
-            } footer: {
-                Text(miniPlayerEnabled ? "退出视频页面后在底部继续播放，底部标签栏可随滚动收缩。" : "退出视频页面后停止播放，底部标签栏始终保持展开。")
-            }
-            Section {
                 Toggle("滑过视频时预取播放地址", isOn: $prefetchesOnScroll)
-            } footer: {
-                Text("开启后提前获取列表视频的播放地址，不下载媒体内容。可能缩短点开后的等待时间，也会增加接口请求；对推荐结果的影响尚未确认。")
             }
         }
         .settingsPage("播放与画质")

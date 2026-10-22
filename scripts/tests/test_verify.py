@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -128,6 +129,45 @@ class ValidationWorkflowTests(unittest.TestCase):
                                     env=self.env, input="refs/heads/test sha ref sha\n",
                                     capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, int(status), result.stdout + result.stderr)
+
+
+class SimulatorArgumentTests(unittest.TestCase):
+    @patch.dict(os.environ, {
+        "NEOBILI_SIMULATOR_ID": "ci-device",
+        "NEOBILI_SIMULATOR_NAME": "CI iPhone",
+        "NEOBILI_SIMULATOR_RUNTIME": "iOS-26-5",
+        "NEOBILI_DERIVED_DATA": "/unused-ci-cache",
+    })
+    def test_extra_arguments_keep_boundaries_and_default_invocation_works(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "scripts").mkdir()
+            (root / "bin").mkdir()
+            shutil.copyfile(ROOT / "scripts/simulator.sh", root / "scripts/simulator.sh")
+            xcrun = root / "bin/xcrun"
+            xcrun.write_text("#!/bin/bash\necho '{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-27-0\":[{\"name\":\"iPhone 18 Pro\",\"udid\":\"fixture\",\"isAvailable\":true}]}}'\n")
+            xcrun.chmod(0o755)
+            xcode = root / "bin/xcodebuild"
+            xcode.write_text('#!/bin/bash\n[[ "$1" == -version ]] && exit 0\nprintf "%s\\n" "$@" > "$CALL_LOG"\nexit 17\n')
+            xcode.chmod(0o755)
+            # Host/CI simulator settings must not select devices or caches outside
+            # this fixture. Keep system settings such as PATH for script tools.
+            fixture_env = {key: value for key, value in os.environ.items()
+                           if not key.startswith("NEOBILI_")}
+            env = dict(fixture_env, PATH=str(root / "bin") + os.pathsep + os.environ["PATH"],
+                       TMPDIR=directory, CALL_LOG=str(root / "calls"))
+            for arguments in ([], ["SomeTests", "--", "-enableThreadSanitizer", "YES", "OTHER_SWIFT_FLAGS=a b"]):
+                result = subprocess.run(["bash", str(root / "scripts/simulator.sh"), "test", *arguments],
+                                        env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 17, result.stdout + result.stderr)
+                calls = (root / "calls").read_text().splitlines()
+                self.assertIn("CODE_SIGNING_ALLOWED=NO", calls)
+                self.assertIn("platform=iOS Simulator,id=fixture", calls)
+                self.assertIn(str(root / "DerivedData/Simulator"), calls)
+                if arguments:
+                    self.assertIn("OTHER_SWIFT_FLAGS=a b", calls)
+                    self.assertIn("-only-testing:NeoBiliTests/SomeTests", calls)
+                self.assertFalse((root / "neobili-simulator-fixture.lock").exists())
 
 
 if __name__ == "__main__":

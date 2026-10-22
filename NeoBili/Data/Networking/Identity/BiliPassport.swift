@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 /// passport.bilibili.com 上的登录端点（扫码 / 账号密码）。
@@ -16,8 +19,8 @@ enum BiliPassport {
 
     typealias QRCodeInfo = LoginModels.QRCodeInfo
 
-    static func generateQRCode() async throws -> QRCodeInfo {
-        try await get(path: "x/passport-login/web/qrcode/generate")
+    static func generateQRCode(session: URLSession) async throws -> QRCodeInfo {
+        try await get(path: "x/passport-login/web/qrcode/generate", session: session)
     }
 
     typealias QRCodePollOutcome = LoginModels.QRCodePollOutcome
@@ -26,9 +29,9 @@ enum BiliPassport {
     /// 直接读顶层会把「未扫码」误判成「登录成功」）：
     /// 86101 未扫码、86090 已扫码未确认、86038 已过期、0 已确认（此刻
     /// Set-Cookie 才会带上 SESSDATA 等凭据）。
-    static func pollQRCode(_ qrcodeKey: String) async throws -> QRCodePollOutcome {
+    static func pollQRCode(_ qrcodeKey: String, session: URLSession) async throws -> QRCodePollOutcome {
         let request = try makeRequest(path: "x/passport-login/web/qrcode/poll", query: ["qrcode_key": qrcodeKey])
-        let (data, response) = try await send(request)
+        let (data, response) = try await send(request, session: session)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
         }
@@ -81,12 +84,12 @@ enum BiliPassport {
     /// 显示服务端提供的 iPhone 登录确认页。
     typealias AppQRCodeInfo = LoginModels.AppQRCodeInfo
 
-    static func generateAppQRCode() async throws -> AppQRCodeInfo {
+    static func generateAppQRCode(session: URLSession) async throws -> AppQRCodeInfo {
         let params = AppSigner.signed(
             AppClientIdentity.parameters.merging(["local_id": "0"]) { _, value in value },
             purpose: .passport
         )
-        return try await postSigned(path: "x/passport-tv-login/qrcode/auth_code", params: params)
+        return try await postSigned(path: "x/passport-tv-login/qrcode/auth_code", params: params, session: session)
     }
 
     /// 轮询 App 扫码结果。
@@ -94,7 +97,7 @@ enum BiliPassport {
     /// 和网页那条链路不同，这里的业务状态码在**顶层** `code` 上，凭据也在
     /// JSON body 里而不是 Set-Cookie 头里：
     /// 86039 未确认、86038 已过期、0 已确认。
-    static func pollAppQRCode(_ authCode: String, fallbackCookies: LoginCookies? = nil) async throws -> QRCodePollOutcome {
+    static func pollAppQRCode(_ authCode: String, fallbackCookies: LoginCookies? = nil, session: URLSession) async throws -> QRCodePollOutcome {
         let params = AppSigner.signed(
             AppClientIdentity.parameters.merging(["auth_code": authCode, "local_id": "0"]) { _, value in value },
             purpose: .passport
@@ -109,7 +112,7 @@ enum BiliPassport {
         request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = AppSigner.queryString(from: params).data(using: .utf8)
 
-        let (data, response) = try await send(request)
+        let (data, response) = try await send(request, session: session)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
         }
@@ -189,10 +192,10 @@ enum BiliPassport {
     /// 用已登录的 Cookie 替自己确认一张iPhone App
     /// 登录二维码，再像扫码一样轮询出 `access_key`（PiliPlus 把这个确认接口标为「cookie转access_key」）。
     /// 旧链路仅保留用于原有回归；生产入口已改为 SMSPassport，不保证设备列表新增条目。
-    static func exchangeAccessKey(cookies: LoginCookies) async throws -> String {
-        let info = try await generateAppQRCode()
+    static func exchangeAccessKey(cookies: LoginCookies, session: URLSession) async throws -> String {
+        let info = try await generateAppQRCode(session: session)
         let request = try makeAppConfirmationRequest(authCode: info.authCode, cookies: cookies)
-        let (envelope, response) = try await sendEnvelope(request)
+        let (envelope, response) = try await sendEnvelope(request, session: session)
         guard (200...299).contains(response.statusCode) else { throw PassportError.invalidResponse }
         guard envelope.code == 0 else {
             throw PassportError.rejected("\(envelope.message ?? String(localized: "确认登录失败")) (code \(envelope.code))")
@@ -200,7 +203,7 @@ enum BiliPassport {
         // 确认后服务端偶尔要一小会儿才把状态改成已确认。
         for attempt in 0..<4 {
             if attempt > 0 { try await Task.sleep(for: .milliseconds(500)) }
-            if case .confirmed(_, let accessKey?) = try await pollAppQRCode(info.authCode, fallbackCookies: cookies), !accessKey.isEmpty {
+            if case .confirmed(_, let accessKey?) = try await pollAppQRCode(info.authCode, fallbackCookies: cookies, session: session), !accessKey.isEmpty {
                 return accessKey
             }
         }
@@ -223,7 +226,8 @@ enum BiliPassport {
     /// App 端接口统一走 POST + 签名后的表单体。
     private static func postSigned<Response: Decodable>(
         path: String,
-        params: [String: String]
+        params: [String: String],
+        session: URLSession
     ) async throws -> Response {
         guard let url = URL(string: baseURL.appendingPathComponent(path).absoluteString) else {
             throw PassportError.invalidResponse
@@ -235,7 +239,7 @@ enum BiliPassport {
         request.setValue(BiliHeaders.appUserAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = AppSigner.queryString(from: params).data(using: .utf8)
 
-        let (data, response) = try await send(request)
+        let (data, response) = try await send(request, session: session)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
         }
@@ -256,16 +260,16 @@ enum BiliPassport {
 
     typealias WebKey = LoginModels.WebKey
 
-    static func webKey() async throws -> WebKey {
-        try await get(path: "x/passport-login/web/key")
+    static func webKey(session: URLSession) async throws -> WebKey {
+        try await get(path: "x/passport-login/web/key", session: session)
     }
 
     /// 极验（GT3）下发参数。`token` 要原样带回登录表单；gt/challenge 交给
     /// 滑块验证 WebView，验证成功后得到的 challenge/validate/seccode 一并回传。
     typealias CaptchaInfo = LoginModels.CaptchaInfo
 
-    static func captcha() async throws -> CaptchaInfo {
-        try await get(path: "x/passport-login/captcha", query: ["source": "main_web"])
+    static func captcha(session: URLSession) async throws -> CaptchaInfo {
+        try await get(path: "x/passport-login/captcha", query: ["source": "main_web"], session: session)
     }
 
     /// 提交账号密码。`passwordEncrypted` 是 `PasswordCipher` 加密后的结果；
@@ -276,7 +280,8 @@ enum BiliPassport {
         captchaToken: String,
         challenge: String,
         validate: String,
-        seccode: String
+        seccode: String,
+        session: URLSession
     ) async throws -> LoginCookies {
         var request = try makeRequest(path: "x/passport-login/web/login")
         request.httpMethod = "POST"
@@ -292,7 +297,7 @@ enum BiliPassport {
         ]
         request.httpBody = Self.formEncoded(form).data(using: .utf8)
 
-        let (envelope, response) = try await sendEnvelope(request)
+        let (envelope, response) = try await sendEnvelope(request, session: session)
         guard (200...299).contains(response.statusCode) else {
             throw PassportError.invalidResponse
         }
@@ -335,14 +340,14 @@ enum BiliPassport {
     /// 关闭自动 Cookie 还有一层用意：登录态由我们自己保管（Keychain + 手写
     /// Cookie 头），共享罐里若留着上一次登录的 SESSDATA，会被系统自动贴到
     /// 登录请求上，让服务端看到一个自相矛盾的会话。
-    private static func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+    private static func send(_ request: URLRequest, session: URLSession) async throws -> (Data, URLResponse) {
         var request = request
         request.httpShouldHandleCookies = false
         do {
-            return try await AppNetwork.session.data(for: request)
+            return try await session.data(for: request)
         } catch let error as URLError where isTransient(error) {
             try await Task.sleep(for: .milliseconds(400))
-            return try await AppNetwork.session.data(for: request)
+            return try await session.data(for: request)
         }
     }
 
@@ -354,8 +359,8 @@ enum BiliPassport {
     static func failureText(for error: Error) -> String { LoginModels.failureText(for: error) }
 
     /// 只关心 envelope 的请求（扫码轮询、密码登录）走这里，响应头要单独保留。
-    private static func sendEnvelope(_ request: URLRequest) async throws -> (Envelope, HTTPURLResponse) {
-        let (data, response) = try await send(request)
+    private static func sendEnvelope(_ request: URLRequest, session: URLSession) async throws -> (Envelope, HTTPURLResponse) {
+        let (data, response) = try await send(request, session: session)
         guard let http = response as? HTTPURLResponse else {
             throw PassportError.invalidResponse
         }
@@ -382,9 +387,9 @@ enum BiliPassport {
     }
 
     /// 常规 GET：解出强类型的 data 字段。
-    private static func get<Response: Decodable>(path: String, query: [String: String] = [:]) async throws -> Response {
+    private static func get<Response: Decodable>(path: String, query: [String: String] = [:], session: URLSession) async throws -> Response {
         let request = try makeRequest(path: path, query: query)
-        let (data, response) = try await send(request)
+        let (data, response) = try await send(request, session: session)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw PassportError.invalidResponse
         }

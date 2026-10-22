@@ -1,7 +1,10 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 
 extension SearchService {
-    static func live(client: APIClient = .shared) -> Self {
+    public static func live(client: APIClient) -> Self {
         Self(hotSearches: {
             let payload: HotSearchPayload = try await client.getRaw(url: URL(string: "https://s.search.bilibili.com/main/hotword")!,
                                     additionalHeaders: SearchRequest.headers(keyword: ""))
@@ -11,10 +14,10 @@ extension SearchService {
             return payload.list
         },
             searchVideosOperation: { keyword, page in
-                try await BiliAPI.searchVideos(keyword: keyword, page: page)
+                try await BiliAPI.searchVideos(keyword: keyword, page: page, client: client)
             },
             searchSuggestionsOperation: { term in
-                try await BiliAPI.searchSuggestions(term: term)
+                try await BiliAPI.searchSuggestions(term: term, client: client)
             }
         )
     }

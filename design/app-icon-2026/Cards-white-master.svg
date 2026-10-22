@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<rect width="1024" height="1024" fill="#FFFFFF"/>
+<g id="back" opacity="0.3"><g fill="#FB7AB3"><rect x="307" y="195" width="410" height="307" rx="82"/></g></g>
+<g id="middle" opacity="0.55"><g fill="#FB7AB3"><rect x="246" y="276" width="532" height="369" rx="97"/></g></g>
+<g id="front" opacity="1"><g fill="#FB7AB3"><rect x="174" y="369" width="676" height="471" rx="123"/></g></g>
+<g id="play" opacity="1"><path d="M 463.8 545.5 Q 463.8 527.0 479.9 536.0 L 586.2 595.0 Q 602.4 604.0 586.2 613.0 L 479.9 672.0 Q 463.8 681.0 463.8 662.5 Z" fill="#FFFFFF"/></g>
+</svg>

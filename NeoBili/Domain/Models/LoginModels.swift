@@ -1,19 +1,29 @@
 import Foundation
 
-enum LoginModels {
-    struct LoginCookies: Codable, Equatable, Sendable {
-        let sessdata: String
-        let biliJct: String
-        let dedeUserID: String
+public enum LoginModels {
+    public struct LoginCookies: Codable, Equatable, Sendable {
+        public let sessdata: String
+        public let biliJct: String
+        public let dedeUserID: String
+
+        public init(
+            sessdata: String,
+            biliJct: String,
+            dedeUserID: String
+        ) {
+            self.sessdata = sessdata
+            self.biliJct = biliJct
+            self.dedeUserID = dedeUserID
+        }
     }
 
-    enum PassportError: LocalizedError, Equatable {
+    public enum PassportError: LocalizedError, Equatable {
         case invalidResponse
         case missingCookies
         /// 服务端业务错误（密码错误、验证码失败等），带上接口原话。
         case rejected(String)
 
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .invalidResponse: return String(localized: "登录服务响应异常")
             case .missingCookies: return String(localized: "登录成功但未收到凭据")
@@ -22,10 +32,10 @@ enum LoginModels {
         }
     }
 
-    struct QRCodeInfo: Decodable, Sendable {
+    public struct QRCodeInfo: Decodable, Sendable {
         /// 二维码内容本身，渲染成二维码图片给 B 站 App 扫。
-        let url: String
-        let qrcodeKey: String
+        public let url: String
+        public let qrcodeKey: String
 
         enum CodingKeys: String, CodingKey {
             case url
@@ -33,7 +43,7 @@ enum LoginModels {
         }
     }
 
-    enum QRCodePollOutcome: Sendable {
+    public enum QRCodePollOutcome: Sendable {
         /// 二维码还在等待被扫。
         case waiting
         /// 已扫码，等待手机上确认。
@@ -47,9 +57,9 @@ enum LoginModels {
         case confirmed(LoginCookies, accessKey: String?)
     }
 
-    struct AppQRCodeInfo: Decodable, Sendable {
-        let url: String
-        let authCode: String
+    public struct AppQRCodeInfo: Decodable, Sendable {
+        public let url: String
+        public let authCode: String
 
         enum CodingKeys: String, CodingKey {
             case url
@@ -57,17 +67,17 @@ enum LoginModels {
         }
     }
 
-    struct WebKey: Decodable, Sendable {
+    public struct WebKey: Decodable, Sendable {
         /// 本次加密用的盐。
-        let hash: String
+        public let hash: String
         /// PEM 格式的 RSA 公钥。
-        let key: String
+        public let key: String
     }
 
-    struct CaptchaInfo: Decodable, Sendable {
-        let token: String
-        let gt: String
-        let challenge: String
+    public struct CaptchaInfo: Decodable, Sendable {
+        public let token: String
+        public let gt: String
+        public let challenge: String
 
         enum CodingKeys: String, CodingKey {
             case token
@@ -75,7 +85,7 @@ enum LoginModels {
             case challenge
         }
 
-        init(from decoder: Decoder) throws {
+        public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             token = try container.decode(String.self, forKey: .token)
             let geetest = try container.nestedContainer(keyedBy: CodingKeys.self, forKey: .gt)
@@ -84,7 +94,7 @@ enum LoginModels {
         }
     }
 
-    static func isTransient(_ error: Error) -> Bool {
+    public static func isTransient(_ error: Error) -> Bool {
         guard let error = error as? URLError else { return false }
         switch error.code {
         case .networkConnectionLost, .timedOut, .cannotConnectToHost,
@@ -95,7 +105,7 @@ enum LoginModels {
         }
     }
 
-    static func failureText(for error: Error) -> String {
+    public static func failureText(for error: Error) -> String {
         guard let urlError = error as? URLError else { return error.localizedDescription }
         if isTransient(urlError) {
             return String(localized: "网络连接不稳定，请稍后再试（\(urlError.code.rawValue)）")

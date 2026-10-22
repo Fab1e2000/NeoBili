@@ -1,6 +1,6 @@
 import Foundation
 
-enum BiliAPIError: Error, LocalizedError {
+public enum BiliAPIError: Error, LocalizedError {
     case invalidURL
     case missingWbiKeys
     case httpStatus(Int)
@@ -9,7 +9,7 @@ enum BiliAPIError: Error, LocalizedError {
     case riskControlled
     case missingAccessKey
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidURL: return String(localized: "无效的请求地址")
         case .missingWbiKeys: return String(localized: "无法获取 WBI 签名密钥")

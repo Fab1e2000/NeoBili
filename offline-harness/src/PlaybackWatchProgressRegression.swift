@@ -137,8 +137,9 @@ struct PlaybackWatchProgressRegression {
     @MainActor
     private static func testReopenedPlayerSharesOnlyItsOwnWriter() async {
         let recorder = SlowRecorder()
+        let registry = PlaybackWatchProgressSender.Registry()
         let login = UUID()
-        var old: PlaybackWatchProgressSender? = .shared(loginSessionID: login, bvid: "same", cid: 1) {
+        var old: PlaybackWatchProgressSender? = registry.sender(loginSessionID: login, bvid: "same", cid: 1) {
             await recorder.report($0)
         }
         let previous = ObjectIdentifier(old!)
@@ -146,7 +147,7 @@ struct PlaybackWatchProgressRegression {
         await recorder.waitForCount(1)
         old?.enqueue(60)
         old = nil // The old video page can be fully released during the request.
-        let reopened = PlaybackWatchProgressSender.shared(loginSessionID: login, bvid: "same", cid: 1) {
+        let reopened = registry.sender(loginSessionID: login, bvid: "same", cid: 1) {
             await recorder.report($0)
         }
         expect(ObjectIdentifier(reopened) == previous, "reopening same part must retain the in-flight writer")
@@ -155,15 +156,15 @@ struct PlaybackWatchProgressRegression {
         await recorder.waitForCount(2)
         let values = await recorder.values
         expect(values == [55, 65], "new actual progress must replace pending old progress, never race it: \(values)")
-        let otherPart = PlaybackWatchProgressSender.shared(loginSessionID: login, bvid: "same", cid: 2) { _ in }
-        let otherVideo = PlaybackWatchProgressSender.shared(loginSessionID: login, bvid: "other", cid: 1) { _ in }
-        let otherLogin = PlaybackWatchProgressSender.shared(loginSessionID: UUID(), bvid: "same", cid: 1) { _ in }
+        let otherPart = registry.sender(loginSessionID: login, bvid: "same", cid: 2) { _ in }
+        let otherVideo = registry.sender(loginSessionID: login, bvid: "other", cid: 1) { _ in }
+        let otherLogin = registry.sender(loginSessionID: UUID(), bvid: "same", cid: 1) { _ in }
         expect(otherPart !== reopened, "different parts must not replace each other's pending progress")
         expect(otherVideo !== reopened, "different videos must not share writers")
         expect(otherLogin !== reopened, "different login sessions must not share writers")
         weak var released: PlaybackWatchProgressSender?
         do {
-            let unused = PlaybackWatchProgressSender.shared(loginSessionID: login, bvid: "unused", cid: 1) { _ in }
+            let unused = registry.sender(loginSessionID: login, bvid: "unused", cid: 1) { _ in }
             released = unused
         }
         expect(released == nil, "registry must not retain idle closed players")

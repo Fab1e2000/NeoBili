@@ -60,6 +60,22 @@ git config --local core.hooksPath .githooks
 `NEOBILI_SIMULATOR_NAME` 与 `NEOBILI_SIMULATOR_RUNTIME`（例如 `iOS-27-0`）指定机型和系统。
 找不到或存在多个匹配时停止，不猜测其他设备。`NEOBILI_DERIVED_DATA` 可覆盖编译缓存路径。
 
+### Sanitizer 与严格并发检查
+
+底层 Simulator 入口接受 `--` 后逐个传递的 xcodebuild 参数，仍使用同一设备选择、
+Regression 数据隔离和 UDID 锁。参数不经过 shell 求值。诊断运行与普通回归分开记录：
+
+```sh
+NEOBILI_FAIL_RUNTIME_ISSUES=1 bash scripts/simulator.sh test -- -enableThreadSanitizer YES
+NEOBILI_FAIL_RUNTIME_ISSUES=1 bash scripts/simulator.sh test -- -enableAddressSanitizer YES -enableUndefinedBehaviorSanitizer YES
+```
+
+诊断命令将 Main Thread Checker 和 sanitizer 的运行时报告视为失败；XCTest 默认加载 Main Thread Checker。
+不要同时开启 Thread Sanitizer 和 Address Sanitizer。额外参数记录在该次运行的
+`environment.txt`，不要通过参数传入凭据。临时编译检查可传
+`SWIFT_STRICT_CONCURRENCY=complete`。诊断采集阻塞时可显式设置
+`NEOBILI_TEST_DIAGNOSTICS=never`，只跳过额外系统诊断，仍保留日志及结果包；默认值为 `on-failure`。Swift 6 本身已启用完整并发安全检查。
+
 ## 验证分层
 
 | 层级 | 入口 | 数据与用途 |
@@ -80,7 +96,7 @@ Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用�
 它不包含本地签名覆盖；账号使用内存 `CredentialStorage`，测试可注入独立身份和 UserDefaults。
 应用测试宿主保留窗口但不加载业务根页面或预热真实接口。
 
-默认网络入口 `AppNetwork.session` 在 Regression 中拦截请求并返回离线错误，不带 Cookie
+App 持有的默认网络入口 `AppNetwork.session` 由 Data 工厂创建，在 Regression 中拦截请求并返回离线错误，不带 Cookie
 或磁盘缓存；测试需要响应时注入专用 session 或 loader。原生 mpv 加载与直播 WebSocket
 在此配置下禁用，播放器状态机使用注入会话验证。新增网络通道必须遵守同样的隔离边界。
 
@@ -100,7 +116,9 @@ python3 scripts/check-architecture.py
 python3 scripts/check-doc-links.py
 ```
 
-边界检查禁止页面/业务模型引用网络实现，也禁止网络层引用页面状态。它是单一 App target 中的维护约束，不代替 Swift 编译器或行为测试。文档检查验证本地目标文件存在，不联网检查外部站点。
+`NeoBiliDomain`、`NeoBiliCore` 和 `NeoBiliData` 是独立静态框架，Debug / Regression / Release 与 App 使用相同配置；Regression 的隔离编译条件也传入模块。测试可以 `@testable import NeoBiliDomain` / `NeoBiliCore` / `NeoBiliData`，离线 harness 则直接编译所需源码。
+
+边界检查禁止页面/业务模型引用网络实现，也禁止网络层引用页面状态。Domain / Core / Data 分别编译；脚本同时检查模块导入方向、禁止 UI 层直接使用传输，以及尚在 App target 内的目录边界。源码检查不代替行为测试。文档检查验证本地目标文件存在，不联网检查外部站点。
 
 ## 修改后的检查
 
@@ -160,6 +178,15 @@ Cookie 或原始值的持久化哈希。原始重放错误输出不转发。相�
 无上下文时只验证公共公钥和时间接口，个性化推荐标为未执行。不要将真实上下文加入源码或终端输出。
 
 ## CI
+
+Build 工作流的构建与回归任务统一使用 `ci-approval` 环境。所有 PR（包括维护者自己的
+PR）及手动运行先等待环境审批，批准前不启动构建或测试 runner。在 Actions 对应运行中
+选择 **Review deployments → ci-approval → Approve and deploy** 后运行；这与 PR 代码审查
+的 Approve 是两个独立操作。PR 更新后创建新运行，旧运行自动取消，新运行需要重新批准。
+
+仓库 Settings → Environments → `ci-approval` 必须配置 Required reviewers 为
+`Fab1e2000`，允许 self-review，并禁止管理员绕过保护规则。环境名称本身不会启用审批，
+迁移仓库时必须同时配置保护规则。发布工作流不使用此环境，仍按版本标签触发。
 
 每次 PR 或手动运行 Build 在 Xcode 26.2、26.6 编译模拟器目标；26.6 使用
 `bash scripts/verify.sh full` 执行工作流脚本、离线与确定性模拟器回归，与本地使用同一入口。

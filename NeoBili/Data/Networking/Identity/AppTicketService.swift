@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import Foundation
 import CommonCrypto
 
@@ -74,7 +77,7 @@ enum AppTicketProtocol {
     }
 }
 
-actor AppTicketService {
+public actor AppTicketService {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     private struct Cache: Codable { let scope: String; let ticket: String; var expiry: TimeInterval }
     private struct Context { let scope: String; let headers: [String: String]; let accessKey: String? }
@@ -91,7 +94,7 @@ actor AppTicketService {
     private var failureCount = 0
     private var nextAttempt: TimeInterval = 0
 
-    init(credentials: CredentialStorage, transport: @escaping Transport = { try await AppNetwork.session.data(for: $0) },
+    init(credentials: CredentialStorage, transport: @escaping Transport,
          clock: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 },
          jitter: @escaping @Sendable () -> Double = { Double.random(in: 0...1) }) {
         self.credentials = credentials; self.transport = transport; self.clock = clock; self.jitter = jitter
