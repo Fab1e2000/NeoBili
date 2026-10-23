@@ -150,6 +150,21 @@ extension View {
     }
 }
 
+/// 合集、分P 面板的弹出条件本身就是要展示的内容，用 `sheet(item:)` 呈现。
+/// 用「先存内容、再翻开关」的 `sheet(isPresented:)` 时，第一次弹出可能沿用
+/// 内容为空时的渲染，面板会整片空白；内容随弹出条件一起传入就不会读到旧值。
+/// 每次点击都是新的一次呈现，所以标识用新的 UUID。
+struct VideoPickerPresentation<Content>: Identifiable {
+    let id = UUID()
+    let content: Content
+}
+
+/// 分P 面板打开时取好的列表和封面；切换分P 期间列表保持不变，当前分P 仍跟随播放状态。
+struct VideoPartsPickerContent {
+    let parts: [VideoPart]
+    let coverURL: URL?
+}
+
 struct VideoPartsPlaybackSheet: View {
     let parts: [VideoPart]
     let coverURL: URL?

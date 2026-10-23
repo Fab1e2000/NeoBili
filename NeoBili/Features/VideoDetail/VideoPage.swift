@@ -56,9 +56,10 @@ struct VideoPage: View {
     @State private var detailErrorHeight: CGFloat = 0
     /// 内容区顶部的圆角半径（连续曲率），在预览页里调定。
     private let contentCornerRadius: CGFloat = 21
-    @State private var isShowingSeason = false
-    @State private var seasonPickerSnapshot: UgcSeason?
-    @State private var isShowingParts = false
+    /// 合集、分P 面板以「要展示的内容」作为弹出条件：点击时一次性取好，
+    /// 面板第一次弹出也不会读到空数据。见 `VideoPickerPresentation`。
+    @State private var seasonPicker: VideoPickerPresentation<UgcSeason>?
+    @State private var partsPicker: VideoPickerPresentation<VideoPartsPickerContent>?
     @State private var isShowingFavoriteFolders = false
     @State private var isShowingDanmakuComposer = false
     @State private var isShowingFullScreenDanmakuInput = false
@@ -115,17 +116,13 @@ struct VideoPage: View {
     /// 视频页上弹出的面板：合集、分 P、发弹幕、收藏夹。单独拆出来以减轻主体的类型推断负担。
     private func withSheets(_ content: some View) -> some View {
         content
-        .sheet(isPresented: $isShowingSeason, onDismiss: { seasonPickerSnapshot = nil }) {
-            if let season = seasonPickerSnapshot {
-                UgcSeasonPlaybackSheet(season: season)
+        .sheet(item: $seasonPicker) { picker in
+            UgcSeasonPlaybackSheet(season: picker.content)
                 .appTextSize()
-            }
         }
-        .sheet(isPresented: $isShowingParts) {
-            if let detail = viewModel?.detail, detail.pages.count > 1 {
-                VideoPartsPlaybackSheet(parts: detail.pages, coverURL: store.route?.secureCoverURL)
+        .sheet(item: $partsPicker) { picker in
+            VideoPartsPlaybackSheet(parts: picker.content.parts, coverURL: picker.content.coverURL)
                 .appTextSize()
-            }
         }
         .modifier(DanmakuComposerPresentation(
             isPresented: $isShowingDanmakuComposer,
@@ -508,9 +505,13 @@ struct VideoPage: View {
             },
             onOpenTag: { spacePath.append(VideoTagSearchRoute(keyword: $0.tagName)) },
             onShowSeason: {
-                seasonPickerSnapshot = detail.ugcSeason
-                isShowingSeason = true
-            }, onShowParts: { isShowingParts = true },
+                guard let season = detail.ugcSeason else { return }
+                seasonPicker = VideoPickerPresentation(content: season)
+            }, onShowParts: {
+                guard detail.pages.count > 1 else { return }
+                partsPicker = VideoPickerPresentation(content: VideoPartsPickerContent(
+                    parts: detail.pages, coverURL: store.route?.secureCoverURL))
+            },
             actionBar: actionBar).make(detail)
     }
 
