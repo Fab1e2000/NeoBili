@@ -33,7 +33,7 @@ struct VideoTagsRow: View {
                 }
             }
         }
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.never)
         .contentMargins(.horizontal, horizontalInset, for: .scrollContent)
     }
 }
