@@ -39,6 +39,8 @@ final class SpaceViewModel {
 
     private var videosRequestID = UUID()
     private var page = 1
+    /// 手动刷新取回但还没换进列表的第一页，由界面在淡出结束后提交。
+    private var stagedVideos: (videos: [SpaceVideo], hasMore: Bool)?
     private var hasMoreVideos = true
 
     init(mid: Int, services: ApplicationServices = .live, filtering: VideoFilterDependencies = .live,
@@ -146,6 +148,40 @@ final class SpaceViewModel {
             videosError = error.localizedDescription
         }
     }
+
+    /// 取回第一页投稿但不改动当前列表；成功后由 `commitVideosRefresh()` 换入。
+    func stageVideosRefresh() async -> Bool {
+        guard !isLoadingVideos else { return false }
+        let request = UUID()
+        videosRequestID = request
+        isLoadingMoreVideos = false
+        isLoadingVideos = true
+        videosError = nil
+        stagedVideos = nil
+        defer { isLoadingVideos = false }
+        do {
+            let result = try await services.community.spaceVideos(mid: mid, page: 1)
+            guard videosRequestID == request, !Task.isCancelled else { return false }
+            let list = Self.removingDuplicates(result.videos)
+            stagedVideos = (list, result.hasMore(after: list.count))
+            return true
+        } catch {
+            guard !Task.isCancelled, !error.isCancellation else { return false }
+            videosError = error.localizedDescription
+            return false
+        }
+    }
+
+    func commitVideosRefresh() {
+        guard let staged = stagedVideos else { return }
+        stagedVideos = nil
+        videosGeneration += 1
+        videos = staged.videos
+        page = 1
+        hasMoreVideos = staged.hasMore
+    }
+
+    func discardVideosRefresh() { stagedVideos = nil }
 
     func loadMoreVideosIfNeeded(
         current video: SpaceVideo,

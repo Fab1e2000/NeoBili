@@ -114,6 +114,10 @@ final class DynamicFeedModel {
         }
     }
 
+    func hasStagedRefresh(id: UUID) -> Bool { pendingRefresh != nil && pendingRefreshID == id }
+
+    func discardStagedRefresh() { pendingRefresh = nil; pendingRefreshID = nil }
+
     func commitStagedRefresh(id: UUID? = nil) {
         guard id == nil || id == pendingRefreshID else { return }
         guard let feed = pendingRefresh else { return }

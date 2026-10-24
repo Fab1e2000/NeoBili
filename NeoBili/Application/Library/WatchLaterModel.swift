@@ -24,9 +24,13 @@ final class WatchLaterModel {
     private(set) var hasMore = false
     private(set) var isRemoving = false
     private(set) var errorMessage: String?
+    /// 列表整体换成新的第一页（首次加载或刷新）时加一，驱动卡片进入动画重新计时。
+    private(set) var entranceGeneration = 0
     var selectedIDs: Set<Int> = []
     var isSelecting = false
     private var failedRefresh = false
+    /// 手动刷新取回但还没换进列表的第一页；由界面在淡出结束后提交。
+    private var stagedRefresh: (page: Page, session: UUID)?
     private var nextKey = ""
     private var splitKey = ""
     private var generation = UUID()
@@ -36,7 +40,7 @@ final class WatchLaterModel {
     init(client: Client = .live) { self.client = client }
 
     func reset() {
-        generation = UUID(); owner = nil
+        generation = UUID(); owner = nil; stagedRefresh = nil
         items = []; selectedIDs = []; isSelecting = false
         isLoading = false; isRemoving = false; hasLoaded = false
         hasMore = false; nextKey = ""; splitKey = ""; errorMessage = nil; failedRefresh = false
@@ -61,6 +65,7 @@ final class WatchLaterModel {
             guard generation == request, client.session() == session, !Task.isCancelled else { return }
             var seen = Set(refreshing ? [] : items.map(\.id))
             let incoming = page.items.filter { $0.bvid?.isEmpty == false && seen.insert($0.id).inserted }
+            if key.isEmpty { entranceGeneration += 1 }
             if refreshing { items = incoming } else { items += incoming }
             selectedIDs.formIntersection(Set(items.map(\.id)))
             hasLoaded = true; failedRefresh = false
@@ -73,6 +78,44 @@ final class WatchLaterModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    /// 取回第一页但不改动当前列表。成功返回 true，由 `commitStagedRefresh()` 换入。
+    func stageRefresh() async -> Bool {
+        let session = client.session()
+        if owner != session { reset(); owner = session }
+        guard !isRemoving, !isLoading else { return false }
+        let request = UUID(); generation = request
+        stagedRefresh = nil
+        isLoading = true; errorMessage = nil
+        defer { if generation == request { isLoading = false } }
+        do {
+            let page = try await client.load("", "", session)
+            guard generation == request, client.session() == session, !Task.isCancelled else { return false }
+            stagedRefresh = (page, session)
+            return true
+        } catch {
+            guard generation == request, client.session() == session, !error.isCancellation else { return false }
+            failedRefresh = true
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func commitStagedRefresh() {
+        guard let staged = stagedRefresh else { return }
+        stagedRefresh = nil
+        guard client.session() == staged.session, !isRemoving else { return }
+        var seen = Set<Int>()
+        items = staged.page.items.filter { $0.bvid?.isEmpty == false && seen.insert($0.id).inserted }
+        selectedIDs.formIntersection(Set(items.map(\.id)))
+        if selectedIDs.isEmpty { isSelecting = false }
+        entranceGeneration += 1
+        hasLoaded = true; failedRefresh = false
+        hasMore = staged.page.hasMore && !staged.page.nextKey.isEmpty
+        nextKey = staged.page.nextKey; splitKey = staged.page.splitKey
+    }
+
+    func discardStagedRefresh() { stagedRefresh = nil }
 
     func toggle(_ item: WatchLaterItem) {
         guard !isRemoving, item.aid != nil else { return }

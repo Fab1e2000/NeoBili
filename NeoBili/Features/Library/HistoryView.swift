@@ -8,6 +8,8 @@ import SwiftUI
 /// 结构与首页保持同构（ScrollView + 卡片 Button + 转场源直接挂在
 /// Button 上），这样点开/退出视频页的 zoom 动效和首页完全一致。
 struct HistoryView: View {
+    /// 作为底部标签页的根页面挂载（不显示刷新按钮）。
+    var isTabRoot = false
     @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
     @Environment(\.videoPreparation) private var preparation
@@ -16,7 +18,19 @@ struct HistoryView: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var animations = VideoCardAnimationPreferences(source: .history)
 
+    /// 手动刷新取回但还没换进列表的第一页。
+    private struct StagedPage {
+        let items: [HistoryItem]
+        let hasMore: Bool
+        let cursorMax: Int
+        let cursorViewAt: Int
+    }
+
+    @State private var refresh = ListRefreshController()
+    @State private var stagedPage: StagedPage?
     @State private var items: [HistoryItem] = []
     @State private var cursorMax = 0
     @State private var cursorViewAt = 0
@@ -79,18 +93,38 @@ struct HistoryView: View {
                             .padding()
                         }
                     }
+                    // 与推荐页一致：松手后旧卡片淡出，新内容到了再换入。
+                    .opacity(animatesExit ? refresh.contentOpacity : 1)
+                    .allowsHitTesting(refresh.contentOpacity == 1)
+                    .background {
+                        ListPullRefresh(enabled: canRefresh, onRefresh: startRefresh)
+                    }
                 }
+                .scrollBounceBehavior(.always, axes: .vertical)
+                .accessibilityAction(named: "刷新历史记录", startRefresh)
                 .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
         .navigationTitle("历史记录")
+        .toolbar {
+            // 从「我的服务」进入时右上角提供刷新；作为标签页挂载时只有下拉刷新。
+            if !isTabRoot {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("刷新", systemImage: "arrow.clockwise", action: startRefresh)
+                        .labelStyle(.iconOnly)
+                        .disabled(!canRefresh)
+                        .accessibilityIdentifier("history.refresh")
+                }
+            }
+        }
         .overlay {
             if isLoading, items.isEmpty { LoadingTaskAnchor() }
         }
-        .refreshable { await reload() }
         .task { await loadIfNeeded() }
+        .listEntrance(ids: visibleItems.map { "history:\($0.id)" }, generation: entranceGeneration, source: .history)
+        .onDisappear { refresh.reset(discard: { stagedPage = nil }) }
         .resolvePortraitVideos(items, batchID: entranceGeneration) {
             guard hasMore, errorMessage == nil else { return items }
             await loadNextPage()
@@ -114,6 +148,7 @@ struct HistoryView: View {
             removals = ListRemovalState()
             hasMore = true
             errorMessage = nil
+            refresh.reset(discard: { stagedPage = nil })
             Task { await reload() }
         }
     }
@@ -152,9 +187,9 @@ struct HistoryView: View {
                 title: item.displayTitle,
                 author: item.authorName ?? "",
                 playCount: -1,
-                durationText: summary?.formattedDuration ?? "",
-                animatesEntrance: false
+                durationText: summary?.formattedDuration ?? ""
             )
+            .videoEntranceIdentity("history:\(item.id)")
             }
         }
         .buttonStyle(.plain)
@@ -229,11 +264,59 @@ struct HistoryView: View {
         await reload()
     }
 
-    /// 下拉刷新和「重试」都走这里。
-    ///
-    /// 同 `FavoriteFolderView.reload`：**不要**先清空 `items`。列表内容一变，
-    /// SwiftUI 持有的下拉刷新任务就被取消，请求跟着失败，页面报「加载失败」；
-    /// 而「重试」是另起的任务，不受影响，所以看起来只有下拉会坏。
+    private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
+
+    private var canRefresh: Bool {
+        !refresh.isRefreshing && !isLoading && !isLoadingMore && !removals.hasPending && !isRemovingSelected
+    }
+
+    /// 手动下拉刷新：旧卡片淡出的同时取第一页，两者都结束后一次换入。
+    private func startRefresh() {
+        guard canRefresh else { return }
+        refresh.start(hasContent: !items.isEmpty, animatesExit: animatesExit, source: .history,
+                      fetch: { await stageReload() },
+                      commit: commitStagedReload,
+                      discard: { stagedPage = nil })
+    }
+
+    private func stageReload() async -> Bool {
+        let requestID = UUID()
+        loadID = requestID
+        let revision = removals.revision
+        stagedPage = nil
+        isLoading = true
+        defer { if loadID == requestID { isLoading = false } }
+        do {
+            let payload = try await services.library.historyPage(max: 0, viewAt: 0)
+            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return false }
+            stagedPage = StagedPage(
+                items: LibraryPageRules.unique(payload.allItems.filter(\.isVideo), excluding: removals.hiddenIDs),
+                hasMore: LibraryPageRules.advancesHistory(max: payload.cursor?.max,
+                    viewAt: payload.cursor?.resolvedViewAt, fromMax: 0, fromViewAt: 0),
+                cursorMax: payload.cursor?.max ?? 0,
+                cursorViewAt: payload.cursor?.resolvedViewAt ?? 0)
+            return true
+        } catch {
+            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return false }
+            feedback.show(error.localizedDescription)
+            return false
+        }
+    }
+
+    private func commitStagedReload() {
+        guard let page = stagedPage else { return }
+        stagedPage = nil
+        entranceGeneration += 1
+        items = page.items
+        selectedIDs.formIntersection(Set(items.map(\.id)))
+        if selectedIDs.isEmpty { isSelecting = false }
+        hasMore = page.hasMore
+        cursorMax = page.cursorMax
+        cursorViewAt = page.cursorViewAt
+        errorMessage = nil
+    }
+
+    /// 首次加载和「重试」走这里；手动下拉刷新走 `startRefresh`。
     private func reload() async {
         guard !removals.hasPending, !isRemovingSelected else { return }
         let requestID = UUID()

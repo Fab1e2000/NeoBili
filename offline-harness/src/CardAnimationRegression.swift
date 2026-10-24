@@ -25,7 +25,7 @@ import Foundation
             let key = CardAnimationSettings.storageKey(source: source, phase: .enter)
             defaults.set(true, forKey: key)
             precondition(CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: source)
-                         == [.recommendation, .live, .search].contains(source))
+                         == [.recommendation, .live, .search, .favorites, .history, .watchLater].contains(source))
             precondition(!CardAnimationSettings.isEnabled(category: .dynamic, phase: .enter, source: source))
             defaults.removeObject(forKey: key)
         }
@@ -67,7 +67,8 @@ import Foundation
 
         for source in VideoCardAnimationSource.allCases {
             precondition(!CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: source))
-            precondition(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: source) == [.recommendation, .live].contains(source))
+            precondition(CardAnimationSettings.isEnabled(category: .video, phase: .exit, source: source)
+                         == [.recommendation, .live, .space, .favorites, .history, .watchLater].contains(source))
         }
         defaults.set(true, forKey: CardAnimationSettings.storageKey(source: .search, phase: .enter))
         precondition(CardAnimationSettings.isEnabled(category: .video, phase: .enter, source: .search))
@@ -75,8 +76,8 @@ import Foundation
         precondition(!CardAnimationSettings.isEnabled(category: .dynamic, phase: .enter, source: .recommendation))
         print("PASS  新来源继承旧视频开关，单页覆写不改变其他页面和动态卡片")
 
-        for source in [VideoCardAnimationSource.history, .favorites, .watchLater] {
-            defaults.set(true, forKey: CardAnimationSettings.storageKey(source: source, phase: .exit))
+        for source in [VideoCardAnimationSource.history, .favorites, .watchLater, .space] {
+            defaults.set(false, forKey: CardAnimationSettings.storageKey(source: source, phase: .exit))
             let start = ProcessInfo.processInfo.systemUptime
             try await CardAnimationSettings.waitWhileEnabled(for: 10, category: .video, phase: .exit, source: source)
             precondition(ProcessInfo.processInfo.systemUptime - start < 0.5)

@@ -17,9 +17,9 @@ public enum VideoCardAnimationSource: String, CaseIterable, Identifiable, Sendab
         switch self {
         case .recommendation, .live: [.enter, .exit]
         case .search: [.enter]
-        case .space: []
+        case .space: [.exit] // Only the refresh fade-out; space cards have no entrance effect.
         case .relatedVideos: [] // Detail recommendations always appear immediately.
-        case .favorites, .history, .watchLater: []
+        case .favorites, .history, .watchLater: [.enter, .exit]
         case .collection: [] // The collection picker uses native interactions.
         }
     }
