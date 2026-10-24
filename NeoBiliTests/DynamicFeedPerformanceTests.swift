@@ -78,6 +78,27 @@ final class DynamicFeedPerformanceTests: XCTestCase {
         XCTAssertFalse(model.isLoadingMore)
     }
 
+    func testDiscardingStagedRefreshInvalidatesALateResponseAndKeepsPaginationOpen() async throws {
+        let first = try page(ids: ["old"]), late = try page(ids: ["late"])
+        var calls = 0
+        let model = DynamicFeedModel(source: .following, likeStore: VideoLikeStore()) { _, _, _ in
+            calls += 1
+            if calls == 1 { return first }
+            try await Task.sleep(for: .milliseconds(300))
+            return late
+        }
+        await model.loadInitial()
+        let stagingID = UUID()
+        let refresh = Task { await model.refresh(staged: true, stagingID: stagingID) }
+        try await Task.sleep(for: .milliseconds(60))
+        model.discardStagedRefresh()
+        await refresh.value
+        XCTAssertFalse(model.hasStagedRefresh(id: stagingID), "a response that arrives after the discard is dropped")
+        XCTAssertFalse(model.isLoading)
+        await model.loadMoreIfNeeded(current: first.entries[0])
+        XCTAssertEqual(calls, 3, "a stale staged page must not block pagination")
+    }
+
     private func page(ids: [String], text: String = "test") throws -> DynamicFeedPage {
         let items: [[String: Any]] = ids.map {
             ["id_str": $0, "type": "DYNAMIC_TYPE_WORD",

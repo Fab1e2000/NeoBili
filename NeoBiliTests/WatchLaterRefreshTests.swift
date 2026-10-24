@@ -47,6 +47,20 @@ final class WatchLaterRefreshTests: XCTestCase {
         XCTAssertNotNil(model.errorMessage)
     }
 
+    func testRemovalInvalidatesTheStagedRefresh() async throws {
+        let session = UUID(); let items = try [item(1), item(2), item(3)]
+        let model = WatchLaterModel(client: .init(load: { _, _, _ in .init(items: items) },
+                                                  remove: { _, _ in }, session: { session }))
+        await model.load()
+        let staged = await model.stageRefresh()
+        XCTAssertTrue(staged)
+        let failure = await model.remove(ids: [1], confirm: { true })
+        XCTAssertNil(failure)
+        XCTAssertEqual(model.items.map(\.id), [2, 3])
+        model.commitStagedRefresh()
+        XCTAssertEqual(model.items.map(\.id), [2, 3], "a snapshot taken before the removal must not bring the item back")
+    }
+
     func testControllerCommitsOnlyAfterSuccessfulFetchAndAlwaysRestoresOpacity() async throws {
         let controller = ListRefreshController()
         var events: [String] = []

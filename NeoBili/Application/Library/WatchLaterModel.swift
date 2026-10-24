@@ -130,6 +130,7 @@ final class WatchLaterModel {
         let snapshot = items
         let targets = snapshot.filter { ids.contains($0.id) && $0.aid != nil }
         guard !targets.isEmpty else { return nil }
+        stagedRefresh = nil
         let request = UUID(); generation = request; isRemoving = true
         let targetIDs = Set(targets.map(\.id))
         items.removeAll { targetIDs.contains($0.id) }

@@ -27,6 +27,8 @@ struct HistoryView: View {
         let hasMore: Bool
         let cursorMax: Int
         let cursorViewAt: Int
+        /// 取回时的移除状态；换入前若又发生过移除，这份快照已过期。
+        let revision: UUID
     }
 
     @State private var refresh = ListRefreshController()
@@ -134,7 +136,7 @@ struct HistoryView: View {
         .safeAreaInset(edge: .bottom) {
             if isSelecting {
                 LibrarySelectionBar(count: selectedIDs.count,
-                    isBusy: isRemovingSelected || isLoading || isLoadingMore,
+                    isBusy: isRemovingSelected || isLoading || isLoadingMore || refresh.isRefreshing,
                     done: { isSelecting = false; selectedIDs = [] }) {
                     Task { await removeSelected() }
                 }
@@ -199,7 +201,7 @@ struct HistoryView: View {
                 Button {
                     isSelecting = true; selectedIDs = [item.id]
                 } label: { Label("多选", systemImage: "checkmark.circle") }
-                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending)
+                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing)
             }
             WatchLaterMenuButton(aid: summary?.aid, bvid: summary?.bvid)
 
@@ -227,7 +229,7 @@ struct HistoryView: View {
     }
 
     private func removeSelected() async {
-        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending else { return }
+        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending, !refresh.isRefreshing else { return }
         let snapshot = items
         let targets = snapshot.filter { selectedIDs.contains($0.id) }
         guard !targets.isEmpty else { return }
@@ -294,7 +296,8 @@ struct HistoryView: View {
                 hasMore: LibraryPageRules.advancesHistory(max: payload.cursor?.max,
                     viewAt: payload.cursor?.resolvedViewAt, fromMax: 0, fromViewAt: 0),
                 cursorMax: payload.cursor?.max ?? 0,
-                cursorViewAt: payload.cursor?.resolvedViewAt ?? 0)
+                cursorViewAt: payload.cursor?.resolvedViewAt ?? 0,
+                revision: revision)
             return true
         } catch {
             guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return false }
@@ -306,6 +309,7 @@ struct HistoryView: View {
     private func commitStagedReload() {
         guard let page = stagedPage else { return }
         stagedPage = nil
+        guard page.revision == removals.revision, !removals.hasPending else { return }
         entranceGeneration += 1
         items = page.items
         selectedIDs.formIntersection(Set(items.map(\.id)))
@@ -345,12 +349,12 @@ struct HistoryView: View {
     }
 
     private func loadMoreIfNeeded() async {
-        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
+        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, !refresh.isRefreshing, errorMessage == nil else { return }
         await loadNextPage()
     }
 
     private func loadNextPage() async {
-        guard !removals.hasPending, !isRemovingSelected else { return }
+        guard !removals.hasPending, !isRemovingSelected, !refresh.isRefreshing else { return }
         guard hasMore, !isLoadingMore, !isLoading else { return }
         let requestID = UUID()
         loadID = requestID
@@ -390,7 +394,7 @@ struct HistoryView: View {
     ///
     /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
     private func delete(_ item: HistoryItem) async {
-        guard !isRemovingSelected, items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
+        guard !isRemovingSelected, !refresh.isRefreshing, items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
         let sessionID = account.sessionID
         defer { if account.sessionID == sessionID { removals.finish(item.id) } }
         let identitySession = services.session.currentID()

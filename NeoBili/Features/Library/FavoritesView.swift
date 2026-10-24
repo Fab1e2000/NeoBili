@@ -13,7 +13,8 @@ struct FavoritesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var animations = VideoCardAnimationPreferences(source: .favorites)
     @State private var refresh = ListRefreshController()
-    @State private var stagedFolders: [FavFolder]?
+    /// 取回的收藏夹及取回时的移除状态；换入前若又发生过移除，这份快照已过期。
+    @State private var stagedFolders: (folders: [FavFolder], revision: UUID)?
     @State private var folders: [FavFolder] = []
     @State private var folderRemovals = ListRemovalState<Int>()
     @State private var isLoading = false
@@ -127,7 +128,7 @@ struct FavoritesView: View {
     }
 
     private func delete(_ folder: FavFolder) async {
-        guard folderRemovals.begin(folder.id) else { return }
+        guard !refresh.isRefreshing, folderRemovals.begin(folder.id) else { return }
         let sessionID = account.sessionID
         let identitySession = services.session.currentID()
         defer { if account.sessionID == sessionID { folderRemovals.finish(folder.id) } }
@@ -156,7 +157,8 @@ struct FavoritesView: View {
                       commit: {
                           guard let staged = stagedFolders else { return }
                           stagedFolders = nil
-                          folders = staged
+                          guard staged.revision == folderRemovals.revision, !folderRemovals.hasPending else { return }
+                          folders = staged.folders
                       },
                       discard: { stagedFolders = nil })
     }
@@ -176,7 +178,7 @@ struct FavoritesView: View {
         do {
             let result = try await services.library.favoriteFolders(ownerMid: mid)
             guard loadID == requestID, account.sessionID == sessionID, folderRemovals.revision == revision, !Task.isCancelled else { return false }
-            stagedFolders = LibraryPageRules.unique(result)
+            stagedFolders = (LibraryPageRules.unique(result), revision)
             return true
         } catch {
             guard loadID == requestID, account.sessionID == sessionID, !error.isCancellation else { return false }
@@ -231,6 +233,8 @@ struct FavoriteFolderView: View {
     private struct StagedPage {
         let videos: [FavMedia]
         let hasMore: Bool
+        /// 取回时的移除状态；换入前若又发生过移除，这份快照已过期。
+        let revision: UUID
     }
 
     @State private var refresh = ListRefreshController()
@@ -327,7 +331,7 @@ struct FavoriteFolderView: View {
         .safeAreaInset(edge: .bottom) {
             if isSelecting {
                 LibrarySelectionBar(count: selectedIDs.count,
-                    isBusy: isRemovingSelected || isLoading || isLoadingMore,
+                    isBusy: isRemovingSelected || isLoading || isLoadingMore || refresh.isRefreshing,
                     done: { isSelecting = false; selectedIDs = [] }) {
                     Task { await removeSelected() }
                 }
@@ -392,7 +396,7 @@ struct FavoriteFolderView: View {
                 Button {
                     isSelecting = true; selectedIDs = [media.id]
                 } label: { Label("多选", systemImage: "checkmark.circle") }
-                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending)
+                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing)
             }
             WatchLaterMenuButton(aid: media.id, bvid: media.bvid)
 
@@ -418,7 +422,7 @@ struct FavoriteFolderView: View {
     }
 
     private func removeSelected() async {
-        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending else { return }
+        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending, !refresh.isRefreshing else { return }
         let snapshot = videos
         let targets = snapshot.filter { selectedIDs.contains($0.id) }
         guard !targets.isEmpty else { return }
@@ -483,7 +487,8 @@ struct FavoriteFolderView: View {
             guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return false }
             stagedPage = StagedPage(
                 videos: LibraryPageRules.unique((payload.medias ?? []).filter(\.isVideo), excluding: removals.hiddenIDs),
-                hasMore: LibraryPageRules.hasMoreFavorites(rawCount: payload.medias?.count ?? 0))
+                hasMore: LibraryPageRules.hasMoreFavorites(rawCount: payload.medias?.count ?? 0),
+                revision: revision)
             return true
         } catch {
             guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return false }
@@ -495,6 +500,7 @@ struct FavoriteFolderView: View {
     private func commitStagedReload() {
         guard let staged = stagedPage else { return }
         stagedPage = nil
+        guard staged.revision == removals.revision, !removals.hasPending else { return }
         entranceGeneration += 1
         videos = staged.videos
         selectedIDs.formIntersection(Set(videos.map(\.id)))
@@ -530,12 +536,12 @@ struct FavoriteFolderView: View {
     }
 
     private func loadMoreIfNeeded() async {
-        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
+        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, !refresh.isRefreshing, errorMessage == nil else { return }
         await loadNextPage()
     }
 
     private func loadNextPage() async {
-        guard !removals.hasPending, !isRemovingSelected else { return }
+        guard !removals.hasPending, !isRemovingSelected, !refresh.isRefreshing else { return }
         guard hasMore, !isLoadingMore, !isLoading else { return }
         let requestID = UUID()
         loadID = requestID
@@ -570,7 +576,7 @@ struct FavoriteFolderView: View {
     ///
     /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
     private func remove(_ media: FavMedia) async {
-        guard !isRemovingSelected, videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
+        guard !isRemovingSelected, !refresh.isRefreshing, videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
         let sessionID = account.sessionID
         defer { if account.sessionID == sessionID { removals.finish(media.id) } }
         let identitySession = services.session.currentID()

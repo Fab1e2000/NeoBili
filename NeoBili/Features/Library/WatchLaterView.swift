@@ -106,7 +106,7 @@ struct WatchLaterView: View {
         .safeAreaInset(edge: .bottom) {
             if model.isSelecting {
                 LibrarySelectionBar(count: model.selectedIDs.count,
-                    isBusy: model.isRemoving || isLoading, done: endSelection) {
+                    isBusy: model.isRemoving || isLoading || refresh.isRefreshing, done: endSelection) {
                     Task { await remove(ids: model.selectedIDs) }
                 }
             }
@@ -119,7 +119,7 @@ struct WatchLaterView: View {
             model.selectedIDs = []
         }
         .frame(minHeight: 44)
-        .disabled(items.isEmpty || model.isRemoving || isLoading)
+        .disabled(items.isEmpty || model.isRemoving || isLoading || refresh.isRefreshing)
         .accessibilityIdentifier("watchlater.select")
     }
 
@@ -188,7 +188,7 @@ struct WatchLaterView: View {
                 } label: {
                     Label("多选", systemImage: "checkmark.circle")
                 }
-                .disabled(model.isRemoving || isLoading)
+                .disabled(model.isRemoving || isLoading || refresh.isRefreshing)
                 .accessibilityIdentifier("watchlater.multiSelect")
             }
             Button(role: .destructive) {
@@ -269,6 +269,7 @@ struct WatchLaterView: View {
     }
 
     private func remove(ids: Set<Int>) async {
+        guard !refresh.isRefreshing else { return }
         let error = await model.remove(ids: ids) {
             await feedback.confirmRemoval(String(localized: "已移出稍后再看"))
         }

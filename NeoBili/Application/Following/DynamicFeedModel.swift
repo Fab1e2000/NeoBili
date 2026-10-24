@@ -116,7 +116,16 @@ final class DynamicFeedModel {
 
     func hasStagedRefresh(id: UUID) -> Bool { pendingRefresh != nil && pendingRefreshID == id }
 
-    func discardStagedRefresh() { pendingRefresh = nil; pendingRefreshID = nil }
+    /// 放弃暂存的刷新，并让仍在进行的刷新请求作废：晚到的结果不会再写进 `pendingRefresh`，
+    /// 否则它会一直挡住分页。
+    func discardStagedRefresh() {
+        pendingRefresh = nil
+        pendingRefreshID = nil
+        reloadTask?.cancel()
+        reloadTask = nil
+        loadGeneration = UUID()
+        isLoading = false
+    }
 
     func commitStagedRefresh(id: UUID? = nil) {
         guard id == nil || id == pendingRefreshID else { return }
