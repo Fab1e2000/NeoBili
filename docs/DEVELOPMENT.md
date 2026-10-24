@@ -179,10 +179,15 @@ Cookie 或原始值的持久化哈希。原始重放错误输出不转发。相�
 
 ## CI
 
-Build 工作流的任务使用 `ci-approval` 环境。所有 PR（包括维护者自己的
-PR）及手动运行先等待环境审批，批准前不启动构建或测试 runner。在 Actions 对应运行中
-选择 **Review deployments → ci-approval → Approve and deploy** 后运行；这与 PR 代码审查
-的 Approve 是两个独立操作。PR 更新后创建新运行，旧运行自动取消，新运行需要重新批准。
+Build 工作流按 PR 来源选择环境：仓库所有者在本仓库分支上提的 PR 使用 `ci-trusted`，
+不设保护规则，直接运行；其他所有 PR（包括 fork）和手动运行使用 `ci-approval`，先等待环境审批，
+批准前不启动构建或测试 runner。需要审批时，在 Actions 对应运行中选择
+**Review deployments → ci-approval → Approve and deploy**；这与 PR 代码审查的 Approve 是两个
+独立操作。PR 更新后创建新运行，旧运行自动取消，需要审批的新运行要重新批准。
+
+判断只看 `pull_request.user.login` 与仓库所有者一致且 head 仓库就是本仓库；它依赖 PR 作者
+身份，因此不要给 `ci-trusted` 配置任何 secrets，CI 本来也不使用凭据。`ci-trusted` 在工作流首次
+引用时自动创建，不需要保护规则。
 
 仓库 Settings → Environments → `ci-approval` 必须配置 Required reviewers 为
 `Fab1e2000`，允许 self-review，并禁止管理员绕过保护规则。环境名称本身不会启用审批，

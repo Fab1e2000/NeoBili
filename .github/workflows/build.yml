@@ -17,8 +17,10 @@ jobs:
   # 应用用到 iOS 27 SDK 的 API，所以只支持 Xcode 27；Xcode 27 目前在 `xcode-27` runner 上（预览）。
   regression:
     name: Build and deterministic regression (Xcode 27.1)
+    # 仓库所有者在本仓库分支上提的 PR 使用没有保护规则的 ci-trusted，直接运行；
+    # 其他 PR（含 fork）和手动运行使用 ci-approval，先等待审批。
     # ci-approval 的 required reviewers 在仓库 Settings → Environments 中维护。
-    environment: ci-approval
+    environment: ${{ (github.event_name == 'pull_request' && github.event.pull_request.user.login == github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository) && 'ci-trusted' || 'ci-approval' }}
     runs-on: xcode-27
     timeout-minutes: 45
     steps:
