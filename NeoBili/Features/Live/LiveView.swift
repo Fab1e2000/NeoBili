@@ -39,11 +39,11 @@ struct LiveView: View {
             ))
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
-            // 标题和切换器始终固定，使用切边背景，不消费全局标题栏偏好。
-            .safeAreaBar(edge: .top, spacing: 0) { header }
+            // 标题用原生栏内大标题；来源切换器常驻在导航栏下方，使用切边背景。
+            .safeAreaBar(edge: .top, spacing: 0) { sourcePicker }
             .scrollEdgeEffectStyle(.hard, for: .top)
             .background(Color(uiColor: .systemGroupedBackground))
-            .toolbar(.hidden, for: .navigationBar)
+            .rootPageChrome(title: String(localized: "直播"))
         }
         .onChange(of: account.sessionID) {
             source = .recommended
@@ -52,14 +52,6 @@ struct LiveView: View {
         .onChange(of: account.isLoggedIn) { _, loggedIn in
             if !loggedIn { source = .recommended }
             else { following.select(.following) }
-        }
-    }
-
-    private var header: some View {
-        VStack(spacing: 0) {
-            PageHeader(title: String(localized: "直播"))
-                .padding(.horizontal, 20)
-            sourcePicker
         }
     }
 

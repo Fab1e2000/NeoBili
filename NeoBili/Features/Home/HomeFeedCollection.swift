@@ -26,7 +26,7 @@ struct HomeFeedCollection: UIViewRepresentable {
     let onOpenLastSeen: () -> Void
     var onOpenMine: () -> Void = {}
     /// 标题栏固定在外层时，列表里不再插入页头行。
-    var pinsTitleBar = TitleBarSettings.defaultValue
+    var pinsTitleBar = false
     /// 列表忽略安全区铺满全屏，状态栏（+ 固定标题栏）和标签栏的高度由外层量好传入。
     var safeInsets = EdgeInsets()
     /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身保持不透明。

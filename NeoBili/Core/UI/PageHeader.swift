@@ -5,7 +5,7 @@ extension EnvironmentValues {
     @Entry var openMine: EnvironmentAction<Void>? = nil
 }
 
-/// 各主页面共用的页头：左侧大标题，右侧头像玻璃按钮。
+/// 推荐页自绘的页头：左侧大标题，右侧头像玻璃按钮。其它主页面用 `rootPageChrome` 的原生标题。
 /// 头像是「我的」页面的唯一入口，点按后以卡片从底部弹出。
 struct PageHeader: View {
     let title: String
@@ -57,79 +57,69 @@ struct PageHeader: View {
     }
 }
 
-// MARK: - 随内容滚动的页头
+// MARK: - 原生大标题
 
-/// 标题栏随内容滚动时，外层页面不再固定显示页头，而是通过环境把页头交给列表，
-/// 由列表插在内容最上方。列表视图也会出现在别处（如「我的」卡片），那里不提供就不显示。
-struct ScrollingPageHeader: Equatable {
+/// 其它主页面的原生栏内大标题：标题与头像入口同在导航栏一行。
+/// 头像在工具栏里不套系统玻璃胶囊，只保留圆形头像和细描边。
+struct RootPageChrome: ViewModifier {
     let title: String
-}
+    /// 纵向列表为主滚动视图的页面才让导航栏随下滑收起。
+    let minimizes: Bool
+    @Environment(AccountStore.self) private var account
+    @Environment(\.openMine) private var openMine
 
-extension EnvironmentValues {
-    @Entry var scrollingPageHeader: ScrollingPageHeader? = nil
-}
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle(title)
+            .toolbarTitleDisplayMode(.inlineLarge)
+            .toolbarVisibility(.visible, for: .navigationBar)
+            .modifier(MinimizingNavigationBar(isEnabled: minimizes))
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { openMine?(()) } label: { avatar }
+                        .accessibilityLabel("我的")
+                        .accessibilityHint("打开个人页面")
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
+    }
 
-extension View {
-    /// 加载中、空列表、出错这些状态没有可滚动的内容，随内容滚动的页头直接放在顶部。
-    func scrollingPageHeaderAbove() -> some View {
-        frame(maxWidth: .infinity, maxHeight: .infinity)
-            .safeAreaInset(edge: .top, spacing: 0) { ScrollingPageHeaderRow() }
+    private var avatar: some View {
+        Group {
+            if let url = account.profile?.secureAvatarURL {
+                BiliImage(url: url)
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 32, height: 32)
+        .clipShape(Circle())
+        .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
     }
 }
 
-/// 列表内容的第一行：环境里有随内容滚动的页头时显示它，否则什么都不占。
-struct ScrollingPageHeaderRow: View {
-    @Environment(\.scrollingPageHeader) private var header
+/// 保持顶部安全区稳定，避免导航栏收起后点标签回顶需要点两次。
+private struct MinimizingNavigationBar: ViewModifier {
+    let isEnabled: Bool
 
-    var body: some View {
-        if let header {
-            PageHeader(title: header.title)
-                .padding(.horizontal, 20)
-                .staysInPlaceWhenPulled()
+    func body(content: Content) -> some View {
+        if isEnabled, #available(iOS 27.0, *) {
+            content
+                .toolbarMinimizationBehavior(.onScrollDown, for: .navigationBar)
+                .toolbarMinimizationSafeAreaAdjustment(.disabled, for: .navigationBar)
+        } else {
+            content
         }
     }
 }
 
-// MARK: - 下拉时页头停在原位
-
-/// 列表顶端被下拉（回弹区）的距离。单独一个可观察对象：逐帧变化只让页头重绘，不牵动整个列表。
-@MainActor @Observable
-final class PageHeaderPull {
-    var distance: CGFloat = 0
-}
-
-extension EnvironmentValues {
-    @Entry var pageHeaderPull: PageHeaderPull? = nil
-}
-
 extension View {
-    /// 挂在滚动视图上：记录顶端下拉距离，交给列表里的页头。
-    func tracksPageHeaderPull() -> some View { modifier(PageHeaderPullTracking()) }
-
-    /// 挂在列表里的页头上：下拉时抵消位移，页头停在原位，只有下面的内容被拉下来（与推荐页一致）。
-    /// 正常上滑不补偿，页头照常随内容离开。
-    func staysInPlaceWhenPulled() -> some View { modifier(PageHeaderPullCompensation()) }
-}
-
-private struct PageHeaderPullTracking: ViewModifier {
-    @State private var pull = PageHeaderPull()
-
-    func body(content: Content) -> some View {
-        content
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                max(0, -(geometry.contentOffset.y + geometry.contentInsets.top))
-            } action: { _, distance in
-                pull.distance = distance
-            }
-            .environment(\.pageHeaderPull, pull)
+    func rootPageChrome(title: String, minimizes: Bool = false) -> some View {
+        modifier(RootPageChrome(title: title, minimizes: minimizes))
     }
 }
-
-private struct PageHeaderPullCompensation: ViewModifier {
-    @Environment(\.pageHeaderPull) private var pull
-
-    func body(content: Content) -> some View {
-        content.offset(y: -(pull?.distance ?? 0))
-    }
-}
-

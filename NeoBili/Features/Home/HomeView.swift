@@ -14,8 +14,8 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    @TitleBarPreference private var titleBarStyle
-    private var pinsTitleBar: Bool { titleBarStyle.isPinned }
+    /// 推荐页的页头随内容滚动，是列表的第一行。
+    private let pinsTitleBar = false
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
 
@@ -46,7 +46,6 @@ struct HomeView: View {
         #if DEBUG
         let _ = SearchLatencyProbe.body("HomeView")
         #endif
-        // 标题栏两种样式：随内容滚动时页头是列表第一行；固定时挂在顶部栏，卡片从下面滑过。
         feed
             .safeAreaBar(edge: .top, spacing: 0) {
                 if pinsTitleBar {
@@ -55,7 +54,7 @@ struct HomeView: View {
                 }
             }
             .scrollEdgeEffectStyle(.hard, for: .top)
-            .scrollEdgeEffectHidden(!titleBarStyle.isPinned, for: .top)
+            .scrollEdgeEffectHidden(!pinsTitleBar, for: .top)
             .background(Color(uiColor: .systemGroupedBackground))
             .task { await viewModel.loadInitial() }
             // 登录/退出/拿到 App 凭据后服务端会切到个性化/通用推流，

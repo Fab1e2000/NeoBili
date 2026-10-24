@@ -42,7 +42,6 @@ struct HistoryView: View {
         Group {
             if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
                 LoadingTaskAnchor()
-                    .scrollingPageHeaderAbove()
             } else if let errorMessage, items.isEmpty {
                 ContentUnavailableView {
                     Label("历史加载失败", systemImage: "clock.arrow.circlepath")
@@ -51,17 +50,14 @@ struct HistoryView: View {
                 } actions: {
                     Button("重试") { Task { await reload() } }
                 }
-                .scrollingPageHeaderAbove()
             } else if !hasMore, visibleItems.isEmpty {
                 ContentUnavailableView(
                     items.isEmpty ? "还没有观看记录" : "没有可显示的视频",
                     systemImage: items.isEmpty ? "clock.arrow.circlepath" : "rectangle.slash"
                 )
-                .scrollingPageHeaderAbove()
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ScrollingPageHeaderRow()
                         ForEach(visibleItems) { item in
                             row(item, loadsNextPage: paginationIDs.contains(item.id))
                         }
@@ -85,7 +81,6 @@ struct HistoryView: View {
                     }
                 }
                 .background(Color(uiColor: .systemGroupedBackground))
-                .tracksPageHeaderPull()
             }
         }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。

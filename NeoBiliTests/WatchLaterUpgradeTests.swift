@@ -97,7 +97,7 @@ final class WatchLaterUpgradeTests: XCTestCase {
         let model = WatchLaterModel(client: .init(load: { _, _, _ in .init(items: fixture, nextKey: "next", hasMore: true) },
             remove: { _, _ in XCTFail("Rendering must not write") }, session: { session }))
         let account = AccountStore(monitorNetwork: false)
-        for mode in ["page", "tab-pinned", "tab-scrolling"] {
+        for mode in ["page", "tab"] {
             for (name, style, size) in [("light", UIUserInterfaceStyle.light, DynamicTypeSize.large),
                                         ("dark", .dark, .large), ("large-text", .light, .accessibility2),
                                         ("landscape", .light, .large)] {
@@ -105,11 +105,7 @@ final class WatchLaterUpgradeTests: XCTestCase {
                 let host = UIHostingController(rootView: TabView {
                     NavigationStack {
                         WatchLaterView(model: model, isTabRoot: mode != "page", onLayout: { frames = $0 })
-                            .toolbar(mode == "page" ? .automatic : .hidden, for: .navigationBar)
-                            .safeAreaBar(edge: .top) {
-                                if mode == "tab-pinned" { PageHeader(title: "稍后再看").padding(.horizontal, 20) }
-                            }
-                            .environment(\.scrollingPageHeader, mode == "tab-scrolling" ? ScrollingPageHeader(title: "稍后再看") : nil)
+                            .modifier(TabRootChrome(isTab: mode != "page"))
                     }.tabItem { Label("稍后再看", systemImage: "flag.checkered") }
                 }.environment(account).environment(NowPlayingStore()).environment(ActionFeedback()).dynamicTypeSize(size))
                 window.rootViewController = host
@@ -155,4 +151,12 @@ private final class WatchLaterProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+}
+
+private struct TabRootChrome: ViewModifier {
+    let isTab: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if isTab { content.rootPageChrome(title: "稍后再看", minimizes: true) } else { content }
+    }
 }

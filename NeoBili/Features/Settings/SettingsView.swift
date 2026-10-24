@@ -10,7 +10,6 @@ struct SettingsView: View {
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
     @AppStorage(MainTabSettings.hiddenKey) private var hiddenTabs: String?
-    @TitleBarPreference private var titleBarStyle
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
     @AppStorage(RecommendationFilter.minLikeRatioKey) private var minLikeRatio = 0
     @AppStorage(RecommendationFilter.minDurationKey) private var minDuration = 0
@@ -57,7 +56,6 @@ struct SettingsView: View {
         case .display: DisplaySettingsView.label(for: textSizeIndex)
         case .language: language.title
         case .tabBar: MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs).map(\.title).joined(separator: " · ")
-        case .titleBar: titleBarStyle.title
         case .contentFilter: contentFilterSummary
         case .cardAnimations: cardAnimationsEnabled ? String(localized: "开启") : String(localized: "setting.off", defaultValue: "关闭")
         default: nil
@@ -71,7 +69,6 @@ struct SettingsView: View {
         case .display: DisplaySettingsView()
         case .language: LanguageSettingsView()
         case .tabBar: TabBarSettingsView()
-        case .titleBar: TitleBarSettingsView()
         case .contentFilter: ContentFilterSettingsView()
         case .recommendation: RecommendationSettingsView()
         case .playback: PlaybackSettingsView()

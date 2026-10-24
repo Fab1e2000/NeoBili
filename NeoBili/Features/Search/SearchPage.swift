@@ -7,22 +7,10 @@ struct SearchPage: View {
     @Environment(\.appThemeColor) private var themeColor
     let onSubmit: (String?) -> Void
     private var history: SearchHistory { viewModel.history }
-    @TitleBarPreference private var titleBarStyle
-    private var pinsTitleBar: Bool { titleBarStyle.isPinned }
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// 标题栏随内容滚动时，热搜页上滑后收起标题，只留搜索框。
-    @State private var isHeaderCollapsed = false
-    @State private var headerHeight: CGFloat = 0
-    @State private var homePosition = ScrollPosition(edge: .top)
 
     /// 只在搜索首页（历史/热搜）显示标题；输入、联想和结果页让搜索框顶到最上方。
     private var showsHeader: Bool {
         !isFocused && !viewModel.hasSubmittedSearch
-    }
-
-    /// 标题固定时常驻；随内容滚动时，上滑后收起。
-    private var displaysHeader: Bool {
-        showsHeader && (pinsTitleBar || !isHeaderCollapsed)
     }
 
     var body: some View {
@@ -62,23 +50,7 @@ struct SearchPage: View {
                     .padding(.top, 4)
                     .padding(.bottom, 12)
                 }
-                .scrollPosition($homePosition)
                 .scrollDismissesKeyboard(.interactively)
-                // 标题和搜索框都在顶部栏里：标题收起只改变顶部栏高度，内容的滚动位置不动。
-                // 用「离当前顶端的距离」加回差判断，收起/展开后都不会立刻反向触发。
-                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, distance in
-                    guard !pinsTitleBar, showsHeader else { return }
-                    if !isHeaderCollapsed, distance > headerHeight + 16 {
-                        isHeaderCollapsed = true
-                    } else if isHeaderCollapsed, distance < 1 {
-                        isHeaderCollapsed = false
-                        // 标题回来时列表跟着下移，不让标题盖住最上面的搜索历史。
-                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
-                            homePosition.scrollTo(edge: .top)
-                        }
-                    }
-                }
-                .onAppear { isHeaderCollapsed = false }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -87,31 +59,20 @@ struct SearchPage: View {
             Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
         }
         .safeAreaBar(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                if displaysHeader {
-                    PageHeader(title: String(localized: "搜索"))
-                        .padding(.horizontal, 20)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
-                        // Move the avatar content and its separately rendered glass
-                        // surface as one geometry during header insertion/removal.
-                        .geometryGroup()
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-                HomeSearchBar(text: Binding(get: { viewModel.query }, set: { viewModel.query = $0 }),
-                              isFocused: $isFocused,
-                              onSubmit: { onSubmit(nil) },
-                              onCancel: { isFocused = false })
-                    .frame(height: 56)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 2)
-            }
-            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: displaysHeader)
+            HomeSearchBar(text: Binding(get: { viewModel.query }, set: { viewModel.query = $0 }),
+                          isFocused: $isFocused,
+                          onSubmit: { onSubmit(nil) },
+                          onCancel: { isFocused = false })
+                .frame(height: 56)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 2)
         }
         .scrollEdgeEffectStyle(.hard, for: .top)
-        .scrollEdgeEffectHidden(!titleBarStyle.isPinned, for: .top)
         .task { await viewModel.loadHotSearches() }
         .onDisappear { isFocused = false }
-        .toolbar(.hidden, for: .navigationBar)
+        // 输入、联想和结果页隐藏导航栏，让搜索框顶到最上方。
+        .rootPageChrome(title: String(localized: "搜索"), minimizes: true)
+        .toolbarVisibility(showsHeader ? .visible : .hidden, for: .navigationBar)
         .onAppear { OrientationController.enterPortrait() }
     }
 

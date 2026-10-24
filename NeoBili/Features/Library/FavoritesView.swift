@@ -7,7 +7,6 @@ import SwiftUI
 struct FavoritesView: View {
     @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
-    @Environment(\.scrollingPageHeader) private var scrollingPageHeader
     @Environment(ActionFeedback.self) private var feedback
     @State private var folders: [FavFolder] = []
     @State private var folderRemovals = ListRemovalState<Int>()
@@ -28,19 +27,10 @@ struct FavoritesView: View {
                 } actions: {
                     Button("重试") { Task { await load() } }
                 }
-                .scrollingPageHeaderAbove()
             } else if !isLoading, folders.isEmpty {
                 ContentUnavailableView("还没有收藏夹", systemImage: "star")
-                    .scrollingPageHeaderAbove()
             } else {
                 List {
-                    // List 会给空内容也留一行，只在确实有页头时插入。
-                    if scrollingPageHeader != nil {
-                        ScrollingPageHeaderRow()
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                    }
                     ForEach(folders) { folder in
                         NavigationLink {
                             FavoriteFolderView(folder: folder)
@@ -67,7 +57,6 @@ struct FavoritesView: View {
                         }
                     }
                 }
-                .tracksPageHeaderPull()
             }
         }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触条目。
