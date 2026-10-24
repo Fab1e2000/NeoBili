@@ -19,8 +19,8 @@ struct LibraryTabPage: View {
     private var content: some View {
         switch tab {
         case .watchLater: WatchLaterView(isTabRoot: true)
-        case .favorites: FavoritesView()
-        case .history: HistoryView()
+        case .favorites: FavoritesView(isTabRoot: true)
+        case .history: HistoryView(isTabRoot: true)
         default: EmptyView()
         }
     }

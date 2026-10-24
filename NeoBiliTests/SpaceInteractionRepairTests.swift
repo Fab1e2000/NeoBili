@@ -237,6 +237,43 @@ final class SpaceInteractionRepairTests: XCTestCase {
         XCTAssertEqual(requests, [1, 2, 1, 3, 1])
     }
 
+    func testStagedVideosRefreshKeepsOldListUntilCommitAndFailureKeepsItToo() async throws {
+        let gate = SpaceRepairGate<SpaceVideoPage>()
+        defer { Task { await gate.cancelAll() } }
+        var services = services()
+        services.community.spaceVideosOperation = { _, page in try await gate.load(page) }
+        let model = SpaceViewModel(mid: 42, services: services)
+        func page(_ bvid: String) throws -> SpaceVideoPage {
+            try JSONDecoder().decode(SpaceVideoPage.self, from: Data(
+                "{\"list\":{\"vlist\":[{\"bvid\":\"\(bvid)\"}]},\"page\":{\"count\":1}}".utf8))
+        }
+        let initial = Task { await model.reloadVideos() }
+        try await waitUntil { await gate.count == 1 }
+        await gate.resolve(1, try page("BVOld"))
+        await initial.value
+        XCTAssertEqual(model.videosGeneration, 1)
+
+        let staging = Task { await model.stageVideosRefresh() }
+        try await waitUntil { await gate.count == 2 }
+        XCTAssertEqual(model.videos.map(\.bvid), ["BVOld"], "the old list stays while the request is in flight")
+        await gate.resolve(2, try page("BVNew"))
+        let staged = await staging.value
+        XCTAssertTrue(staged)
+        XCTAssertEqual(model.videos.map(\.bvid), ["BVOld"], "the old list stays until the fade-out ends")
+        model.commitVideosRefresh()
+        XCTAssertEqual(model.videos.map(\.bvid), ["BVNew"])
+        XCTAssertEqual(model.videosGeneration, 2)
+
+        let failing = Task { await model.stageVideosRefresh() }
+        try await waitUntil { await gate.count == 3 }
+        await gate.fail(3)
+        let failed = await failing.value
+        XCTAssertFalse(failed)
+        model.commitVideosRefresh()
+        XCTAssertEqual(model.videos.map(\.bvid), ["BVNew"])
+        XCTAssertNotNil(model.videosError)
+    }
+
     private func services() -> ApplicationServices {
         let sessionID = UUID()
         return ApplicationServices(session: .init(currentID: { sessionID }, homeAccount: {

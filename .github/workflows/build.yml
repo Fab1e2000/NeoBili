@@ -13,37 +13,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Xcode ${{ matrix.xcode }}
-    # ci-approval 的 required reviewers 在仓库 Settings → Environments 中维护。
-    environment: ci-approval
-    runs-on: macos-26
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        # 支持的最低工具链和日常 CI 工具链。
-        xcode: ["26.2", "26.6"]
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Select Xcode ${{ matrix.xcode }}
-        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
-
-      - name: Build
-        run: |
-          xcodebuild -version
-          xcodebuild -project NeoBili.xcodeproj \
-            -scheme NeoBili -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -skipMacroValidation -skipPackagePluginValidation \
-            CODE_SIGNING_ALLOWED=NO build
-
+  # 构建和回归合为一个任务：`verify.sh full` 本身就会编译 App、Domain/Core/Data 模块并跑完整测试。
+  # 应用用到 iOS 27 SDK 的 API，所以只支持 Xcode 27；Xcode 27 目前在 `xcode-27` runner 上（预览）。
   regression:
-    name: Deterministic regression (Xcode 26.6)
-    environment: ci-approval
-    runs-on: macos-26
+    name: Build and deterministic regression (Xcode 27.1)
+    # 仓库所有者在本仓库分支上提的 PR 使用没有保护规则的 ci-trusted，直接运行；
+    # 其他 PR（含 fork）和手动运行使用 ci-approval，先等待审批。
+    # ci-approval 的 required reviewers 在仓库 Settings → Environments 中维护。
+    environment: ${{ (github.event_name == 'pull_request' && github.event.pull_request.user.login == github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository) && 'ci-trusted' || 'ci-approval' }}
+    runs-on: xcode-27
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -51,20 +29,20 @@ jobs:
         id: toolchain
         shell: bash
         run: |
-          test -d /Applications/Xcode_26.6.app
-          sudo xcode-select -s /Applications/Xcode_26.6.app
+          test -d /Applications/Xcode_27.1.app
+          sudo xcode-select -s /Applications/Xcode_27.1.app
           xcodebuild -version
           xcrun simctl list devices available -j > "$RUNNER_TEMP/neobili-simulators.json"
           python3 - <<'PYTHON'
           import json, os
           with open(os.environ["RUNNER_TEMP"] + "/neobili-simulators.json") as source:
               devices = json.load(source)["devices"]
-          candidates = [d for runtime, ds in devices.items() if runtime.endswith(".iOS-26-5")
+          candidates = [d for runtime, ds in devices.items() if runtime.endswith(".iOS-27-1")
                         for d in ds if d.get("isAvailable") and d["name"].startswith("iPhone")]
           if not candidates:
-              raise SystemExit("Required iOS 26.5 iPhone Simulator is unavailable")
+              raise SystemExit("Required iOS 27.1 iPhone Simulator is unavailable")
           device = sorted(candidates, key=lambda d: (d["name"], d["udid"]))[0]
-          print("Selected", device["name"], device["udid"], "iOS 26.5")
+          print("Selected", device["name"], device["udid"], "iOS 27.1")
           with open(os.environ["GITHUB_ENV"], "a") as target:
               target.write("NEOBILI_SIMULATOR_ID=" + device["udid"] + "\n")
           PYTHON

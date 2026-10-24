@@ -15,10 +15,13 @@ struct WatchLaterView: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var animations = VideoCardAnimationPreferences(source: .watchLater)
 
     private let isTabRoot: Bool
     private let onLayout: (([String: CGRect]) -> Void)?
     @State private var model: WatchLaterModel
+    @State private var refresh = ListRefreshController()
 
     init(model: WatchLaterModel = WatchLaterModel(), isTabRoot: Bool = false, onLayout: (([String: CGRect]) -> Void)? = nil) {
         self.isTabRoot = isTabRoot
@@ -61,7 +64,16 @@ struct WatchLaterView: View {
                             paginationFooter
                         }
                     }
+                    // 与推荐页一致：松手后旧卡片淡出，新内容到了再换入。
+                    .opacity(animatesExit ? refresh.contentOpacity : 1)
+                    .allowsHitTesting(refresh.contentOpacity == 1)
+                    .background {
+                        ListPullRefresh(enabled: !refresh.isRefreshing && !isLoading && !model.isRemoving,
+                                        onRefresh: startRefresh)
+                    }
                 }
+                .scrollBounceBehavior(.always, axes: .vertical)
+                .accessibilityAction(named: "刷新稍后再看", startRefresh)
                 .background(Color(uiColor: .systemGroupedBackground))
             }
         }
@@ -71,13 +83,22 @@ struct WatchLaterView: View {
         .overlay {
             if isLoading, items.isEmpty { LoadingTaskAnchor() }
         }
-        .refreshable { await model.load(refresh: true) }
         .task(id: account.sessionID) { await model.loadInitial() }
+        .listEntrance(ids: visibleItems.map { "wl:\($0.id)" }, generation: model.entranceGeneration, source: .watchLater)
+        .onDisappear { refresh.reset(discard: model.discardStagedRefresh) }
+        .onChange(of: account.sessionID) { refresh.reset(discard: model.discardStagedRefresh) }
         .resolvePortraitVideos(items, batchID: items.count)
         .videoCardAnimationSource(.watchLater)
         .onPreferenceChange(WatchLaterLayoutFrames.self) { onLayout?($0) }
         .toolbar {
             if !isTabRoot {
+                // 从「我的服务」进入时右上角提供刷新；作为标签页挂载时只有下拉刷新。
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("刷新", systemImage: "arrow.clockwise", action: startRefresh)
+                        .labelStyle(.iconOnly)
+                        .disabled(!canRefresh)
+                        .accessibilityIdentifier("watchlater.refresh")
+                }
                 ToolbarItem(placement: .topBarTrailing) { selectionButton }
             }
         }
@@ -85,7 +106,7 @@ struct WatchLaterView: View {
         .safeAreaInset(edge: .bottom) {
             if model.isSelecting {
                 LibrarySelectionBar(count: model.selectedIDs.count,
-                    isBusy: model.isRemoving || isLoading, done: endSelection) {
+                    isBusy: model.isRemoving || isLoading || refresh.isRefreshing, done: endSelection) {
                     Task { await remove(ids: model.selectedIDs) }
                 }
             }
@@ -98,8 +119,20 @@ struct WatchLaterView: View {
             model.selectedIDs = []
         }
         .frame(minHeight: 44)
-        .disabled(items.isEmpty || model.isRemoving || isLoading)
+        .disabled(items.isEmpty || model.isRemoving || isLoading || refresh.isRefreshing)
         .accessibilityIdentifier("watchlater.select")
+    }
+
+    private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
+
+    private var canRefresh: Bool { !refresh.isRefreshing && !isLoading && !model.isRemoving }
+
+    private func startRefresh() {
+        guard canRefresh else { return }
+        refresh.start(hasContent: !items.isEmpty, animatesExit: animatesExit, source: .watchLater,
+                      fetch: { await model.stageRefresh() },
+                      commit: model.commitStagedRefresh,
+                      discard: model.discardStagedRefresh)
     }
 
     private func endSelection() {
@@ -138,9 +171,9 @@ struct WatchLaterView: View {
                 title: item.title,
                 author: item.upper?.name ?? "",
                 playCount: -1,
-                durationText: summary?.formattedDuration ?? "",
-                animatesEntrance: false
+                durationText: summary?.formattedDuration ?? ""
                     )
+                    .videoEntranceIdentity("wl:\(item.id)")
                 }
             }
             .background(layoutProbe("card-\(item.id)"))
@@ -155,7 +188,7 @@ struct WatchLaterView: View {
                 } label: {
                     Label("多选", systemImage: "checkmark.circle")
                 }
-                .disabled(model.isRemoving || isLoading)
+                .disabled(model.isRemoving || isLoading || refresh.isRefreshing)
                 .accessibilityIdentifier("watchlater.multiSelect")
             }
             Button(role: .destructive) {
@@ -236,6 +269,7 @@ struct WatchLaterView: View {
     }
 
     private func remove(ids: Set<Int>) async {
+        guard !refresh.isRefreshing else { return }
         let error = await model.remove(ids: ids) {
             await feedback.confirmRemoval(String(localized: "已移出稍后再看"))
         }

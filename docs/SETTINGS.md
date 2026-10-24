@@ -41,8 +41,8 @@
 ## 动画能力与偏好
 
 `VideoCardAnimationSource.supportedPhases` 定义页面实际支持的阶段，先检查能力，
-再应用总开关和来源偏好。当前推荐与直播支持进入/退出，搜索支持进入；空间、相关视频、
-收藏、历史、稍后再看及合集没有自定义卡片阶段。旧偏好不能重新启用已不存在的效果。
+再应用总开关和来源偏好。当前推荐、直播、收藏、历史与稍后再看支持进入/退出，搜索支持进入，空间只支持退出（手动刷新时
+旧内容淡出）；相关视频与合集没有自定义卡片阶段。手动下拉刷新统一用 `ListRefreshController`。旧偏好不能重新启用已不存在的效果。
 
 视频来源键为 `neobili.videoCardAnimation.<source>.<phase>`。未保存来源选择时回退
 `neobili.videoCardEnterAnimation` / `neobili.videoCardExitAnimation`，再回退默认开启。

@@ -5,9 +5,16 @@ import SwiftUI
 
 /// 收藏夹列表（账号创建的全部收藏夹，含默认收藏夹）。
 struct FavoritesView: View {
+    /// 作为底部标签页的根页面挂载（不显示刷新按钮）。
+    var isTabRoot = false
     @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var animations = VideoCardAnimationPreferences(source: .favorites)
+    @State private var refresh = ListRefreshController()
+    /// 取回的收藏夹及取回时的移除状态；换入前若又发生过移除，这份快照已过期。
+    @State private var stagedFolders: (folders: [FavFolder], revision: UUID)?
     @State private var folders: [FavFolder] = []
     @State private var folderRemovals = ListRemovalState<Int>()
     @State private var isLoading = false
@@ -31,6 +38,13 @@ struct FavoritesView: View {
                 ContentUnavailableView("还没有收藏夹", systemImage: "star")
             } else {
                 List {
+                    // 不占高度的一行，只用来挂下拉手势的观察者。
+                    Color.clear
+                        .frame(height: 0)
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .background { ListPullRefresh(enabled: canRefresh, onRefresh: startRefresh) }
                     ForEach(folders) { folder in
                         NavigationLink {
                             FavoriteFolderView(folder: folder)
@@ -57,11 +71,27 @@ struct FavoritesView: View {
                         }
                     }
                 }
+                // 与推荐页一致：松手后旧内容淡出，新内容到了再换入。
+                .opacity(animatesExit ? refresh.contentOpacity : 1)
+                .allowsHitTesting(refresh.contentOpacity == 1)
+                .scrollBounceBehavior(.always, axes: .vertical)
+                .accessibilityAction(named: "刷新收藏夹", startRefresh)
             }
         }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触条目。
         .leftEdgeTapDeadZone()
         .navigationTitle("收藏")
+        .toolbar {
+            // 从「我的服务」进入时右上角提供刷新；作为标签页挂载时只有下拉刷新。
+            if !isTabRoot {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("刷新", systemImage: "arrow.clockwise", action: startRefresh)
+                        .labelStyle(.iconOnly)
+                        .disabled(!canRefresh)
+                        .accessibilityIdentifier("favorites.refresh")
+                }
+            }
+        }
         .overlay {
             if isLoading, folders.isEmpty { LoadingTaskAnchor() }
         }
@@ -76,7 +106,8 @@ struct FavoritesView: View {
             }
             await load()
         }
-        .refreshable { await load() }
+        .onDisappear { refresh.reset(discard: { stagedFolders = nil }) }
+        .onChange(of: account.sessionID) { refresh.reset(discard: { stagedFolders = nil }) }
         .confirmationDialog(
             // 整个收藏夹的删除提交后不可恢复，先说明影响范围。
             String(localized: "删除「\(folderPendingDeletion?.title ?? "")」后，里面的 \(folderPendingDeletion?.mediaCount ?? 0) 个内容也会一并消失。可在提示中撤销，提交后无法恢复。"),
@@ -97,7 +128,7 @@ struct FavoritesView: View {
     }
 
     private func delete(_ folder: FavFolder) async {
-        guard folderRemovals.begin(folder.id) else { return }
+        guard !refresh.isRefreshing, folderRemovals.begin(folder.id) else { return }
         let sessionID = account.sessionID
         let identitySession = services.session.currentID()
         defer { if account.sessionID == sessionID { folderRemovals.finish(folder.id) } }
@@ -111,6 +142,48 @@ struct FavoritesView: View {
                 folderRemovals.restore(folder, at: removedIndex, in: &folders)
             }
             if account.sessionID == sessionID, !error.isCancellation { feedback.show(error.localizedDescription) }
+        }
+    }
+
+    private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
+
+    private var canRefresh: Bool { !refresh.isRefreshing && !isLoading && !folderRemovals.hasPending }
+
+    /// 手动下拉刷新：旧内容淡出的同时重新取收藏夹，两者都结束后一次换入。
+    private func startRefresh() {
+        guard canRefresh else { return }
+        refresh.start(hasContent: !folders.isEmpty, animatesExit: animatesExit, source: .favorites,
+                      fetch: { await stageFolders() },
+                      commit: {
+                          guard let staged = stagedFolders else { return }
+                          stagedFolders = nil
+                          guard staged.revision == folderRemovals.revision, !folderRemovals.hasPending else { return }
+                          folders = staged.folders
+                      },
+                      discard: { stagedFolders = nil })
+    }
+
+    private func stageFolders() async -> Bool {
+        guard let mid = account.accountID else {
+            feedback.show(String(localized: "登录状态已失效，请重新登录"))
+            return false
+        }
+        let requestID = UUID()
+        loadID = requestID
+        let sessionID = account.sessionID
+        let revision = folderRemovals.revision
+        stagedFolders = nil
+        isLoading = true
+        defer { if loadID == requestID { isLoading = false } }
+        do {
+            let result = try await services.library.favoriteFolders(ownerMid: mid)
+            guard loadID == requestID, account.sessionID == sessionID, folderRemovals.revision == revision, !Task.isCancelled else { return false }
+            stagedFolders = (LibraryPageRules.unique(result), revision)
+            return true
+        } catch {
+            guard loadID == requestID, account.sessionID == sessionID, !error.isCancellation else { return false }
+            feedback.show(error.localizedDescription)
+            return false
         }
     }
 
@@ -153,6 +226,19 @@ struct FavoriteFolderView: View {
     @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var animations = VideoCardAnimationPreferences(source: .favorites)
+
+    /// 手动刷新取回但还没换进列表的第一页。
+    private struct StagedPage {
+        let videos: [FavMedia]
+        let hasMore: Bool
+        /// 取回时的移除状态；换入前若又发生过移除，这份快照已过期。
+        let revision: UUID
+    }
+
+    @State private var refresh = ListRefreshController()
+    @State private var stagedPage: StagedPage?
     @State private var videos: [FavMedia] = []
     @State private var page = 1
     @State private var hasMore = true
@@ -214,7 +300,15 @@ struct FavoriteFolderView: View {
                             .padding()
                         }
                     }
+                    // 与推荐页一致：松手后旧卡片淡出，新内容到了再换入。
+                    .opacity(animatesExit ? refresh.contentOpacity : 1)
+                    .allowsHitTesting(refresh.contentOpacity == 1)
+                    .background {
+                        ListPullRefresh(enabled: canRefresh, onRefresh: startRefresh)
+                    }
                 }
+                .scrollBounceBehavior(.always, axes: .vertical)
+                .accessibilityAction(named: "刷新收藏夹内容", startRefresh)
                 .background(Color(uiColor: .systemGroupedBackground))
             }
         }
@@ -225,8 +319,9 @@ struct FavoriteFolderView: View {
         .overlay {
             if isLoading, videos.isEmpty { LoadingTaskAnchor() }
         }
-        .refreshable { await reload() }
         .task { await loadIfNeeded() }
+        .listEntrance(ids: visibleVideos.map { "favorite:\($0.id)" }, generation: entranceGeneration, source: .favorites)
+        .onDisappear { refresh.reset(discard: { stagedPage = nil }) }
         .resolvePortraitVideos(videos, batchID: entranceGeneration) {
             guard hasMore, errorMessage == nil else { return videos }
             await loadNextPage()
@@ -236,7 +331,7 @@ struct FavoriteFolderView: View {
         .safeAreaInset(edge: .bottom) {
             if isSelecting {
                 LibrarySelectionBar(count: selectedIDs.count,
-                    isBusy: isRemovingSelected || isLoading || isLoadingMore,
+                    isBusy: isRemovingSelected || isLoading || isLoadingMore || refresh.isRefreshing,
                     done: { isSelecting = false; selectedIDs = [] }) {
                     Task { await removeSelected() }
                 }
@@ -250,6 +345,7 @@ struct FavoriteFolderView: View {
             removals = ListRemovalState()
             hasMore = true
             errorMessage = nil
+            refresh.reset(discard: { stagedPage = nil })
             Task { await reload() }
         }
     }
@@ -288,9 +384,9 @@ struct FavoriteFolderView: View {
                 title: media.title,
                 author: media.upper?.name ?? "",
                 playCount: media.cntInfo?.play ?? -1,
-                durationText: summary?.formattedDuration ?? "",
-                animatesEntrance: false
+                durationText: summary?.formattedDuration ?? ""
             )
+            .videoEntranceIdentity("favorite:\(media.id)")
             }
         }
         .buttonStyle(.plain)
@@ -300,7 +396,7 @@ struct FavoriteFolderView: View {
                 Button {
                     isSelecting = true; selectedIDs = [media.id]
                 } label: { Label("多选", systemImage: "checkmark.circle") }
-                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending)
+                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing)
             }
             WatchLaterMenuButton(aid: media.id, bvid: media.bvid)
 
@@ -326,7 +422,7 @@ struct FavoriteFolderView: View {
     }
 
     private func removeSelected() async {
-        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending else { return }
+        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending, !refresh.isRefreshing else { return }
         let snapshot = videos
         let targets = snapshot.filter { selectedIDs.contains($0.id) }
         guard !targets.isEmpty else { return }
@@ -364,12 +460,57 @@ struct FavoriteFolderView: View {
     }
 
 
-    /// 下拉刷新和「重试」都走这里。
-    ///
-    /// 注意**不要**先把 `videos` 清空再去请求：列表内容一变，下拉刷新那个由
-    /// SwiftUI 持有的任务就会被取消，请求随之失败，页面弹出「加载失败」；
-    /// 而点「重试」是另起一个不受牵连的任务，所以反而能成功。改成拿到数据
-    /// 之后再整体替换，顺带也没有了刷新过程中的白屏。
+    private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
+
+    private var canRefresh: Bool {
+        !refresh.isRefreshing && !isLoading && !isLoadingMore && !removals.hasPending && !isRemovingSelected
+    }
+
+    /// 手动下拉刷新：旧卡片淡出的同时取第一页，两者都结束后一次换入。
+    private func startRefresh() {
+        guard canRefresh else { return }
+        refresh.start(hasContent: !videos.isEmpty, animatesExit: animatesExit, source: .favorites,
+                      fetch: { await stageReload() },
+                      commit: commitStagedReload,
+                      discard: { stagedPage = nil })
+    }
+
+    private func stageReload() async -> Bool {
+        let requestID = UUID()
+        loadID = requestID
+        let revision = removals.revision
+        stagedPage = nil
+        isLoading = true
+        defer { if loadID == requestID { isLoading = false } }
+        do {
+            let payload = try await services.library.favoriteVideos(folderID: folder.id, page: 1)
+            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return false }
+            stagedPage = StagedPage(
+                videos: LibraryPageRules.unique((payload.medias ?? []).filter(\.isVideo), excluding: removals.hiddenIDs),
+                hasMore: LibraryPageRules.hasMoreFavorites(rawCount: payload.medias?.count ?? 0),
+                revision: revision)
+            return true
+        } catch {
+            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return false }
+            feedback.show(error.localizedDescription)
+            return false
+        }
+    }
+
+    private func commitStagedReload() {
+        guard let staged = stagedPage else { return }
+        stagedPage = nil
+        guard staged.revision == removals.revision, !removals.hasPending else { return }
+        entranceGeneration += 1
+        videos = staged.videos
+        selectedIDs.formIntersection(Set(videos.map(\.id)))
+        if selectedIDs.isEmpty { isSelecting = false }
+        page = 2
+        hasMore = staged.hasMore
+        errorMessage = nil
+    }
+
+    /// 首次加载和「重试」走这里；手动下拉刷新走 `startRefresh`。
     private func reload() async {
         guard !removals.hasPending, !isRemovingSelected else { return }
         let requestID = UUID()
@@ -395,12 +536,12 @@ struct FavoriteFolderView: View {
     }
 
     private func loadMoreIfNeeded() async {
-        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, errorMessage == nil else { return }
+        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, !refresh.isRefreshing, errorMessage == nil else { return }
         await loadNextPage()
     }
 
     private func loadNextPage() async {
-        guard !removals.hasPending, !isRemovingSelected else { return }
+        guard !removals.hasPending, !isRemovingSelected, !refresh.isRefreshing else { return }
         guard hasMore, !isLoadingMore, !isLoading else { return }
         let requestID = UUID()
         loadID = requestID
@@ -435,7 +576,7 @@ struct FavoriteFolderView: View {
     ///
     /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
     private func remove(_ media: FavMedia) async {
-        guard !isRemovingSelected, videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
+        guard !isRemovingSelected, !refresh.isRefreshing, videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
         let sessionID = account.sessionID
         defer { if account.sessionID == sessionID { removals.finish(media.id) } }
         let identitySession = services.session.currentID()
