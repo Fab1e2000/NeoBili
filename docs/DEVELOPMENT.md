@@ -197,7 +197,7 @@ Build 工作流按 PR 来源选择环境：仓库所有者在本仓库分支上�
 `bash scripts/verify.sh full` 编译 App 与各模块，并执行工作流脚本、离线与确定性模拟器回归，
 与本地使用同一入口。应用用到 iOS 27 SDK 的 API（如导航栏收起），因此 CI 和发布都只用
 Xcode 27；Xcode 27 在 `xcode-27` runner 上，目前是 GitHub 的预览镜像，排队时间可能较长。
-CI 固定选择 iOS 27.1 runtime 的 iPhone，记录选中的设备；缺少工具链/runtime 时失败，
+CI 优先选择 iOS 27 runtime 的 iPhone 18 Pro（排除没有顶部安全区的折叠机型 iPhone Duo，依赖真机安全区的布局测试在它上面不成立），记录选中的设备；缺少工具链/runtime 时失败，
 不自动改用其他版本。结果作为 Actions artifact 上传。CI 不配置真实账号或签名凭据。
 工具链可用性以 [runner 官方清单](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)
 和任务中的预检为准。发布仍使用现有未签名 IPA 流程与版本说明。

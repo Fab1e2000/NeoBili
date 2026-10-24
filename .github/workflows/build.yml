@@ -37,12 +37,17 @@ jobs:
           import json, os
           with open(os.environ["RUNNER_TEMP"] + "/neobili-simulators.json") as source:
               devices = json.load(source)["devices"]
-          candidates = [d for runtime, ds in devices.items() if runtime.endswith(".iOS-27-1")
-                        for d in ds if d.get("isAvailable") and d["name"].startswith("iPhone")]
+          # iOS 27.1 runtime 目前只带 iPhone Duo（折叠机型，没有顶部安全区），
+          # 依赖真机顶部安全区的布局测试在它上面无法成立；与本地一致，用 iOS 27 的标准 iPhone。
+          candidates = [(runtime, d) for runtime, ds in devices.items()
+                        if runtime.endswith((".iOS-27-0", ".iOS-27-1"))
+                        for d in ds if d.get("isAvailable") and d["name"].startswith("iPhone")
+                        and "Duo" not in d["name"]]
           if not candidates:
-              raise SystemExit("Required iOS 27.1 iPhone Simulator is unavailable")
-          device = sorted(candidates, key=lambda d: (d["name"], d["udid"]))[0]
-          print("Selected", device["name"], device["udid"], "iOS 27.1")
+              raise SystemExit("Required iOS 27 iPhone Simulator is unavailable")
+          # 优先 iPhone 18 Pro，其次按名称、runtime、udid 稳定排序。
+          runtime, device = sorted(candidates, key=lambda c: (c[1]["name"] != "iPhone 18 Pro", c[1]["name"], c[0], c[1]["udid"]))[0]
+          print("Selected", device["name"], device["udid"], runtime.rsplit(".", 1)[-1])
           with open(os.environ["GITHUB_ENV"], "a") as target:
               target.write("NEOBILI_SIMULATOR_ID=" + device["udid"] + "\n")
           PYTHON
