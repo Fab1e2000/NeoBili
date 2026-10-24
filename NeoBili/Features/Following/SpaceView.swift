@@ -17,6 +17,13 @@ struct SpaceView: View {
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var videoAnimations = VideoCardAnimationPreferences(source: .space)
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
+    @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = CardAnimationSettings.defaultValue
+    /// 两个分页各自刷新、各自淡出，互不影响。
+    @State private var videoRefresh = ListRefreshController()
+    @State private var dynamicRefresh = ListRefreshController()
     @State private var viewModel: SpaceViewModel
     @State private var tab: Tab = .videos
     @Namespace private var dynamicTransition
@@ -106,6 +113,10 @@ struct SpaceView: View {
             }
         }
         .onAppear { OrientationController.enterPortrait() }
+        .onDisappear {
+            videoRefresh.reset(discard: viewModel.discardVideosRefresh)
+            dynamicRefresh.reset(discard: viewModel.dynamics.discardStagedRefresh)
+        }
         .fullScreenCover(item: $detailEntry) { entry in
             NavigationStack {
                     DynamicDetailView(entry: entry, feed: viewModel.dynamics)
@@ -139,7 +150,14 @@ struct SpaceView: View {
                         }
                 }
             }
+            // 与推荐页一致：松手后旧内容淡出，新内容到了再换入。
+            .opacity(animatesExit(in: pageTab) ? refreshController(for: pageTab).contentOpacity : 1)
+            .allowsHitTesting(refreshController(for: pageTab).contentOpacity == 1)
             .frame(maxWidth: .infinity)
+            .background {
+                ListPullRefresh(enabled: !refreshController(for: pageTab).isRefreshing && canRefresh(pageTab),
+                                onRefresh: { startRefresh(pageTab) })
+            }
             // 空列表、加载中和短列表也能完整收起头部。
             .frame(minHeight: max(viewportHeight - pickerHeight, 0), alignment: .top)
             .padding(.top, headerHeight + pickerHeight)
@@ -169,11 +187,42 @@ struct SpaceView: View {
         .onAppear {
             if pageTab != tab { synchronizeHeader(in: pageTab) }
         }
-        .refreshable {
-            if pageTab == .videos { await viewModel.reloadVideos() }
-            else { await viewModel.dynamics.refresh() }
-        }
         .leftEdgeTapDeadZone()
+    }
+
+    private func refreshController(for pageTab: Tab) -> ListRefreshController {
+        pageTab == .videos ? videoRefresh : dynamicRefresh
+    }
+
+    private func animatesExit(in pageTab: Tab) -> Bool {
+        guard !reduceMotion else { return false }
+        return pageTab == .videos ? videoAnimations.isEnabled(phase: .exit) : cardAnimationsEnabled && dynamicExitEnabled
+    }
+
+    private func canRefresh(_ pageTab: Tab) -> Bool {
+        pageTab == .videos ? !viewModel.isLoadingVideos : !viewModel.dynamics.isLoading
+    }
+
+    /// 手动下拉刷新：旧内容淡出的同时重新取第一页，两者都结束后一次换入。
+    private func startRefresh(_ pageTab: Tab) {
+        guard canRefresh(pageTab), !refreshController(for: pageTab).isRefreshing else { return }
+        switch pageTab {
+        case .videos:
+            videoRefresh.start(hasContent: !viewModel.videos.isEmpty, animatesExit: animatesExit(in: .videos), source: .space,
+                               fetch: { await viewModel.stageVideosRefresh() },
+                               commit: viewModel.commitVideosRefresh,
+                               discard: viewModel.discardVideosRefresh)
+        case .dynamics:
+            let stagingID = UUID()
+            dynamicRefresh.start(hasContent: !viewModel.dynamics.entries.isEmpty, animatesExit: animatesExit(in: .dynamics),
+                                 source: .space, category: .dynamic,
+                                 fetch: {
+                                     await viewModel.dynamics.refresh(staged: true, stagingID: stagingID)
+                                     return viewModel.dynamics.hasStagedRefresh(id: stagingID)
+                                 },
+                                 commit: { viewModel.dynamics.commitStagedRefresh(id: stagingID) },
+                                 discard: viewModel.dynamics.discardStagedRefresh)
+        }
     }
 
     /// 横向手势开始前，另一页已处于相同的头部折叠位置。
@@ -228,7 +277,7 @@ struct SpaceView: View {
                             .controlSize(.small)
                             .accessibilityLabel("关注状态尚未加载，请重试")
                         if let error = viewModel.followError {
-                            Text(error).font(.caption2).foregroundStyle(.secondary)
+                            Text(error).font(.app(.caption2)).foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
                     }
@@ -243,7 +292,7 @@ struct SpaceView: View {
                         }
                     } label: {
                         Text(viewModel.isFollowing == true ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
-                            .font(.footnote.weight(.medium))
+                            .font(.app(.footnote, weight: .medium))
                             .frame(minWidth: 56)
                     },
                     isActive: viewModel.isFollowing == true
@@ -282,7 +331,7 @@ struct SpaceView: View {
                 Button("重试") { Task { await viewModel.reloadVideos() } }
                     .disabled(viewModel.isLoadingVideos)
             }
-            .font(.footnote)
+            .font(.app(.footnote))
             .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
             .padding(.vertical, 12)
         }

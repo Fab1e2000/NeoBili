@@ -90,7 +90,7 @@ struct PlayerVerticalGestureLayer: View {
     private var feedback: some View {
         if isLongPressActive {
             Label("2×", systemImage: "forward.fill")
-                .font(.callout.monospacedDigit())
+                .font(.app(.callout)).monospacedDigit()
                 .padding(12)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
         } else if let seek, zone == .seek {
@@ -98,17 +98,17 @@ struct PlayerVerticalGestureLayer: View {
                 Label(seek.isCancelled ? "松开取消跳转" : (seek.delta >= 0 ? "快进" : "后退"),
                       systemImage: seek.isCancelled ? "xmark" : (seek.delta >= 0 ? "forward.fill" : "backward.fill"))
                 Text("\(PlaybackTime.text(seek.target)) / \(PlaybackTime.text(seek.duration))")
-                    .font(.headline.monospacedDigit())
+                    .font(.app(.headline)).monospacedDigit()
                 Text(seek.isCancelled ? String(localized: "移回画面继续调整") : String(localized: "\(seek.delta >= 0 ? "+" : "−")\(Int(abs(seek.delta).rounded())) 秒 · 松开跳转"))
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
             }
-            .font(.subheadline)
+            .font(.app(.subheadline))
             .padding(12)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
         } else if zone == .brightness || zone == .volume {
             Label("\(Int((value * 100).rounded()))%", systemImage: zone == .brightness ? "sun.max.fill" : "speaker.wave.2.fill")
-                .font(.callout.monospacedDigit())
+                .font(.app(.callout)).monospacedDigit()
                 .padding(12)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
         }

@@ -1,28 +1,16 @@
 import SwiftUI
 
 /// 标签栏里的稍后再看、收藏、历史。列表本身与「我的」卡片里的是同一个视图，
-/// 这里只换外壳：自己的导航栈、与其它主页面一致的固定页头（标题 + 头像），
+/// 这里只换外壳：自己的导航栈、与其它主页面一致的原生大标题（标题 + 头像），
 /// 视频由根视图统一呈现。
 struct LibraryTabPage: View {
     let tab: MainTab
-    @TitleBarPreference private var titleBarStyle
-    private var pinsTitleBar: Bool { titleBarStyle.isPinned }
 
     var body: some View {
         NavigationStack {
             content
-                // 根页用页头代替导航栏；推入的子页面（如收藏夹内容）仍显示自己的导航栏。
-                .toolbar(.hidden, for: .navigationBar)
-                // 固定标题栏挂在顶部栏；随内容滚动时交给列表，由列表放在内容第一行。
-                .safeAreaBar(edge: .top, spacing: 0) {
-                    if pinsTitleBar {
-                        PageHeader(title: tab.pageTitle)
-                            .padding(.horizontal, 20)
-                    }
-                }
-                .scrollEdgeEffectStyle(.hard, for: .top)
-                .scrollEdgeEffectHidden(!titleBarStyle.isPinned, for: .top)
-                .environment(\.scrollingPageHeader, pinsTitleBar ? nil : ScrollingPageHeader(title: tab.pageTitle))
+                // 根页使用原生栏内大标题；推入的子页面（如收藏夹内容）仍显示自己的导航栏。
+                .rootPageChrome(title: tab.pageTitle)
                 .onAppear { OrientationController.enterPortrait() }
         }
     }
@@ -31,8 +19,8 @@ struct LibraryTabPage: View {
     private var content: some View {
         switch tab {
         case .watchLater: WatchLaterView(isTabRoot: true)
-        case .favorites: FavoritesView()
-        case .history: HistoryView()
+        case .favorites: FavoritesView(isTabRoot: true)
+        case .history: HistoryView(isTabRoot: true)
         default: EmptyView()
         }
     }

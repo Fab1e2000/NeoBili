@@ -7,7 +7,7 @@
 | 分类 | 设置 |
 | --- | --- |
 | 外观 | 主题色、文字大小、语言、动画 |
-| 浏览 | 标签栏、标题栏、内容过滤、推荐流、滚动与防误触 |
+| 浏览 | 标签栏、内容过滤、推荐流、滚动与防误触 |
 | 播放 | 播放与画质、弹幕、播放器手势、控件位置 |
 | 账号 | 登录和账号管理 |
 | 高级 | 设备编号；Debug 构建另有推荐实验日志 |
@@ -41,8 +41,8 @@
 ## 动画能力与偏好
 
 `VideoCardAnimationSource.supportedPhases` 定义页面实际支持的阶段，先检查能力，
-再应用总开关和来源偏好。当前推荐与直播支持进入/退出，搜索支持进入；空间、相关视频、
-收藏、历史、稍后再看及合集没有自定义卡片阶段。旧偏好不能重新启用已不存在的效果。
+再应用总开关和来源偏好。当前推荐、直播、收藏、历史与稍后再看支持进入/退出，搜索支持进入，空间只支持退出（手动刷新时
+旧内容淡出）；相关视频与合集没有自定义卡片阶段。手动下拉刷新统一用 `ListRefreshController`。旧偏好不能重新启用已不存在的效果。
 
 视频来源键为 `neobili.videoCardAnimation.<source>.<phase>`。未保存来源选择时回退
 `neobili.videoCardEnterAnimation` / `neobili.videoCardExitAnimation`，再回退默认开启。
@@ -58,10 +58,13 @@
 
 主题、字号、语言由 `AppTheme`、`AppTextSize`、`AppLanguage` 管理。语言在启动时确定，
 修改后重新打开生效；新增界面文字同步维护 String Catalog。
-标签顺序、隐藏与启动页由 `MainTabSettings` 约束，标题栏由 `TitleBarSettings` 统一消费。
-标题栏的两个选项使用 `neobili.titleBarStyle`；无新值时回退旧的 `neobili.homePinnedTitleBar`，
-旧 false 对应随内容滚动、旧 true 和已保存的 `pinnedGradient` 对应固定切边。推荐、搜索、资料库通过 `TitleBarPreference`
-读取偏好；关注与直播始终固定切边。固定切边使用系统 `.hard`；随内容滚动时关闭顶部滚动边缘效果，不叠加渐变模糊。
+标签顺序、隐藏与启动页由 `MainTabSettings` 约束。主页面标题没有设置项：推荐、搜索、资料库、关注、直播
+均通过 `rootPageChrome` 使用原生 `inlineLarge` 标题并随下滑收起，头像入口放在导航栏右侧。
+字体风格由 `AppFontStyle` 管理，选项为默认字体和宋体，保存到 `neobili.fontStyle`，启动时确定，
+改动后重新打开生效。宋体使用内置的思源宋体（SIL OFL，Regular 与 SemiBold 两个字重，中等及以下用
+Regular，半粗及以上用 SemiBold），同一套字形覆盖拉丁字母与简体汉字，不依赖系统的中文回退。新代码用
+`Font.app(_:weight:)`、`AppFont.uiFont` 与 `AppFont.preferred` 取字体，不直接使用系统文字样式；图标符号和
+弹幕保留系统字体。
 播放器手势和控件位置保留各自合法范围及恢复默认逻辑，避免在调用点重复定义常量。
 
 ## 推荐来源

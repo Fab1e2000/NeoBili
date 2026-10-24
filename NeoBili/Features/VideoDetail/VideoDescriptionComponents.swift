@@ -22,21 +22,22 @@ struct VideoDescriptionComponents<ActionBar: View> {
     /// resizes or rebinds the owner row above it.
     func make(_ detail: VideoDetail) -> [VideoDescriptionComponent] {
         var result: [VideoDescriptionComponent] = []
-        result.append(VideoDescriptionComponent("owner", revision: [AnyHashable(detail.owner), AnyHashable(viewModel?.ownerCard), viewModel?.relation?.isFollowing ?? false]) {
+        result.append(VideoDescriptionComponent("owner", revision: [AnyHashable(detail.owner), AnyHashable(viewModel?.ownerCard), viewModel?.relation?.isFollowing ?? false],
+                                                bottomSpacing: 10) {
             VideoOwnerRow(owner: detail.owner, avatarURL: detail.secureAvatarURL,
                           card: viewModel?.ownerCard,
                           isFollowing: viewModel?.relation?.isFollowing ?? false,
                           onToggleFollow: onToggleFollow,
                           onOpenSpace: onOpenSpace)
                 .padding(.horizontal, contentInset)
-                .padding(.top, 14)
+                .padding(.top, 12)
 
         })
         result.append(VideoDescriptionComponent(introduction:
             VideoIntroductionCard(title: detail.title, stat: detail.stat, pubdate: detail.pubdate, desc: detail.desc,
                                   isExpanded: descriptionExpanded)))
         if let tags = viewModel?.tags, !tags.isEmpty {
-            result.append(VideoDescriptionComponent("tags", revision: [AnyHashable(tags)]) {
+            result.append(VideoDescriptionComponent("tags", revision: [AnyHashable(tags)], bottomSpacing: 16) {
                 VideoTagsRow(tags: tags, horizontalInset: contentInset) { tag in
                     onOpenTag(tag)
                 }
@@ -44,7 +45,7 @@ struct VideoDescriptionComponents<ActionBar: View> {
         }
         result.append(VideoDescriptionComponent("actions", revision: [AnyHashable(viewModel?.relation),
                                viewModel?.likeCount ?? 0, viewModel?.coinCount ?? 0, viewModel?.favoriteCount ?? 0,
-                               viewModel?.displayedIsLiked ?? false, detail.stat.share]) {
+                               viewModel?.displayedIsLiked ?? false, detail.stat.share], bottomSpacing: 14) {
             actionBar(detail).padding(.horizontal, contentInset)
         })
         if let season = detail.ugcSeason {
@@ -54,7 +55,8 @@ struct VideoDescriptionComponents<ActionBar: View> {
             if total > 0 {
                 let title = season.title ?? ""
                 let currentIndex = currentEpisodeIndex(season)
-                result.append(VideoDescriptionComponent("season", revision: [title, total, AnyHashable(currentIndex)]) {
+                result.append(VideoDescriptionComponent("season", revision: [title, total, AnyHashable(currentIndex)],
+                                                        bottomSpacing: 14) {
                     UgcSeasonRow(title: title, total: total, currentIndex: currentIndex, onTap: onShowSeason)
                         .padding(.horizontal, contentInset)
                 })
@@ -66,15 +68,17 @@ struct VideoDescriptionComponents<ActionBar: View> {
                 detail.pages.indices.contains(index - 1) ? detail.pages[index - 1].part : nil
             } ?? String(localized: "视频分集")
             let total = detail.pages.count
-            result.append(VideoDescriptionComponent("parts", revision: [currentName, total, AnyHashable(currentIndex)]) {
+            result.append(VideoDescriptionComponent("parts", revision: [currentName, total, AnyHashable(currentIndex)],
+                                                    bottomSpacing: 14) {
                 VideoPartsRow(currentPartName: currentName, total: total, currentIndex: currentIndex, onTap: onShowParts)
                     .padding(.horizontal, contentInset)
             })
         }
-        return result.enumerated().map { index, component in
+        // 每一块自带下方间距；最后一块下面直接接相关视频卡片，不再有分区标题。
+        return result.map { component in
             if component.introduction != nil { return component }
             return VideoDescriptionComponent(component.id, revision: component.revision) {
-                component.content.padding(.bottom, index == result.count - 1 ? 6 : 14)
+                component.content.padding(.bottom, component.bottomSpacing)
             }
         }
     }

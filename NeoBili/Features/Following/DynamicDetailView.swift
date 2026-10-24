@@ -40,7 +40,7 @@ struct DynamicDetailView: View {
                 Divider()
 
                 Text(entry.commentCount > 0 ? String(localized: "评论 \(entry.commentCount)") : String(localized: "评论"))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, weight: .semibold))
                     .padding(.horizontal, CommentLayout.pageHorizontalInset)
                     .padding(.top, 14)
                     .padding(.bottom, 6)
@@ -99,12 +99,12 @@ struct DynamicDetailView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.authorName)
-                        .font(.subheadline.weight(.medium))
+                        .font(.app(.subheadline, weight: .medium))
                         .lineLimit(1)
 
                     if !entry.publishedText.isEmpty {
                         Text(entry.publishedText)
-                            .font(.caption)
+                            .font(.app(.caption))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -118,7 +118,7 @@ struct DynamicDetailView: View {
                 CommentEmoteText(
                     message: entry.text,
                     emotes: entry.emotes,
-                    font: .body,
+                    font: .app(.body),
                     textStyle: .body
                 )
                     // 详情页不再截断，长文也一次看完。
@@ -171,7 +171,7 @@ struct DynamicDetailView: View {
                 )
 
                 Text(video.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -215,7 +215,7 @@ struct DynamicDetailView: View {
             Image(systemName: icon)
             Text(text)
         }
-        .font(.footnote)
+        .font(.app(.footnote))
         .foregroundStyle(isHighlighted ? AnyShapeStyle(themeColor) : AnyShapeStyle(.secondary))
     }
 

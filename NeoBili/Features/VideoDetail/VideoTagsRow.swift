@@ -3,11 +3,11 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 稿件标签，横向一排浅灰填充的胶囊（内容里的按钮不用玻璃）。
+/// 稿件标签，横向一排浅灰填充的圆角标签（内容里的按钮不用玻璃）。圆角与操作按钮、合集、分P 入口在视觉上一致。
 ///
 /// 标签数量不定，长标签也常见，所以整行可以横向滚动而不是折行——折行会让
 /// 简介区高度随视频不同上下跳。左右留白用 `.contentMargins` 而不是给内容加
-/// padding，这样滚到两端时胶囊不会被容器边缘切掉。
+/// padding，这样滚到两端时标签不会被容器边缘切掉。
 struct VideoTagsRow: View {
     let tags: [VideoTag]
     /// 和正文一致的左右留白。
@@ -16,25 +16,24 @@ struct VideoTagsRow: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(tags) { tag in
                     Button { onSelect(tag) } label: {
                         Text(tag.tagName)
-                            .font(.caption)
+                            .font(.app(.caption))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
-                            .padding(.horizontal, 12)
-                            .frame(minHeight: 28)
-                            .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-                            .contentShape(Capsule())
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 26)
+                            .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("搜索标签：\(tag.tagName)")
                 }
             }
-            .padding(.vertical, 8)
         }
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.never)
         .contentMargins(.horizontal, horizontalInset, for: .scrollContent)
     }
 }

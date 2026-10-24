@@ -48,7 +48,7 @@ struct FollowingAllUpsView: View {
             VStack(spacing: 6) {
                 FollowingUpAvatar(item: .up(up), size: 52)
                 Text(up.uname)
-                    .font(.caption2)
+                    .font(.app(.caption2))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
             }
@@ -83,7 +83,7 @@ struct FollowingAllUpsView: View {
             LoadingTaskAnchor().padding(.bottom, 16)
         } else if let message = model.errorMessage {
             VStack(spacing: 6) {
-                Text(message).font(.footnote).foregroundStyle(.secondary)
+                Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
                 Button("重试") { Task { await model.loadMore() } }.frame(minHeight: 44)
             }
             .padding(.bottom, 16)

@@ -87,10 +87,10 @@ struct MineView: View {
                 .foregroundStyle(.secondary)
 
             Text("尚未登录")
-                .font(.title3.weight(.semibold))
+                .font(.app(.title3, weight: .semibold))
 
             Text(String(localized: "登录后可以使用收藏、历史、稍后再看，\n首页也会变成属于你的个性化推荐。"))
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
@@ -107,7 +107,7 @@ struct MineView: View {
         List {
             if let message = account.sessionError {
                 Section {
-                    Text(message).font(.footnote).foregroundStyle(.secondary)
+                    Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
                     Button("重新连接") { Task { await account.refreshProfile() } }
                         .disabled(account.isRefreshingProfile)
                 }
@@ -163,7 +163,7 @@ struct MineView: View {
                 }
 
             Text(profile.name)
-                .font(.title3.weight(.semibold))
+                .font(.app(.title3, weight: .semibold))
                 .lineLimit(1)
 
             HStack(spacing: 8) {
@@ -196,7 +196,7 @@ struct MineView: View {
         foreground: Color = .white
     ) -> some View {
         Text(text)
-            .font(.caption2.weight(.semibold))
+            .font(.app(.caption2, weight: .semibold))
             .foregroundStyle(foreground)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -221,12 +221,12 @@ struct MineView: View {
                     .background(color, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
 
                 Text(title)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.primary)
 
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.app(.caption, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
             .padding(.vertical, 2)

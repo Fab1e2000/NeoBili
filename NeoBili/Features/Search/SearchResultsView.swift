@@ -62,7 +62,7 @@ struct SearchResultsView: View {
                 }
                 if let message = viewModel.loadMoreError {
                     VStack(spacing: 8) {
-                        Text(message).font(.caption).foregroundStyle(.secondary)
+                        Text(message).font(.app(.caption)).foregroundStyle(.secondary)
                         Button("重试加载") { Task { await viewModel.loadMore() } }
                             .buttonStyle(.bordered)
                     }

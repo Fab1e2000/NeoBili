@@ -114,6 +114,26 @@ final class DynamicFeedModel {
         }
     }
 
+    func hasStagedRefresh(id: UUID) -> Bool { pendingRefresh != nil && pendingRefreshID == id }
+
+    /// 放弃暂存的刷新，并让仍在进行的刷新请求作废：晚到的结果不会再写进 `pendingRefresh`，
+    /// 否则它会一直挡住分页。
+    ///
+    /// 只有确实有暂存页或进行中的刷新时才作废加载代数。没有刷新时（例如离开页面）不能动它：
+    /// 正在进行的分页请求靠同一个代数收尾，作废后它的响应被丢弃，`isLoadingMore` 也不会被清掉。
+    /// 作废时两个加载标志一并复位，因为被作废的请求不会再替自己清除。
+    func discardStagedRefresh() {
+        let hadRefresh = pendingRefresh != nil || reloadTask != nil
+        pendingRefresh = nil
+        pendingRefreshID = nil
+        guard hadRefresh else { return }
+        reloadTask?.cancel()
+        reloadTask = nil
+        loadGeneration = UUID()
+        isLoading = false
+        isLoadingMore = false
+    }
+
     func commitStagedRefresh(id: UUID? = nil) {
         guard id == nil || id == pendingRefreshID else { return }
         guard let feed = pendingRefresh else { return }

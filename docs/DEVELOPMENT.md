@@ -12,7 +12,7 @@
 
 ## 环境与入口
 
-使用 Xcode 26.2 或更新版本，安装 iOS Simulator runtime，并让 Command Line Tools
+使用 Xcode 27.1 或更新版本（应用用到 iOS 27 SDK 的 API；部署目标仍是 iOS 26），安装 iOS Simulator runtime，并让 Command Line Tools
 指向完整 Xcode。打开 `NeoBili.xcodeproj`，等待 Swift Package Manager 解析 MPVKit。
 修改工程配置时编辑 `project.yml`，运行 `xcodegen generate` 并提交生成工程。
 
@@ -179,20 +179,27 @@ Cookie 或原始值的持久化哈希。原始重放错误输出不转发。相�
 
 ## CI
 
-Build 工作流的构建与回归任务统一使用 `ci-approval` 环境。所有 PR（包括维护者自己的
-PR）及手动运行先等待环境审批，批准前不启动构建或测试 runner。在 Actions 对应运行中
-选择 **Review deployments → ci-approval → Approve and deploy** 后运行；这与 PR 代码审查
-的 Approve 是两个独立操作。PR 更新后创建新运行，旧运行自动取消，新运行需要重新批准。
+Build 工作流按 PR 来源选择环境：仓库所有者在本仓库分支上提的 PR 使用 `ci-trusted`，
+不设保护规则，直接运行；其他所有 PR（包括 fork）和手动运行使用 `ci-approval`，先等待环境审批，
+批准前不启动构建或测试 runner。需要审批时，在 Actions 对应运行中选择
+**Review deployments → ci-approval → Approve and deploy**；这与 PR 代码审查的 Approve 是两个
+独立操作。PR 更新后创建新运行，旧运行自动取消，需要审批的新运行要重新批准。
+
+判断只看 `pull_request.user.login` 与仓库所有者一致且 head 仓库就是本仓库；它依赖 PR 作者
+身份，因此不要给 `ci-trusted` 配置任何 secrets，CI 本来也不使用凭据。`ci-trusted` 在工作流首次
+引用时自动创建，不需要保护规则。
 
 仓库 Settings → Environments → `ci-approval` 必须配置 Required reviewers 为
 `Fab1e2000`，允许 self-review，并禁止管理员绕过保护规则。环境名称本身不会启用审批，
 迁移仓库时必须同时配置保护规则。发布工作流不使用此环境，仍按版本标签触发。
 
-每次 PR 或手动运行 Build 在 Xcode 26.2、26.6 编译模拟器目标；26.6 使用
-`bash scripts/verify.sh full` 执行工作流脚本、离线与确定性模拟器回归，与本地使用同一入口。
-CI 固定选择 iOS 26.5 runtime 的 iPhone，记录选中的设备；缺少工具链/runtime 时失败，
+每次 PR 或手动运行 Build 只有一个任务：在 Xcode 27.1 上用
+`bash scripts/verify.sh full` 编译 App 与各模块，并执行工作流脚本、离线与确定性模拟器回归，
+与本地使用同一入口。应用用到 iOS 27 SDK 的 API（如导航栏收起），因此 CI 和发布都只用
+Xcode 27；Xcode 27 在 `xcode-27` runner 上，目前是 GitHub 的预览镜像，排队时间可能较长。
+CI 优先选择 iOS 27 runtime 的 iPhone 18 Pro（排除没有顶部安全区的折叠机型 iPhone Duo，依赖真机安全区的布局测试在它上面不成立），记录选中的设备；缺少工具链/runtime 时失败，
 不自动改用其他版本。结果作为 Actions artifact 上传。CI 不配置真实账号或签名凭据。
-工具链可用性以 [runner 官方清单](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md)
+工具链可用性以 [runner 官方清单](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)
 和任务中的预检为准。发布仍使用现有未签名 IPA 流程与版本说明。
 
 ## 真机与签名

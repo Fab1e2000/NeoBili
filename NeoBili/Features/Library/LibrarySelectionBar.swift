@@ -11,7 +11,7 @@ struct LibrarySelectionBar: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("已选择 \(count) 项").font(.subheadline).foregroundStyle(.secondary)
+                Text("已选择 \(count) 项").font(.app(.subheadline)).foregroundStyle(.secondary)
                 Spacer()
                 if isBusy { ProgressView() }
             }
@@ -19,7 +19,7 @@ struct LibrarySelectionBar: View {
                 ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 12))
             layout {
                 Button(action: done) {
-                    Text("完成").font(.headline).frame(maxWidth: .infinity, minHeight: 50)
+                    Text("完成").font(.app(.headline)).frame(maxWidth: .infinity, minHeight: 50)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.bordered)
@@ -27,7 +27,7 @@ struct LibrarySelectionBar: View {
                 .accessibilityIdentifier("library.selection.done")
                 Button(role: .destructive, action: remove) {
                     Label("移出所选", systemImage: "trash")
-                        .font(.headline).frame(maxWidth: .infinity, minHeight: 50)
+                        .font(.app(.headline)).frame(maxWidth: .infinity, minHeight: 50)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderedProminent)

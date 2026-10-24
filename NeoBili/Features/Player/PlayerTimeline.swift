@@ -19,7 +19,7 @@ struct PlayerTimeline: View {
                 Circle().fill(isWaiting ? Color.white.opacity(0.6) : .red).frame(width: 6, height: 6)
                     .accessibilityHidden(true)
                 Text(isWaiting ? (isMinimal ? "连接" : "连接中") : (isMinimal ? "直播" : "直播中"))
-                    .font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
+                    .font(.app(.caption, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.75)
             }
             .foregroundStyle(.white)
             .padding(.horizontal, isMinimal ? 6 : 12)
@@ -46,7 +46,7 @@ struct PlayerTimeline: View {
                         .lineLimit(1).minimumScaleFactor(0.7)
                 }
             }
-            .font(.caption.monospacedDigit().weight(.semibold))
+            .font(.app(.caption, weight: .semibold)).monospacedDigit()
             .foregroundStyle(.white)
             .padding(.horizontal, showsTimeLabels ? 12 : 6)
             .frame(height: 32)

@@ -12,14 +12,14 @@ struct DynamicVoteCard: View {
     var body: some View {
         Button { selectedVote = vote } label: {
             HStack(spacing: 12) {
-                Image(systemName: "chart.bar.xaxis").font(.title2).foregroundStyle(themeColor)
+                Image(systemName: "chart.bar.xaxis").font(.app(.title2)).foregroundStyle(themeColor)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(vote.title).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                    Text(vote.title).font(.app(.subheadline, weight: .medium)).foregroundStyle(.primary)
                     Text("\(vote.participantCount.biliCountText) 人参与 · 查看投票")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.app(.caption)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").font(.app(.caption)).foregroundStyle(.secondary)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -50,12 +50,12 @@ private struct DynamicVoteSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(response?.voteInfo.title ?? vote.title).font(.headline)
+                    Text(response?.voteInfo.title ?? vote.title).font(.app(.headline))
                     if let response {
                         let info = response.voteInfo
                         let locked = info.hasEnded || !response.myVotes.isEmpty || submitted
                         Text("\(info.participantCount.biliCountText) 人参与 · \(info.hasEnded ? String(localized: "已结束") : locked ? String(localized: "已投票") : String(localized: "最多选择 \(info.choiceCount) 项"))")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.app(.caption)).foregroundStyle(.secondary)
                         ForEach(info.options) { option in
                             Button {
                                 if selection.contains(option.id) { selection.remove(option.id) }
@@ -68,7 +68,7 @@ private struct DynamicVoteSheet: View {
                                             .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 6))
                                     }
                                     Text(option.text).frame(maxWidth: .infinity, alignment: .leading)
-                                    if locked { Text("\(option.count.biliCountText) 票").font(.caption).foregroundStyle(.secondary) }
+                                    if locked { Text("\(option.count.biliCountText) 票").font(.app(.caption)).foregroundStyle(.secondary) }
                                     Image(systemName: selection.contains(option.id) ? "checkmark.circle.fill" : "circle")
                                         .foregroundStyle(selection.contains(option.id) ? themeColor : Color.secondary)
                                 }
@@ -86,7 +86,7 @@ private struct DynamicVoteSheet: View {
                     }
                     if isLoading { LoadingTaskAnchor() }
                     if let message {
-                        Text(message).font(.footnote).foregroundStyle(.secondary)
+                        Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
                         if response == nil {
                             Button("重试") { Task { await load() } }.disabled(isLoading)
                         }

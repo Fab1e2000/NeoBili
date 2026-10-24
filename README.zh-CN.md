@@ -75,7 +75,7 @@ SwiftUI 原生构建 · iOS 26 液态玻璃 · MPVKit 播放内核
 ## 运行环境
 
 - iOS 26.0 或更高版本的 iPhone（暂不支持 iPad）
-- 从源码构建：Xcode 26.2 或更高版本，Swift 6
+- 从源码构建：Xcode 27.1 或更高版本，Swift 6
 - 安装到真机：可用于签名的 Apple ID 或开发者账号
 
 ## 安装
@@ -91,7 +91,7 @@ NeoBili 目前以**未签名 IPA** 的形式发布，需要用你自己的方式
 
 ## 从源码构建
 
-使用 Xcode 26.2 或更高版本并安装 iOS Simulator runtime。打开 `NeoBili.xcodeproj`，
+使用 Xcode 27.1 或更高版本并安装 iOS Simulator runtime。打开 `NeoBili.xcodeproj`，
 等待 MPVKit 解析完成，选择 `NeoBili` scheme 和 iPhone 模拟器，无需个人签名。
 运行（`⌘R`）使用 Debug，测试（`⌘U`）使用隔离的 Regression 配置。
 

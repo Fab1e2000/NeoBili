@@ -34,12 +34,12 @@ struct LiveRoomOwnerRow: View {
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name.isEmpty ? String(localized: "主播") : name)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     if let card {
                         Text(String(localized: "\(card.follower.biliCountText)粉丝 · \(card.archiveCount)视频"))
-                            .font(.caption)
+                            .font(.app(.caption))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -59,7 +59,7 @@ struct LiveRoomOwnerRow: View {
     private var followButton: some View {
         let button = Button(action: onToggleFollow) {
             Text(followTitle)
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, weight: .semibold))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, 4)
@@ -110,7 +110,7 @@ struct LiveRoomIntroductionCard: View {
     private var card: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(room.title)
-                .font(.callout.weight(.semibold))
+                .font(.app(.callout, weight: .semibold))
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -133,7 +133,7 @@ struct LiveRoomIntroductionCard: View {
                 room.areaName.isEmpty ? nil : room.areaName,
                 String(localized: "房间 \(room.roomID)")
             ].compactMap { $0 }.joined(separator: "  "))
-            .font(.caption)
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("live.introduction.metadata")
@@ -165,9 +165,9 @@ struct LiveRoomIntroductionCard: View {
 
     private func detailsSection(_ title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.subheadline.weight(.medium))
+            Text(title).font(.app(.subheadline, weight: .medium))
             Text(text)
-                .font(.callout)
+                .font(.app(.callout))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)

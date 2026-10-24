@@ -25,11 +25,11 @@ struct CommentRow: View {
             // 就会出现「上紧下松」的不一致。
             VStack(alignment: .leading, spacing: 0) {
                 Text(comment.member.uname)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .font(.app(.footnote, weight: .semibold))
+                    .foregroundStyle(.primary.opacity(CommentLayout.emphasisOpacity))
 
                 ExpandableCommentMessage(comment: comment)
-                    .padding(.top, CommentLayout.textVerticalSpacing)
+                    .padding(.top, CommentLayout.nameMessageSpacing)
 
                 if !comment.pictures.isEmpty {
                     // 配图不占满整行：评论正文本来就有头像的缩进，
@@ -64,9 +64,12 @@ private struct CommentMetaRow: View {
     /// 时间 + 点赞按钮那一行。
     var body: some View {
         HStack(spacing: 12) {
-            Text([comment.relativeTime, comment.location].compactMap { $0 }.joined(separator: "  "))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            // 和点赞、回复并排时只占一行；放不下（大字号）就从末尾省略，不折行把按钮挤开。
+            Text([comment.relativeTime, comment.location].compactMap { $0 }.joined(separator: " · "))
+                .font(.app(.caption))
+                .foregroundStyle(.primary.opacity(CommentLayout.metadataOpacity))
+                .lineLimit(1)
+                .truncationMode(.tail)
 
             HStack(spacing: 8) {
                 CommentLikeButton(comment: comment, viewModel: viewModel)
@@ -141,7 +144,7 @@ struct ExpandableCommentMessage: View {
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel(isMessageExpanded ? "收起评论正文" : "展开评论正文")
-                .font(.caption.weight(.medium))
+                .font(.app(.caption, weight: .medium))
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
             }
@@ -150,12 +153,12 @@ struct ExpandableCommentMessage: View {
 
     private var messageBody: some View {
         CommentEmoteText(message: comment.message, emotes: comment.emotes,
-                         font: .subheadline, textStyle: .subheadline, jumpURLs: comment.content.jumpURLs)
+                         font: .app(.subheadline), textStyle: .subheadline, jumpURLs: comment.content.jumpURLs)
     }
 
     private var measuredMessageBody: some View {
         CommentEmoteText(message: comment.message, emotes: comment.emotes,
-                         font: .subheadline, textStyle: .subheadline, jumpURLs: comment.content.jumpURLs, loadsEmotes: false)
+                         font: .app(.subheadline), textStyle: .subheadline, jumpURLs: comment.content.jumpURLs, loadsEmotes: false)
     }
 
     /// 只比较六行和七行即可知道是否溢出，不为收起的长文排版全部内容。
@@ -217,19 +220,17 @@ private struct CommentReplyPreview: View {
                 CommentEmoteText(
                     message: reply.message,
                     emotes: reply.emotes,
-                    font: .caption,
-                    textStyle: .caption,
+                    font: .app(.footnote),
+                    textStyle: .footnote,
                     prefix: "\(reply.member.uname)：",
                     prefixURL: URL(string: "neobili://comment-thread/\(comment.id)"),
+                    prefixStyle: .init(weight: .semibold, opacity: CommentLayout.emphasisOpacity),
                     jumpURLs: reply.content.jumpURLs
                 )
                     // 楼中楼只折叠回复数量，不截断单条正文，也不预留隐藏行高度。
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if let location = reply.location {
-                    Text(location).font(.caption2).foregroundStyle(.tertiary)
-                }
             }
 
             if viewModel.isLoadingReplies(comment) {
@@ -240,15 +241,22 @@ private struct CommentReplyPreview: View {
 
             if let error = viewModel.replyErrors[comment.id] {
                 Text(error)
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
             }
 
             if viewModel.shouldShowAllReplies(comment) {
-                Button("查看全部回复") { openCommentThread(comment) }
-                    .font(.caption.weight(.medium))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
+                Button { openCommentThread(comment) } label: {
+                    HStack(spacing: 2) {
+                        Text("查看全部 \(viewModel.replyCount(for: comment)) 条回复")
+                        Image(systemName: "chevron.right")
+                            .imageScale(.small)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .font(.app(.footnote, weight: .semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
             }
 
         }
@@ -257,9 +265,10 @@ private struct CommentReplyPreview: View {
 #if NEOBILI_REGRESSION
         .anchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { [.content: $0] }
 #endif
-        .padding(CommentLayout.replyPadding)
+        .padding(.horizontal, CommentLayout.replyHorizontalPadding)
+        .padding(.vertical, CommentLayout.replyVerticalPadding)
         .background(
-            Color(uiColor: .tertiarySystemFill),
+            Color(uiColor: .secondarySystemBackground),
             in: RoundedRectangle(cornerRadius: CommentLayout.replyCornerRadius, style: .continuous)
         )
 #if NEOBILI_REGRESSION
@@ -287,8 +296,8 @@ struct CommentActionLabel: View {
             Image(systemName: symbol)
             Text(title)
         }
-        .font(.caption2)
-        .foregroundStyle(isSelected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.secondary))
+        .font(.app(.caption, weight: isSelected ? .semibold : nil))
+        .foregroundStyle(.primary.opacity(isSelected ? 1 : CommentLayout.emphasisOpacity))
         .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 8)
         .frame(minWidth: 44, minHeight: 32)

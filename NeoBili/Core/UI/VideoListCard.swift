@@ -91,7 +91,7 @@ private struct VideoListCardContent: View, Equatable {
 
             VStack(alignment: .leading, spacing: VideoListCardLayout.textVerticalSpacing) {
                 Text(title)
-                    .font(.subheadline.weight(.medium))
+                    .font(.app(.subheadline, weight: .medium))
                     .foregroundStyle(.primary)
                     // 即使标题只有一行，也会保留第二行的位置。
                     // 这样 UP 主始终在第三行，不会跑到标题区域。
@@ -103,7 +103,7 @@ private struct VideoListCardContent: View, Equatable {
                 Spacer(minLength: 0)
 
                 Text(author)
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
@@ -122,7 +122,7 @@ private struct VideoListCardContent: View, Equatable {
                         }
                     }
                 }
-                .font(.caption2)
+                .font(.app(.caption2))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)

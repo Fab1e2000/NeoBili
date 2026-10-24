@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Stable destination IDs also identify rows to accessibility and regression tests.
 enum SettingsDestination: String, CaseIterable, Identifiable {
-    case theme, display, language, cardAnimations
-    case tabBar, titleBar, contentFilter, recommendation, scrolling
+    case theme, display, fontStyle, language, cardAnimations
+    case tabBar, contentFilter, recommendation, scrolling
     case playback, danmaku, playerGestures, playerChrome
     case account, deviceIdentity, diagnostics, about
     var id: String { rawValue }
@@ -11,10 +11,10 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
         switch self {
         case .theme: "主题色"
         case .display: "文字大小"
+        case .fontStyle: "字体风格"
         case .language: "语言"
         case .cardAnimations: "动画"
         case .tabBar: "标签栏"
-        case .titleBar: "标题栏"
         case .contentFilter: "内容过滤"
         case .recommendation: "推荐流"
         case .scrolling: "滚动与防误触"
@@ -45,8 +45,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     }
     var destinations: [SettingsDestination] {
         switch self {
-        case .appearance: [.theme, .display, .language, .cardAnimations]
-        case .browsing: [.tabBar, .titleBar, .contentFilter, .recommendation, .scrolling]
+        case .appearance: [.theme, .display, .fontStyle, .language, .cardAnimations]
+        case .browsing: [.tabBar, .contentFilter, .recommendation, .scrolling]
         case .playback: [.playback, .danmaku, .playerGestures, .playerChrome]
         case .account: [.account]
         case .advanced:

@@ -26,7 +26,7 @@ struct HomeFeedCollection: UIViewRepresentable {
     let onOpenLastSeen: () -> Void
     var onOpenMine: () -> Void = {}
     /// 标题栏固定在外层时，列表里不再插入页头行。
-    var pinsTitleBar = TitleBarSettings.defaultValue
+    var pinsTitleBar = false
     /// 列表忽略安全区铺满全屏，状态栏（+ 固定标题栏）和标签栏的高度由外层量好传入。
     var safeInsets = EdgeInsets()
     /// 切换标签时卡片的淡入进度。只作用在格子内容上，列表本身保持不透明。
@@ -54,8 +54,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         // 列表拿到的系统安全区是 0；而自动模式下刷新暂停滚动的那一刻边距会跳变。
         view.contentInsetAdjustmentBehavior = .never
         applyInsets(to: view)
-        // 卡片从顶部滑过时的 iOS 26 scroll edge effect，底部不加。
-        view.topEdgeEffect.style = .hard
+        // 顶部沿用系统默认的 scroll edge effect，与历史、收藏等原生列表一致；底部不加。
         view.topEdgeEffect.isHidden = !pinsTitleBar
         view.bottomEdgeEffect.isHidden = true
         view.delegate = coordinator

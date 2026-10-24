@@ -241,7 +241,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
         // 记忆化后同帧不再重复测。
         let memoKey = "\(control.title)|\(control.options.count)|\(textScale)" as NSString
         if let memo = PlayerGlassWidthMemo.cache.object(forKey: memoKey) { return CGFloat(memo.doubleValue) }
-        let font = UIFont.systemFont(ofSize: 12 * textScale, weight: .semibold)
+        let font = AppFont.uiFont(ofSize: 12 * textScale, weight: .semibold)
         let width = max(48, ceil((control.title as NSString).size(withAttributes: [.font: font]).width) + 24)
         PlayerGlassWidthMemo.cache.setObject(NSNumber(value: width), forKey: memoKey)
         return width
@@ -272,7 +272,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
 
     private var metadata: some View {
         VStack(spacing: 2) {
-            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+            Text(title).font(.app(.subheadline, weight: .semibold)).foregroundStyle(.white)
         }
         .lineLimit(1)
         .minimumScaleFactor(0.8)
@@ -291,7 +291,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
             if !isFullScreen, let onToggleCompact {
                 Button(action: onToggleCompact) {
                     Label(isCompact ? "展开" : "收起", systemImage: compactSymbol)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
                         .frame(height: 48)

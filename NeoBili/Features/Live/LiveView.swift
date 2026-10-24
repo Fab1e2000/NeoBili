@@ -39,11 +39,11 @@ struct LiveView: View {
             ))
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
-            // 标题和切换器始终固定，使用切边背景，不消费全局标题栏偏好。
-            .safeAreaBar(edge: .top, spacing: 0) { header }
+            // 标题用原生栏内大标题；来源切换器常驻在导航栏下方，使用切边背景。
+            .safeAreaBar(edge: .top, spacing: 0) { sourcePicker }
             .scrollEdgeEffectStyle(.hard, for: .top)
             .background(Color(uiColor: .systemGroupedBackground))
-            .toolbar(.hidden, for: .navigationBar)
+            .rootPageChrome(title: String(localized: "直播"), barFollowsCollapse: true)
         }
         .onChange(of: account.sessionID) {
             source = .recommended
@@ -52,14 +52,6 @@ struct LiveView: View {
         .onChange(of: account.isLoggedIn) { _, loggedIn in
             if !loggedIn { source = .recommended }
             else { following.select(.following) }
-        }
-    }
-
-    private var header: some View {
-        VStack(spacing: 0) {
-            PageHeader(title: String(localized: "直播"))
-                .padding(.horizontal, 20)
-            sourcePicker
         }
     }
 
@@ -257,17 +249,17 @@ private struct LiveFeedPage: View {
             retryMessage(message) { await model.loadMore() }
         } else if model.hasMore {
             Button("加载更多") { Task { await model.loadMore() } }
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .frame(minHeight: 44)
                 .disabled(model.isLoading || isRefreshing)
         } else {
-            Text("已经到底了").font(.footnote).foregroundStyle(.secondary).padding(.vertical, 12)
+            Text("已经到底了").font(.app(.footnote)).foregroundStyle(.secondary).padding(.vertical, 12)
         }
     }
 
     private func retryMessage(_ message: String, action: @escaping @MainActor () async -> Void) -> some View {
         VStack(spacing: 6) {
-            Text(message).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text(message).font(.app(.footnote)).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("重试") { Task { await action() } }.frame(minHeight: 44)
         }
     }

@@ -84,7 +84,7 @@ The [user guide](docs/USAGE.md) describes every setting in detail (currently in 
 ## Requirements
 
 - iPhone running iOS 26.0 or later (iPad is not supported yet)
-- To build: Xcode 26.2 or later, Swift 6
+- To build: Xcode 27.1 or later, Swift 6
 - To run on a device: an Apple ID or developer account that can sign apps
 
 ## Installation
@@ -100,7 +100,7 @@ NeoBili is distributed as an **unsigned IPA**, which you sign yourself before in
 
 ## Building from source
 
-Use Xcode 26.2 or later with an installed iOS Simulator runtime. Open `NeoBili.xcodeproj`,
+Use Xcode 27.1 or later with an installed iOS Simulator runtime. Open `NeoBili.xcodeproj`,
 resolve MPVKit, select the `NeoBili` scheme and an iPhone simulator. No personal signing is needed.
 Run (`⌘R`) uses Debug; Test (`⌘U`) uses the isolated Regression configuration.
 

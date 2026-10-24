@@ -51,14 +51,14 @@ struct PasswordLoginSheet: View {
                     .disabled(username.isEmpty || password.isEmpty || isSubmitting)
                 }
                 if let statusText {
-                    Section { Text(statusText).font(.footnote).foregroundStyle(.secondary) }
+                    Section { Text(statusText).font(.app(.footnote)).foregroundStyle(.secondary) }
                 }
                 if let errorMessage {
-                    Section { Text(errorMessage).font(.footnote).foregroundStyle(.red) }
+                    Section { Text(errorMessage).font(.app(.footnote)).foregroundStyle(.red) }
                 }
                 Section {
                     Text("第三方客户端无法绕过 B 站的风控，登录时需要完成一次滑块验证；多次失败可能触发账号保护，请稍后再试。")
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(.tertiary)
                 }
             }

@@ -52,6 +52,7 @@ struct TabReselectionObserver: UIViewControllerRepresentable {
             self.probe = probe
             original = tab.delegate
             tab.delegate = self
+            AppFont.applyTabBarFont(to: tab.tabBar)
         }
         private static func findTab(in controller: UIViewController) -> UITabBarController? {
             if let tab = controller as? UITabBarController { return tab }

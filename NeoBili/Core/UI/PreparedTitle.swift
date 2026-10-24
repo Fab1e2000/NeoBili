@@ -54,7 +54,7 @@ enum PreparedTitle {
             size = cached
         } else {
             let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-            size = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).pointSize
+            size = AppFont.preferred(.subheadline, traits: traits).pointSize
             fontSizes[dynamicTypeSize] = size
         }
         if metrics(fontSize: size) == nil, scheduledMeasurements.insert(dynamicTypeSize).inserted {
@@ -71,7 +71,7 @@ enum PreparedTitle {
         let size = fontSize(for: dynamicTypeSize)
         if metrics(fontSize: size) == nil {
             func swiftUIHeight(_ text: String) -> CGFloat {
-                UIHostingController(rootView: Text(text).font(.subheadline.weight(.semibold))
+                UIHostingController(rootView: Text(text).font(.app(.subheadline, weight: .semibold))
                     .environment(\.dynamicTypeSize, dynamicTypeSize))
                     .sizeThatFits(in: CGSize(width: 1_000, height: 1_000)).height
             }
@@ -129,7 +129,7 @@ enum PreparedTitle {
         paragraph.lineBreakMode = .byTruncatingTail
         paragraph.lineBreakStrategy = .standard
         return NSAttributedString(string: title, attributes: [
-            .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
+            .font: AppFont.uiFont(ofSize: fontSize, weight: .semibold),
             .foregroundColor: UIColor.label,
             .paragraphStyle: paragraph
         ])
@@ -200,7 +200,7 @@ enum PreparedTitle {
         paragraph.lineBreakStrategy = .standard
         paragraph.hyphenationFactor = 0
         return [
-            .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
+            .font: AppFont.uiFont(ofSize: fontSize, weight: .semibold),
             .foregroundColor: UIColor.black,
             .paragraphStyle: paragraph
         ]
@@ -256,7 +256,7 @@ struct PreparedCardTitle: View {
                     .accessibilityLabel(title)
             } else {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, weight: .semibold))
                     .lineLimit(2, reservesSpace: true)
                     .foregroundStyle(.primary)
                     // emoji 会把所在行撑高：顶端对齐，多出的高度只往下延伸，不会压到上方的封面。

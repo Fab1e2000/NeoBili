@@ -18,12 +18,12 @@ struct SpaceProfileHeader<FollowButton: View>: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(card?.name ?? up.uname)
-                        .font(.title3.weight(.semibold))
+                        .font(.app(.title3, weight: .semibold))
                         .lineLimit(1)
 
                     if let level = card?.level, level > 0 {
                         Text("LV\(level)")
-                            .font(.caption2.weight(.bold))
+                            .font(.app(.caption2, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
@@ -32,7 +32,7 @@ struct SpaceProfileHeader<FollowButton: View>: View {
 
                     if card?.isVIP == true {
                         Text("大会员")
-                            .font(.caption2.weight(.bold))
+                            .font(.app(.caption2, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
@@ -48,7 +48,7 @@ struct SpaceProfileHeader<FollowButton: View>: View {
 
                 if let sign = card?.sign, !sign.isEmpty {
                     Text(sign)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
@@ -107,10 +107,10 @@ struct SpaceProfileHeader<FollowButton: View>: View {
     private func stat(count: Int?, label: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(count.map(\.biliCountText) ?? "—")
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, weight: .semibold))
                 .monospacedDigit()
             Text(label)
-                .font(.caption2)
+                .font(.app(.caption2))
                 .foregroundStyle(.secondary)
         }
     }

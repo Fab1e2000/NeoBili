@@ -11,26 +11,26 @@ struct ThemeSettingsView: View {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(String(localized: "当前主题 · \(AppTheme.selected(themeID).name)"))
-                        .font(.headline)
+                        .font(.app(.headline))
                     HStack {
                         Label("主题预览", systemImage: "heart.fill")
                             .foregroundStyle(themeColor)
                         Spacer()
                         Text("已应用")
-                            .font(.subheadline.weight(.medium))
+                            .font(.app(.subheadline, weight: .medium))
                             .foregroundStyle(themeColor)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(themeColor.opacity(0.14), in: Capsule())
                     }
                     Text("用于底部标签栏、自定义图标及自定义装饰。系统控件的文字和图标跟随浅色／深色外观。")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.app(.footnote)).foregroundStyle(.secondary)
                 }
                 .padding(18)
                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
 
                 if let message = themeIcon.errorMessage {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(message).font(.footnote).foregroundStyle(.secondary)
+                        Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
                         Button("重试更新桌面图标") {
                             Task { await themeIcon.apply(themeID: themeID) }
                         }
@@ -54,7 +54,7 @@ struct ThemeSettingsView: View {
                                                 .background(Color(uiColor: .systemBackground), in: Circle())
                                         }
                                     }
-                                Text(theme.name).font(.caption).foregroundStyle(.primary)
+                                Text(theme.name).font(.app(.caption)).foregroundStyle(.primary)
                             }
                             .frame(maxWidth: .infinity, minHeight: 82)
                             .contentShape(Rectangle())

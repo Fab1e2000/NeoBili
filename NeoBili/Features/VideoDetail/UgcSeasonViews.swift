@@ -27,8 +27,8 @@ struct UgcSeasonRow: View {
             }
             .padding(.horizontal, 16)
             .frame(minHeight: 48)
-            .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-            .contentShape(Capsule())
+            .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(String(localized: "合集 \(title)，\(progressText)，展开分集列表"))

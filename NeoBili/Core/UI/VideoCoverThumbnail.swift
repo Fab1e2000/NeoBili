@@ -122,7 +122,7 @@ struct VideoCoverThumbnail: View {
                         Text(duration)
                     }
                 }
-                .font(.caption2.weight(.semibold))
+                .font(.app(.caption2, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 6)

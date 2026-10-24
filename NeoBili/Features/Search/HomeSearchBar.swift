@@ -45,7 +45,7 @@ struct HomeSearchBar: UIViewRepresentable {
         // 不打断中文输入法的组合文字。
         if field.text != text, field.markedTextRange == nil || text.isEmpty { bar.text = text }
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-        let font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
+        let font = AppFont.preferred(.body, traits: traits)
         if field.font != font { field.font = font }
         view.tintColor = .label
         view.delete.isEnabled = canClearHistory

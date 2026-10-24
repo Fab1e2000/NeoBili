@@ -86,7 +86,7 @@ struct FavoriteFolderSheet: View {
                         Text(folder.title)
                             .foregroundStyle(.primary)
                         Text(String(localized: "\(folder.mediaCount) 个内容"))
-                            .font(.caption)
+                            .font(.app(.caption))
                             .foregroundStyle(.secondary)
                     }
 

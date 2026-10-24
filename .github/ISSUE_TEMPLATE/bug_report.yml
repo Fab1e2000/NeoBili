@@ -87,7 +87,7 @@ body:
     attributes:
       label: Xcode 版本（仅从源码构建时填写）/ Xcode version (source builds only)
       description: 运行 `xcodebuild -version` 查看 / Run `xcodebuild -version`
-      placeholder: "Xcode 26.2 (17C52)"
+      placeholder: "Xcode 27.1 (27A9275)"
 
   - type: checkboxes
     id: checks

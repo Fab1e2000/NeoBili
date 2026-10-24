@@ -44,7 +44,7 @@ struct InlineVideoCollapseOverlay: View {
                 .accessibilityLabel("返回")
 
                 Label(playTitle, systemImage: player?.isPlaybackCompleted == true ? "arrow.counterclockwise" : "play.fill")
-                    .font(.subheadline.weight(.medium))
+                    .font(.app(.subheadline, weight: .medium))
                     .frame(maxWidth: .infinity)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
@@ -54,7 +54,7 @@ struct InlineVideoCollapseOverlay: View {
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 8)
-            .font(.title3)
+            .font(.app(.title3))
             .foregroundStyle(.white)
             .frame(height: videoHeight)
             .buttonStyle(.plain)

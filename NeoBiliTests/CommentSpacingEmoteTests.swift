@@ -40,8 +40,8 @@ final class CommentSpacingEmoteTests: XCTestCase {
                 .padding(.horizontal, CommentLayout.pageHorizontalInset)
                 .padding(.vertical, CommentLayout.rowVerticalPadding)
 
-            Divider()
-                .padding(.leading, CommentLayout.pageHorizontalInset)
+            // 下一条评论起点的透明标记，见 `CommentSpacingTests.render`。
+            Color.clear.frame(height: 1)
                 .anchorPreference(key: CommentReplyLayoutBoundsKey.self, value: .bounds) { [.divider: $0] }
 
             Color.white.frame(height: 40)

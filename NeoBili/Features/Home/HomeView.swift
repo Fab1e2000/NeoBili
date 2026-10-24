@@ -14,8 +14,8 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    @TitleBarPreference private var titleBarStyle
-    private var pinsTitleBar: Bool { titleBarStyle.isPinned }
+    /// 标题由外层原生导航栏提供，列表里不再放页头行。
+    private let pinsTitleBar = true
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
 
@@ -46,17 +46,11 @@ struct HomeView: View {
         #if DEBUG
         let _ = SearchLatencyProbe.body("HomeView")
         #endif
-        // 标题栏两种样式：随内容滚动时页头是列表第一行；固定时挂在顶部栏，卡片从下面滑过。
-        feed
-            .safeAreaBar(edge: .top, spacing: 0) {
-                if pinsTitleBar {
-                    PageHeader(title: String(localized: "推荐"))
-                        .padding(.horizontal, 20)
-                }
-            }
-            .scrollEdgeEffectStyle(.hard, for: .top)
-            .scrollEdgeEffectHidden(!titleBarStyle.isPinned, for: .top)
-            .background(Color(uiColor: .systemGroupedBackground))
+        NavigationStack {
+            feed
+                .rootPageChrome(title: String(localized: "推荐"))
+                .background(Color(uiColor: .systemGroupedBackground))
+        }
             .task { await viewModel.loadInitial() }
             // 登录/退出/拿到 App 凭据后服务端会切到个性化/通用推流，
             // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。
@@ -296,10 +290,10 @@ struct LastSeenCard: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.clockwise")
-                .font(.subheadline.weight(.medium))
+                .font(.app(.subheadline, weight: .medium))
 
             Text("上次看到这里 · 点击刷新")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .multilineTextAlignment(.center)
         }
         .foregroundStyle(.secondary)
@@ -343,7 +337,7 @@ struct HomeVideoCard: View {
                         .clipShape(Circle())
 
                     Text(video.owner.name)
-                        .font(.caption2)
+                        .font(.app(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 

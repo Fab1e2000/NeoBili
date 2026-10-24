@@ -8,7 +8,7 @@ struct VideoOwnerRow: View {
     @Environment(\.appThemeColor) private var themeColor
     let owner: VideoOwner
     let avatarURL: URL?
-    /// 粉丝数、投稿数。名片还没回来时这一行不显示。
+    /// 粉丝数。名片还没回来时这一行不显示。
     let card: MemberCard?
     let isFollowing: Bool
     let onToggleFollow: () -> Void
@@ -21,22 +21,22 @@ struct VideoOwnerRow: View {
                 HStack(spacing: 10) {
                     BiliImage(url: avatarURL)
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 40, height: 40)
                         .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 2) {
                         Text(owner.name)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.app(.subheadline, weight: .semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         if let subtitle {
                             Text(subtitle)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.app(.caption))
+                                .foregroundStyle(.primary.opacity(0.6))
                                 .lineLimit(1)
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -51,14 +51,7 @@ struct VideoOwnerRow: View {
     }
 
     private var subtitle: String? {
-        var parts: [String] = []
-        if let follower = card?.follower {
-            parts.append(String(localized: "\(follower.biliCountText)粉丝"))
-        }
-        if let archiveCount = card?.archiveCount {
-            parts.append(String(localized: "\(archiveCount)视频"))
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        card?.follower.map { String(localized: "\($0.biliCountText)粉丝") }
     }
 
     /// 系统液态玻璃胶囊按钮，和 UP 主空间页一致：未关注是主题色实底玻璃，已关注退成普通玻璃配灰字。
@@ -67,7 +60,7 @@ struct VideoOwnerRow: View {
     private var followButton: some View {
         let button = Button(action: onToggleFollow) {
             Text(isFollowing ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, weight: .semibold))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, 4)

@@ -76,14 +76,12 @@ struct FollowingView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(uiColor: .systemGroupedBackground))
-            // 固定标题栏：与直播页一样，标题和头像条一起常驻顶部栏，动态从下面滑过。
-            // 关注页始终固定并保留切边背景，不消费全局标题栏偏好。
+            // 标题用原生栏内大标题；头像条常驻导航栏下方，动态从下面滑过。
             .safeAreaBar(edge: .top, spacing: 0) {
                 headerBlock
             }
             .scrollEdgeEffectStyle(.hard, for: .top)
-            .navigationTitle("关注")
-            .navigationBarTitleDisplayMode(.inline)
+            .rootPageChrome(title: String(localized: "关注"), barFollowsCollapse: true)
             .navigationDestination(for: FollowingRoute.self) { route in
                 switch route {
                 case .space(let up):
@@ -105,8 +103,6 @@ struct FollowingView: View {
                 .actionFeedbackOverlay()
                 .navigationTransition(.zoom(sourceID: "following-dynamic-\(entry.id)", in: dynamicTransition))
             }
-            // 标题本身留着，推入 UP 主页时返回按钮才有「关注」这两个字。
-            .toolbarVisibility(.hidden, for: .navigationBar)
             .imageViewerHost()
             // 关注流滚动时底部标签栏始终保留；进入子页面后由子页面自行隐藏。
             .tabBarMinimizeBehavior(.never)
@@ -140,11 +136,9 @@ struct FollowingView: View {
         }
     }
 
-    /// 标题与头像条一起常驻顶部。
+    /// 头像条常驻顶部。
     private var headerBlock: some View {
         VStack(spacing: 0) {
-            PageHeader(title: String(localized: "关注"))
-                .padding(.horizontal, 20)
             if account.isLoggedIn {
                 FollowingUpStrip(
                     items: viewModel.selectionItems,

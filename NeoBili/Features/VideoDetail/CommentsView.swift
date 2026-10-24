@@ -14,18 +14,14 @@ struct CommentsList: View {
         let lastCommentID = comments.last?.id
         LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(comments) { comment in
-                VStack(alignment: .leading, spacing: 0) {
-                    CommentRow(comment: comment, viewModel: viewModel)
-                        .padding(.horizontal, CommentLayout.pageHorizontalInset)
-                        .padding(.vertical, CommentLayout.rowVerticalPadding)
-                    if comment.id != lastCommentID {
-                        Divider().padding(.leading, CommentLayout.pageHorizontalInset)
+                // 评论之间不画分隔线，只靠上下留白分开。
+                CommentRow(comment: comment, viewModel: viewModel)
+                    .padding(.horizontal, CommentLayout.pageHorizontalInset)
+                    .padding(.vertical, CommentLayout.rowVerticalPadding)
+                    .task(id: comments.suffix(5).contains(where: { $0.id == comment.id }) ? lastCommentID : nil) {
+                        guard comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
+                        await viewModel.loadMoreIfNeeded(current: comment)
                     }
-                }
-                .task(id: comments.suffix(5).contains(where: { $0.id == comment.id }) ? lastCommentID : nil) {
-                    guard comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
-                    await viewModel.loadMoreIfNeeded(current: comment)
-                }
             }
 
             if viewModel.isLoadingMore {
@@ -35,7 +31,7 @@ struct CommentsList: View {
             }
             if let message = viewModel.errorMessage, !viewModel.comments.isEmpty {
                 VStack(spacing: 8) {
-                    Text(message).font(.footnote).foregroundStyle(.secondary)
+                    Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
                     Button("重试加载评论") { Task { await viewModel.retry() } }
                         .disabled(viewModel.isLoading || viewModel.isLoadingMore)
                 }
