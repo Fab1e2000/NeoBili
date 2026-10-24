@@ -99,6 +99,48 @@ final class DynamicFeedPerformanceTests: XCTestCase {
         XCTAssertEqual(calls, 3, "a stale staged page must not block pagination")
     }
 
+    func testDiscardWithoutARefreshLeavesAnInFlightPaginationRequestAlone() async throws {
+        let first = try page(ids: ["a"]), second = try page(ids: ["b"])
+        var calls = 0
+        let model = DynamicFeedModel(source: .following, likeStore: VideoLikeStore()) { _, _, _ in
+            calls += 1
+            if calls == 1 { return first }
+            try await Task.sleep(for: .milliseconds(200))
+            return second
+        }
+        await model.loadInitial()
+        let paging = Task { await model.loadMoreIfNeeded(current: first.entries[0]) }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(model.isLoadingMore)
+        model.discardStagedRefresh()
+        await paging.value
+        XCTAssertFalse(model.isLoadingMore, "leaving the page must not strand the pagination flag")
+        XCTAssertEqual(model.entries.map(\.id), ["a", "b"], "the in-flight page still lands")
+    }
+
+    func testDiscardingARefreshResetsTheLoadingFlagsItInvalidated() async throws {
+        let first = try page(ids: ["a"]), late = try page(ids: ["late"])
+        var calls = 0
+        let model = DynamicFeedModel(source: .following, likeStore: VideoLikeStore()) { _, _, _ in
+            calls += 1
+            if calls == 1 { return first }
+            try await Task.sleep(for: .milliseconds(200))
+            return late
+        }
+        await model.loadInitial()
+        let paging = Task { await model.loadMoreIfNeeded(current: first.entries[0]) }
+        try await Task.sleep(for: .milliseconds(30))
+        let refresh = Task { await model.refresh(staged: true, stagingID: UUID()) }
+        try await Task.sleep(for: .milliseconds(30))
+        model.discardStagedRefresh()
+        XCTAssertFalse(model.isLoading)
+        XCTAssertFalse(model.isLoadingMore, "an invalidated pagination request cannot clear its own flag")
+        await paging.value
+        await refresh.value
+        XCTAssertFalse(model.isLoadingMore)
+        XCTAssertFalse(model.isLoading)
+    }
+
     private func page(ids: [String], text: String = "test") throws -> DynamicFeedPage {
         let items: [[String: Any]] = ids.map {
             ["id_str": $0, "type": "DYNAMIC_TYPE_WORD",
