@@ -62,7 +62,6 @@ struct FavoritesView: View {
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触条目。
         .leftEdgeTapDeadZone()
         .navigationTitle("收藏")
-        .navigationBarTitleDisplayMode(.inline)
         .overlay {
             if isLoading, folders.isEmpty { LoadingTaskAnchor() }
         }

@@ -10,7 +10,7 @@ struct LibraryTabPage: View {
         NavigationStack {
             content
                 // 根页使用原生栏内大标题；推入的子页面（如收藏夹内容）仍显示自己的导航栏。
-                .rootPageChrome(title: tab.pageTitle, minimizes: true)
+                .rootPageChrome(title: tab.pageTitle)
                 .onAppear { OrientationController.enterPortrait() }
         }
     }

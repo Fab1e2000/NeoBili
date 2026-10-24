@@ -5,7 +5,7 @@ extension EnvironmentValues {
     @Entry var openMine: EnvironmentAction<Void>? = nil
 }
 
-/// 推荐页自绘的页头：左侧大标题，右侧头像玻璃按钮。其它主页面用 `rootPageChrome` 的原生标题。
+/// 自绘页头：左侧大标题，右侧头像玻璃按钮。主页面已改用 `rootPageChrome` 的原生标题，这里只剩推荐列表里不再启用的页头行。
 /// 头像是「我的」页面的唯一入口，点按后以卡片从底部弹出。
 struct PageHeader: View {
     let title: String
@@ -63,8 +63,6 @@ struct PageHeader: View {
 /// 头像在工具栏里不套系统玻璃胶囊，只保留圆形头像和细描边。
 struct RootPageChrome: ViewModifier {
     let title: String
-    /// 纵向列表为主滚动视图的页面才让导航栏随下滑收起。
-    let minimizes: Bool
     @Environment(AccountStore.self) private var account
     @Environment(\.openMine) private var openMine
 
@@ -73,7 +71,7 @@ struct RootPageChrome: ViewModifier {
             .navigationTitle(title)
             .toolbarTitleDisplayMode(.inlineLarge)
             .toolbarVisibility(.visible, for: .navigationBar)
-            .modifier(MinimizingNavigationBar(isEnabled: minimizes))
+            .modifier(MinimizingNavigationBar())
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { openMine?(()) } label: { avatar }
@@ -105,10 +103,8 @@ struct RootPageChrome: ViewModifier {
 
 /// 保持顶部安全区稳定，避免导航栏收起后点标签回顶需要点两次。
 private struct MinimizingNavigationBar: ViewModifier {
-    let isEnabled: Bool
-
     func body(content: Content) -> some View {
-        if isEnabled, #available(iOS 27.0, *) {
+        if #available(iOS 27.0, *) {
             content
                 .toolbarMinimizationBehavior(.onScrollDown, for: .navigationBar)
                 .toolbarMinimizationSafeAreaAdjustment(.disabled, for: .navigationBar)
@@ -119,7 +115,7 @@ private struct MinimizingNavigationBar: ViewModifier {
 }
 
 extension View {
-    func rootPageChrome(title: String, minimizes: Bool = false) -> some View {
-        modifier(RootPageChrome(title: title, minimizes: minimizes))
+    func rootPageChrome(title: String) -> some View {
+        modifier(RootPageChrome(title: title))
     }
 }

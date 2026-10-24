@@ -71,7 +71,7 @@ struct SearchPage: View {
         .task { await viewModel.loadHotSearches() }
         .onDisappear { isFocused = false }
         // 输入、联想和结果页隐藏导航栏，让搜索框顶到最上方。
-        .rootPageChrome(title: String(localized: "搜索"), minimizes: true)
+        .rootPageChrome(title: String(localized: "搜索"))
         .toolbarVisibility(showsHeader ? .visible : .hidden, for: .navigationBar)
         .onAppear { OrientationController.enterPortrait() }
     }

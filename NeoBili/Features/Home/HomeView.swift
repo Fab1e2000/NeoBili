@@ -14,8 +14,8 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    /// 推荐页的页头随内容滚动，是列表的第一行。
-    private let pinsTitleBar = false
+    /// 标题由外层原生导航栏提供，列表里不再放页头行。
+    private let pinsTitleBar = true
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
 
@@ -46,16 +46,11 @@ struct HomeView: View {
         #if DEBUG
         let _ = SearchLatencyProbe.body("HomeView")
         #endif
-        feed
-            .safeAreaBar(edge: .top, spacing: 0) {
-                if pinsTitleBar {
-                    PageHeader(title: String(localized: "推荐"))
-                        .padding(.horizontal, 20)
-                }
-            }
-            .scrollEdgeEffectStyle(.hard, for: .top)
-            .scrollEdgeEffectHidden(!pinsTitleBar, for: .top)
-            .background(Color(uiColor: .systemGroupedBackground))
+        NavigationStack {
+            feed
+                .rootPageChrome(title: String(localized: "推荐"))
+                .background(Color(uiColor: .systemGroupedBackground))
+        }
             .task { await viewModel.loadInitial() }
             // 登录/退出/拿到 App 凭据后服务端会切到个性化/通用推流，
             // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。

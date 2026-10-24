@@ -86,7 +86,6 @@ struct HistoryView: View {
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
         .navigationTitle("历史记录")
-        .navigationBarTitleDisplayMode(.inline)
         .overlay {
             if isLoading, items.isEmpty { LoadingTaskAnchor() }
         }

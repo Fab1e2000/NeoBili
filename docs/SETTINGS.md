@@ -58,8 +58,8 @@
 
 主题、字号、语言由 `AppTheme`、`AppTextSize`、`AppLanguage` 管理。语言在启动时确定，
 修改后重新打开生效；新增界面文字同步维护 String Catalog。
-标签顺序、隐藏与启动页由 `MainTabSettings` 约束。主页面标题没有设置项：搜索、资料库、关注、直播
-通过 `rootPageChrome` 使用原生 `inlineLarge` 标题，头像入口放在导航栏右侧；推荐页保留自绘页头。
+标签顺序、隐藏与启动页由 `MainTabSettings` 约束。主页面标题没有设置项：推荐、搜索、资料库、关注、直播
+均通过 `rootPageChrome` 使用原生 `inlineLarge` 标题并随下滑收起，头像入口放在导航栏右侧。
 播放器手势和控件位置保留各自合法范围及恢复默认逻辑，避免在调用点重复定义常量。
 
 ## 推荐来源

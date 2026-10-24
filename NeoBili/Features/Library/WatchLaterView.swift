@@ -68,7 +68,6 @@ struct WatchLaterView: View {
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
         .navigationTitle("稍后再看")
-        .navigationBarTitleDisplayMode(.inline)
         .overlay {
             if isLoading, items.isEmpty { LoadingTaskAnchor() }
         }

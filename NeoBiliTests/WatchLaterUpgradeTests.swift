@@ -157,6 +157,6 @@ private struct TabRootChrome: ViewModifier {
     let isTab: Bool
 
     @ViewBuilder func body(content: Content) -> some View {
-        if isTab { content.rootPageChrome(title: "稍后再看", minimizes: true) } else { content }
+        if isTab { content.rootPageChrome(title: "稍后再看") } else { content }
     }
 }

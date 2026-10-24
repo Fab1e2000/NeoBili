@@ -46,7 +46,7 @@ struct MineView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             // 与服务卡片（收藏、历史等）一致：系统居中标题，右上角是关闭按钮。
             .navigationTitle("我的")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbarTitleDisplayMode(.inlineLarge)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("系统设置", systemImage: "gearshape") { presentService(.settings) }
