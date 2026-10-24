@@ -53,7 +53,7 @@ struct DynamicCard: View {
                 authorRow
             } else if !entry.publishedText.isEmpty {
                 Text(entry.publishedText)
-                    .font(.caption2)
+                    .font(.app(.caption2))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, DynamicCardLayout.contentInset)
                     .padding(.top, DynamicCardLayout.contentInset)
@@ -114,13 +114,13 @@ struct DynamicCard: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entry.authorName)
-                        .font(.footnote.weight(.medium))
+                        .font(.app(.footnote, weight: .medium))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
                     if !entry.publishedText.isEmpty {
                         Text(entry.publishedText)
-                            .font(.caption2)
+                            .font(.app(.caption2))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -143,7 +143,7 @@ struct DynamicCard: View {
             CommentEmoteText(
                 message: entry.text,
                 emotes: entry.emotes,
-                font: .subheadline,
+                font: .app(.subheadline),
                 textStyle: .subheadline
             )
                 .foregroundStyle(.primary)
@@ -157,7 +157,7 @@ struct DynamicCard: View {
                 Button(isTextExpanded ? "收起" : "展开") {
                     withAnimation(.easeInOut(duration: 0.2)) { isTextExpanded.toggle() }
                 }
-                .font(.caption)
+                .font(.app(.caption))
                 .buttonStyle(.plain)
                 .foregroundStyle(themeColor)
             }
@@ -193,7 +193,7 @@ struct DynamicCard: View {
                 )
 
                 Text(video.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -245,7 +245,7 @@ struct DynamicCard: View {
             Image(systemName: icon)
             Text(text)
         }
-        .font(.caption)
+        .font(.app(.caption))
         .foregroundStyle(isHighlighted ? AnyShapeStyle(themeColor) : AnyShapeStyle(.secondary))
     }
 

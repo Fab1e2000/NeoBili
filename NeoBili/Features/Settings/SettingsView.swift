@@ -54,6 +54,7 @@ struct SettingsView: View {
         switch destination {
         case .theme: AppTheme.selected(themeID).name
         case .display: DisplaySettingsView.label(for: textSizeIndex)
+        case .fontStyle: AppFontStyle.stored().title
         case .language: language.title
         case .tabBar: MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs).map(\.title).joined(separator: " · ")
         case .contentFilter: contentFilterSummary
@@ -67,6 +68,7 @@ struct SettingsView: View {
         switch destination {
         case .theme: ThemeSettingsView()
         case .display: DisplaySettingsView()
+        case .fontStyle: FontStyleSettingsView()
         case .language: LanguageSettingsView()
         case .tabBar: TabBarSettingsView()
         case .contentFilter: ContentFilterSettingsView()

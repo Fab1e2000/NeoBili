@@ -81,7 +81,7 @@ struct FollowingView: View {
                 headerBlock
             }
             .scrollEdgeEffectStyle(.hard, for: .top)
-            .rootPageChrome(title: String(localized: "关注"))
+            .rootPageChrome(title: String(localized: "关注"), barFollowsCollapse: true)
             .navigationDestination(for: FollowingRoute.self) { route in
                 switch route {
                 case .space(let up):

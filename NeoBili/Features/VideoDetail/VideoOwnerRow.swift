@@ -25,12 +25,12 @@ struct VideoOwnerRow: View {
                         .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 2) {
                         Text(owner.name)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.app(.subheadline, weight: .semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         if let subtitle {
                             Text(subtitle)
-                                .font(.caption)
+                                .font(.app(.caption))
                                 .foregroundStyle(.primary.opacity(0.6))
                                 .lineLimit(1)
                         }
@@ -60,7 +60,7 @@ struct VideoOwnerRow: View {
     private var followButton: some View {
         let button = Button(action: onToggleFollow) {
             Text(isFollowing ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, weight: .semibold))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, 4)

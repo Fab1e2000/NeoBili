@@ -61,11 +61,11 @@ struct LiveDanmakuPanel: View {
                 .fill(model.connection == .connected ? Color.green : Color.secondary.opacity(0.35))
                 .frame(width: 6, height: 6)
             Text("弹幕")
-                .font(.caption.weight(.bold))
+                .font(.app(.caption, weight: .bold))
                 .foregroundStyle(.primary)
             if let popularity = model.popularity {
                 Text(Self.popularityText(popularity))
-                    .font(.caption2.monospacedDigit())
+                    .font(.app(.caption2)).monospacedDigit()
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -73,7 +73,7 @@ struct LiveDanmakuPanel: View {
                 flowEnabled.toggle()
             } label: {
                 Image(systemName: flowEnabled ? "text.bubble.fill" : "text.bubble")
-                    .font(.body)
+                    .font(.app(.body))
                     .foregroundStyle(flowEnabled ? Color.accentColor : Color.secondary)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
@@ -135,9 +135,9 @@ private struct LiveDanmakuMessageList: View {
             if model.messages.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.title2)
+                        .font(.app(.title2))
                     Text(model.connection == .connected ? "暂时没有弹幕" : "正在连接弹幕")
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                 }
                 .foregroundStyle(.secondary)
                 .allowsHitTesting(false)
@@ -184,7 +184,7 @@ struct DanmakuMessageRow: View {
         HStack(alignment: .center, spacing: 4) {
             if let medal = message.medal { medalBadge(medal) }
             Text(message.name)
-                .font(.caption.weight(.medium))
+                .font(.app(.caption, weight: .medium))
                 .foregroundStyle(.secondary)
             BiliImage(url: url)
                 .aspectRatio(contentMode: .fit)
@@ -196,10 +196,10 @@ struct DanmakuMessageRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             if let medal = message.medal { medalBadge(medal) }
             Text(message.name)
-                .font(.caption.weight(.medium))
+                .font(.app(.caption, weight: .medium))
                 .foregroundStyle(.secondary)
             Text(message.text)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(textColor)
                 .lineLimit(3)
         }
@@ -246,11 +246,11 @@ struct SuperChatCard: View {
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.userName)
-                        .font(.caption.weight(.semibold))
+                        .font(.app(.caption, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.92))
                         .lineLimit(1)
                     Text("¥\(item.price)")
-                        .font(.caption2.weight(.bold).monospacedDigit())
+                        .font(.app(.caption2, weight: .bold)).monospacedDigit()
                         .foregroundStyle(item.priceColor)
                 }
                 Spacer(minLength: 0)
@@ -271,7 +271,7 @@ struct SuperChatCard: View {
             .padding(.vertical, 6)
             .background(item.backgroundColor)
             Text(item.message)
-                .font(isCompact ? .caption : .callout)
+                .font(.app(isCompact ? .caption : .callout))
                 .foregroundStyle(item.fontColor)
                 .lineLimit(isCompact ? 2 : 3)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -289,7 +289,7 @@ struct SuperChatCard: View {
     private var countdown: some View {
         let remaining = max(0, Int(item.remaining(at: now)))
         return Text(remaining > 0 ? "\(remaining)s" : "")
-            .font(.caption2.weight(.semibold).monospacedDigit())
+            .font(.app(.caption2, weight: .semibold)).monospacedDigit()
             .foregroundStyle(item.priceColor)
     }
 }

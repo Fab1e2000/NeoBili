@@ -101,9 +101,9 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
                 self.typeSize = typeSize
                 let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
                 titleLabel.font = UIFontMetrics(forTextStyle: .title3).scaledFont(
-                    for: .systemFont(ofSize: Self.titlePointSize, weight: .semibold), compatibleWith: traits)
-                metadataLabel.font = .preferredFont(forTextStyle: .footnote, compatibleWith: traits)
-                descriptionView.font = .preferredFont(forTextStyle: .subheadline, compatibleWith: traits)
+                    for: AppFont.uiFont(ofSize: Self.titlePointSize, weight: .semibold), compatibleWith: traits)
+                metadataLabel.font = AppFont.preferred(.footnote, traits: traits)
+                descriptionView.font = AppFont.preferred(.subheadline, traits: traits)
             }
             // Expansion never assigns or retypesets the title.
             if titleLabel.text != title { titleLabel.text = title }

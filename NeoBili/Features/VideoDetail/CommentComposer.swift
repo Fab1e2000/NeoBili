@@ -101,18 +101,18 @@ private struct CommentComposerHost: ViewModifier {
                     if let destination {
                         HStack {
                             Text("回复 @\(destination.name)")
-                                .font(.caption)
+                                .font(.app(.caption))
                                 .foregroundStyle(.secondary)
                             Spacer()
                             if savedDraft.target != nil {
                                 Button("取消") { savedDraft.target = nil }
-                                    .font(.caption)
+                                    .font(.app(.caption))
                                     .disabled(sending)
                             }
                         }
                     }
                     if let sendError {
-                        Text(sendError).font(.caption).foregroundStyle(.red)
+                        Text(sendError).font(.app(.caption)).foregroundStyle(.red)
                     }
                     TextField(account.isLoggedIn ? "写下你的评论…" : "登录后发表评论",
                               text: Binding(get: { savedDraft.text }, set: { savedDraft.text = $0 }), axis: .vertical)
@@ -130,7 +130,7 @@ private struct CommentComposerHost: ViewModifier {
                 if focused {
                     Button(action: send) {
                         Image(systemName: "arrow.up")
-                            .font(.headline)
+                            .font(.app(.headline))
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(CommentSendButtonStyle())

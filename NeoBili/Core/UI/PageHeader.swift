@@ -17,7 +17,7 @@ struct PageHeader: View {
     var body: some View {
         HStack(alignment: .center) {
             Text(title)
-                .font(.largeTitle.bold())
+                .font(.app(.largeTitle, weight: .bold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
@@ -60,9 +60,11 @@ struct PageHeader: View {
 // MARK: - 原生大标题
 
 /// 其它主页面的原生栏内大标题：标题与头像入口同在导航栏一行。
-/// 头像在工具栏里不套系统玻璃胶囊，只保留圆形头像和细描边。
+/// 头像自绘 44pt 圆形玻璃，关闭系统工具栏背景，保证是正圆。
 struct RootPageChrome: ViewModifier {
     let title: String
+    /// 导航栏下方还有常驻的切换条时，顶部安全区要跟着导航栏收起，切换条才会上移。
+    let barFollowsCollapse: Bool
     @Environment(AccountStore.self) private var account
     @Environment(\.openMine) private var openMine
 
@@ -71,13 +73,15 @@ struct RootPageChrome: ViewModifier {
             .navigationTitle(title)
             .toolbarTitleDisplayMode(.inlineLarge)
             .toolbarVisibility(.visible, for: .navigationBar)
-            .modifier(MinimizingNavigationBar())
+            .modifier(MinimizingNavigationBar(adjustsSafeArea: barFollowsCollapse))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { openMine?(()) } label: { avatar }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("我的")
                         .accessibilityHint("打开个人页面")
                 }
+                // 系统工具栏玻璃会按内容撑成胶囊；关掉它，圆形玻璃由头像自己绘制。
                 .sharedBackgroundVisibility(.hidden)
             }
     }
@@ -93,21 +97,26 @@ struct RootPageChrome: ViewModifier {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: 32, height: 32)
+        .frame(width: 38, height: 38)
         .clipShape(Circle())
-        .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
+        // 头像完整保留在玻璃表面上方，外圈只留一圈细窄的透明间隙。
+        .padding(3)
         .frame(width: 44, height: 44)
         .contentShape(Circle())
+        .background { Circle().fill(.clear).glassEffect(.clear.interactive(), in: .circle) }
+        .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5).allowsHitTesting(false) }
     }
 }
 
 /// 保持顶部安全区稳定，避免导航栏收起后点标签回顶需要点两次。
 private struct MinimizingNavigationBar: ViewModifier {
+    let adjustsSafeArea: Bool
+
     func body(content: Content) -> some View {
         if #available(iOS 27.0, *) {
             content
                 .toolbarMinimizationBehavior(.onScrollDown, for: .navigationBar)
-                .toolbarMinimizationSafeAreaAdjustment(.disabled, for: .navigationBar)
+                .toolbarMinimizationSafeAreaAdjustment(adjustsSafeArea ? .enabled : .disabled, for: .navigationBar)
         } else {
             content
         }
@@ -115,7 +124,7 @@ private struct MinimizingNavigationBar: ViewModifier {
 }
 
 extension View {
-    func rootPageChrome(title: String) -> some View {
-        modifier(RootPageChrome(title: title))
+    func rootPageChrome(title: String, barFollowsCollapse: Bool = false) -> some View {
+        modifier(RootPageChrome(title: title, barFollowsCollapse: barFollowsCollapse))
     }
 }

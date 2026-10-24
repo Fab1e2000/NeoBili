@@ -72,7 +72,7 @@ struct HistoryView: View {
                         }
                         if let errorMessage, !items.isEmpty {
                             VStack(spacing: 8) {
-                                Text(errorMessage).font(.footnote).foregroundStyle(.secondary)
+                                Text(errorMessage).font(.app(.footnote)).foregroundStyle(.secondary)
                                 Button("重试加载") { Task { await loadNextPage() } }
                                     .disabled(isLoading || isLoadingMore)
                             }
@@ -144,7 +144,7 @@ struct HistoryView: View {
             HStack(spacing: 8) {
                 if isSelecting {
                     Image(systemName: selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                        .font(.title2)
+                        .font(.app(.title2))
                         .foregroundStyle(selectedIDs.contains(item.id) ? Color.accentColor : .secondary)
                 }
             VideoListCard(

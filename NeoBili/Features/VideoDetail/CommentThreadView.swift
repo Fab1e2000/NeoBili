@@ -114,7 +114,7 @@ struct CommentThreadView: View {
     private var sectionHeader: some View {
         let count = viewModel.replyCount(for: root)
         return Text(count > 0 ? String(localized: "全部回复 \(count)") : String(localized: "全部回复"))
-            .font(.footnote.weight(.semibold))
+            .font(.app(.footnote, weight: .semibold))
             .foregroundStyle(.primary.opacity(CommentLayout.emphasisOpacity))
             .padding(.horizontal, CommentLayout.pageHorizontalInset)
             .padding(.top, 14)
@@ -130,14 +130,14 @@ struct CommentThreadView: View {
         } else if let error = viewModel.replyErrors[root.id] {
             VStack(spacing: 10) {
                 Text(error)
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
                 Button("重试") {
                     Task { await viewModel.loadMoreReplies(for: root) }
                 }
-                .font(.subheadline.weight(.medium))
+                .font(.app(.subheadline, weight: .medium))
             }
             .frame(maxWidth: .infinity)
             .padding()

@@ -32,6 +32,8 @@ struct NeoBiliApp: App {
         setvbuf(stdout, nil, _IONBF, 0)
         // 记下本次启动的语言，设置页据此提示「重新打开后生效」。
         _ = AppLanguage.launched
+        _ = AppFontStyle.launched
+        AppFont.applyChromeAppearance()
         _ = RecommendationSourcePreference.launched
 
         // 封面/头像的压缩数据完全依赖 URLSession 的 HTTP 缓存（解码位图另有

@@ -266,9 +266,9 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
 
     static func rowHeight(typeSize: DynamicTypeSize) -> CGFloat {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
-        let titleHeight = ceil(UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).lineHeight * 2)
-        let ownerHeight = ceil(UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traits).lineHeight)
-        let metadataHeight = ceil(UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traits).lineHeight)
+        let titleHeight = ceil(AppFont.preferred(.subheadline, traits: traits).lineHeight * 2)
+        let ownerHeight = ceil(AppFont.preferred(.caption1, traits: traits).lineHeight)
+        let metadataHeight = ceil(AppFont.preferred(.caption1, traits: traits).lineHeight)
         return max(90 + 2 * verticalInset,
                    max(60, verticalInset + titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight) + verticalInset)
     }
@@ -299,10 +299,10 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
             guard self.video != video || self.typeSize != typeSize || self.scale != scale else { return }
             if self.typeSize != typeSize {
                 let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
-                let font = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits)
-                title.font = .systemFont(ofSize: font.pointSize, weight: .medium)
-                owner.font = .preferredFont(forTextStyle: .caption1, compatibleWith: traits)
-                metadata.font = .preferredFont(forTextStyle: .caption1, compatibleWith: traits)
+                let font = AppFont.preferred(.subheadline, traits: traits)
+                title.font = AppFont.uiFont(ofSize: font.pointSize, weight: .medium)
+                owner.font = AppFont.preferred(.caption1, traits: traits)
+                metadata.font = AppFont.preferred(.caption1, traits: traits)
             }
             self.video = video; self.typeSize = typeSize; self.scale = scale
             title.text = video.title
@@ -417,7 +417,7 @@ struct VideoDescriptionContent: View {
             if loading { ProgressView().padding(24) }
             else if let relatedError {
                 VStack(spacing: 12) {
-                    Text(relatedError).font(.subheadline).foregroundStyle(.secondary)
+                    Text(relatedError).font(.app(.subheadline)).foregroundStyle(.secondary)
                     Button("重试") { Task { await viewModel?.retryRelated() } }
                         .buttonStyle(.bordered)
                         .accessibilityIdentifier("related.retry")
@@ -425,7 +425,7 @@ struct VideoDescriptionContent: View {
                 .padding(16)
             } else {
                 Text(all.isEmpty ? "暂时没有相关视频" : "相关视频已被内容过滤设置隐藏")
-                    .font(.subheadline).foregroundStyle(.secondary).padding(16)
+                    .font(.app(.subheadline)).foregroundStyle(.secondary).padding(16)
             }
         }] : [])
         let rows = components + (videos.isEmpty ? status : [])

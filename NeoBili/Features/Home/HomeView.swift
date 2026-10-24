@@ -290,10 +290,10 @@ struct LastSeenCard: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.clockwise")
-                .font(.subheadline.weight(.medium))
+                .font(.app(.subheadline, weight: .medium))
 
             Text("上次看到这里 · 点击刷新")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .multilineTextAlignment(.center)
         }
         .foregroundStyle(.secondary)
@@ -337,7 +337,7 @@ struct HomeVideoCard: View {
                         .clipShape(Circle())
 
                     Text(video.owner.name)
-                        .font(.caption2)
+                        .font(.app(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 

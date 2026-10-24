@@ -25,7 +25,7 @@ struct CommentRow: View {
             // 就会出现「上紧下松」的不一致。
             VStack(alignment: .leading, spacing: 0) {
                 Text(comment.member.uname)
-                    .font(.footnote.weight(.semibold))
+                    .font(.app(.footnote, weight: .semibold))
                     .foregroundStyle(.primary.opacity(CommentLayout.emphasisOpacity))
 
                 ExpandableCommentMessage(comment: comment)
@@ -66,7 +66,7 @@ private struct CommentMetaRow: View {
         HStack(spacing: 12) {
             // 和点赞、回复并排时只占一行；放不下（大字号）就从末尾省略，不折行把按钮挤开。
             Text([comment.relativeTime, comment.location].compactMap { $0 }.joined(separator: " · "))
-                .font(.caption)
+                .font(.app(.caption))
                 .foregroundStyle(.primary.opacity(CommentLayout.metadataOpacity))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -144,7 +144,7 @@ struct ExpandableCommentMessage: View {
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel(isMessageExpanded ? "收起评论正文" : "展开评论正文")
-                .font(.caption.weight(.medium))
+                .font(.app(.caption, weight: .medium))
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
             }
@@ -153,12 +153,12 @@ struct ExpandableCommentMessage: View {
 
     private var messageBody: some View {
         CommentEmoteText(message: comment.message, emotes: comment.emotes,
-                         font: .subheadline, textStyle: .subheadline, jumpURLs: comment.content.jumpURLs)
+                         font: .app(.subheadline), textStyle: .subheadline, jumpURLs: comment.content.jumpURLs)
     }
 
     private var measuredMessageBody: some View {
         CommentEmoteText(message: comment.message, emotes: comment.emotes,
-                         font: .subheadline, textStyle: .subheadline, jumpURLs: comment.content.jumpURLs, loadsEmotes: false)
+                         font: .app(.subheadline), textStyle: .subheadline, jumpURLs: comment.content.jumpURLs, loadsEmotes: false)
     }
 
     /// 只比较六行和七行即可知道是否溢出，不为收起的长文排版全部内容。
@@ -220,7 +220,7 @@ private struct CommentReplyPreview: View {
                 CommentEmoteText(
                     message: reply.message,
                     emotes: reply.emotes,
-                    font: .footnote,
+                    font: .app(.footnote),
                     textStyle: .footnote,
                     prefix: "\(reply.member.uname)：",
                     prefixURL: URL(string: "neobili://comment-thread/\(comment.id)"),
@@ -241,7 +241,7 @@ private struct CommentReplyPreview: View {
 
             if let error = viewModel.replyErrors[comment.id] {
                 Text(error)
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
             }
 
@@ -254,7 +254,7 @@ private struct CommentReplyPreview: View {
                             .accessibilityHidden(true)
                     }
                 }
-                .font(.footnote.weight(.semibold))
+                .font(.app(.footnote, weight: .semibold))
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
             }
@@ -296,7 +296,7 @@ struct CommentActionLabel: View {
             Image(systemName: symbol)
             Text(title)
         }
-        .font(isSelected ? .caption.weight(.semibold) : .caption)
+        .font(.app(.caption, weight: isSelected ? .semibold : nil))
         .foregroundStyle(.primary.opacity(isSelected ? 1 : CommentLayout.emphasisOpacity))
         .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 8)

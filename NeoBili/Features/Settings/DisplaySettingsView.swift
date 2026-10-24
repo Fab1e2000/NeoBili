@@ -14,18 +14,18 @@ struct DisplaySettingsView: View {
             Section {
                 LabeledContent("当前档位", value: Self.label(for: textSizeIndex))
                 Text("正文预览：这段文字会随档位一起变化")
-                    .font(.body)
+                    .font(.app(.body))
                     .dynamicTypeSize(AppTextSize.size(at: textSizeIndex))
                     .padding(.vertical, 12)
                 HStack(spacing: 12) {
-                    Text("小").font(.footnote)
+                    Text("小").font(.app(.footnote))
                     Slider(
                         value: Binding(get: { Double(textSizeIndex) }, set: { textSizeIndex = Int($0.rounded()) }),
                         in: 0...Double(AppTextSize.steps.count - 1), step: 1
                     )
                     .accessibilityLabel("文字大小")
                     .accessibilityValue(String(localized: "第 \(textSizeIndex + 1) 档，共 \(AppTextSize.steps.count) 档"))
-                    Text("大").font(.title3)
+                    Text("大").font(.app(.title3))
                 }
                 .dynamicTypeSize(.large)
                 Button("恢复标准") { textSizeIndex = AppTextSize.defaultIndex }

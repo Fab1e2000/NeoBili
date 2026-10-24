@@ -76,7 +76,7 @@ private struct FollowingUpName: View {
 
     var body: some View {
         Text(title)
-            .font(.caption2.weight(selected ? .semibold : .regular))
+            .font(.app(.caption2, weight: selected ? .semibold : .regular))
             .foregroundStyle(selected ? .primary : .secondary)
             .lineLimit(1)
     }

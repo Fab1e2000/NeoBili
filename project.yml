@@ -58,6 +58,10 @@ targets:
         # 后台继续播放音频（退出视频页后的缩略播放器、锁屏）。
         UIBackgroundModes: [audio]
         UILaunchScreen: {}
+        # 宋体风格使用的内置思源宋体（SIL OFL），随应用注册。
+        UIAppFonts:
+          - SourceHanSerifCN-Regular.otf
+          - SourceHanSerifCN-SemiBold.otf
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         CFBundleDisplayName: NeoBili

@@ -48,7 +48,7 @@ struct PlayerGestureSettingsSection: View {
     private func zone(_ title: String, symbol: String, color: Color) -> some View {
         VStack(spacing: 6) {
             Image(systemName: symbol)
-            Text(title).font(.caption2).lineLimit(1).minimumScaleFactor(0.6)
+            Text(title).font(.app(.caption2)).lineLimit(1).minimumScaleFactor(0.6)
         }
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

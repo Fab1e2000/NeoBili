@@ -31,7 +31,7 @@ struct CommentsList: View {
             }
             if let message = viewModel.errorMessage, !viewModel.comments.isEmpty {
                 VStack(spacing: 8) {
-                    Text(message).font(.footnote).foregroundStyle(.secondary)
+                    Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
                     Button("重试加载评论") { Task { await viewModel.retry() } }
                         .disabled(viewModel.isLoading || viewModel.isLoadingMore)
                 }

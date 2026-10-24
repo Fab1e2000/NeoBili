@@ -17,7 +17,7 @@ struct MiniPlayerBar: View {
             HStack(spacing: isInline ? 6 : 10) {
                 Button(action: store.expandMiniPlayer) {
                     Text(title)
-                        .font(.subheadline.weight(.medium))
+                        .font(.app(.subheadline, weight: .medium))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -39,7 +39,7 @@ struct MiniPlayerBar: View {
                             Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
                         }
                     }
-                    .font(.title3.weight(.semibold))
+                    .font(.app(.title3, weight: .semibold))
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
                 }
@@ -51,7 +51,7 @@ struct MiniPlayerBar: View {
                 if !isInline {
                     Button(action: store.close) {
                         Image(systemName: "xmark")
-                            .font(.body.weight(.medium))
+                            .font(.app(.body, weight: .medium))
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
@@ -72,7 +72,7 @@ struct MiniPlayerBar: View {
                 // The accessory changes placement as the tab bar collapses.
                 // A standalone preview must not inherit that layout or its zoom anchor.
                 Text(title)
-                    .font(.subheadline.weight(.medium))
+                    .font(.app(.subheadline, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(3)
                     .frame(width: 260, alignment: .leading)

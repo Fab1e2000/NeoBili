@@ -35,14 +35,14 @@ private struct LiveRoomCardContent: View, Equatable {
                                 .fixedSize()
                         }
                     }
-                    .font(.caption2)
+                    .font(.app(.caption2))
                     .foregroundStyle(.white)
                     .padding(7)
                 }
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(room.title.isEmpty ? String(localized: "直播间 \(room.roomID)") : room.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2, reservesSpace: true)
 
@@ -54,7 +54,7 @@ private struct LiveRoomCardContent: View, Equatable {
                             .clipShape(Circle())
                     }
                     Text(room.username.isEmpty ? String(localized: "房间 \(room.roomID)") : room.username)
-                        .font(.caption2)
+                        .font(.app(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }

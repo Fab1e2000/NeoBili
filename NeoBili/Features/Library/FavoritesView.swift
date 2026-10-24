@@ -42,7 +42,7 @@ struct FavoritesView: View {
                                     .lineLimit(1)
                                 Spacer()
                                 Text(String(localized: "\(folder.mediaCount) 个内容"))
-                                    .font(.caption)
+                                    .font(.app(.caption))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -207,7 +207,7 @@ struct FavoriteFolderView: View {
                         }
                         if let errorMessage, !videos.isEmpty {
                             VStack(spacing: 8) {
-                                Text(errorMessage).font(.footnote).foregroundStyle(.secondary)
+                                Text(errorMessage).font(.app(.footnote)).foregroundStyle(.secondary)
                                 Button("重试加载") { Task { await loadNextPage() } }
                                     .disabled(isLoading || isLoadingMore)
                             }
@@ -280,7 +280,7 @@ struct FavoriteFolderView: View {
             HStack(spacing: 8) {
                 if isSelecting {
                     Image(systemName: selectedIDs.contains(media.id) ? "checkmark.circle.fill" : "circle")
-                        .font(.title2)
+                        .font(.app(.title2))
                         .foregroundStyle(selectedIDs.contains(media.id) ? Color.accentColor : .secondary)
                 }
             VideoListCard(

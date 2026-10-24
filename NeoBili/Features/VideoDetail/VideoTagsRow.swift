@@ -20,7 +20,7 @@ struct VideoTagsRow: View {
                 ForEach(tags) { tag in
                     Button { onSelect(tag) } label: {
                         Text(tag.tagName)
-                            .font(.caption)
+                            .font(.app(.caption))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .padding(.horizontal, 10)

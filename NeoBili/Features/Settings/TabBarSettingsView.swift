@@ -23,7 +23,7 @@ struct TabBarSettingsView: View {
                         } label: {
                             Image(systemName: "minus.circle.fill")
                                 .foregroundStyle(.red)
-                                .font(.title3)
+                                .font(.app(.title3))
                         }
                         .buttonStyle(.borderless)
                         // 至少保留一个标签。
@@ -53,7 +53,7 @@ struct TabBarSettingsView: View {
                             } label: {
                                 Image(systemName: "plus.circle.fill")
                                     .foregroundStyle(.green)
-                                    .font(.title3)
+                                    .font(.app(.title3))
                             }
                             .buttonStyle(.borderless)
                             // 已达上限时先隐藏一个再添加。

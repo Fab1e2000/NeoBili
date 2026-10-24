@@ -93,6 +93,7 @@ struct RootView: View {
         // 底部内容直接延伸，不加系统渐变模糊。
         .scrollEdgeEffectHidden(true, for: .bottom)
         .appTheme()
+        .appFontStyle()
         .modifier(AppAuthorizationRecovery(account: account))
         .environment(nowPlaying)
         .environment(\.videoPreparation, nowPlaying.preparationCache)

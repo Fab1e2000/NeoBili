@@ -135,7 +135,7 @@ struct VideoActionBar: View {
 
     private func captionText(_ caption: String, isActive: Bool) -> some View {
         Text(caption)
-            .font(isActive ? .caption.weight(.semibold) : .caption)
+            .font(.app(.caption, weight: isActive ? .semibold : nil))
             .foregroundStyle(isActive
                              ? AnyShapeStyle(Color(uiColor: VideoActionPalette.foreground(theme: UIColor(themeColor))))
                              : AnyShapeStyle(.primary.opacity(VideoActionBarLayout.captionOpacity)))

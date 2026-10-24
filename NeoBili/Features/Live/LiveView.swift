@@ -43,7 +43,7 @@ struct LiveView: View {
             .safeAreaBar(edge: .top, spacing: 0) { sourcePicker }
             .scrollEdgeEffectStyle(.hard, for: .top)
             .background(Color(uiColor: .systemGroupedBackground))
-            .rootPageChrome(title: String(localized: "直播"))
+            .rootPageChrome(title: String(localized: "直播"), barFollowsCollapse: true)
         }
         .onChange(of: account.sessionID) {
             source = .recommended
@@ -249,17 +249,17 @@ private struct LiveFeedPage: View {
             retryMessage(message) { await model.loadMore() }
         } else if model.hasMore {
             Button("加载更多") { Task { await model.loadMore() } }
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .frame(minHeight: 44)
                 .disabled(model.isLoading || isRefreshing)
         } else {
-            Text("已经到底了").font(.footnote).foregroundStyle(.secondary).padding(.vertical, 12)
+            Text("已经到底了").font(.app(.footnote)).foregroundStyle(.secondary).padding(.vertical, 12)
         }
     }
 
     private func retryMessage(_ message: String, action: @escaping @MainActor () async -> Void) -> some View {
         VStack(spacing: 6) {
-            Text(message).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text(message).font(.app(.footnote)).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("重试") { Task { await action() } }.frame(minHeight: 44)
         }
     }

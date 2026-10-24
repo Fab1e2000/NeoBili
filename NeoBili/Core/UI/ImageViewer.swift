@@ -350,7 +350,7 @@ struct ImageViewerPage: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     if model.originalFailures.contains(index) {
                         Text("原图加载失败")
-                            .font(.caption)
+                            .font(.app(.caption))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
@@ -365,7 +365,7 @@ struct ImageViewerPage: View {
                                     .tint(.white)
                             }
                             Text(model.originalLoading.contains(index) ? "正在加载原图" : (model.originalFailures.contains(index) ? "重试" : "查看原图"))
-                                .font(.footnote)
+                                .font(.app(.footnote))
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)

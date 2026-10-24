@@ -138,10 +138,10 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             if configuredTypeSize != dynamicTypeSize {
                 configuredTypeSize = dynamicTypeSize
                 let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-                let small = UIFont.preferredFont(forTextStyle: .caption2, compatibleWith: traits)
+                let small = AppFont.preferred(.caption2, traits: traits)
                 owner.font = small
                 badge.font = small
-                let semibold = UIFont.systemFont(ofSize: small.pointSize, weight: .semibold)
+                let semibold = AppFont.uiFont(ofSize: small.pointSize, weight: .semibold)
                 playCount.font = semibold
                 danmakuCount.font = semibold
                 danmakuIcon.image = UIImage(systemName: "text.bubble", withConfiguration: UIImage.SymbolConfiguration(font: semibold))
@@ -178,7 +178,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             }
             let fontSize = PreparedTitle.fontSize(for: dynamicTypeSize)
             let metrics = PreparedTitle.metrics(fontSize: fontSize)
-            titleHeight = video.isLargeRecommendationCard ? ceil(UIFont.systemFont(ofSize: fontSize, weight: .semibold).lineHeight) : (metrics?.boxHeight ?? 40)
+            titleHeight = video.isLargeRecommendationCard ? ceil(AppFont.uiFont(ofSize: fontSize, weight: .semibold).lineHeight) : (metrics?.boxHeight ?? 40)
             fallbackTitle.numberOfLines = video.isLargeRecommendationCard ? 1 : 2
             if metrics == nil {
                 // fontSize(for:) queues measurement outside the current SwiftUI
@@ -195,7 +195,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                 title.isHidden = true
                 fallbackTitle.isHidden = false
                 fallbackTitle.attributedText = nil
-                fallbackTitle.font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+                fallbackTitle.font = AppFont.uiFont(ofSize: fontSize, weight: .semibold)
                 fallbackTitle.text = video.title
             } else if PreparedTitle.supports(video.title),
                let key = PreparedTitle.Key(title: video.title, width: titleWidth, fontSize: fontSize, scale: scale),
@@ -210,7 +210,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
                 if let metrics {
                     fallbackTitle.attributedText = PreparedTitle.fixedLineHeightTitle(video.title, fontSize: fontSize, metrics: metrics)
                 } else {
-                    fallbackTitle.font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+                    fallbackTitle.font = AppFont.uiFont(ofSize: fontSize, weight: .semibold)
                     fallbackTitle.text = video.title
                 }
             }

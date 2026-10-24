@@ -60,6 +60,11 @@
 修改后重新打开生效；新增界面文字同步维护 String Catalog。
 标签顺序、隐藏与启动页由 `MainTabSettings` 约束。主页面标题没有设置项：推荐、搜索、资料库、关注、直播
 均通过 `rootPageChrome` 使用原生 `inlineLarge` 标题并随下滑收起，头像入口放在导航栏右侧。
+字体风格由 `AppFontStyle` 管理，选项为默认字体和宋体，保存到 `neobili.fontStyle`，启动时确定，
+改动后重新打开生效。宋体使用内置的思源宋体（SIL OFL，Regular 与 SemiBold 两个字重，中等及以下用
+Regular，半粗及以上用 SemiBold），同一套字形覆盖拉丁字母与简体汉字，不依赖系统的中文回退。新代码用
+`Font.app(_:weight:)`、`AppFont.uiFont` 与 `AppFont.preferred` 取字体，不直接使用系统文字样式；图标符号和
+弹幕保留系统字体。
 播放器手势和控件位置保留各自合法范围及恢复默认逻辑，避免在调用点重复定义常量。
 
 ## 推荐来源

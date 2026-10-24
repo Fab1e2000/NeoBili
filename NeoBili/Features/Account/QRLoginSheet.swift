@@ -36,7 +36,7 @@ struct QRLoginSheet: View {
                     .frame(width: 232, height: 232)
 
                 statusLabel
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(minHeight: 40)
@@ -44,7 +44,7 @@ struct QRLoginSheet: View {
                 Spacer()
 
                 Text("用「哔哩哔哩」App 扫一扫登录。同一台手机：先保存二维码，再在 B 站 App 扫一扫里从相册选择。")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
                     .padding(.bottom, 8)
@@ -63,7 +63,7 @@ struct QRLoginSheet: View {
                         Button("保存二维码") {
                             UIImageWriteToSavedPhotosAlbum(qrImage, nil, nil, nil)
                         }
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                     }
                 }
             }
@@ -95,9 +95,9 @@ struct QRLoginSheet: View {
             case .failed(let message):
                 VStack(spacing: 10) {
                     Image(systemName: "wifi.exclamationmark")
-                        .font(.title)
+                        .font(.app(.title))
                     Text(message)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .multilineTextAlignment(.center)
                 }
                 .foregroundStyle(.secondary)
@@ -116,9 +116,9 @@ struct QRLoginSheet: View {
                                     .fill(.thinMaterial)
                                 VStack(spacing: 6) {
                                     Image(systemName: "checkmark.circle")
-                                        .font(.title2)
+                                        .font(.app(.title2))
                                     Text("已扫码，请在手机上确认")
-                                        .font(.caption.weight(.medium))
+                                        .font(.app(.caption, weight: .medium))
                                 }
                                 .padding(12)
                             }
@@ -135,7 +135,7 @@ struct QRLoginSheet: View {
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
             Text("二维码已过期")
-                .font(.subheadline)
+                .font(.app(.subheadline))
             Button("刷新二维码") { attempt += 1 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)

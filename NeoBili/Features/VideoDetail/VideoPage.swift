@@ -204,7 +204,7 @@ struct VideoPage: View {
                     // 由系统给出与主页一致的原生顶部模糊。
                     if store.player != nil, let message = viewModel?.errorMessage {
                         VStack(spacing: 8) {
-                            Text(message).font(.callout).foregroundStyle(.secondary)
+                            Text(message).font(.app(.callout)).foregroundStyle(.secondary)
                             Button("重试", systemImage: "arrow.clockwise", action: store.retryDetail)
                         }
                         .padding()

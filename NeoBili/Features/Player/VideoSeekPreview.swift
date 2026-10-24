@@ -23,14 +23,14 @@ struct VideoSeekPreview: View {
                         VStack(spacing: 3) {
                             Text("暂无预览")
                             Text("稍后拖动重试")
-                        }.font(.caption2).foregroundStyle(.secondary)
+                        }.font(.app(.caption2)).foregroundStyle(.secondary)
                     } else {
                         ProgressView().controlSize(.small)
                     }
                 }
                 .frame(height: 74)
             }
-            Text(PlaybackTime.text(seconds)).font(.caption.monospacedDigit().weight(.semibold))
+            Text(PlaybackTime.text(seconds)).font(.app(.caption, weight: .semibold)).monospacedDigit()
         }
         .padding(5)
         // 和播放器控件同一层，跟着用透明变体；下面有控件层的调暗层托底。

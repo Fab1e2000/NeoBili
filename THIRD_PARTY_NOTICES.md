@@ -23,3 +23,12 @@ The application uses the LGPL build and does not link `MPVKit-GPL`.
 MPVKit bundles libmpv and FFmpeg-related libraries. Their respective license
 and attribution files are retained in the upstream package and must remain
 available with any redistributed application build.
+
+## Source Han Serif (思源宋体)
+
+宋体字体风格使用内置的 Source Han Serif CN（Regular、SemiBold）。
+
+- Project: https://github.com/adobe-fonts/source-han-serif
+- Copyright 2017-2022 Adobe, with Reserved Font Name 'Source'
+- License: SIL Open Font License 1.1
+- License text: `NeoBili/Resources/Fonts/SourceHanSerif-LICENSE.txt`

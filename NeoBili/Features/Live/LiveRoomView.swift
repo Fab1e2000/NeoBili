@@ -141,7 +141,7 @@ struct LiveRoomView: View {
                 VStack(spacing: 8) {
                     Label(player.isOffline ? "主播暂未开播" : "直播连接中断",
                           systemImage: player.isOffline ? "moon.zzz" : "wifi.exclamationmark")
-                        .font(.headline)
+                        .font(.app(.headline))
                     Button("重新连接", systemImage: "arrow.clockwise", action: reconnect)
                         .modifier(PlayerClearGlassButtonStyle())
                         .controlSize(.regular)
@@ -202,7 +202,7 @@ struct LiveRoomView: View {
                                                  isExpanded: $isIntroductionExpanded)
                         if let error = player.errorMessage {
                             Label(error, systemImage: "wifi.exclamationmark")
-                                .font(.callout)
+                                .font(.app(.callout))
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }

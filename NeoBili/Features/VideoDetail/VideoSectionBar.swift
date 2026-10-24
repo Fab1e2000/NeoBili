@@ -43,7 +43,7 @@ struct VideoSectionBar: View {
 
             if let onSendDanmaku {
                 Button("发弹幕", systemImage: "text.bubble", action: onSendDanmaku)
-                    .font(.footnote.weight(.medium))
+                    .font(.app(.footnote, weight: .medium))
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.capsule)
                     .tint(.primary)

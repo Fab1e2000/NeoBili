@@ -6,7 +6,7 @@ import SwiftUI
 /// 设备上会得到互相叠加的两次缩放，排版没法预期。改成由根视图统一注入一个
 /// 固定档位后，系统设置不再参与，App 内这一个滑杆就是唯一的来源。
 ///
-/// 档位本身仍用系统的 `DynamicTypeSize`，所以 `.font(.subheadline)` 这类语义
+/// 档位本身仍用系统的 `DynamicTypeSize`，所以 `.font(.app(.subheadline))` 这类语义
 /// 字号会照常按 Apple 的比例缩放，不需要给每处文字手写字号。
 enum AppTextSize {
     /// 与设置页共用的存储键。
@@ -38,7 +38,7 @@ private struct AppTextSizeModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         // 这些入口同时是独立呈现的根部，主题也需在此重新注入。
-        content.dynamicTypeSize(AppTextSize.size(at: index)).appTheme()
+        content.dynamicTypeSize(AppTextSize.size(at: index)).appTheme().appFontStyle()
     }
 }
 

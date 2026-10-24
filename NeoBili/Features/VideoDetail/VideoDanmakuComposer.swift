@@ -42,7 +42,7 @@ struct VideoDanmakuComposer: View {
                             ProgressView()
                         } else {
                             Image(systemName: "arrow.up")
-                                .font(.headline)
+                                .font(.app(.headline))
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -60,7 +60,7 @@ struct VideoDanmakuComposer: View {
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.red)
                 }
             }
@@ -126,7 +126,7 @@ struct FullscreenDanmakuInput: View {
                 Spacer(minLength: 0)
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -158,7 +158,7 @@ struct FullscreenDanmakuInput: View {
                     }
                 } label: {
                     Text(mode.title)
-                        .font(.subheadline.weight(.medium))
+                        .font(.app(.subheadline, weight: .medium))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 16)
                         .frame(height: 44)
@@ -182,7 +182,7 @@ struct FullscreenDanmakuInput: View {
                             ProgressView().tint(.white)
                         } else {
                             Image(systemName: "arrow.up")
-                                .font(.headline)
+                                .font(.app(.headline))
                                 .foregroundStyle(.white)
                         }
                     }

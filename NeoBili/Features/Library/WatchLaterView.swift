@@ -128,7 +128,7 @@ struct WatchLaterView: View {
                 if model.isSelecting {
                     Image(systemName: model.selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(model.selectedIDs.contains(item.id) ? Color.accentColor : .secondary)
-                        .font(.title2)
+                        .font(.app(.title2))
                 }
                 if dynamicTypeSize.isAccessibilitySize {
                     accessibleCard(item, summary: summary)
@@ -191,16 +191,16 @@ struct WatchLaterView: View {
                 .frame(maxWidth: 240)
                 .clipShape(RoundedRectangle(cornerRadius: 5))
             Text(item.title)
-                .font(.subheadline.weight(.medium))
+                .font(.app(.subheadline, weight: .medium))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
                 .background(layoutProbe("title-\(item.id)"))
             Text(item.upper?.name ?? "")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.app(.caption)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .background(layoutProbe("author-\(item.id)"))
             Label(summary?.formattedDuration ?? "", systemImage: "clock")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.app(.caption2)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .background(layoutProbe("duration-\(item.id)"))
         }
@@ -223,7 +223,7 @@ struct WatchLaterView: View {
         Group {
             if let error = model.errorMessage {
                 VStack {
-                    Text(error).font(.footnote).foregroundStyle(.secondary)
+                    Text(error).font(.app(.footnote)).foregroundStyle(.secondary)
                     Button("重试") { Task { await model.load() } }
                 }
             } else if model.isLoading {

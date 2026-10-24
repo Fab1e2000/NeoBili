@@ -263,7 +263,7 @@ struct PerformanceDemoControl: View {
     var body: some View {
         Button { showing = true } label: {
             Label(demo.recording ? "采集中" : "性能 Demo", systemImage: "gauge.with.dots.needle.67percent")
-                .font(.caption).padding(10).background(.regularMaterial, in: Capsule())
+                .font(.app(.caption)).padding(10).background(.regularMaterial, in: Capsule())
         }
         .padding(.trailing, 12)
         .videoTransitionSource("performance-entry", in: transition)
@@ -279,7 +279,7 @@ struct PerformanceDemoControl: View {
                             LabeledContent("热状态", value: ["正常", "轻度", "严重", "临界"][min(sample.thermal, 3)])
                         }
                         Text("CPU 与内存每秒采样；推荐页拖动与惯性滚动同时记录显示回调间隔（不等于实际呈现帧率）。电量与热状态不等于功耗；功耗请结合 Instruments Power Profiler。不会记录账号凭据或视频地址。")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(.app(.footnote)).foregroundStyle(.secondary)
                     }
                     Section {
                         Button("自动对照（约 5–6 分钟）") { showing = false; demo.runAutomatic() }.disabled(demo.recording)

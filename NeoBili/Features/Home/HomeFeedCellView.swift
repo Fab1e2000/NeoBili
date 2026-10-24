@@ -230,7 +230,7 @@ struct HomeLargeCoverOverlay: View {
                         .accessibilityLabel("静音预览")
                 }
             }
-            .font(.caption2.weight(.semibold)).foregroundStyle(.white)
+            .font(.app(.caption2, weight: .semibold)).foregroundStyle(.white)
             .padding(.horizontal, 8).padding(.bottom, 6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)

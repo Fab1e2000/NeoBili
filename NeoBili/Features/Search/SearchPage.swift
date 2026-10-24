@@ -82,7 +82,7 @@ struct SearchPage: View {
                 sectionTitle(String(localized: "搜索历史"))
                 Spacer()
                 Button("清空", systemImage: "trash") { history.clear() }
-                    .font(.caption)
+                    .font(.app(.caption))
                     .labelStyle(.iconOnly)
                     .frame(width: 44, height: 36)
                     .disabled(history.keywords.isEmpty)
@@ -90,14 +90,14 @@ struct SearchPage: View {
                     .accessibilityIdentifier("search.clearHistory")
             }
             if history.keywords.isEmpty {
-                Text("暂无搜索历史").font(.caption).foregroundStyle(.secondary)
+                Text("暂无搜索历史").font(.app(.caption)).foregroundStyle(.secondary)
                     .padding(.vertical, 8)
             } else {
                 WrappingCapsuleLayout(spacing: 8) {
                     ForEach(history.keywords, id: \.self) { keyword in
                         Button { onSubmit(keyword) } label: {
                             Text(keyword)
-                                .font(.caption)
+                                .font(.app(.caption))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                                 .padding(.horizontal, 10)
@@ -113,7 +113,7 @@ struct SearchPage: View {
     }
 
     private func sectionTitle(_ title: String) -> some View {
-        Text(title).font(.subheadline.weight(.semibold))
+        Text(title).font(.app(.subheadline, weight: .semibold))
             .frame(height: 36, alignment: .leading)
     }
 
@@ -124,22 +124,22 @@ struct SearchPage: View {
                 ProgressView().frame(maxWidth: .infinity).padding(8)
             } else if let error = viewModel.hotSearchError {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(error).font(.caption).foregroundStyle(.secondary)
+                    Text(error).font(.app(.caption)).foregroundStyle(.secondary)
                     Button("重新加载") { Task { await viewModel.loadHotSearches() } }
-                        .font(.caption)
+                        .font(.app(.caption))
                 }.padding(.vertical, 8)
             } else if viewModel.hotSearches.isEmpty {
-                Text("暂无热搜").font(.caption).foregroundStyle(.secondary).padding(.vertical, 8)
+                Text("暂无热搜").font(.app(.caption)).foregroundStyle(.secondary).padding(.vertical, 8)
             }
             // 一行一条，字号与推荐页卡片标题一致。
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(viewModel.hotSearches.enumerated()), id: \.element.id) { index, item in
                     Button { onSubmit(item.keyword) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text(String(index + 1)).font(.subheadline.weight(.semibold).monospacedDigit())
+                            Text(String(index + 1)).font(.app(.subheadline, weight: .semibold)).monospacedDigit()
                                 .foregroundStyle(index < 3 ? themeColor : Color.secondary)
                                 .frame(minWidth: 22, alignment: .leading)
-                            Text(item.title).font(.subheadline).foregroundStyle(.primary)
+                            Text(item.title).font(.app(.subheadline)).foregroundStyle(.primary)
                                 .lineLimit(2)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }

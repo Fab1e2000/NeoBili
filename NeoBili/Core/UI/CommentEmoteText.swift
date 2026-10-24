@@ -321,7 +321,7 @@ struct CommentEmoteText: View {
         let category = Self.contentCategory(typeSize)
         let traits = UITraitCollection(preferredContentSizeCategory: category)
         return UIFontMetrics(forTextStyle: uiTextStyle)
-            .scaledFont(for: .systemFont(ofSize: baseSize), compatibleWith: traits)
+            .scaledFont(for: AppFont.uiFont(ofSize: baseSize), compatibleWith: traits)
     }
 
     /// `.large`（默认档）下这几种样式的字号，供 `UIFontMetrics` 起算。

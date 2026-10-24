@@ -54,8 +54,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         // 列表拿到的系统安全区是 0；而自动模式下刷新暂停滚动的那一刻边距会跳变。
         view.contentInsetAdjustmentBehavior = .never
         applyInsets(to: view)
-        // 卡片从顶部滑过时的 iOS 26 scroll edge effect，底部不加。
-        view.topEdgeEffect.style = .hard
+        // 顶部沿用系统默认的 scroll edge effect，与历史、收藏等原生列表一致；底部不加。
         view.topEdgeEffect.isHidden = !pinsTitleBar
         view.bottomEdgeEffect.isHidden = true
         view.delegate = coordinator

@@ -228,7 +228,7 @@ struct SpaceView: View {
                             .controlSize(.small)
                             .accessibilityLabel("关注状态尚未加载，请重试")
                         if let error = viewModel.followError {
-                            Text(error).font(.caption2).foregroundStyle(.secondary)
+                            Text(error).font(.app(.caption2)).foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
                     }
@@ -243,7 +243,7 @@ struct SpaceView: View {
                         }
                     } label: {
                         Text(viewModel.isFollowing == true ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
-                            .font(.footnote.weight(.medium))
+                            .font(.app(.footnote, weight: .medium))
                             .frame(minWidth: 56)
                     },
                     isActive: viewModel.isFollowing == true
@@ -282,7 +282,7 @@ struct SpaceView: View {
                 Button("重试") { Task { await viewModel.reloadVideos() } }
                     .disabled(viewModel.isLoadingVideos)
             }
-            .font(.footnote)
+            .font(.app(.footnote))
             .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
             .padding(.vertical, 12)
         }

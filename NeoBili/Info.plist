@@ -29,6 +29,11 @@
 	<string>17</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>保存登录二维码到相册，便于在哔哩哔哩 App 的扫一扫里从相册识别登录。</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>SourceHanSerifCN-Regular.otf</string>
+		<string>SourceHanSerifCN-SemiBold.otf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

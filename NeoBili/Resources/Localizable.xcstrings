@@ -4527,6 +4527,46 @@
         }
       }
     },
+    "字体风格" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Font Style"
+          }
+        }
+      }
+    },
+    "默认字体" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default Font"
+          }
+        }
+      }
+    },
+    "宋体" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serif (Song)"
+          }
+        }
+      }
+    },
+    "预览" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview"
+          }
+        }
+      }
+    },
     "没有可显示的分集" : {
       "localizations" : {
         "en" : {

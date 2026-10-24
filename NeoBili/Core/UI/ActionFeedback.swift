@@ -103,7 +103,7 @@ struct ActionFeedbackOverlay: ViewModifier {
                                     .accessibilityIdentifier("feedback.undo")
                             }
                         }
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 18)
                         .padding(.vertical, 11)
