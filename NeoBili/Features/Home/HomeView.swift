@@ -278,6 +278,23 @@ enum HomeCardLayout {
         coverSize(for: pageWidth).height + detailsHeight
     }
 
+    /// 「上次看到这里」分隔条的确定高度：一行（或折行后几行）文字加上下各 12pt 内边距。
+    /// 高度由列表布局直接给定，不让格子自己量：自适应高度会在格子进出屏幕、进出安全区时
+    /// 重新测量，内容尺寸随之变化，UIKit 为了稳住画面又去改滚动偏移，下面的内容就会被挪动。
+    static func lastSeenHeight(for pageWidth: CGFloat, dynamicTypeSize: DynamicTypeSize) -> CGFloat {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+        let font = AppFont.preferred(.subheadline, traits: traits)
+        let iconFont = AppFont.preferred(.subheadline, weight: .medium, traits: traits)
+        let icon = UIImage(systemName: "arrow.clockwise", withConfiguration: UIImage.SymbolConfiguration(font: iconFont))
+        let iconSize = icon?.size ?? CGSize(width: iconFont.pointSize, height: iconFont.lineHeight)
+        let available = max(1, pageWidth - horizontalInset * 2 - ceil(iconSize.width) - 8)
+        let text = String(localized: "上次看到这里 · 点击刷新") as NSString
+        let textHeight = ceil(text.boundingRect(with: CGSize(width: available, height: .greatestFiniteMagnitude),
+                                                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                                                attributes: [.font: font], context: nil).height)
+        return max(textHeight, ceil(iconSize.height)) + 24
+    }
+
     static let largeDetailsHeight: CGFloat = 60
     static let largeCoverAspectRatio: CGFloat = 16 / 9
     static func largeCardHeight(for pageWidth: CGFloat) -> CGFloat {
