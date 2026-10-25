@@ -232,7 +232,7 @@ struct HomeFeedCollection: UIViewRepresentable {
             let persistentHosts = true
             #endif
             dataSource = UICollectionViewDiffableDataSource(collectionView: view) { view, indexPath, id in
-                if persistentHosts && id != HomeFeedItem.lastSeen.id && id != Self.headerID {
+                if persistentHosts && id != Self.headerID {
                     return view.dequeueConfiguredReusableCell(using: persistentRegistration, for: indexPath, item: id)
                 }
                 return view.dequeueConfiguredReusableCell(using: registration, for: indexPath, item: id)
@@ -252,9 +252,13 @@ struct HomeFeedCollection: UIViewRepresentable {
             let isMarker = sectionID == .marker
             let isLarge = sectionID.map(largeSections.contains) ?? false
             let width = environment.container.effectiveContentSize.width
-            // 卡片行高度固定（4:3 封面加文字区），不必逐个测量；分隔条随字号变化，按内容自适应。
-            let height: NSCollectionLayoutDimension = isHeader || isMarker
-                ? .estimated(isHeader ? 66 : 44)
+            // 卡片行高度固定（4:3 封面加文字区），不必逐个测量。分隔条的高度也由布局直接给定
+            // （见 `HomeCardLayout.lastSeenHeight`）：让格子自己量高度，会在它进出屏幕和安全区时
+            // 重新测量，布局反复失效，最终被 UIKit 断言终止。页头已不再使用，仍保留估算高度。
+            let height: NSCollectionLayoutDimension = isHeader
+                ? .estimated(66)
+                : isMarker
+                ? .absolute(HomeCardLayout.lastSeenHeight(for: width, dynamicTypeSize: dynamicTypeSize))
                 : .absolute(isLarge ? HomeCardLayout.largeCardHeight(for: width) : HomeCardLayout.cardHeight(for: width))
             let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: height)
             let group: NSCollectionLayoutGroup
@@ -287,6 +291,10 @@ struct HomeFeedCollection: UIViewRepresentable {
             )
             if updated.signature != environment.signature { needsReconfigureAll = true }
             environment = updated
+            if dynamicTypeSize != values.dynamicTypeSize, hasMarker {
+                // 分隔条的高度随字号变化，字号变了要让布局重新取高度。
+                collectionView?.collectionViewLayout.invalidateLayout()
+            }
             dynamicTypeSize = values.dynamicTypeSize
             let clock = values.videoEntranceClocks.first?.clock
             if clock !== self.clock {
@@ -434,7 +442,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 if let collectionView { positionHeader(cell, in: collectionView) }
                 return
             }
-            // 页头与分隔条共用 hosting cell，复用时不能带走下拉补偿。
+            // 页头走独立的 hosting cell；分隔条与视频卡片共用持久格子，复用时清掉可能残留的位移。
             if id == HomeFeedItem.lastSeen.id { cell.transform = .identity }
             guard let row = itemsByID[id], let viewModel else { return }
             let starts = entranceStarts(for: row)
