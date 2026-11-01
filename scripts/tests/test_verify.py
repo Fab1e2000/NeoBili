@@ -28,6 +28,11 @@ class ValidationWorkflowTests(unittest.TestCase):
             "        pass\n"
         )
         self.env = dict(os.environ, CALL_LOG=str(self.root / "calls"))
+        # pre-push exports GIT_DIR. A nested fixture must not commit into that repo.
+        for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+                    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                    "GIT_PREFIX", "GIT_NAMESPACE"):
+            self.env.pop(key, None)
         self.env["PATH"] = str(self.root / "bin") + os.pathsep + self.env["PATH"]
         # The fixture has no Swift or Xcode dependency; only orchestration runs.
         launcher = self.root / "bin/zsh"
