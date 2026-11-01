@@ -61,12 +61,12 @@ case "$MODE" in
     run_step documentation python3 scripts/check-doc-links.py
     run_step working-diff git diff --check
     run_step staged-diff git diff --cached --check
-    run_step workflow python3 -B -m unittest discover -s scripts/tests -p 'test_verify.py'
+    run_step workflow python3 -B -m unittest discover -s scripts/tests -p 'test_*.py'
     ;;
   offline) run_step offline zsh offline-harness/run.sh;;
   targeted) run_step simulator bash scripts/simulator.sh test "$@";;
   full)
-    run_step workflow python3 -B -m unittest discover -s scripts/tests -p 'test_verify.py'
+    run_step workflow python3 -B -m unittest discover -s scripts/tests -p 'test_*.py'
     run_step offline zsh offline-harness/run.sh
     run_step simulator bash scripts/simulator.sh test
     ;;

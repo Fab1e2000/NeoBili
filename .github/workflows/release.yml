@@ -1,9 +1,10 @@
-# 推送 vX.Y.Z 标签时，用 Xcode 27.1 构建未签名 IPA，并创建 Release 草稿。
+# 推送 vX.Y.Z 标签时，用 Xcode 27.1 构建 IPA，做 ad-hoc 签名，并创建 Release 草稿。
 # 草稿检查无误后，在 GitHub 的 Releases 页面点「Publish release」发布。
 #
 # - 标签必须和 NeoBili/Info.plist 的 CFBundleShortVersionString 一致。
 # - 说明文字取自 docs/releases/vX.Y.Z.md；首行若是「# 标题」，就用作 Release 标题。
 # - 在 Actions 页面手动运行只打包、不发布，IPA 在该次运行的 Artifacts 里下载。
+# - 草稿公开后由 sidestore.yml 更新软件源；本工作流不写 sidestore/apps.json。
 name: Release
 
 on:
@@ -47,8 +48,19 @@ jobs:
       - name: Package
         run: |
           ipa="NeoBili-${{ steps.version.outputs.tag }}-unsigned.ipa"
+          app=build/Build/Products/Release-iphoneos/NeoBili.app
+          # 关闭签名后，主程序没有签名，框架只剩 linker signature。
+          # SideStore、Sideloadly 无法在这种签名上重签。去掉后改为 ad-hoc 签名。
+          find "$app" -type f -print0 | while IFS= read -r -d '' file; do
+            codesign --remove-signature "$file" 2>/dev/null || true
+          done
+          find "$app/Frameworks" -name '*.framework' -maxdepth 1 -print0 | while IFS= read -r -d '' framework; do
+            codesign --force --sign - --timestamp=none "$framework"
+          done
+          codesign --force --sign - --timestamp=none "$app"
+          codesign --verify --deep --strict "$app"
           mkdir -p dist/Payload
-          cp -R build/Build/Products/Release-iphoneos/NeoBili.app dist/Payload/
+          cp -R "$app" dist/Payload/
           cd dist
           zip -qry "$ipa" Payload
           shasum -a 256 "$ipa" > SHA256SUMS.txt

@@ -1,0 +1,70 @@
+# 公开的 Release 写回 SideStore / AltStore 软件源。
+# 草稿附件不能公开下载，所以创建草稿时不更新 sidestore/apps.json。
+# release 事件只读取默认分支上的工作流；这份文件需要在 main 上才会运行。
+name: SideStore source
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 已公开的版本标签，例如 v1.3.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sidestore-source
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Write the source for the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/sidestore_source.py --from-github --tag "$TAG"
+
+      - name: Commit the source on main
+        id: source
+        run: |
+          git add sidestore/apps.json
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "更新 SideStore 软件源到 ${TAG}。"
+            git push origin HEAD:main
+          else
+            echo "main 上的软件源已是 ${TAG}"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Keep develop on the same source
+        run: |
+          git fetch origin develop
+          git checkout -B sidestore-develop origin/develop
+          git checkout ${{ steps.source.outputs.sha }} -- sidestore/apps.json
+          git add sidestore/apps.json
+          if git diff --cached --quiet; then
+            echo "develop 上的软件源已是 ${TAG}"
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "更新 SideStore 软件源到 ${TAG}。"
+          git push origin HEAD:develop
+
+      - name: Refresh the jsDelivr cache
+        run: |
+          curl -fsS "https://purge.jsdelivr.net/gh/Fab1e2000/NeoBili@main/sidestore/apps.json" \
+            || echo "jsDelivr 刷新失败，缓存过期后会自行更新"

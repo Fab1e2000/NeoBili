@@ -200,7 +200,7 @@ Xcode 27；Xcode 27 在 `xcode-27` runner 上，目前是 GitHub 的预览镜像
 CI 优先选择 iOS 27 runtime 的 iPhone 18 Pro（排除没有顶部安全区的折叠机型 iPhone Duo，依赖真机安全区的布局测试在它上面不成立），记录选中的设备；缺少工具链/runtime 时失败，
 不自动改用其他版本。结果作为 Actions artifact 上传。CI 不配置真实账号或签名凭据。
 工具链可用性以 [runner 官方清单](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)
-和任务中的预检为准。发布仍使用现有未签名 IPA 流程与版本说明。
+和任务中的预检为准。发布仍构建 IPA、做 ad-hoc 签名并附带版本说明。
 
 ## 真机与签名
 
@@ -224,8 +224,16 @@ CI 优先选择 iOS 27 runtime 的 iPhone 18 Pro（排除没有顶部安全区�
    同时提交生成的 `Info.plist` 与工程变化；编写 `docs/releases/vX.Y.Z.md`。
 2. 功能/修复 PR 经当前离线、Simulator 和 CI 验证后合入 `develop`，再通过发布 PR 合入 `main`。
 3. 在通过 CI 的 `main` 提交创建并推送 `vX.Y.Z` 标签。Release workflow 校验标签和
-   `CFBundleShortVersionString` 一致，构建未签名 IPA、校验和与 **Release 草稿**。
+   `CFBundleShortVersionString` 一致，构建 IPA、做 ad-hoc 签名、生成校验和与 **Release 草稿**。
+   安装包没有 Apple 开发者证书；ad-hoc 签名是为了让 SideStore、Sideloadly 能用用户自己的 Apple ID 重签。
 4. 检查草稿的目标提交、版本说明及附件。发布草稿是独立动作，不能把创建草稿当作已发布。
+5. 草稿公开后，[SideStore 工作流](../.github/workflows/sidestore.yml)读取该版本的 IPA 大小和
+   `docs/releases/vX.Y.Z.md`，更新 `main` 与 `develop` 上的 `sidestore/apps.json`。
+   用户添加的地址是 `https://cdn.jsdelivr.net/gh/Fab1e2000/NeoBili@main/sidestore/apps.json`。
+   草稿附件不能公开下载，所以公开之前不要改这份文件。需要补写时，在 Actions 里手动运行
+   SideStore source，并填入已公开的标签。
 
 分发构建不携带个人签名文件、采集材料或账号上下文。手动运行 Release workflow 只产出
-Actions artifact，不创建公开版本；具体命令和行为以 `.github/workflows/release.yml` 为准。
+Actions artifact，不创建公开版本，也不更新软件源。具体命令和行为以
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) 与
+[`.github/workflows/sidestore.yml`](../.github/workflows/sidestore.yml) 为准。

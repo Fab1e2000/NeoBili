@@ -89,7 +89,19 @@ The [user guide](docs/USAGE.md) describes every setting in detail (currently in 
 
 ## Installation
 
-NeoBili is distributed as an **unsigned IPA**, which you sign yourself before installing.
+NeoBili is distributed as an IPA with an ad-hoc signature and no Apple developer certificate. SideStore, AltStore, and Sideloadly can re-sign it with your own Apple ID and install it.
+
+### SideStore
+
+Add this source in SideStore or AltStore:
+
+```text
+https://cdn.jsdelivr.net/gh/Fab1e2000/NeoBili@main/sidestore/apps.json
+```
+
+The source lists the latest published release.
+
+### Sign it yourself
 
 1. Download `NeoBili-vX.Y.Z-unsigned.ipa` from the [latest release](https://github.com/Fab1e2000/NeoBili/releases/latest).
 2. Verify it with the `SHA256SUMS.txt` file from the same release:
@@ -155,7 +167,7 @@ Bug reports and feature requests are welcome in [Issues](https://github.com/Fab1
 - Bilibili does not publish or guarantee these APIs. Server-side changes can break features until NeoBili is updated.
 - Resolutions, audio quality and some content depend on your account, membership, copyright and region.
 - NeoBili does not download videos and does not try to get around paid, membership or regional restrictions.
-- Releases are unsigned IPAs. There is no App Store or TestFlight build.
+- Releases have an ad-hoc signature and no Apple developer certificate. There is no App Store or TestFlight build.
 - iPhone only for now. The user guide, architecture notes and release notes are in Chinese.
 
 ## Disclaimer

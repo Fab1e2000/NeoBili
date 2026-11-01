@@ -80,7 +80,19 @@ SwiftUI 原生构建 · iOS 26 液态玻璃 · MPVKit 播放内核
 
 ## 安装
 
-NeoBili 目前以**未签名 IPA** 的形式发布，需要用你自己的方式签名后安装。
+NeoBili 以没有 Apple 开发者证书的 IPA 发布，安装包只带 ad-hoc 签名。SideStore、AltStore 和 Sideloadly 可以用你自己的 Apple ID 重新签名后安装。
+
+### SideStore
+
+在 SideStore 或 AltStore 中添加软件源：
+
+```text
+https://cdn.jsdelivr.net/gh/Fab1e2000/NeoBili@main/sidestore/apps.json
+```
+
+源里列出的是最近一次已公开的版本。
+
+### 自行签名
 
 1. 在 [Releases](https://github.com/Fab1e2000/NeoBili/releases/latest) 下载 `NeoBili-vX.Y.Z-unsigned.ipa`
 2. 用同一页的 `SHA256SUMS.txt` 校验文件
@@ -146,7 +158,7 @@ scripts/           # Build, validation and deployment commands
 - 哔哩哔哩没有公开或保证这些接口，服务端变更可能导致部分功能失效，需等待 NeoBili 更新
 - 清晰度、音质和部分内容取决于账号、大会员、版权与地区
 - NeoBili 不提供视频下载，也不以绕过付费、会员或地区限制为目标
-- 仅发布未签名 IPA，没有 App Store 或 TestFlight 版本
+- 安装包没有 Apple 开发者证书，只有 ad-hoc 签名；没有 App Store 或 TestFlight 版本
 - 目前只支持 iPhone
 
 ## 免责声明
