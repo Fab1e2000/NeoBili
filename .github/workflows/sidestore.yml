@@ -35,6 +35,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/sidestore_source.py --from-github --tag "$TAG"
 
+      - name: Publish the package on n015.top
+        env:
+          DEPLOY_KEY: ${{ secrets.NEOBILI_BLOG_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -z "$DEPLOY_KEY" ]]; then
+            echo "::error::缺少 Actions secret NEOBILI_BLOG_KEY"
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/neobili
+          chmod 600 ~/.ssh/neobili
+          printf '%s\n' 'n015.top ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBhZA+79dAGqkvQjrVjdZI//7h83DsTUjd89Bi+xVQjP' >> ~/.ssh/known_hosts
+          ipa=$(mktemp)
+          gh release download "$TAG" --pattern 'NeoBili-*-unsigned.ipa' --output "$ipa"
+          ssh -i ~/.ssh/neobili -o IdentitiesOnly=yes ubuntu@n015.top put-ipa "$TAG" < "$ipa"
+          ssh -i ~/.ssh/neobili -o IdentitiesOnly=yes ubuntu@n015.top put-icon < NeoBili/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+          ssh -i ~/.ssh/neobili -o IdentitiesOnly=yes ubuntu@n015.top put-json < sidestore/apps.json
+
       - name: Commit the source on main
         id: source
         run: |
@@ -63,8 +82,3 @@ jobs:
             -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
             commit -m "更新 SideStore 软件源到 ${TAG}。"
           git push origin HEAD:develop
-
-      - name: Refresh the jsDelivr cache
-        run: |
-          curl -fsS "https://purge.jsdelivr.net/gh/Fab1e2000/NeoBili@main/sidestore/apps.json" \
-            || echo "jsDelivr 刷新失败，缓存过期后会自行更新"

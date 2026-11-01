@@ -229,7 +229,8 @@ CI 优先选择 iOS 27 runtime 的 iPhone 18 Pro（排除没有顶部安全区�
 4. 检查草稿的目标提交、版本说明及附件。发布草稿是独立动作，不能把创建草稿当作已发布。
 5. 草稿公开后，[SideStore 工作流](../.github/workflows/sidestore.yml)读取该版本的 IPA 大小和
    `docs/releases/vX.Y.Z.md`，更新 `main` 与 `develop` 上的 `sidestore/apps.json`。
-   用户添加的地址是 `https://cdn.jsdelivr.net/gh/Fab1e2000/NeoBili@main/sidestore/apps.json`。
+   用户添加的地址是 `https://n015.top/neobili/apps.json`。公开后，工作流把 IPA、图标和这份
+   文件上传到 `n015.top`，手机不再从 GitHub 下载安装包。
    草稿附件不能公开下载，所以公开之前不要改这份文件。需要补写时，在 Actions 里手动运行
    SideStore source，并填入已公开的标签。
 

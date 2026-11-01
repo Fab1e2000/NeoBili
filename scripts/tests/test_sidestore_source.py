@@ -32,7 +32,8 @@ class SideStoreSourceTests(unittest.TestCase):
             "downloadURL": app["downloadURL"],
             "size": 10,
         }])
-        self.assertTrue(app["downloadURL"].endswith("/v1.2.3/NeoBili-v1.2.3-unsigned.ipa"))
+        self.assertEqual(
+            app["downloadURL"], "https://n015.top/neobili/NeoBili-v1.2.3-unsigned.ipa")
         self.assertNotIn("安装", app["versionDescription"])
 
     def test_rejects_unpublished_or_incomplete_inputs(self):

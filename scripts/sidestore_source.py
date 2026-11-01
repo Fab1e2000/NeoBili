@@ -14,7 +14,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "Fab1e2000/NeoBili"
-SOURCE_URL = f"https://cdn.jsdelivr.net/gh/{REPOSITORY}@main/sidestore/apps.json"
+SOURCE_URL = "https://n015.top/neobili/apps.json"
 BUNDLE_IDENTIFIER = "com.elsterlee.NeoBili"
 TAG_PATTERN = re.compile(r"^v(\d+\.\d+\.\d+)$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
@@ -59,14 +59,8 @@ def build_source(tag, size, published_at, notes):
     if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
         raise ValueError(f"IPA 字节数须为正整数，收到 {size}")
     version = match.group(1)
-    download_url = (
-        f"https://github.com/{REPOSITORY}/releases/download/{tag}/"
-        f"NeoBili-{tag}-unsigned.ipa"
-    )
-    icon_url = (
-        f"https://cdn.jsdelivr.net/gh/{REPOSITORY}@{tag}/"
-        "NeoBili/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
-    )
+    download_url = f"https://n015.top/neobili/NeoBili-{tag}-unsigned.ipa"
+    icon_url = "https://n015.top/neobili/icon.png"
     description = changelog(notes)
     return {
         "name": "NeoBili",

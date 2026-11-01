@@ -87,7 +87,7 @@ NeoBili 以没有 Apple 开发者证书的 IPA 发布，安装包只带 ad-hoc �
 在 SideStore 或 AltStore 中添加软件源：
 
 ```text
-https://cdn.jsdelivr.net/gh/Fab1e2000/NeoBili@main/sidestore/apps.json
+https://n015.top/neobili/apps.json
 ```
 
 源里列出的是最近一次已公开的版本。

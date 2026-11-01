@@ -96,7 +96,7 @@ NeoBili is distributed as an IPA with an ad-hoc signature and no Apple developer
 Add this source in SideStore or AltStore:
 
 ```text
-https://cdn.jsdelivr.net/gh/Fab1e2000/NeoBili@main/sidestore/apps.json
+https://n015.top/neobili/apps.json
 ```
 
 The source lists the latest published release.
