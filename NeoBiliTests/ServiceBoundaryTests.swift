@@ -10,7 +10,7 @@ final class ServiceBoundaryTests: XCTestCase {
         let requests = Requests()
         let comment = try JSONDecoder().decode(Comment.self, from: Data(#"{"rpid":7,"ctime":1,"like":0,"rcount":0,"action":0,"member":{"uname":"test","avatar":""},"content":{"message":"test"}}"#.utf8))
         var services = ApplicationServices(session: .init(currentID: { UUID() }, homeAccount: { .init(accountID: nil, hasAppCredential: false) }))
-        services.comment.commentsOperation = { oid, type, page in
+        services.comment.commentsOperation = { oid, type, page, _ in
             await requests.append("read:\(oid):\(type):\(page)")
             return CommentPage(page: .init(num: 1, size: 20, count: 1), replies: [comment])
         }

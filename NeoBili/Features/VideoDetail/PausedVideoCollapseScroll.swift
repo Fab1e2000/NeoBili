@@ -111,7 +111,7 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
                 let nextDistance = geometry.distance()
                 let target = readingOffset + nextDistance - scroll.adjustedContentInset.top
                 let normalized = scroll.contentOffset.y + scroll.adjustedContentInset.top
-                let isTopBounce = (scroll.isDragging || scroll.isDecelerating)
+                let isTopBounce = (scroll.isDragging || scroll.isDecelerating || scroll.refreshControl?.isRefreshing == true)
                     && normalized < nextDistance && readingOffset == 0
                     && nextDistance == representedDistance
                 // Identical offset writes also cancel UIScrollView deceleration.

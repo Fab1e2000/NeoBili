@@ -35,7 +35,7 @@ final class CommentPaginationRepairTests: XCTestCase {
         let last = try comment(21), submitted = try comment(22)
         var pending: CheckedContinuation<CommentPage, Never>?
         var pages: [Int] = []
-        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
             pages.append(page)
             if page == 1 { return await withCheckedContinuation { pending = $0 } }
             return CommentPage(page: .init(num: page, size: 20, count: 21), replies: [last])

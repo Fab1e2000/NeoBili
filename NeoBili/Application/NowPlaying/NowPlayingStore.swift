@@ -462,7 +462,9 @@ final class NowPlayingStore {
         guard let aid = detailViewModel?.detail?.aid else { return }
         // 评论接口要用 av 号，所以只能等详情回来才能建这个视图模型。
         if commentsViewModel?.oid != aid {
-            commentsViewModel = CommentsViewModel(oid: aid, type: 1, services: dependencies.services)
+            commentsViewModel = CommentsViewModel(oid: aid, type: 1, uploaderID: detailViewModel?.detail?.owner.mid,
+                                                 initialCount: detailViewModel?.detail?.stat.reply,
+                                                 services: dependencies.services)
         }
     }
 

@@ -76,6 +76,25 @@ final class VideoScrollHandoffTests: XCTestCase {
         XCTAssertEqual(rig.scroll.contentInset.bottom, 300)
     }
 
+    func testRefreshHoldAtTopDoesNotCollapsePlayerOrResetNativeOffset() {
+        let rig = Rig()
+        let refresh = TestRefreshControl()
+        rig.scroll.refreshControl = refresh
+        refresh.refreshingForTest = true
+        rig.move(-60)
+        let offset = rig.scroll.contentOffset.y
+        let writes = rig.scroll.writes
+        rig.observer.configure(rig.geometry, page: .comments, ownsInsets: true)
+        XCTAssertTrue(refresh.isRefreshing)
+        XCTAssertEqual(rig.distance, 0)
+        XCTAssertEqual(rig.observer.readingOffset, 0)
+        XCTAssertEqual(rig.scroll.contentOffset.y, offset)
+        XCTAssertEqual(rig.scroll.writes, writes, "Refresh owns its top offset until the request completes")
+        refresh.refreshingForTest = false
+        rig.observer.configure(rig.geometry, page: .comments, ownsInsets: true)
+        XCTAssertEqual(rig.scroll.contentOffset.y + rig.scroll.adjustedContentInset.top, 0, accuracy: 1)
+    }
+
     func testHorizontalDragAndDecelerationDoNotMovePlayer() {
         let rig = Rig()
         let pager = TestScroll()
@@ -138,5 +157,9 @@ final class VideoScrollHandoffTests: XCTestCase {
         override func setContentOffset(_ contentOffset: CGPoint, animated: Bool) {
             writes += 1; super.setContentOffset(contentOffset, animated: animated)
         }
+    }
+    private final class TestRefreshControl: UIRefreshControl {
+        var refreshingForTest = false
+        override var isRefreshing: Bool { refreshingForTest }
     }
 }

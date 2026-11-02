@@ -7,6 +7,39 @@ import Foundation
 public struct CommentPage: Decodable, Sendable {
     public let page: CommentPageInfo
     public let replies: [Comment]?
+    public let uploaderID: Int?
+    public let pinnedReplies: [Comment]
+
+    public init(page: CommentPageInfo, replies: [Comment]?, uploaderID: Int? = nil, pinnedReplies: [Comment] = []) {
+        self.page = page
+        self.replies = replies
+        self.uploaderID = uploaderID
+        self.pinnedReplies = pinnedReplies
+    }
+
+    private enum CodingKeys: String, CodingKey { case page, replies, upper, top, topReplies = "top_replies" }
+    private enum UpperKeys: String, CodingKey { case mid, top }
+    private enum TopKeys: String, CodingKey { case upper, admin }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        page = try c.decode(CommentPageInfo.self, forKey: .page)
+        replies = try c.decodeIfPresent([Comment].self, forKey: .replies)
+        let upper = try? c.nestedContainer(keyedBy: UpperKeys.self, forKey: .upper)
+        uploaderID = upper?.commentID(forKey: .mid)
+        let top = try? c.nestedContainer(keyedBy: TopKeys.self, forKey: .top)
+        let listed = (try? c.decode(LenientList<Comment>.self, forKey: .topReplies).elements) ?? []
+        let individual = [try? upper?.decode(Comment.self, forKey: .top),
+                          try? top?.decode(Comment.self, forKey: .upper),
+                          try? top?.decode(Comment.self, forKey: .admin)].compactMap { $0 }
+        var seen: Set<Int> = []
+        pinnedReplies = (listed + individual).filter { seen.insert($0.id).inserted }
+    }
+}
+
+public enum CommentSort: Int, CaseIterable, Sendable {
+    case hot = 1
+    case latest = 0
 }
 
 public struct CommentPageInfo: Decodable, Sendable {
@@ -14,8 +47,22 @@ public struct CommentPageInfo: Decodable, Sendable {
     public let num: Int
     /// 每页条数。
     public let size: Int
-    /// 一级评论的总条数，底部标签栏上显示的就是它。
+    /// 一级评论的总条数；分页只使用这个数。
     public let count: Int
+    /// 全部评论及回复数。旧响应可能不提供。
+    public let allCount: Int?
+
+    public init(num: Int, size: Int, count: Int, allCount: Int? = nil) {
+        self.num = num; self.size = size; self.count = count; self.allCount = allCount
+    }
+    private enum CodingKeys: String, CodingKey { case num, size, count, allCount = "acount" }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        num = try c.decode(Int.self, forKey: .num)
+        size = try c.decode(Int.self, forKey: .size)
+        count = try c.decode(Int.self, forKey: .count)
+        allCount = (try? c.decode(Int.self, forKey: .allCount)).flatMap { $0 >= 0 ? $0 : nil }
+    }
 }
 
 /// 展开某条评论下全部回复时的返回。
@@ -25,10 +72,38 @@ public struct CommentReplyPage: Decodable, Sendable {
 }
 
 public struct CommentMember: Decodable, Hashable, Sendable {
+    public let mid: Int?
     public let uname: String
     public let avatar: String
 
     public var secureAvatarURL: URL? { URL.biliSecure(avatar) }
+
+    private enum CodingKeys: String, CodingKey { case mid, uname, avatar }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mid = c.commentID(forKey: .mid)
+        uname = try c.decode(String.self, forKey: .uname)
+        avatar = try c.decode(String.self, forKey: .avatar)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    /// IDs are integers, never truncated floating-point values or display names.
+    func commentID(forKey key: Key) -> Int? {
+        let value = (try? decode(Int.self, forKey: key)) ?? (try? decode(String.self, forKey: key)).flatMap(Int.init)
+        return value.flatMap { $0 > 0 ? $0 : nil }
+    }
+}
+
+public struct CommentUPAction: Decodable, Hashable, Sendable {
+    public let like: Bool
+    public let reply: Bool
+    private enum CodingKeys: String, CodingKey { case like, reply }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        like = (try? c.decode(Bool.self, forKey: .like)) == true
+        reply = (try? c.decode(Bool.self, forKey: .reply)) == true
+    }
 }
 
 public struct CommentContent: Decodable, Hashable, Sendable {
@@ -150,10 +225,36 @@ public struct Comment: Decodable, Identifiable, Hashable, Sendable {
     public let replies: [Comment]?
 
     public let replyControl: CommentReplyControl?
+    public let upAction: CommentUPAction?
+    /// Root ID is absent for a root comment and can be supplied by its preview container.
+    public let rootID: Int?
 
     enum CodingKeys: String, CodingKey {
         case rpid, ctime, like, rcount, member, content, action, replies
         case replyControl = "reply_control"
+        case upAction = "up_action", rootID = "root"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        rpid = try c.decode(Int.self, forKey: .rpid)
+        ctime = try c.decode(Int.self, forKey: .ctime)
+        like = try c.decode(Int.self, forKey: .like)
+        rcount = try c.decode(Int.self, forKey: .rcount)
+        member = try c.decode(CommentMember.self, forKey: .member)
+        content = try c.decode(CommentContent.self, forKey: .content)
+        action = try c.decodeIfPresent(Int.self, forKey: .action)
+        replies = try c.decodeIfPresent([Comment].self, forKey: .replies)
+        replyControl = try? c.decode(CommentReplyControl.self, forKey: .replyControl)
+        upAction = try? c.decode(CommentUPAction.self, forKey: .upAction)
+        rootID = c.commentID(forKey: .rootID)
+    }
+
+    public var authorID: Int? { member.mid }
+
+    public func isAuthored(by uid: Int?) -> Bool {
+        guard let uid, uid > 0, let authorID else { return false }
+        return authorID == uid
     }
 
     /// 仅展示服务端提供的属地；不推测精确 IP 或当前位置。
