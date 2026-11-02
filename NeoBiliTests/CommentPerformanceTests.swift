@@ -60,7 +60,7 @@ final class CommentPerformanceTests: XCTestCase {
 
     func testRootPaginationDeduplicatesSubmissionsAndIncomingPages() async throws {
         let a = try comment(1), b = try comment(2), c = try comment(3)
-        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
             CommentPage(page: .init(num: page, size: 2, count: 3), replies: page == 1 ? [a, a, b] : [b, c, c])
         })
         model.acceptSubmission(a, root: nil)
@@ -109,7 +109,7 @@ final class CommentPerformanceTests: XCTestCase {
     func testRootPageSurvivesTriggeringRowLeavingViewport() async throws {
         let a = try comment(1), b = try comment(2)
         var pending: CheckedContinuation<CommentPage, Never>?
-        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
             if page == 1 { return CommentPage(page: .init(num: 1, size: 1, count: 2), replies: [a]) }
             return await withCheckedContinuation { pending = $0 }
         })
@@ -150,7 +150,7 @@ final class CommentPerformanceTests: XCTestCase {
 
     func testEmptyInitialPageIsReusedWhenReturningToComments() async {
         var requests = 0
-        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
             requests += 1
             return CommentPage(page: .init(num: page, size: 20, count: 0), replies: [])
         })
@@ -163,7 +163,7 @@ final class CommentPerformanceTests: XCTestCase {
     func testSubmissionBeforeOpeningCommentsDoesNotHideServerComments() async throws {
         let submitted = try comment(1), existing = try comment(2)
         var requests = 0
-        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
             requests += 1
             return CommentPage(page: .init(num: page, size: 20, count: 2), replies: [submitted, existing])
         })
@@ -175,7 +175,7 @@ final class CommentPerformanceTests: XCTestCase {
 
     func testCancelledInitialCommentsCanLoadOnNextAppearance() async {
         var requests = 0
-        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
             requests += 1
             if requests == 1 { throw CancellationError() }
             return CommentPage(page: .init(num: page, size: 20, count: 0), replies: [])

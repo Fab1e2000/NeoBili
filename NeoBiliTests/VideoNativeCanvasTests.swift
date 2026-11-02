@@ -85,7 +85,7 @@ final class VideoNativeCanvasTests: XCTestCase {
             {"rpid":\(id),"ctime":1,"like":0,"rcount":0,"member":{"uname":"测试\(id)","avatar":""},"content":{"message":"评论顶部测试 \(id)"}}
             """.utf8))
         }
-        let viewModel = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, _ in
+        let viewModel = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, _, _ in
             CommentPage(page: .init(num: 1, size: 60, count: 60), replies: comments)
         })
         await viewModel.loadInitial()

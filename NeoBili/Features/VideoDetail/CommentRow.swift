@@ -11,25 +11,45 @@ struct CommentRow: View {
     /// 楼中楼那一块要不要画。单独页面里根评论和回复都不需要，它下面接的
     /// 就是全部回复，再画一块会套娃。
     var showsReplies = true
+    var root: Comment? = nil
+    @Environment(\.openCommentAuthor) private var openAuthor
+    @Environment(\.appThemeColor) private var themeColor
 
     var body: some View {
         HStack(alignment: .top, spacing: CommentLayout.avatarTextSpacing) {
-            BiliImage(url: comment.member.secureAvatarURL,
+            authorLink {
+                BiliImage(url: comment.member.secureAvatarURL,
                       targetSize: CGSize(width: CommentLayout.avatarSize, height: CommentLayout.avatarSize))
                 .aspectRatio(contentMode: .fill)
                 .frame(width: CommentLayout.avatarSize, height: CommentLayout.avatarSize)
                 .clipShape(Circle())
+            }
 
             // 每一段的间距在这里逐个写明，而不是靠 VStack 的统一 spacing 再叠
             // 局部 padding——楼中楼那块需要和分隔线保持等距，混着两种来源
             // 就会出现「上紧下松」的不一致。
             VStack(alignment: .leading, spacing: 0) {
-                Text(comment.member.uname)
-                    .font(.app(.footnote, weight: .semibold))
-                    .foregroundStyle(.primary.opacity(CommentLayout.emphasisOpacity))
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    authorLink {
+                        Text(comment.member.uname)
+                            .font(.app(.footnote, weight: .semibold))
+                            .foregroundStyle(.primary.opacity(CommentLayout.emphasisOpacity))
+                            .lineLimit(1)
+                    }
+                    if viewModel.isUploader(comment) { CommentUPBadge().layoutPriority(1) }
+                    Spacer(minLength: 0)
+                }
+
+                if viewModel.isPinned(comment) {
+                    Label("置顶", systemImage: "pin.fill")
+                        .font(.app(.caption2, weight: .medium)).foregroundStyle(themeColor)
+                        .padding(.top, CommentLayout.nameMessageSpacing)
+                }
 
                 ExpandableCommentMessage(comment: comment)
                     .padding(.top, CommentLayout.nameMessageSpacing)
+                    .contentShape(Rectangle())
+                    .commentActions(comment: comment, root: root, viewModel: viewModel)
 
                 if !comment.pictures.isEmpty {
                     // 配图不占满整行：评论正文本来就有头像的缩进，
@@ -37,6 +57,10 @@ struct CommentRow: View {
                     TappableImageGrid(commentPictures: comment.pictures)
                         .padding(.trailing, CommentLayout.pageHorizontalInset)
                         .padding(.top, CommentLayout.textVerticalSpacing)
+                }
+
+                if comment.upAction?.like == true || comment.upAction?.reply == true {
+                    CommentUPInteraction(comment: comment).padding(.top, 6)
                 }
 
                 CommentMetaRow(comment: comment, viewModel: viewModel)
@@ -52,6 +76,17 @@ struct CommentRow: View {
         // 横向分页容器会向评论页传入整屏高度；明确按内容固有高度收紧，
         // 避免带楼中楼的评论行吞掉剩余空间，把分隔线推到很远的位置。
         .fixedSize(horizontal: false, vertical: true)
+        .opacity(viewModel.deletingIDs.contains(comment.id) ? 0.5 : 1)
+        .disabled(viewModel.deletingIDs.contains(comment.id))
+        .accessibilityIdentifier("comment.row.\(comment.id)")
+    }
+
+    @ViewBuilder private func authorLink<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if comment.authorID != nil {
+            Button { openAuthor?(comment.member) } label: { content() }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "查看\(comment.member.uname)的主页"))
+        } else { content() }
     }
 
 }
@@ -200,10 +235,9 @@ private struct CommentReplyPreview: View {
     let comment: Comment
     let viewModel: CommentsViewModel
     @Environment(\.openCommentThread) private var openCommentThread
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
-        if comment.rcount > 0 || !(viewModel.submittedReplies[comment.id] ?? []).isEmpty {
+        if viewModel.replyCount(for: comment) > 0 {
             replySection.padding(.top, CommentLayout.replyBlockGap)
         }
     }
@@ -217,16 +251,7 @@ private struct CommentReplyPreview: View {
             ForEach(replies) { reply in
                 // 用户名和内容排在同一段文字里，这样回复读起来更紧凑。
                 // 用户名单独作为一段前缀交给同一个渲染器，表情才能和文字排在一行。
-                CommentEmoteText(
-                    message: reply.message,
-                    emotes: reply.emotes,
-                    font: .app(.footnote),
-                    textStyle: .footnote,
-                    prefix: "\(reply.member.uname)：",
-                    prefixURL: URL(string: "neobili://comment-thread/\(comment.id)"),
-                    prefixStyle: .init(weight: .semibold, opacity: CommentLayout.emphasisOpacity),
-                    jumpURLs: reply.content.jumpURLs
-                )
+                CommentPreviewMessage(reply: reply, root: comment, viewModel: viewModel)
                     // 楼中楼只折叠回复数量，不截断单条正文，也不预留隐藏行高度。
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
@@ -276,12 +301,37 @@ private struct CommentReplyPreview: View {
             values[.block] = anchor
         }
 #endif
-        .environment(\.openURL, OpenURLAction { url in
-            if url.scheme == "neobili", url.host == "comment-thread" {
-                openCommentThread(comment)
-            } else { openURL(url) }
-            return .handled
-        })
+    }
+}
+
+private struct CommentPreviewMessage: View {
+    let reply: Comment
+    let root: Comment
+    let viewModel: CommentsViewModel
+    @Environment(\.openCommentAuthor) private var openAuthor
+    @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var size
+    @Environment(\.displayScale) private var scale
+    @Environment(\.appThemeColor) private var color
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        CommentEmoteText(message: reply.message, emotes: reply.emotes, font: .app(.footnote), textStyle: .footnote,
+            prefix: reply.member.uname,
+            prefixURL: reply.authorID.flatMap { URL(string: "neobili://comment-author/\($0)") },
+            prefixStyle: .init(weight: .semibold, opacity: CommentLayout.emphasisOpacity),
+            prefixBadge: viewModel.isUploader(reply) ? CommentUPBadge.inlineImage(size: size, scale: scale, color: color, scheme: scheme) : nil,
+            prefixSuffix: "：", jumpURLs: reply.content.jumpURLs)
+            .environment(\.openURL, OpenURLAction { url in
+                if url.scheme == "neobili", url.host == "comment-author" { openAuthor?(reply.member) }
+                else { openURL(url) }
+                return .handled
+            })
+            .contentShape(Rectangle())
+            .commentActions(comment: reply, root: root, viewModel: viewModel)
+            .disabled(viewModel.deletingIDs.contains(reply.id))
+            .opacity(viewModel.deletingIDs.contains(reply.id) ? 0.5 : 1)
+            .accessibilityIdentifier("comment.preview.\(reply.id)")
     }
 }
 

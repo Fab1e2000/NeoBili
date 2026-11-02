@@ -22,68 +22,67 @@ struct DynamicDetailView: View {
 
     @State private var comments: CommentsViewModel
     @State private var isLiking = false
+    @State private var commentsPosition = ScrollPosition(edge: .top)
 
     init(entry: DynamicEntry, feed: DynamicFeedModel) {
         self.entry = entry
         self.feed = feed
         _comments = State(
-            initialValue: CommentsViewModel(oid: entry.commentOid, type: entry.commentType)
+            initialValue: CommentsViewModel(oid: entry.commentOid, type: entry.commentType, uploaderID: entry.authorMid,
+                                           initialCount: entry.commentCount)
         )
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                content
-                actionRow
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    content
+                    actionRow
 
-                Divider()
+                    Divider()
 
-                Text(entry.commentCount > 0 ? String(localized: "评论 \(entry.commentCount)") : String(localized: "评论"))
-                    .font(.app(.subheadline, weight: .semibold))
-                    .padding(.horizontal, CommentLayout.pageHorizontalInset)
-                    .padding(.top, 14)
-                    .padding(.bottom, 6)
-
-                if entry.hasComments {
-                    CommentsList(viewModel: comments)
-                        .overlay(alignment: .top) {
-                            // 评论还没回来时给个占位，别让页面下半截空着。
-                            if comments.comments.isEmpty {
-                                CommentsPlaceholder(viewModel: comments)
-                                    .padding(.vertical, 40)
-                            }
+                    if entry.hasComments {
+                        CommentsList(viewModel: comments)
+                        if comments.comments.isEmpty {
+                            CommentsPlaceholder(viewModel: comments)
+                                .padding(.vertical, 40)
                         }
-                } else {
-                    ContentUnavailableView("这条动态没有评论区", systemImage: "bubble.slash")
-                        .padding(.vertical, 40)
+                    } else {
+                        ContentUnavailableView("这条动态没有评论区", systemImage: "bubble.slash")
+                            .padding(.vertical, 40)
+                    }
                 }
             }
-        }
-        .background(Color(uiColor: .systemBackground))
-        .navigationTitle("动态")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
+            .scrollPosition($commentsPosition)
+            .refreshable { if entry.hasComments { await comments.refresh() } }
+            .onChange(of: comments.scrollRevision) { proxy.scrollTo(CommentSortHeader.scrollID, anchor: .top) }
+            .background(Color(uiColor: .systemBackground))
+            .navigationTitle("动态")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("关闭动态")
                 }
-                .accessibilityLabel("关闭动态")
             }
-        }
-        // 详情页整屏都留给内容，底部标签栏收起来。
-        .toolbarVisibility(.hidden, for: .tabBar)
-        .imageViewerHost()
-        .leftEdgeTapDeadZone()
-        .commentComposer(viewModel: comments, enabled: entry.hasComments)
-        .environment(\.commentBottomInset, 0)
-        .task {
-            if entry.hasComments {
-                await comments.loadInitial()
+            // 详情页整屏都留给内容，底部标签栏收起来。
+            .toolbarVisibility(.hidden, for: .tabBar)
+            .imageViewerHost()
+            .leftEdgeTapDeadZone()
+            .commentComposer(viewModel: comments, enabled: entry.hasComments)
+            .commentAuthorHost()
+            .environment(\.commentBottomInset, 0)
+            .task {
+                if entry.hasComments {
+                    await comments.loadInitial()
+                }
             }
-        }
-        .onAppear {
-            OrientationController.enterPortrait()
+            .onAppear {
+                OrientationController.enterPortrait()
+            }
         }
     }
 
@@ -192,7 +191,7 @@ struct DynamicDetailView: View {
             counter(icon: "arrow.2.squarepath", text: countText(entry.forwardCount, zero: String(localized: "转发")))
                 .frame(maxWidth: .infinity)
 
-            counter(icon: "bubble.left", text: countText(entry.commentCount, zero: String(localized: "评论")))
+            counter(icon: "bubble.left", text: countText(comments.displayCount, zero: String(localized: "评论")))
                 .frame(maxWidth: .infinity)
 
             Button(action: toggleLike) {

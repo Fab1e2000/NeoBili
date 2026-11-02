@@ -219,6 +219,8 @@ struct CommentEmoteText: View {
     var prefix: String = ""
     var prefixURL: URL? = nil
     var prefixStyle = PrefixStyle()
+    var prefixBadge: Image? = nil
+    var prefixSuffix: String = ""
     var jumpURLs: [String: CommentJumpLink] = [:]
     /// 隐藏的高度探针共享可见正文的图片请求，仅观察已加载的表情。
     var loadsEmotes = true
@@ -270,11 +272,14 @@ struct CommentEmoteText: View {
         prefixText.foregroundColor = prefixStyle.opacity.map { Color.primary.opacity($0) } ?? .secondary
         if let weight = prefixStyle.weight { prefixText.font = font.weight(weight) }
         prefixText.link = prefixURL
+        var decoratedPrefix = Text(prefixText)
+        if let prefixBadge { decoratedPrefix = decoratedPrefix + Text(" ") + Text(prefixBadge).baselineOffset(-3) }
+        decoratedPrefix = decoratedPrefix + Text(prefixSuffix)
         if emotes.isEmpty {
-            return Text(prefixText + CommentLinks.attributed(message, metadata: jumpURLs, includesTimes: timeJump != nil))
+            return decoratedPrefix + Text(CommentLinks.attributed(message, metadata: jumpURLs, includesTimes: timeJump != nil))
         }
         return CommentEmoteSegments.prepared(message: message, emotes: emotes)
-            .reduce(Text(prefixText)) { partial, segment in
+            .reduce(decoratedPrefix) { partial, segment in
             switch segment {
             case .text(let value):
                 return partial + Text(CommentLinks.attributed(value, metadata: jumpURLs, includesTimes: timeJump != nil))

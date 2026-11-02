@@ -3,25 +3,84 @@ import NeoBiliDomain
 #endif
 import Foundation
 
-@MainActor
-@Observable
+@MainActor @Observable
 final class CommentsViewModel {
     @ObservationIgnored private let services: ApplicationServices
-    /// 评论区的定位。视频是 av 号 + `type: 1`，动态是 `comment_id_str` +
-    /// 它自己的评论区类型（图文 11、纯文字 17），所以这里存的不是 bvid。
     let oid: Int
     let type: Int
-
+    private(set) var uploaderID: Int?
     private(set) var comments: [Comment] = []
-    /// 一级评论总条数，底部标签栏上显示的就是它。
+    private(set) var pinnedIDs: Set<Int> = []
     private(set) var totalCount = 0
+    private var allCount: Int?
+    var displayCount: Int { allCount ?? totalCount }
+    private(set) var sort: CommentSort = .hot
+    private(set) var pendingSort: CommentSort?
     private(set) var isLoading = false
+    private(set) var isRefreshing = false
     private(set) var isLoadingMore = false
     private(set) var errorMessage: String?
+    var didFailReload: Bool { failedReloadSort != nil }
     private(set) var hasMore = true
-
+    /// Only a successful sort change moves the viewport; refresh preserves it.
+    private(set) var scrollRevision = 0
     private(set) var submittedReplies: [Int: [Comment]] = [:]
+    private(set) var loadedReplies: [Int: [Comment]] = [:]
+    private(set) var loadingReplyIDs: Set<Int> = []
+    private(set) var moreRepliesIDs: Set<Int> = []
+    private(set) var replyErrors: [Int: String] = [:]
+    private(set) var deletingIDs: Set<Int> = []
+    private(set) var deletedIDs: Set<Int> = []
+    private(set) var likeOverrides: [Int: Bool] = [:]
+    var actionMessage: String?
+
     @ObservationIgnored private var drafts: [Int: CommentDraft] = [:]
+    @ObservationIgnored private var commentIDs: Set<Int> = []
+    @ObservationIgnored private var replyIDs: [Int: Set<Int>] = [:]
+    @ObservationIgnored private var serverCommentIDs: Set<Int> = []
+    @ObservationIgnored private var serverReplyIDs: [Int: Set<Int>] = [:]
+    @ObservationIgnored private var submittedRoots: [Comment] = []
+    @ObservationIgnored private var hasLoadedInitialPage = false
+    @ObservationIgnored private var nextPage = 1
+    @ObservationIgnored private var generation = 0
+    @ObservationIgnored private var failedReloadSort: CommentSort?
+    @ObservationIgnored private var replyGeneration: [Int: Int] = [:]
+    @ObservationIgnored private var replyNextPage: [Int: Int] = [:]
+    @ObservationIgnored private var failedReplyRefreshes: Set<Int> = []
+    @ObservationIgnored private var likingRpids: Set<Int> = []
+    private var serverReplyCounts: [Int: Int] = [:]
+    private var replyCountOverrides: [Int: Int] = [:]
+    private var latestRoots: [Int: Comment] = [:]
+    @ObservationIgnored private var rootCountRevisions: [Int: Int] = [:]
+
+    private struct Mutation {
+        let root: Int?
+        let revision: Int
+        var count = 1
+    }
+    @ObservationIgnored private var mutationRevision = 0
+    @ObservationIgnored private var submissions: [Int: Mutation] = [:]
+    @ObservationIgnored private var deletions: [Int: Mutation] = [:]
+    @ObservationIgnored private let fetchReplies: @MainActor (Int, Int, Int, Int) async throws -> CommentReplyPage
+    @ObservationIgnored private let fetchComments: @MainActor (Int, Int, Int, CommentSort) async throws -> CommentPage
+
+    init(oid: Int, type: Int, uploaderID: Int? = nil, initialCount: Int? = nil, services: ApplicationServices = .live,
+         fetchReplies: (@MainActor (Int, Int, Int, Int) async throws -> CommentReplyPage)? = nil,
+         fetchComments: (@MainActor (Int, Int, Int, CommentSort) async throws -> CommentPage)? = nil) {
+        self.services = services
+        self.oid = oid
+        self.type = type
+        self.allCount = initialCount
+        self.uploaderID = uploaderID.flatMap { $0 > 0 ? $0 : nil }
+        self.fetchComments = fetchComments ?? { try await services.comment.comments(oid: $0, type: $1, page: $2, sort: $3) }
+        self.fetchReplies = fetchReplies ?? { try await services.comment.commentReplies(oid: $0, type: $1, rootId: $2, page: $3) }
+    }
+
+    convenience init(aid: Int) { self.init(oid: aid, type: 1) }
+
+    func isUploader(_ comment: Comment) -> Bool { comment.isAuthored(by: uploaderID) }
+    func isPinned(_ comment: Comment) -> Bool { pinnedIDs.contains(comment.id) }
+    func currentRoot(_ root: Comment) -> Comment { latestRoots[root.id] ?? root }
 
     func commentDraft(root: Int) -> CommentDraft {
         if let draft = drafts[root] { return draft }
@@ -31,212 +90,232 @@ final class CommentsViewModel {
     }
 
     func clearCommentDrafts() {
-        for draft in drafts.values {
-            draft.text = ""
-            draft.target = nil
-        }
+        for draft in drafts.values { draft.text = ""; draft.target = nil }
     }
 
-    @ObservationIgnored private var commentIDs: Set<Int> = []
-    @ObservationIgnored private var replyIDs: [Int: Set<Int>] = [:]
-    // 展示列表包含本地提交和预览；分页覆盖量只包含分页接口实际返回的 ID。
-    @ObservationIgnored private var serverCommentIDs: Set<Int> = []
-    @ObservationIgnored private var serverReplyIDs: [Int: Set<Int>] = [:]
-    private var serverReplyCounts: [Int: Int] = [:]
-    @ObservationIgnored private var hasLoadedInitialPage = false
-    private var nextPage = 1
-    private let fetchReplies: @MainActor (Int, Int, Int, Int) async throws -> CommentReplyPage
-    private let fetchComments: @MainActor (Int, Int, Int) async throws -> CommentPage
-
-    /// 只显示服务器确认返回的新评论，不构造虚假的本地发送成功记录。
+    /// Accept only a server-confirmed submission, including one arriving during a reload.
     func acceptSubmission(_ comment: Comment?, root: Int?) {
-        guard let comment else { return }
+        guard let comment, !deletedIDs.contains(comment.id), root.map({ !deletedIDs.contains($0) }) ?? true,
+              submissions[comment.id] == nil else { return }
+        mutationRevision += 1
+        submissions[comment.id] = Mutation(root: root, revision: mutationRevision)
+        if let count = allCount { allCount = count + 1 }
         if let root {
-            if submittedReplies[root]?.contains(where: { $0.rpid == comment.rpid }) != true {
-                submittedReplies[root, default: []].insert(comment, at: 0)
-            }
-            var replies = loadedReplies[root] ?? comments.first(where: { $0.rpid == root })?.replies ?? []
-            if !replies.contains(where: { $0.rpid == comment.rpid }) { replies.insert(comment, at: 0) }
-            loadedReplies[root] = replies
+            submittedReplies[root, default: []].insert(comment, at: 0)
+            var replies = loadedReplies[root] ?? latestRoots[root]?.replies ?? []
+            if !replies.contains(where: { $0.id == comment.id }) { replies.insert(comment, at: 0) }
+            loadedReplies[root] = visibleUnique(replies)
             replyIDs[root] = Set(replies.map(\.id))
+            if let count = replyCountOverrides[root] { replyCountOverrides[root] = count + 1 }
         } else if commentIDs.insert(comment.id).inserted {
-            comments.insert(comment, at: 0)
+            submittedRoots.insert(comment, at: 0)
+            comments.insert(comment, at: comments.prefix(while: { pinnedIDs.contains($0.id) }).count)
+            latestRoots[comment.id] = comment
             totalCount += 1
         }
     }
 
-    // MARK: - 评论点赞
-
-    /// 本地叠加的点赞状态：rpid -> 是否已赞。
-    ///
-    /// 点完一条评论不值得把整页评论重新拉一遍，而 `Comment` 又是不可变的值类型
-    /// （还嵌套在楼中楼里），所以这里只记差量，展示时和接口回报的状态叠加。
-    private(set) var likeOverrides: [Int: Bool] = [:]
-    /// 正在请求中的评论，用来防连点。
-    private var likingRpids: Set<Int> = []
-    /// 点赞失败时的提示，由评论页弹出。
-    var actionMessage: String?
-
-    func isLiked(_ comment: Comment) -> Bool {
-        likeOverrides[comment.rpid] ?? comment.isLikedByServer
-    }
-
-    /// 展示用的点赞数：接口给的原始值，加上本地这一次的增减。
-    func likeCount(_ comment: Comment) -> Int {
-        guard let overridden = likeOverrides[comment.rpid], overridden != comment.isLikedByServer else {
-            return comment.like
-        }
-        return max(0, comment.like + (overridden ? 1 : -1))
-    }
-
-    func toggleLike(_ comment: Comment, isLoggedIn: Bool) async {
-        guard isLoggedIn else {
-            actionMessage = String(localized: "请先登录")
-            return
-        }
-        guard !likingRpids.contains(comment.rpid) else { return }
-        likingRpids.insert(comment.rpid)
-        defer { likingRpids.remove(comment.rpid) }
-
-        let wasLiked = isLiked(comment)
-        likeOverrides[comment.rpid] = !wasLiked
-
-        do {
-            try await services.comment.likeComment(oid: oid, type: type, rpid: comment.rpid, like: !wasLiked)
-        } catch {
-            likeOverrides[comment.rpid] = wasLiked
-            if !error.isCancellation { actionMessage = error.localizedDescription }
-        }
-    }
-
-    init(oid: Int, type: Int, services: ApplicationServices = .live,
-         fetchReplies: (@MainActor (Int, Int, Int, Int) async throws -> CommentReplyPage)? = nil,
-         fetchComments: (@MainActor (Int, Int, Int) async throws -> CommentPage)? = nil) {
-        self.services = services
-        self.oid = oid
-        self.type = type
-        self.fetchComments = fetchComments ?? { try await services.comment.comments(oid: $0, type: $1, page: $2) }
-        self.fetchReplies = fetchReplies ?? { try await services.comment.commentReplies(oid: $0, type: $1, rootId: $2, page: $3) }
-    }
-
-    /// 视频评论区的便利入口：`type` 固定是 1。
-    convenience init(aid: Int) {
-        self.init(oid: aid, type: 1)
-    }
-
-    /// 第一次切到评论页时调用。已经加载过就直接返回，
-    /// 所以在简介和评论之间来回切换不会重复请求。
     func loadInitial() async {
-        guard !hasLoadedInitialPage, !isLoading, !isLoadingMore, errorMessage == nil else { return }
-        isLoading = true
-        await loadNextPage()
-        isLoading = false
+        guard !hasLoadedInitialPage, !isLoading, !isRefreshing, !isLoadingMore, errorMessage == nil else { return }
+        await reload(sort: sort)
     }
 
-    /// 快滚到列表末尾时翻下一页。
+    func refresh() async { await reload(sort: sort) }
+
+    func changeSort(to newSort: CommentSort) async {
+        guard newSort != sort || pendingSort != nil else { return }
+        await reload(sort: newSort)
+    }
+
+    private func reload(sort requestedSort: CommentSort) async {
+        generation += 1
+        let request = generation
+        let revision = mutationRevision
+        let previousSort = sort
+        isLoading = comments.isEmpty
+        isRefreshing = !comments.isEmpty
+        isLoadingMore = false
+        pendingSort = requestedSort
+        failedReloadSort = nil
+        errorMessage = nil
+        defer {
+            if generation == request { isLoading = false; isRefreshing = false; pendingSort = nil }
+        }
+        do {
+            let page = try await fetchComments(oid, type, 1, requestedSort)
+            try Task.checkCancellation()
+            guard request == generation else { return }
+            sort = requestedSort
+            hasLoadedInitialPage = true
+            nextPage = 2
+            let incoming = page.replies ?? []
+            serverCommentIDs = Set(incoming.map(\.id))
+            let pinned = visibleUnique(page.pinnedReplies)
+            pinnedIDs = Set(pinned.map(\.id))
+            // Local submissions remain visible until the server includes them in a page.
+            comments = visibleUnique(pinned + submittedRoots + incoming)
+            commentIDs = Set(comments.map(\.id))
+            absorbRoots(page.pinnedReplies + incoming, revision: revision)
+            submittedRoots.removeAll { serverCommentIDs.contains($0.id) || deletedIDs.contains($0.id) }
+            if uploaderID == nil { uploaderID = page.uploaderID }
+            totalCount = max(comments.count, reconciledCount(page.page.count, root: nil,
+                incoming: serverCommentIDs.union(page.pinnedReplies.map(\.id)), since: revision))
+            updateAllCount(page, revision: revision)
+            hasMore = Self.hasNextPage(incoming: incoming, covered: serverCommentIDs.count,
+                                      previousCoverage: 0, page: 1, info: page.page)
+            if requestedSort != previousSort { scrollRevision += 1 }
+        } catch {
+            guard request == generation, !error.isCancellation else { return }
+            failedReloadSort = requestedSort
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func loadMoreIfNeeded(current comment: Comment) async {
-        guard hasMore, !isLoading, !isLoadingMore, errorMessage == nil else { return }
-        // 只有接近末尾的那几条才触发翻页，中间的评论滚过时不会重复请求。
-        guard comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
-        isLoadingMore = true
-        // 与动态流一致：行离屏不会丢弃已经开始的续页，也不会让后续尾行错过触发。
+        guard hasMore, !isLoading, !isRefreshing, !isLoadingMore, errorMessage == nil,
+              comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
+        // A tail row leaving the viewport does not cancel a page already in flight.
         let task = Task { await self.loadNextPage() }
         await task.value
-        isLoadingMore = false
     }
 
-    // MARK: - 楼中楼
-
-    /// 评论 rpid -> 已经完整取回的回复。没有取过的用接口自带的预览。
-    private(set) var loadedReplies: [Int: [Comment]] = [:]
-    private(set) var loadingReplyIDs: Set<Int> = []
-    private(set) var moreRepliesIDs: Set<Int> = []
-    private var replyNextPage: [Int: Int] = [:]
-    private(set) var replyErrors: [Int: String] = [:]
-
-    func isLoadingReplies(_ comment: Comment) -> Bool {
-        loadingReplyIDs.contains(comment.id)
+    func retry() async {
+        guard !isLoading, !isRefreshing, !isLoadingMore else { return }
+        if let requested = failedReloadSort { await reload(sort: requested) }
+        else if !hasLoadedInitialPage { await reload(sort: sort) }
+        else { errorMessage = nil; await loadNextPage() }
     }
 
-    func hasMoreReplies(_ comment: Comment) -> Bool {
-        moreRepliesIDs.contains(comment.id)
+    private func loadNextPage() async {
+        guard !isLoadingMore, !isLoading, !isRefreshing else { return }
+        let request = generation
+        let revision = mutationRevision
+        let number = nextPage
+        let requestedSort = sort
+        isLoadingMore = true
+        defer { if request == generation { isLoadingMore = false } }
+        do {
+            let page = try await fetchComments(oid, type, number, requestedSort)
+            try Task.checkCancellation()
+            guard request == generation else { return }
+            let incoming = page.replies ?? []
+            let previousCoverage = serverCommentIDs.count
+            serverCommentIDs.formUnion(incoming.map(\.id))
+            if !page.pinnedReplies.isEmpty {
+                pinnedIDs.formUnion(page.pinnedReplies.map(\.id).filter { !deletedIDs.contains($0) })
+                let pinned = visibleUnique(page.pinnedReplies + comments.filter { pinnedIDs.contains($0.id) })
+                comments = visibleUnique(pinned + comments)
+                commentIDs = Set(comments.map(\.id))
+            }
+            comments.append(contentsOf: incoming.filter { !deletedIDs.contains($0.id) && commentIDs.insert($0.id).inserted })
+            absorbRoots(page.pinnedReplies + incoming, revision: revision)
+            submittedRoots.removeAll { serverCommentIDs.contains($0.id) }
+            nextPage = number + 1
+            totalCount = max(comments.count, reconciledCount(page.page.count, root: nil,
+                incoming: Set(incoming.map(\.id)), since: revision))
+            updateAllCount(page, revision: revision)
+            hasMore = Self.hasNextPage(incoming: incoming, covered: serverCommentIDs.count,
+                                      previousCoverage: previousCoverage, page: number, info: page.page)
+        } catch {
+            guard request == generation, !error.isCancellation else { return }
+            errorMessage = error.localizedDescription
+        }
     }
 
-    /// 评论卡片上的楼中楼预览：自己刚发的回复加上接口跟着一级评论返回的那几条。
-    /// 完整列表在单独页面，见 `allReplies(for:)`。
+    // MARK: Replies
+
+    func isLoadingReplies(_ comment: Comment) -> Bool { loadingReplyIDs.contains(comment.id) }
+    func hasMoreReplies(_ comment: Comment) -> Bool { moreRepliesIDs.contains(comment.id) }
+
     func replies(for comment: Comment) -> [Comment] {
-        var known: Set<Int> = []
-        return ((submittedReplies[comment.id] ?? []) + (comment.replies ?? []))
-            .filter { known.insert($0.rpid).inserted }
+        guard !deletedIDs.contains(comment.id) else { return [] }
+        return visibleUnique((submittedReplies[comment.id] ?? []) + (currentRoot(comment).replies ?? []))
     }
 
     func shouldShowAllReplies(_ comment: Comment) -> Bool {
-        replyErrors[comment.id] != nil || replyCount(for: comment) > replies(for: comment).count
+        // The name now opens a profile; retain a separate entrance even for a short thread.
+        replyErrors[comment.id] != nil || replyCount(for: comment) > 0
     }
 
-    /// 接口根评论是不可变快照；已确认的新回复应立即反映在标题和展开入口。
     func replyCount(for comment: Comment) -> Int {
-        let previewIDs = Set((comment.replies ?? []).map(\.id))
-        let added = (submittedReplies[comment.id] ?? []).filter { !previewIDs.contains($0.id) }.count
-        return max(max(comment.rcount + added, serverReplyCounts[comment.id] ?? 0),
-                   allReplies(for: comment).count)
+        guard !deletedIDs.contains(comment.id) else { return 0 }
+        if let count = replyCountOverrides[comment.id] { return max(count, allReplies(for: comment).count) }
+        let root = currentRoot(comment)
+        let previewIDs = Set((root.replies ?? []).map(\.id))
+        let added = (submittedReplies[root.id] ?? []).filter {
+            !previewIDs.contains($0.id) && (submissions[$0.id]?.revision ?? 0) > (rootCountRevisions[root.id] ?? 0)
+        }.count
+        return max(max(root.rcount + added, serverReplyCounts[root.id] ?? 0), allReplies(for: root).count)
     }
 
-    /// 单独页面用的完整回复列表。
-    ///
-    /// 和 `replies(for:)` 不同：卡片上那一小块预览仍然只显示接口跟着一级评论
-    /// 一起返回的那几条，不会因为进过一次单独页面就变长。
     func allReplies(for comment: Comment) -> [Comment] {
-        loadedReplies[comment.id] ?? comment.replies ?? []
+        guard !deletedIDs.contains(comment.id) else { return [] }
+        if let loaded = loadedReplies[comment.id] { return loaded }
+        return visibleUnique(currentRoot(comment).replies ?? [])
     }
 
-    /// 单独页面第一次打开时把第一页回复取回来。已经取过就直接返回。
     func loadRepliesIfNeeded(for comment: Comment) async {
         guard replyNextPage[comment.id] == nil else { return }
         await loadMoreReplies(for: comment)
     }
 
+    func refreshReplies(for comment: Comment) async {
+        guard !deletedIDs.contains(comment.id) else { return }
+        replyGeneration[comment.id, default: 0] += 1
+        await loadReplyPage(for: comment, replacing: true)
+    }
+
+    func retryReplies(for comment: Comment) async {
+        if failedReplyRefreshes.contains(comment.id) { await refreshReplies(for: comment) }
+        else { await loadMoreReplies(for: comment) }
+    }
+
     func loadMoreReplies(for comment: Comment) async {
-        let rootId = comment.id
-        guard !loadingReplyIDs.contains(rootId) else { return }
-        guard replyNextPage[rootId] == nil || moreRepliesIDs.contains(rootId) || replyErrors[rootId] != nil else { return }
-        replyErrors[rootId] = nil
-        loadingReplyIDs.insert(rootId)
-        defer { loadingReplyIDs.remove(rootId) }
+        guard !loadingReplyIDs.contains(comment.id), !deletedIDs.contains(comment.id),
+              replyNextPage[comment.id] == nil || moreRepliesIDs.contains(comment.id) || replyErrors[comment.id] != nil else { return }
+        await loadReplyPage(for: comment, replacing: false)
+    }
 
-        let page = replyNextPage[rootId] ?? 1
+    private func loadReplyPage(for comment: Comment, replacing: Bool) async {
+        let root = comment.id
+        let request = replyGeneration[root, default: 0]
+        let revision = mutationRevision
+        let number = replacing ? 1 : (replyNextPage[root] ?? 1)
+        if latestRoots[root] == nil { latestRoots[root] = comment }
+        loadingReplyIDs.insert(root)
+        replyErrors[root] = nil
+        failedReplyRefreshes.remove(root)
+        defer { if replyGeneration[root, default: 0] == request { loadingReplyIDs.remove(root) } }
         do {
-            let result = try await fetchReplies(oid, type, rootId, page)
+            let page = try await fetchReplies(oid, type, root, number)
             try Task.checkCancellation()
-            let incoming = result.replies ?? []
-            var all = loadedReplies[rootId] ?? []
-            var known = replyIDs[rootId] ?? []
-            all.append(contentsOf: incoming.filter { known.insert($0.id).inserted })
-            replyIDs[rootId] = known
-            loadedReplies[rootId] = all
-            replyNextPage[rootId] = page + 1
-
-            var serverIDs = serverReplyIDs[rootId] ?? []
-            let previousServerCount = serverIDs.count
-            serverIDs.formUnion(incoming.map(\.id))
-            serverReplyIDs[rootId] = serverIDs
-            serverReplyCounts[rootId] = result.page.count
-            if incoming.isEmpty || (result.page.size <= 0 && serverIDs.count == previousServerCount)
-                || serverIDs.count >= result.page.count
-                || Self.reachedLastPage(page: page, info: result.page) {
-                moreRepliesIDs.remove(rootId)
-            } else {
-                moreRepliesIDs.insert(rootId)
-            }
+            guard replyGeneration[root, default: 0] == request, !deletedIDs.contains(root) else { return }
+            let incoming = page.replies ?? []
+            var known = replacing ? Set<Int>() : (replyIDs[root] ?? [])
+            var all = replacing ? (submittedReplies[root] ?? []) : (loadedReplies[root] ?? [])
+            known.formUnion(all.map(\.id))
+            all.append(contentsOf: incoming.filter { !deletedIDs.contains($0.id) && known.insert($0.id).inserted })
+            loadedReplies[root] = visibleUnique(all)
+            replyIDs[root] = Set(all.map(\.id))
+            replyNextPage[root] = number + 1
+            var covered = replacing ? Set<Int>() : (serverReplyIDs[root] ?? [])
+            let previousCoverage = covered.count
+            covered.formUnion(incoming.map(\.id))
+            serverReplyIDs[root] = covered
+            let count = reconciledCount(page.page.count, root: root, incoming: Set(incoming.map(\.id)), since: revision)
+            serverReplyCounts[root] = count
+            if replyCountOverrides[root] != nil { replyCountOverrides[root] = count }
+            if Self.hasNextPage(incoming: incoming, covered: covered.count, previousCoverage: previousCoverage,
+                                page: number, info: page.page) { moreRepliesIDs.insert(root) }
+            else { moreRepliesIDs.remove(root) }
         } catch {
-            guard !error.isCancellation else { return }
-            // 保留已显示的预览/回复和页码，允许重试这一页。
-            moreRepliesIDs.remove(rootId)
-            replyErrors[rootId] = error.localizedDescription
+            guard replyGeneration[root, default: 0] == request, !deletedIDs.contains(root), !error.isCancellation else { return }
+            replyErrors[root] = error.localizedDescription
+            if replacing { failedReplyRefreshes.insert(root) }
+            else { moreRepliesIDs.remove(root) }
         }
     }
 
-    /// 楼中楼的分页边界也由模型判断，视图只传入当前行。
     func loadMoreRepliesIfNeeded(current reply: Comment, root: Comment) async {
         guard hasMoreReplies(root), !isLoadingReplies(root), replyErrors[root.id] == nil,
               allReplies(for: root).suffix(3).contains(where: { $0.id == reply.id }) else { return }
@@ -244,50 +323,132 @@ final class CommentsViewModel {
         await task.value
     }
 
-    func retry() async {
-        guard !isLoading, !isLoadingMore else { return }
-        errorMessage = nil
-        if comments.isEmpty {
-            await loadInitial()
-        } else {
-            isLoadingMore = true
-            defer { isLoadingMore = false }
-            await loadNextPage()
-        }
+    // MARK: Confirmed deletion
+
+    struct Deletion: Identifiable {
+        let comment: Comment
+        let root: Comment?
+        let sessionID: UUID
+        var id: Int { comment.id }
     }
 
-    /// 不以混合展示数量判断末页；页码边界同时保证重叠页不会无限翻页。
-    private static func reachedLastPage(page: Int, info: CommentPageInfo) -> Bool {
-        guard info.size > 0 else { return false }
-        let lastPage = info.count / info.size + (info.count % info.size == 0 ? 0 : 1)
-        return page >= lastPage
+    func canDelete(_ comment: Comment, accountID: Int?, isLoggedIn: Bool) -> Bool {
+        isLoggedIn && comment.isAuthored(by: accountID) && !deletedIDs.contains(comment.id)
     }
 
-    private func loadNextPage() async {
+    func deletion(for comment: Comment, root: Comment?, accountID: Int?, isLoggedIn: Bool) -> Deletion? {
+        guard canDelete(comment, accountID: accountID, isLoggedIn: isLoggedIn), !deletingIDs.contains(comment.id) else { return nil }
+        return Deletion(comment: comment, root: root, sessionID: services.session.currentID())
+    }
+
+    func delete(_ deletion: Deletion, accountID: Int?, isLoggedIn: Bool) async {
+        let comment = deletion.comment
+        guard canDelete(comment, accountID: accountID, isLoggedIn: isLoggedIn),
+              deletion.sessionID == services.session.currentID(), deletingIDs.insert(comment.id).inserted else { return }
+        defer { deletingIDs.remove(comment.id) }
         do {
-            let page = try await fetchComments(oid, type, nextPage)
-            try Task.checkCancellation()
-            hasLoadedInitialPage = true
-            totalCount = page.page.count
-            let newComments = page.replies ?? []
-            guard !newComments.isEmpty else {
-                // 接口在没有更多内容时返回空数组，用它作为结束条件。
-                hasMore = false
-                return
+            try await services.comment.deleteComment(oid: oid, type: type, rpid: comment.id, expectedSessionID: deletion.sessionID)
+            guard deletion.sessionID == services.session.currentID() else { return }
+            let root = deletion.root
+            let oldReplyCount = root.map { replyCount(for: $0) }
+            let removedCount = root == nil ? 1 + replyCount(for: comment) : 1
+            mutationRevision += 1
+            deletedIDs.insert(comment.id)
+            deletions[comment.id] = Mutation(root: root?.id, revision: mutationRevision, count: removedCount)
+            if let count = allCount { allCount = max(0, count - removedCount) }
+            likeOverrides[comment.id] = nil
+            if let root {
+                submittedReplies[root.id]?.removeAll { $0.id == comment.id }
+                loadedReplies[root.id]?.removeAll { $0.id == comment.id }
+                replyIDs[root.id]?.remove(comment.id)
+                replyCountOverrides[root.id] = max(0, (oldReplyCount ?? 1) - 1)
+            } else {
+                comments.removeAll { $0.id == comment.id }
+                submittedRoots.removeAll { $0.id == comment.id }
+                pinnedIDs.remove(comment.id)
+                commentIDs.remove(comment.id)
+                totalCount = max(0, totalCount - 1)
+                loadedReplies[comment.id] = nil
+                submittedReplies[comment.id] = nil
+                replyErrors[comment.id] = nil
+                moreRepliesIDs.remove(comment.id)
             }
-            // 热门排序下相邻两页偶尔会返回同一条评论，重复的会让 ForEach 的 id 冲突。
-            comments.append(contentsOf: newComments.filter { commentIDs.insert($0.id).inserted })
-            nextPage += 1
-            let previousServerCount = serverCommentIDs.count
-            serverCommentIDs.formUnion(newComments.map(\.id))
-            if (page.page.size <= 0 && serverCommentIDs.count == previousServerCount)
-                || serverCommentIDs.count >= page.page.count
-                || Self.reachedLastPage(page: nextPage - 1, info: page.page) {
-                hasMore = false
+            for draft in drafts.values where draft.target?.parent == comment.id || draft.target?.root == comment.id {
+                draft.target = nil // Keep the written text when its reply target disappears.
             }
+            actionMessage = String(localized: "评论已删除")
         } catch {
-            guard !error.isCancellation else { return }
-            errorMessage = error.localizedDescription
+            guard deletion.sessionID == services.session.currentID(), !error.isCancellation else { return }
+            actionMessage = String(localized: "删除失败：\(error.localizedDescription)")
         }
+    }
+
+    // MARK: Likes
+
+    func isLiked(_ comment: Comment) -> Bool { likeOverrides[comment.id] ?? comment.isLikedByServer }
+    func likeCount(_ comment: Comment) -> Int {
+        guard let overridden = likeOverrides[comment.id], overridden != comment.isLikedByServer else { return comment.like }
+        return max(0, comment.like + (overridden ? 1 : -1))
+    }
+
+    func toggleLike(_ comment: Comment, isLoggedIn: Bool) async {
+        guard isLoggedIn else { actionMessage = String(localized: "请先登录"); return }
+        guard !likingRpids.contains(comment.id), !deletedIDs.contains(comment.id) else { return }
+        likingRpids.insert(comment.id)
+        defer { likingRpids.remove(comment.id) }
+        let wasLiked = isLiked(comment)
+        likeOverrides[comment.id] = !wasLiked
+        do { try await services.comment.likeComment(oid: oid, type: type, rpid: comment.id, like: !wasLiked) }
+        catch {
+            guard !deletedIDs.contains(comment.id) else { return }
+            likeOverrides[comment.id] = wasLiked
+            if !error.isCancellation { actionMessage = error.localizedDescription }
+        }
+    }
+
+    private func visibleUnique(_ values: [Comment]) -> [Comment] {
+        var known: Set<Int> = []
+        return values.filter { !deletedIDs.contains($0.id) && known.insert($0.id).inserted }
+    }
+
+    private func absorbRoots(_ roots: [Comment], revision: Int) {
+        for root in roots where !deletedIDs.contains(root.id) {
+            latestRoots[root.id] = root
+            rootCountRevisions[root.id] = revision
+            if replyCountOverrides[root.id] != nil {
+                replyCountOverrides[root.id] = reconciledCount(root.rcount, root: root.id,
+                    incoming: Set((root.replies ?? []).map(\.id)), since: revision)
+            }
+        }
+    }
+
+    private func reconciledCount(_ count: Int, root: Int?, incoming: Set<Int>, since revision: Int) -> Int {
+        let removed = deletions.filter { $0.value.root == root && ($0.value.revision > revision || incoming.contains($0.key)) }.count
+        let added = submissions.filter {
+            $0.value.root == root && $0.value.revision > revision && !incoming.contains($0.key) && !deletedIDs.contains($0.key)
+        }.count
+        return max(0, count - removed + added)
+    }
+
+    private func updateAllCount(_ page: CommentPage, revision: Int) {
+        guard let count = page.page.allCount else { return }
+        let roots = page.pinnedReplies + (page.replies ?? [])
+        let incoming = Set(roots.flatMap { [$0.id] + ($0.replies ?? []).map(\.id) })
+        let removed = deletions.filter { $0.value.revision > revision || incoming.contains($0.key) }
+            .reduce(0) { $0 + $1.value.count }
+        let added = submissions.filter {
+            $0.value.revision > revision && !incoming.contains($0.key) && !deletedIDs.contains($0.key)
+                && !deletedIDs.contains($0.value.root ?? $0.key)
+        }.count
+        allCount = max(0, count - removed + added)
+    }
+
+    /// Pagination uses raw server coverage, never the merged pin/submission count.
+    private static func hasNextPage(incoming: [Comment], covered: Int, previousCoverage: Int,
+                                    page: Int, info: CommentPageInfo) -> Bool {
+        guard !incoming.isEmpty, covered < info.count else { return false }
+        guard info.size > 0 else { return covered > previousCoverage }
+        let lastPage = info.count / info.size + (info.count % info.size == 0 ? 0 : 1)
+        return page < lastPage
     }
 }

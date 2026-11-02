@@ -10,7 +10,7 @@ extension BiliAPI {
     /// `comment_id_str` 和它自己的 `comment_type`（图文 11、纯文字 17）。
     /// `sort: 1` 是按点赞数排序，也就是网页端默认的「热门」。
     /// 每条一级评论会顺带返回最多 3 条楼中楼，展示它们不需要再发请求。
-    static func comments(oid: Int, type: Int, page: Int, client: APIClient) async throws -> CommentPage {
+    static func comments(oid: Int, type: Int, page: Int, sort: CommentSort = .hot, client: APIClient) async throws -> CommentPage {
         try await client.get(
             path: "x/v2/reply",
             params: [
@@ -18,7 +18,7 @@ extension BiliAPI {
                 "oid": String(oid),
                 "pn": String(page),
                 "ps": "20",
-                "sort": "1"
+                "sort": String(sort.rawValue)
             ]
         )
     }
@@ -48,6 +48,13 @@ extension BiliAPI {
             ],
             requiresWBI: true
         )
+    }
+
+    static func deleteComment(oid: Int, type: Int, rpid: Int, expectedSessionID: UUID, client: APIClient, identity: DeviceIdentity) async throws {
+        let csrf = await identity.csrfToken ?? ""
+        try await client.post(path: "x/v2/reply/del", form: [
+            "oid": String(oid), "type": String(type), "rpid": String(rpid), "csrf": csrf
+        ], expectedSessionID: expectedSessionID)
     }
 
     /// 给评论点赞 / 取消点赞。`oid` 和 `type` 的含义与拉取评论时相同。

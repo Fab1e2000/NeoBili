@@ -41,37 +41,43 @@ enum HomeFeedRow: Identifiable, Equatable {
     static func group(_ items: [HomeFeedItem]) -> [HomeFeedRow] {
         var rows: [HomeFeedRow] = []
         var pending: [VideoSummary] = []
-        var markerAfterPendingRow = false
+        // A filtered ad can leave one normal card before a full-width card.
+        // Keep that slot open until the next normal card arrives, then emit the
+        // intervening large cards/marker. Card metadata and source order stay intact.
+        var deferred: [HomeFeedRow] = []
         for item in items {
             switch item {
             case .video(let video):
                 if video.isLargeRecommendationCard {
-                    if !pending.isEmpty { rows.append(.videos(pending)); pending = [] }
-                    if markerAfterPendingRow { rows.append(.lastSeen); markerAfterPendingRow = false }
-                    rows.append(.videos([video]))
+                    if pending.isEmpty { rows.append(.videos([video])) }
+                    else { deferred.append(.videos([video])) }
                     continue
                 }
                 pending.append(video)
                 if pending.count == 2 {
                     rows.append(.videos(pending))
                     pending = []
-                    if markerAfterPendingRow {
-                        rows.append(.lastSeen)
-                        markerAfterPendingRow = false
-                    }
+                    rows.append(contentsOf: deferred)
+                    deferred.removeAll(keepingCapacity: true)
                 }
             case .lastSeen:
-                if pending.isEmpty {
-                    rows.append(.lastSeen)
-                } else {
-                    // A refresh/filter may leave an odd number of new cards.
-                    // Finish this row in the original video order before placing
-                    // the full-width marker; never create a hole just for it.
-                    markerAfterPendingRow = true
-                }
+                if pending.isEmpty { rows.append(.lastSeen) }
+                else { deferred.append(.lastSeen) }
             }
         }
-        if !pending.isEmpty { rows.append(.videos(pending)) }
+        if !pending.isEmpty {
+            // With no partner left, keep the single card at the end of its batch,
+            // after its large cards. Never move a new card below the refresh marker.
+            if let marker = deferred.firstIndex(of: .lastSeen) {
+                rows.append(contentsOf: deferred[..<marker])
+                rows.append(.videos(pending))
+                let earlier = deferred.dropFirst(marker + 1)
+                if !earlier.isEmpty { rows.append(.lastSeen); rows.append(contentsOf: earlier) }
+            } else {
+                rows.append(contentsOf: deferred)
+                rows.append(.videos(pending))
+            }
+        }
         return rows
     }
 }

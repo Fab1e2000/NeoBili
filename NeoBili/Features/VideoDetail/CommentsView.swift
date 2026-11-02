@@ -13,6 +13,10 @@ struct CommentsList: View {
         let comments = viewModel.comments
         let lastCommentID = comments.last?.id
         LazyVStack(alignment: .leading, spacing: 0) {
+            CommentSortHeader(viewModel: viewModel)
+            if let message = viewModel.errorMessage, !comments.isEmpty, viewModel.didFailReload {
+                loadError(message)
+            }
             ForEach(comments) { comment in
                 // 评论之间不画分隔线，只靠上下留白分开。
                 CommentRow(comment: comment, viewModel: viewModel)
@@ -29,14 +33,8 @@ struct CommentsList: View {
                     .frame(maxWidth: .infinity)
                     .padding()
             }
-            if let message = viewModel.errorMessage, !viewModel.comments.isEmpty {
-                VStack(spacing: 8) {
-                    Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
-                    Button("重试加载评论") { Task { await viewModel.retry() } }
-                        .disabled(viewModel.isLoading || viewModel.isLoadingMore)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
+            if let message = viewModel.errorMessage, !comments.isEmpty, !viewModel.didFailReload {
+                loadError(message)
             }
         }
         .commentThreadHost(viewModel: viewModel)
@@ -47,6 +45,16 @@ struct CommentsList: View {
             feedback.show(message)
             viewModel.actionMessage = nil
         }
+    }
+
+    private func loadError(_ message: String) -> some View {
+        VStack(spacing: 8) {
+            Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
+            Button("重试加载评论") { Task { await viewModel.retry() } }
+                .disabled(viewModel.isLoading || viewModel.isRefreshing || viewModel.isLoadingMore)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
     }
 }
 
@@ -80,6 +88,10 @@ struct CommentsView: View {
         }
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollPosition($scrollPosition)
+        .refreshable { await viewModel.refresh() }
+        .onChange(of: viewModel.scrollRevision) {
+            scrollPosition.scrollTo(y: geometry?.distance() ?? 0)
+        }
         .overlay {
             GeometryReader { proxy in
                 let hiddenTop = max(0, (geometry?.reservation ?? 0) - (geometry?.distance() ?? 0))

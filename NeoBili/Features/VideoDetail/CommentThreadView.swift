@@ -18,8 +18,7 @@ extension View {
     /// 在这一屏挂一个楼中楼页面。评论列表里的任何一行都能通过
     /// `@Environment(\.openCommentThread)` 把它推出来。
     ///
-    /// 用 sheet 而不是 NavigationLink：视频页是从根视图 present 出来的
-    /// fullScreenCover，里面没有导航栈，push 不了。
+    /// 回复单独呈现；它自己的导航栈用于打开评论者主页。
     func commentThreadHost(viewModel: CommentsViewModel) -> some View {
         modifier(CommentThreadHost(viewModel: viewModel))
     }
@@ -64,7 +63,7 @@ struct CommentThreadView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     // 根评论自己不再画楼中楼那一块——它下面接的就是全部回复。
-                    CommentRow(comment: root, viewModel: viewModel, showsReplies: false)
+                    CommentRow(comment: viewModel.currentRoot(root), viewModel: viewModel, showsReplies: false)
                         .padding(.horizontal, CommentLayout.pageHorizontalInset)
                         .padding(.vertical, CommentLayout.rowVerticalPadding)
 
@@ -73,7 +72,7 @@ struct CommentThreadView: View {
                     sectionHeader
 
                     ForEach(replies) { reply in
-                        CommentRow(comment: reply, viewModel: viewModel, showsReplies: false)
+                        CommentRow(comment: reply, viewModel: viewModel, showsReplies: false, root: root)
                             .padding(.horizontal, CommentLayout.pageHorizontalInset)
                             .padding(.vertical, CommentLayout.rowVerticalPadding)
                             .task(id: tailIDs.contains(reply.id) ? replies.last?.id : nil) {
@@ -89,6 +88,8 @@ struct CommentThreadView: View {
             .scrollEdgeEffectHidden(true, for: .bottom)
             .background(Color(uiColor: .systemBackground))
             .commentComposer(viewModel: viewModel, root: root)
+            .commentAuthorHost()
+            .refreshable { await viewModel.refreshReplies(for: root) }
             .navigationTitle("回复")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -102,6 +103,9 @@ struct CommentThreadView: View {
         }
         .presentationDragIndicator(.visible)
         .task { await viewModel.loadRepliesIfNeeded(for: root) }
+        .onChange(of: viewModel.deletedIDs.contains(root.id)) { _, deleted in
+            if deleted { dismiss() }
+        }
         // 和评论列表一样走非模态浮层，别用 alert 去和外层的 present 抢。
         .onChange(of: viewModel.actionMessage) { _, message in
             guard let message else { return }
@@ -135,7 +139,7 @@ struct CommentThreadView: View {
                     .multilineTextAlignment(.center)
 
                 Button("重试") {
-                    Task { await viewModel.loadMoreReplies(for: root) }
+                    Task { await viewModel.retryReplies(for: root) }
                 }
                 .font(.app(.subheadline, weight: .medium))
             }

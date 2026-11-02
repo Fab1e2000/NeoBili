@@ -49,7 +49,7 @@ final class AuditRegressionTests: XCTestCase {
     func testCommentRetryKeepsFirstPageAndRetriesFailedPage() async throws {
         let first = try comment(1), second = try comment(2)
         var requests: [Int] = []
-        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
             requests.append(page)
             if requests.count == 2 { throw URLError(.timedOut) }
             return CommentPage(page: CommentPageInfo(num: page, size: 1, count: 2),
@@ -70,7 +70,7 @@ final class AuditRegressionTests: XCTestCase {
     func testCancelledCommentRequestCanBeLoadedAgain() async throws {
         let first = try comment(1)
         var calls = 0
-        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page in
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
             calls += 1
             if calls == 1 { throw URLError(.cancelled) }
             return CommentPage(page: CommentPageInfo(num: page, size: 1, count: 1), replies: [first])

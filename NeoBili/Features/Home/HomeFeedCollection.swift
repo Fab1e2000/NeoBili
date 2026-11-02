@@ -321,6 +321,11 @@ struct HomeFeedCollection: UIViewRepresentable {
             for row in items where seen.insert(row.id).inserted {
                 orderedItems.append(row)
                 byID[row.id] = row
+            }
+            // Deduplication can leave another half row. Use the packed order for
+            // the snapshot, refresh boundary, removal comparison and pagination.
+            let packedRows = HomeFeedRow.group(orderedItems)
+            for row in HomeFeedRow.collectionItems(packedRows) {
                 switch row {
                 case .lastSeen: marker = true
                 case .video: if marker { earlier.append(row.id) } else { latest.append(row.id) }
@@ -376,7 +381,7 @@ struct HomeFeedCollection: UIViewRepresentable {
                 snapshot.appendItems(normalIDs, toSection: section)
                 normalIDs.removeAll(keepingCapacity: true)
             }
-            for row in HomeFeedRow.group(orderedItems) {
+            for row in packedRows {
                 switch row {
                 case .lastSeen:
                     appendNormalSection()

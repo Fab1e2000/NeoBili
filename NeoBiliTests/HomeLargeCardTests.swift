@@ -49,7 +49,8 @@ final class HomeLargeCardTests: XCTestCase {
         coordinator.apply(changedRows)
         XCTAssertEqual(coordinator.rowPreparationCount, 2)
         XCTAssertEqual(source.snapshot().numberOfSections, 3)
-        XCTAssertEqual(source.snapshot().itemIdentifiers, videos.map { HomeFeedItem.video($0).id })
+        XCTAssertEqual(source.snapshot().itemIdentifiers,
+            ([0, 2, 1] + Array(3..<1_000)).map { "video-fixture-\($0)" })
 
         coordinator.showsHeaderRow = true
         coordinator.apply(changedRows)
@@ -103,12 +104,12 @@ final class HomeLargeCardTests: XCTestCase {
         }
     }
 
-    func testMixedCardRowsKeepServerOrderAndLargeCardsAlone() {
+    func testMixedCardRowsFillNormalPairsAndKeepLargeCardsAlone() {
         let items=[video(1),video(2,large:true),video(3),video(4),video(5,large:true)]
         let rows=HomeFeedRow.group(items.map(HomeFeedItem.video))
-        XCTAssertEqual(HomeFeedRow.collectionItems(rows).map(\.id),items.map { HomeFeedItem.video($0).id })
+        XCTAssertEqual(HomeFeedRow.collectionItems(rows).map(\.id), [1, 3, 2, 5, 4].map { "video-fixture-\($0)" })
         let sizes=rows.compactMap { row -> Int? in if case .videos(let v)=row {return v.count};return nil }
-        XCTAssertEqual(sizes,[1,1,2,1])
+        XCTAssertEqual(sizes,[2,1,1,1])
     }
 
     func testVisibleLayoutAndScreenshotsInLightDarkAndLandscape() async throws {

@@ -22,6 +22,7 @@ struct VideoPage: View {
     @State private var controlsSafeArea = EdgeInsets()
     @State private var playerControlsVisible = false
     @State private var commentTimeJump = EnvironmentAction<Double> { _ in }
+    @State private var commentAuthor = EnvironmentAction<CommentMember> { _ in }
 
     /// 收起状态下标题最多显示几行。展开后标题不再截断，简介正文也跟着铺开。
 
@@ -75,6 +76,7 @@ struct VideoPage: View {
     var body: some View {
         NavigationStack(path: $spacePath) {
             withSheets(videoPageRoot)
+                .environment(\.openCommentAuthor, commentAuthor)
                 // 视频页自己不显示导航栏；推入 UP 主空间页后由那一页显示。
                 .toolbarVisibility(.hidden, for: .navigationBar)
                 .navigationDestination(for: FollowedUp.self) { up in
@@ -84,7 +86,13 @@ struct VideoPage: View {
                     VideoTagSearchPage(keyword: route.keyword)
                 }
         }
-        .onAppear(perform: installCommentTimeJump)
+        .onAppear {
+            installCommentTimeJump()
+            commentAuthor.setHandler { [path = $spacePath] member in
+                guard let mid = member.mid else { return }
+                path.wrappedValue.append(FollowedUp(mid: mid, uname: member.uname, face: member.avatar, hasUpdate: false))
+            }
+        }
         .onDisappear {
             // 播放画面由 cover 的 onDismiss 在原生缩小动画完成后交给小窗。
             OrientationController.enterPortrait()
@@ -212,7 +220,7 @@ struct VideoPage: View {
                     }
                     VStack(spacing: 0) {
                         VideoSectionBar(selection: $store.section,
-                                        commentCount: viewModel?.detail?.stat.reply ?? 0,
+                                        commentCount: store.commentsViewModel?.displayCount ?? viewModel?.detail?.stat.reply ?? 0,
                                         onSendDanmaku: sendDanmakuAction)
                             .background(.bar)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sectionBarHeight = $0 }

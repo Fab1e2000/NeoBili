@@ -132,8 +132,8 @@ final class CommentSpacingTests: XCTestCase {
         let long = try makeComment(rpid: 11, message: "正文", rcount: 1,
                                    replies: [String(repeating: "这是一条需要完整显示的很长的楼中楼回复。", count: 30)])
         let model = CommentsViewModel(aid: 1)
-        XCTAssertFalse(model.shouldShowAllReplies(short))
-        XCTAssertFalse(model.shouldShowAllReplies(long), "已拿到唯一回复时不显示查看全部")
+        XCTAssertTrue(model.shouldShowAllReplies(short))
+        XCTAssertTrue(model.shouldShowAllReplies(long), "昵称进入主页后，单条回复仍需独立的回复详情入口")
         let heightDifference = try render(long).height - render(short).height
         XCTAssertGreaterThan(heightDifference, 200, "长回复不能仍被截成三行")
         let gap = try measureGapBelowReplyBlock(for: long)
@@ -141,7 +141,7 @@ final class CommentSpacingTests: XCTestCase {
         XCTAssertEqual(gap, try measureGapBelowReplyBlock(for: short), accuracy: 1)
     }
 
-    func testAllRepliesControlOnlyAppearsForMissingReplies() async throws {
+    func testAllRepliesControlAppearsForMissingReplies() async throws {
         let comment = try makeComment(rpid: 12, message: "正文", rcount: 2, replies: ["预览回复"])
         let model = CommentsViewModel(aid: 1)
         XCTAssertTrue(model.shouldShowAllReplies(comment))
