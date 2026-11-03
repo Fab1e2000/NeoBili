@@ -49,7 +49,7 @@ jobs:
           chmod 600 ~/.ssh/neobili
           printf '%s\n' 'n015.top ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBhZA+79dAGqkvQjrVjdZI//7h83DsTUjd89Bi+xVQjP' >> ~/.ssh/known_hosts
           ipa=$(mktemp)
-          gh release download "$TAG" --pattern 'NeoBili-*-unsigned.ipa' --output "$ipa"
+          gh release download "$TAG" --pattern 'NeoBili-*-unsigned.ipa' --output "$ipa" --clobber
           ssh -i ~/.ssh/neobili -o IdentitiesOnly=yes ubuntu@n015.top put-ipa "$TAG" < "$ipa"
           ssh -i ~/.ssh/neobili -o IdentitiesOnly=yes ubuntu@n015.top put-icon < NeoBili/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png
           ssh -i ~/.ssh/neobili -o IdentitiesOnly=yes ubuntu@n015.top put-json < sidestore/apps.json
