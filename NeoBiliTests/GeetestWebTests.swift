@@ -69,6 +69,9 @@ final class GeetestWebTests: XCTestCase {
         let web = coordinator.makeWebView()
         defer { release(web, coordinator) }
         web.loadHTMLString(html, baseURL: nil)
+        try await wait {
+            (try? await web.evaluateJavaScript("typeof window.neobiliCaptchaFailure === 'function' && document.readyState === 'complete'")) as? Bool == true
+        }
         try await wait { state == .failed }
         #endif
     }
