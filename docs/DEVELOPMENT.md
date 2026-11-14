@@ -32,6 +32,7 @@ bash scripts/verify.sh full
 | 模式 | 执行内容 | 使用时机 |
 | --- | --- | --- |
 | `quick` | 源码依赖边界、本地文档链接、已暂存与未暂存差异格式、工作流脚本回归 | 开发中快速检查、每次推送；不编译 Swift、不启动 Simulator |
+| `host` | 工作流脚本与宿主机离线回归 | Xcode Cloud 编译测试前的共同检查 |
 | `offline` | 宿主机离线回归（含源码边界与文档检查） | 纯逻辑修改后的验证 |
 | `targeted TestClass[/testMethod] ...` | 指定 Simulator 测试，可传多个选择器 | 开发中验证受影响行为；必须指定测试 |
 | `full` | 工作流脚本回归、离线回归、完整确定性 Simulator 回归 | 任务完成、提交 PR 前及 PR CI |
@@ -179,28 +180,34 @@ Cookie 或原始值的持久化哈希。原始重放错误输出不转发。相�
 
 ## CI
 
-Build 工作流按 PR 来源选择环境：仓库所有者在本仓库分支上提的 PR 使用 `ci-trusted`，
-不设保护规则，直接运行；其他所有 PR（包括 fork）和手动运行使用 `ci-approval`，先等待环境审批，
-批准前不启动构建或测试 runner。需要审批时，在 Actions 对应运行中选择
-**Review deployments → ci-approval → Approve and deploy**；这与 PR 代码审查的 Approve 是两个
-独立操作。PR 更新后创建新运行，旧运行自动取消，需要审批的新运行要重新批准。
+Xcode Cloud 使用 GitHub 仓库中的共享工程与 scheme，不在云端重新运行 XcodeGen。
+工作流由 Xcode 的 Report navigator → Cloud 或 App Store Connect 管理，
+仓库中的 `ci_scripts` 提供共同检查和发布动作。工作流名称固定为 `Build`、`Release`。
 
-判断只看 `pull_request.user.login` 与仓库所有者一致且 head 仓库就是本仓库；它依赖 PR 作者
-身份，因此不要给 `ci-trusted` 配置任何 secrets，CI 本来也不使用凭据。`ci-trusted` 在工作流首次
-引用时自动创建，不需要保护规则。
+| 工作流 | 环境与动作 | 结果 |
+| --- | --- | --- |
+| `Build` | Xcode 27.2；`NeoBili` scheme；Test 动作，指定 `Regression` 计划；iPhone 18 Pro / iOS 27.2 | 工作流脚本、离线检查和完整确定性模拟器回归 |
+| `Release` | Xcode 27.2；`NeoBili-Release` scheme；Build 动作，Any iOS Device | ad-hoc 签名的侧载 IPA、SHA256SUMS.txt 与 GitHub Release 草稿 |
 
-仓库 Settings → Environments → `ci-approval` 必须配置 Required reviewers 为
-`Fab1e2000`，允许 self-review，并禁止管理员绕过保护规则。环境名称本身不会启用审批，
-迁移仓库时必须同时配置保护规则。发布工作流不使用此环境，仍按版本标签触发。
+`Build` 的编译测试阶段先执行 `bash scripts/verify.sh host`，复用本地 `full` 的工作流
+脚本与离线回归；随后由 Xcode Cloud 原生 Test 动作编译并运行模拟器测试。
+测试运行阶段使用云端保存的测试产物，不再次运行宿主检查。Regression 必须通过。
+开启 Auto-cancel Builds，避免同一 PR 更新后继续跑旧提交。Build 不配置账号或发布凭据。
+日志与 `.xcresult` 在 Xcode Cloud 的构建报告中下载；宿主检查输出在自定义脚本日志中。
+本地任务完成与提交 PR 前继续运行 `bash scripts/verify.sh full`。
 
-每次 PR 或手动运行 Build 只有一个任务：在 Xcode 27.1 上用
-`bash scripts/verify.sh full` 编译 App 与各模块，并执行工作流脚本、离线与确定性模拟器回归，
-与本地使用同一入口。应用用到 iOS 27 SDK 的 API（如导航栏收起），因此 CI 和发布都只用
-Xcode 27；Xcode 27 在 `xcode-27` runner 上，目前是 GitHub 的预览镜像，排队时间可能较长。
-CI 优先选择 iOS 27 runtime 的 iPhone 18 Pro（排除没有顶部安全区的折叠机型 iPhone Duo，依赖真机安全区的布局测试在它上面不成立），记录选中的设备；缺少工具链/runtime 时失败，
-不自动改用其他版本。结果作为 Actions artifact 上传。CI 不配置真实账号或签名凭据。
-工具链可用性以 [runner 官方清单](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)
-和任务中的预检为准。发布仍构建 IPA、做 ad-hoc 签名并附带版本说明。
+`Release` 使用 `v` 开头的 Tag Changes 和 Manual Start，关闭 Auto-cancel Builds。
+只在该工作流的 Environment 中配置 secret `NEOBILI_RELEASE_TOKEN`：GitHub fine-grained
+personal access token，仅选择 NeoBili 仓库并授予 Contents 的读写权限。不要配置成产品共享
+变量，也不要放入 Build 工作流。令牌到期后在 Release 的环境设置中更新。
+
+[发布脚本](../ci_scripts/release.py)在编译前检查版本、标签对应提交、说明文件和草稿状态。
+构建失败时停止上传。成功后复制 App、恢复仓库中的构建号、移除描述文件并做 ad-hoc 签名，
+将 IPA 和校验和上传到未公开的 GitHub 草稿。重跑只替换相同提交草稿中的同名附件；
+已公开版本和其他提交的草稿保留原样，并报告失败。
+
+手动构建保存为独立的 `cloud-build-N` 预览草稿，保持未公开。正式版本使用 `vX.Y.Z`
+标签草稿。Xcode Cloud 自定义脚本生成的 IPA 从 GitHub 草稿下载，原生构建产物从云端报告下载。
 
 ## 真机与签名
 
@@ -223,7 +230,7 @@ CI 优先选择 iOS 27 runtime 的 iPhone 18 Pro（排除没有顶部安全区�
 1. 在待合并分支更新 `project.yml` 的版本和递增的构建号，运行 `xcodegen generate`，
    同时提交生成的 `Info.plist` 与工程变化；编写 `docs/releases/vX.Y.Z.md`。
 2. 功能/修复 PR 经当前离线、Simulator 和 CI 验证后合入 `develop`，再通过发布 PR 合入 `main`。
-3. 在通过 CI 的 `main` 提交创建并推送 `vX.Y.Z` 标签。Release workflow 校验标签和
+3. 在通过 CI 的 `main` 提交创建并推送 `vX.Y.Z` 标签。Xcode Cloud 的 Release 工作流校验标签和
    `CFBundleShortVersionString` 一致，构建 IPA、做 ad-hoc 签名、生成校验和与 **Release 草稿**。
    安装包没有 Apple 开发者证书；ad-hoc 签名是为了让 SideStore、Sideloadly 能用用户自己的 Apple ID 重签。
 4. 检查草稿的目标提交、版本说明及附件。发布草稿是独立动作，不能把创建草稿当作已发布。
@@ -234,7 +241,7 @@ CI 优先选择 iOS 27 runtime 的 iPhone 18 Pro（排除没有顶部安全区�
    草稿附件不能公开下载，所以公开之前不要改这份文件。需要补写时，在 Actions 里手动运行
    SideStore source，并填入已公开的标签。
 
-分发构建不携带个人签名文件、采集材料或账号上下文。手动运行 Release workflow 只产出
-Actions artifact，不创建公开版本，也不更新软件源。具体命令和行为以
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) 与
+分发构建不携带个人签名文件、采集材料或账号上下文。手动运行 Release 生成独立预览草稿，
+不创建公开版本，也不更新软件源。具体命令和行为以
+[`ci_scripts/release.py`](../ci_scripts/release.py) 与
 [`.github/workflows/sidestore.yml`](../.github/workflows/sidestore.yml) 为准。

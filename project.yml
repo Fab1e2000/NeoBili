@@ -176,6 +176,19 @@ targets:
 
 # 共享运行方案：Debug + LLDB，重新生成工程时也保留。
 schemes:
+  NeoBili-Release:
+    build:
+      targets:
+        NeoBili: all
+    run:
+      config: Release
+      debugEnabled: false
+    profile:
+      config: Release
+    analyze:
+      config: Release
+    archive:
+      config: Release
   NeoBili:
     build:
       targets:
