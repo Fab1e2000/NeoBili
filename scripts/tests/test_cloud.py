@@ -148,6 +148,18 @@ class ApprovalGatewayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             gateway.validate_commits({"executionProgress": "COMPLETE"}, "source")
 
+    def test_pending_cloud_build_waits_for_checkout_commit(self):
+        attributes = {"executionProgress": "PENDING", "sourceCommit": {"commitSha": ""}}
+        gateway.validate_commits(attributes, "source")
+        attributes["executionProgress"] = "COMPLETE"
+        with self.assertRaises(ValueError):
+            gateway.validate_commits(attributes, "source")
+
+    def test_completed_pr_requires_target_commit(self):
+        with self.assertRaises(ValueError):
+            gateway.validate_commits({"executionProgress": "COMPLETE", "sourceCommit": {"commitSha": "source"}},
+                                     "source", "target")
+
     def test_pr_lookup_uses_open_pull_request_including_forks(self):
         from unittest.mock import Mock
         cloud = Mock(return_value={"data": [{"id": "pr-id", "attributes": {"number": 42, "isClosed": False}}]})

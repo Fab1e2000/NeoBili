@@ -59,14 +59,16 @@ def build_relationships(cloud, workflow, repository, event, ref):
 
 
 def validate_commits(attributes, expected, destination=None):
-    source = attributes.get("sourceCommit")
-    if source and source["commitSha"] != expected:
+    source = (attributes.get("sourceCommit") or {}).get("commitSha")
+    if source and source != expected:
         raise ValueError("Source changed after approval; run the workflow for the new commit")
-    target = attributes.get("destinationCommit")
-    if destination and target and target["commitSha"] != destination:
+    target = (attributes.get("destinationCommit") or {}).get("commitSha")
+    if destination and target and target != destination:
         raise ValueError("Target branch changed; run the workflow against the current target")
     if attributes["executionProgress"] == "COMPLETE" and not source:
         raise ValueError("Completed Cloud build has no source commit")
+    if attributes["executionProgress"] == "COMPLETE" and destination and not target:
+        raise ValueError("Completed Cloud PR build has no target commit")
 
 
 def main():
