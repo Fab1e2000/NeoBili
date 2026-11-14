@@ -6,6 +6,7 @@ MODE=${1:-help}
 usage() {
   echo 'Usage: bash scripts/verify.sh quick|host|offline|targeted|full|network|performance [TestClass[/testMethod] ...]'
   echo 'quick: source boundaries, documentation links, diff whitespace and workflow checks (no Simulator).'
+  echo 'host: workflow scripts + host regression (no Simulator).'
   echo 'offline: host regression; targeted: selected Simulator tests; full: offline + all Simulator regression.'
   echo 'network and performance are explicit specialist checks; full does not run them.'
 }
