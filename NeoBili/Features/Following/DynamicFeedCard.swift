@@ -4,7 +4,7 @@ import NeoBiliDomain
 import SwiftUI
 
 /// 把点赞观察和可见性任务限制在行内，避免牵动整个动态列表及头像条。
-/// 每行仍以动态 ID 为身份，展开正文、投票和转场状态不会串到其他动态。
+/// 每行使用动态 ID，展开正文、点赞和转场状态随该动态保存。
 struct DynamicFeedCard: View {
     let entry: DynamicEntry
     let feed: DynamicFeedModel

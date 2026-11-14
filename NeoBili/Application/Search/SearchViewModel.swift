@@ -28,7 +28,6 @@ final class SearchViewModel {
         }
     }
 
-    /// 打字过程中的候选词。
     private(set) var suggestions: [SearchSuggestion] = []
     private(set) var results: [SearchResultItem] = []
     /// 每次首批结果发布时递增，让相同关键词的重新搜索也能触发进入动画。
@@ -65,18 +64,16 @@ final class SearchViewModel {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// 输入内容和上次搜过的词不一样，说明用户正在打新的词，
-    /// 这时页面显示联想词而不是上一次的搜索结果。
+    /// 输入非空且不同于已提交关键词时，提供新的搜索建议。
     var isShowingSuggestions: Bool {
         !trimmedQuery.isEmpty && trimmedQuery != submittedKeyword
     }
 
-    /// 搜过东西了：首页此时把推荐流换成搜索结果。
     var hasSubmittedSearch: Bool {
         !submittedKeyword.isEmpty
     }
 
-    /// 退出搜索（点了「取消」或清空了输入框）：回到什么都没搜过的状态。
+    /// 清除已提交结果和请求状态；输入框内容由调用方管理。
     func reset() {
         searchTask?.cancel()
         searchTask = nil

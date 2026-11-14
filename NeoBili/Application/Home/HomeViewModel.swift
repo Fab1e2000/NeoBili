@@ -109,8 +109,7 @@ final class HomeViewModel {
     private(set) var errorMessage: String?
     private(set) var lastRefreshAt: Int?
     private(set) var reportingIDs: Set<String> = []
-    /// 首页从底部弹出的页面：推荐里的图文卡详情，或卡片菜单里的「访问 UP 主页」。
-    /// 首页没有导航栈，这两种页面都用弹出页打开。
+    /// 首页通过 sheet 打开图文卡详情和「访问 UP 主页」目标。
     var sheet: HomeSheet?
     /// 等用户确认拉黑的 UP 主。
     var pendingBlock: VideoOwner?

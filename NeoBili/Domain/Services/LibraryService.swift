@@ -1,7 +1,5 @@
 import Foundation
 
-/// Library operations available to application state and views.
-/// Values can be replaced per model or view hierarchy without changing global state.
 public struct LibraryService: Sendable {
     public var historyPageOperation: @Sendable (Int, Int) async throws -> HistoryCursorPage = { _, _ in throw ServiceError.unconfigured("Library.historyPage") }
     public var reportWatchProgressOperation: @Sendable (String, Int, Double, UUID) async throws -> Void = { _, _, _, _ in throw ServiceError.unconfigured("Library.reportWatchProgress") }

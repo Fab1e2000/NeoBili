@@ -3,10 +3,7 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 观看历史，游标翻页。
-///
-/// 结构与首页保持同构（ScrollView + 卡片 Button + 转场源直接挂在
-/// Button 上），这样点开/退出视频页的 zoom 动效和首页完全一致。
+/// 观看历史按游标分页；转场源挂在每张卡片的 Button 上。
 struct HistoryView: View {
     /// 作为底部标签页的根页面挂载（不显示刷新按钮）。
     var isTabRoot = false
@@ -386,13 +383,7 @@ struct HistoryView: View {
         }
     }
 
-    /// 删除一条历史。
-    ///
-    /// 先把卡片移走，再发请求。原来是等接口回来才移，网络往返那几百毫秒里
-    /// 卡片一直杵在那儿，看起来就是「点了没反应，过一会儿才消失」。
-    /// 失败时按原位放回去并说明原因。
-    ///
-    /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
+    /// 先移除卡片并提供撤销窗口，确认后提交删除；失败时恢复尚未删除的条目。
     private func delete(_ item: HistoryItem) async {
         guard !isRemovingSelected, !refresh.isRefreshing, items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
         let sessionID = account.sessionID

@@ -3,8 +3,8 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 与推荐、直播、关注一致的列表手动刷新：自绘短距离下拉（距离见「推荐流」设置），松手后旧内容
-/// 淡出，请求同时进行，淡出和请求都结束后一次换上新内容；全程没有系统转圈。
+/// 共用的短距离下拉刷新，阈值来自「浏览 → 滚动与防误触」。
+/// 松手后旧内容淡出与请求并行，均完成后提交新内容，不显示系统转圈。
 ///
 /// 页面只提供三件事：`fetch` 取回新数据但先不显示，`commit` 把它换进列表，`discard` 放弃它。
 /// 动作跑在控制器自己持有的任务里，列表内容变化不会取消请求。
@@ -79,7 +79,7 @@ final class ListRefreshController {
     }
 }
 
-/// 放在 ScrollView 内容的背景里，观察现有滚动手势，达到「推荐流」设置的距离时触发刷新。
+/// 观察现有滚动手势，达到「滚动与防误触」设置的距离后触发刷新。
 struct ListPullRefresh: View {
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     let enabled: Bool

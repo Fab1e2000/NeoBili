@@ -5,8 +5,8 @@ import SwiftUI
 
 /// 全屏的视频页。
 ///
-/// 它本身不持有播放器；视频、详情、评论和滚动状态由 `NowPlayingStore` 管理。
-/// 页面退出时根据小窗设置继续播放，播放器不会随页面销毁。
+/// 视频、详情、评论和滚动状态由 NowPlayingStore 管理。
+/// 退出转场结束后，按缩略播放器设置继续或结束播放。
 struct VideoPage: View {
     @Environment(\.appThemeColor) private var themeColor
     @Environment(NowPlayingStore.self) private var store
@@ -39,11 +39,7 @@ struct VideoPage: View {
         )
     }
 
-    /// 全屏按钮切换后，方向请求和旋转动画本身要花几百毫秒才能完成，这期间
-    /// 按钮还停在原处。如果这时候又收到一次点击（不管是手误，还是屏幕边缘
-    /// 的系统手势识别把同一次触摸判成了两次），会在动画走到一半时把方向
-    /// 请求整个反过来——表现就是刚进全屏又立刻退出，画面停在切换中间的
-    /// 尺寸上。这个时间窗内忽略掉多余的点击。
+    /// 方向请求完成前忽略重复全屏点击，避免旋转中途反向切换。
     @State private var lastFullScreenToggle = Date.distantPast
     private static let fullScreenToggleCooldown: TimeInterval = 0.6
 
@@ -443,17 +439,11 @@ struct VideoPage: View {
     }
 
     private func finishVideoCollapse() {
-        // 松手后的距离由滚动桥接器按列表减速率继续消费，不做端点吸附。
+        // 松手后继续读取原生列表的减速偏移，不额外驱动减速或端点吸附。
     }
 
-    /// 简介和评论并排放在一个横向分页容器里。
-    ///
-    /// 这里特意不用 `.page` 样式的 TabView：`indexDisplayMode` 设成 `.never`
-    /// 只是隐藏圆点，系统仍然在底部保留着它们原来占的那份空间，视频页最下面
-    /// 因此始终留着一条空白。改成手动分页的 ScrollView 就没有这份保留区域。
-    /// 上面那条选项栏和它共用同一个选中状态，所以滑动内容时指示条跟着滑，
-    /// 点选项栏时内容也滑过去；`.scrollTargetBehavior(.paging)` 负责手指按住
-    /// 时内容跟走、松手回弹或翻页、边界阻尼这些原来 `.page` 样式自带的手感。
+    /// 简介和评论使用原生横向 ScrollView 分页，与选项栏共享选中状态。
+    /// 容器不预留页码指示器区域，纵向滚动仍由各自列表持有。
     private var sectionPages: some View {
         @Bindable var store = store
 

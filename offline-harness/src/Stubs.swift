@@ -27,7 +27,7 @@ actor VideoPreparationCache {
     }
 }
 
-/// AccountStore（依赖 SwiftUI/Network）里的凭据快照，测试只需要这个形状。
+/// 宿主测试所需的账号凭据快照，字段对应 Domain 的 AccountSessionClient 契约。
 struct AccountCredentialsSnapshot: Sendable {
     let hasCredentials: Bool
     var hasAppCredential = false

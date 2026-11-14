@@ -12,19 +12,13 @@
 首次appearance经每次binding的TakeCount(1)派发refetch，手动刷新与底部分页独立；
 不能概括为进程全局once，也不能由动作派发推定请求已通过reducer门禁。
 
-Neo的[BiliAPI+WatchLater](../../../NeoBili/Data/Networking/Endpoints/BiliAPI+WatchLater.swift)用旧网页
-list/add/del端点，当前列表一次读取，无v2分页。[WatchLaterView](../../../NeoBili/Features/Library/WatchLaterView.swift)
-以空列表且非loading决定初次加载，refreshable另触发reload；删除先乐观移除，撤销
-窗口确认后await HTTP，失败回滚。菜单添加await业务成功后提示，不采用旧包本地
-observer完成语义。列表回写有loadID/removal revision/取消保护；RootView按账号
-session重建库标签，MineView换号关闭服务弹窗，不能说页面完全没有账号保护。
+当前 [BiliAPI+WatchLater](../../../NeoBili/Data/Networking/Endpoints/BiliAPI+WatchLater.swift)
+使用 App `x/v2/history/toview/v2/list` 的默认排序分支，携带 start_key/split_key。
+[WatchLaterModel](../../../NeoBili/Application/Library/WatchLaterModel.swift) 持有分页、增量去重、
+账号及请求代次，空或重复游标停止分页。刷新先暂存新页，在旧卡淡出后换入。
+列表支持多选；删除在撤销窗口后顺序调用单条 `/del`，失败恢复对应条目，并校验账号会话。
+没有使用尚未接入的 v2 批量删除回执或其他页签。
 
-仍有具体请求边界：add/remove先读csrf，APIClient随后另取Cookie快照，未传
-expectedSessionID；删除在确认后检查账号一次，但成功移除/失败恢复及添加提示没有
-再次绑定账号代际。页面重建/关闭不等于能撤回已发送请求；此处只记录调用边界风险，
-不宣称已实测跨账号写入。若维护这项功能，应保留HTTP失败处理并将账号快照、
-发送前检查和迟到回写关联起来；验证换号、迟到列表/回滚和重复binding。
-
-这是库列表可用性及用户操作一致性问题。尚无证据证明新版分页、删除完成策略或
-WatchLater广告日志是首页个性化推荐必要条件，不因协议差异升级全部接口，也不把
-稍后再看入口的真实播放补成首页卡片点击/曝光；8.89外层账号归属与9.13契约没有新证据。
+添加仍使用网页 `/add`，等待业务成功后提示；端点先读 CSRF，再由 APIClient 获取 Cookie，
+未显式传入 expectedSessionID。该边界应与列表分页和删除的会话保护分别维护。
+稍后再看中的实际播放使用自身入口来源，不生成首页卡片点击或曝光事件。

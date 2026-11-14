@@ -41,24 +41,19 @@ Built with SwiftUI · Liquid Glass on iOS 26 · Powered by MPVKit
 
 ## Why NeoBili
 
-[Bilibili](https://www.bilibili.com) is one of the largest video and live-streaming communities in China. NeoBili is an iPhone client for it written entirely in SwiftUI and Swift 6. It follows iOS conventions and Liquid Glass instead of mirroring a cross-platform design, and it collects no data.
+[Bilibili](https://www.bilibili.com) is one of the largest video and live-streaming communities in China. NeoBili is an iPhone client for it written in Swift 6 with SwiftUI and UIKit. It follows iOS conventions and Liquid Glass instead of mirroring a cross-platform design, and it collects no data.
 
 ## Features
 
-Home supports server-provided large cards with muted previews and optional refresh retention.
-Playback speed is adjustable; Watch Later supports pagination, and library video menus
-provide multi-selection for Watch Later, history, and favorites.
-
-
 ### Discover
 
-- **Two-column feed** that shows cover, length and views at a glance. Tap *Recommended* again to jump to the top, or to refresh when you're already there.
-- **Search** built into the tab bar, with trending searches listed one per line.
+- **Mixed feed** with two-column cards and full-width cards that support muted previews. Refresh keeps previous cards by default; this can be changed in Settings. Tap *Recommended* again to scroll to the top, or refresh when already there.
+- **Search** built into the tab bar. Focusing the field hides history and trending searches; typing shows suggestions.
 - **Content filters** that can hide vertical videos or ones shorter than a set length. Lists are filtered before they appear, so nothing pops in and then disappears.
 
 ### Following & Live
 
-- **Avatar strip** under the title that puts creators who are live or just posted first. Tap one to switch the feed instantly; *All Following* shows everyone you follow on one page.
+- **Avatar strip** under the title that puts creators who are live or just posted first. Tap one to switch the feed instantly; *All Following* provides a paginated list of everyone you follow.
 - **Unread dots synced with Bilibili.** Opening a creator clears the dot and notifies Bilibili the same way the web client does.
 - **LIVE badges** for creators who are streaming. Long-press an avatar to jump into the room.
 - **Dedicated Live tab** with Recommended and Following lists, quality switching, reconnect and sharing. It connects over FLV first and falls back to HLS.
@@ -71,13 +66,15 @@ provide multi-selection for Watch Later, history, and favorites.
 - **Fits every aspect ratio.** The player follows each video's real shape, vertical videos shrink as you swipe up, and playback position is remembered per video and per part.
 - **Gestures** for brightness, full screen and volume, with adjustable zone boundaries. Swipe horizontally to seek.
 
+- **Playback speed and library tools.** Adjustable playback speed, paginated Watch Later, and multi-selection for Watch Later, history, and favorites.
+
 ### Make it yours
 
 - **24 theme colors**, each with a matching home-screen icon.
-- **Title bar** that stays pinned or scrolls away, the same on every main page.
+- **Native title bars** across main pages, with scroll minimization on iOS 27 and later.
 - **Tab bar** you can reorder, hide tabs in, or pick a launch tab for. Watch Later, Favorites and History can be tabs too.
 - **English and Chinese UI**, following the system language by default. English uses Bilibili's own terms (UP, Danmaku, Coin).
-- **Fine-tuning**: 7 text sizes, per-page card animations, pull-to-refresh distance, and a left-edge guard against accidental taps.
+- **Fine-tuning**: 7 text sizes, default or serif typography, per-page card animations, pull-to-refresh distance, and a left-edge guard against accidental taps.
 
 The [user guide](docs/USAGE.md) describes every setting in detail (currently in Chinese).
 
@@ -119,8 +116,8 @@ Run (`⌘R`) uses Debug; Test (`⌘U`) uses the isolated Regression configuratio
 ```sh
 bash scripts/simulator.sh list
 bash scripts/simulator.sh run
-bash scripts/simulator.sh test
-zsh offline-harness/run.sh
+bash scripts/verify.sh quick
+bash scripts/verify.sh full
 ```
 
 The [development and testing guide](docs/DEVELOPMENT.md) defines simulator selection,

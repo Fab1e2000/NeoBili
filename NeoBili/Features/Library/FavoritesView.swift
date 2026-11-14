@@ -211,9 +211,7 @@ struct FavoritesView: View {
     }
 }
 
-/// 单个收藏夹里的内容。卡片沿用搜索页/相关视频页的 `VideoListCard`，
-/// 结构与首页同构（ScrollView + Button + 转场源紧跟 buttonStyle），
-/// 保证 zoom 动效和首页完全一致。
+/// 收藏夹视频使用 VideoListCard；转场源直接挂在卡片 Button 上。
 struct FavoriteFolderView: View {
     @Environment(\.applicationServices) private var services
     let folder: FavFolder

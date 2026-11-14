@@ -31,7 +31,7 @@ struct RootView: View {
     /// 内容过滤同样在根视图转成环境值，所有列表即时响应设置变化。
     @AppStorage(PortraitVideoFilterSettings.storageKey) private var hidesPortraitVideos = PortraitVideoFilterSettings.defaultValue
 
-    /// 主页面切换特效：新页面内容淡入，快慢用设置页那条「进入」滑杆。
+    /// 主页面切换只为新内容淡入；速度由 AnimationSpeedSettings 固定。
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.pageEnterKey) private var pageEntranceEnabled = CardAnimationSettings.defaultValue
@@ -170,11 +170,7 @@ struct RootView: View {
         nowPlaying.openLive(room, from: sourceID)
     }
 
-    /// TabView 的 selection 走这个代理：内容和高亮照常立刻切换，
-    /// 只给新页面补一段淡入。
-    ///
-    /// 旧页面没有淡出——TabView 的内容按选中项懒建，切换那一刻它已经不在视图树里了。
-    /// 要让它淡出就得推迟切换，而推迟多久高亮就滞后多久，点起来不跟手。
+    /// 选择与标签高亮立即切换，只为新页面内容添加淡入。
     private var tabSelection: Binding<MainTab> {
         Binding(
             get: { displayedTab },

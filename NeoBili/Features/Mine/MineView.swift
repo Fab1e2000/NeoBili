@@ -3,8 +3,7 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 「我的」页面，由推荐页头像以卡片形式打开。未登录时给登录入口，
-/// 登录后展示个人信息与收藏、历史、稍后再看、系统设置等入口。
+/// 由主页面右上角头像打开的个人面板，提供账号、资料库和设置入口。
 struct MineView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AccountStore.self) private var account
@@ -146,12 +145,7 @@ struct MineView: View {
         }
     }
 
-    /// 个人信息卡片。
-    ///
-    /// 头像居中放大、名字单独占一行，等级 / 大会员 / 硬币收成一排 chip 摆在下面。
-    /// 之前是「左头像 + 右两行」的列表行样式：名字要和大会员徽章抢同一行的宽度，
-    /// 名字一长就被压缩，等级和硬币又挤在第二行，几种字号和圆角混在一起。
-    /// 竖排之后每一层只承担一件事，长名字也不会挤到徽章。
+    /// 个人资料竖排展示，昵称与等级、会员和硬币徽章各占一行。
     private func profileCard(_ profile: AccountStore.Profile) -> some View {
         VStack(spacing: 12) {
             BiliImage(url: profile.secureAvatarURL)
@@ -188,8 +182,7 @@ struct MineView: View {
         )
     }
 
-    /// 卡片下方那排小标签。三个徽章共用同一套字号、内边距和圆角，
-    /// 高度才会一致——原来等级和大会员是两套数值，并排时上下差半格。
+    /// 资料徽章共用字号、内边距和圆角。
     private func badge(
         _ text: String,
         background: Color,

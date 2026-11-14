@@ -1,7 +1,5 @@
 import Foundation
 
-/// Live operations available to application state and views.
-/// Values can be replaced per model or view hierarchy without changing global state.
 public struct LiveService: Sendable {
     public var recommendedOperation: @Sendable (Int) async throws -> LiveRoomPage = { _ in throw ServiceError.unconfigured("Live.recommended") }
     public var followedOperation: @Sendable (Int) async throws -> LiveRoomPage = { _ in throw ServiceError.unconfigured("Live.followed") }

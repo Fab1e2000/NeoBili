@@ -238,8 +238,7 @@ final class PlayerPlaybackTests: XCTestCase {
         )
     }
 
-    /// mpv/FFmpeg 什么编码都能解，这里的偏好只是"同画质下优先选兼容性、
-    /// 硬解效率更好的编码"，不是能不能播的问题。
+    /// Verify the local codec preference among tracks with equal quality; decoder support is exercised separately.
     func testDeclaredFeedAudioCapabilityUsesDolbyExtensionTrack() throws {
         let video = makeDashStream(codecs: "av01.0.08M.08", bandwidth: 3_000_000)
         let audio = DashStream(id: 30250, baseUrl: "https://cdn.example/dolby.m4s", backupUrl: nil,

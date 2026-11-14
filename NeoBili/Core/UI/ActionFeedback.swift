@@ -3,11 +3,7 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 全局的一句话操作反馈。
-///
-/// 「加入稍后再看」「已取消收藏」这类提示到处都要用，如果每个页面各自养一个
-/// `@State` + `.alert`，同一段样板会在五六处重复。这里统一放在根视图上弹一次，
-/// 各处只管往里写文案。
+/// 根页面和媒体详情共用的一句话操作反馈。
 @MainActor
 @Observable
 final class ActionFeedback {
@@ -75,14 +71,7 @@ final class ActionFeedback {
     }
 }
 
-/// 把一句话反馈画成浮层。
-///
-/// 这里**不能**用 `.alert`。视频页是根视图用 `fullScreenCover` 弹出来的，而在
-/// 根视图上再présenter一个 alert 时，SwiftUI 会先把已有的 cover 关掉——表现就是
-/// 长按卡片加稍后再看之后整个视频页被弹走、提示也没看见，播放器在半途被拆掉，
-/// 再进去就只剩声音没有画面。alert 同样会打断列表删除时正在跑的动画。
-///
-/// 浮层是非模态的，不参与「谁该被 present」的争夺，上面两个问题都不会发生。
+/// 非模态反馈浮层，避免打断媒体详情的 fullScreenCover 和列表动画。
 struct ActionFeedbackOverlay: ViewModifier {
     @Environment(ActionFeedback.self) private var feedback
 
@@ -130,10 +119,7 @@ extension View {
     }
 }
 
-/// 放进视频卡片 `contextMenu` 里的「稍后再看」。
-///
-/// 首页、搜索、相关视频、收藏、历史五处都要这一项，做成独立视图后各处只写
-/// 一行；登录检查和提示文案也就只有一份。
+/// 视频卡片菜单共用的「稍后再看」操作，集中处理登录检查和结果提示。
 struct WatchLaterMenuButton: View {
     @Environment(\.applicationServices) private var services
     /// 稿件 avid。搜索结果没有 avid，只能靠 bvid。两者给一个即可。
@@ -165,12 +151,7 @@ struct WatchLaterMenuButton: View {
 }
 
 extension Error {
-    /// 这次失败是不是「请求被取消」。
-    ///
-    /// 下拉刷新的闭包跑在 SwiftUI 自己的任务里，列表内容变化时这个任务会被取消，
-    /// URLSession 随之抛出取消错误。它不是真的失败，却会被写进错误状态，于是
-    /// 页面弹出「加载失败」——而用户点一下「重试」（一个不受牵连的新任务）就成功了。
-    /// 凡是要落进错误提示的地方，先用它把这种情况滤掉。
+    /// 统一识别 Swift 任务取消与 URLSession 取消，调用方据此跳过错误提示。
     var isCancellation: Bool {
         if self is CancellationError { return true }
         let nsError = self as NSError

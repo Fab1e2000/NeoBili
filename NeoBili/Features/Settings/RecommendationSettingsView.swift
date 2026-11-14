@@ -48,7 +48,7 @@ struct RecommendationSettingsView: View {
         }
     }
 
-    /// App 推荐要有 App 登录凭据才会按账号个性化；只有 Cookie 时可以在这里换一份。
+    /// 缺少 App 凭据时打开当前账号的短信授权表单。
     @ViewBuilder
     private var appCredentialRow: some View {
         if account.hasAppCredential {

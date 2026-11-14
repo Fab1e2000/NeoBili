@@ -3,8 +3,7 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 账号密码登录。B 站网页端登录必须先过一次极验滑块，所以流程是：
-/// 取公钥加密密码 → 取极验参数 → 弹滑块 → 提交登录。
+/// 保留的密码登录页面，供旧流程回归；当前账号界面只呈现 SMSLoginSheet。
 struct PasswordLoginSheet: View {
     @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account

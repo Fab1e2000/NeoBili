@@ -3,23 +3,15 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 动态卡片的排版参数。
 enum DynamicCardLayout {
-    /// 卡片与屏幕左右边缘的距离。
     static let pageHorizontalInset: CGFloat = 8
     /// 上下两张卡片之间的半间距。
     static let cardVerticalSpacing: CGFloat = 4
-    /// 卡片内容与卡片边缘的距离。
     static let contentInset: CGFloat = 10
-    /// 卡片圆角。
     static let cardCornerRadius: CGFloat = 7
-    /// 封面和图片的圆角。
     static let imageCornerRadius: CGFloat = 4
-    /// UP 主头像直径。
     static let avatarSize: CGFloat = 32
-    /// 九宫格图片之间的距离。
     static let gridSpacing: CGFloat = 4
-    /// 正文收起时显示几行。
     static let collapsedTextLines = 6
     /// 超过这个字数才显示「展开」。太短的正文没必要多一个按钮。
     static let textExpandThreshold = 120

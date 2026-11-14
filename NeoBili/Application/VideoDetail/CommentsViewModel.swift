@@ -233,7 +233,7 @@ final class CommentsViewModel {
     }
 
     func shouldShowAllReplies(_ comment: Comment) -> Bool {
-        // The name now opens a profile; retain a separate entrance even for a short thread.
+        // 回复详情使用独立入口，避免与昵称的个人主页跳转冲突。
         replyErrors[comment.id] != nil || replyCount(for: comment) > 0
     }
 

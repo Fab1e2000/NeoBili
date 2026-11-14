@@ -236,33 +236,23 @@ private struct HomeFeedStatusOverlay: View {
     }
 }
 
-/// 首页双列视频卡片的尺寸参数。
 enum HomeCardLayout {
-    /// 页面左右留白。
     static let horizontalInset: CGFloat = 8
-    /// 左右两列之间的距离。
     static let columnSpacing: CGFloat = 8
-    /// 上下两行之间的距离。
     static let rowSpacing: CGFloat = 10
-    /// 网格顶部和底部的留白。
     static let verticalInset: CGFloat = 10
     /// 推荐封面保持 4:3。
     static let coverAspectRatio: CGFloat = 4.0 / 3.0
-    /// 封面上方两个角的圆角，和卡片本身的圆角一致。
     static let coverCornerRadius: CGFloat = 7
     /// 标题和 UP 主所在白色区域的固定高度。
     static let detailsHeight: CGFloat = 81
-    /// UP 主头像的尺寸。
     static let avatarSize = CGSize(width: 16, height: 16)
-    /// 文字区左右留白。
     static let detailsHorizontalPadding: CGFloat = 8
 
-    /// 标题可用的宽度。
     static func titleWidth(for pageWidth: CGFloat) -> CGFloat {
         max(0, columnWidth(for: pageWidth) - detailsHorizontalPadding * 2)
     }
 
-    /// 单列宽度，也是封面的宽度。
     static func columnWidth(for pageWidth: CGFloat) -> CGFloat {
         max(0, pageWidth - horizontalInset * 2 - columnSpacing) / 2
     }

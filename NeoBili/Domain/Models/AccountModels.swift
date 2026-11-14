@@ -132,8 +132,7 @@ public struct FavMedia: Decodable, Identifiable, Hashable, Sendable, VideoDimens
 // MARK: - 历史（x/web-interface/history/cursor）
 
 public struct HistoryCursorPage: Decodable, Sendable {
-    /// 大坑：文档写的是 `items`，实际接口返回的键名是 `list`
-    /// （PiliPlus 也是按 `list` 解析的）。两个键都解，谁在用谁。
+    /// 历史列表优先读取 list，并兼容 items。
     public let items: [HistoryItem]?
     public let list: [HistoryItem]?
     public let cursor: Cursor?
@@ -197,7 +196,7 @@ public struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDim
 
     public var id: String { "\(history.business ?? "?")-\(history.oid ?? 0)" }
 
-    /// 有的条目 title 是「已清空的稿件」之类的占位文本，真正标题在 long_title。
+    /// title 为空时使用 longTitle。
     public var displayTitle: String {
         let fallback = longTitle ?? ""
         return title.isEmpty ? fallback : title
@@ -206,12 +205,7 @@ public struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDim
     /// 只展示普通视频稿件（business == "archive"）；直播/专栏等打不开详情页。
     public var isVideo: Bool { history.business == "archive" && history.bvid?.isEmpty == false }
 
-    /// 删除单条历史用的 kid 字符串：优先用接口直接给的值，
-    /// 缺失时按 `<type>_<oid>` 自行拼接（archive 的 type 是 3）。
-    /// 删除历史时要传的 kid。
-    ///
-    /// 格式是「业务名_条目号」，例如 `archive_114514`——普通视频的业务名就是
-    /// `archive`。之前传的是裸数字（或者拿 `type` 当前缀），接口一律回 -400。
+    /// 删除历史的 kid 格式为「业务名_条目号」；条目号优先使用 kid，缺失时使用 history.oid。
     public var kidParam: String {
         let business = history.business ?? "archive"
         return "\(business)_\(kid ?? history.oid ?? 0)"

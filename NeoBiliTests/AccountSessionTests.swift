@@ -131,8 +131,7 @@ final class AccountSessionTests: XCTestCase {
 
         XCTAssertEqual(items.count, 2)
         let video = try XCTUnwrap(items.first)
-        // 删除接口要的是「业务名_条目号」。这条断言原先写的是 "3_12345"（拿 type
-        // 当前缀），把一个会让服务端回 -400 的格式当成了正确答案。
+        // 删除参数使用业务名作为前缀，例如 archive_12345。
         XCTAssertEqual(video.kidParam, "archive_12345")
         XCTAssertTrue(video.isVideo)
         XCTAssertEqual(video.asVideoSummary?.cid, 777)

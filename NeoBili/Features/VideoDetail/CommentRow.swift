@@ -3,8 +3,7 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 单条评论。`internal` 而不是 `private`，因为楼中楼那块的上下间距要靠
-/// `CommentSpacingTests` 渲染出来实测——这处间距已经错过两回，靠读代码判断不可靠。
+/// 单条评论；保留内部可见性供布局测试直接托管生产组件。
 struct CommentRow: View {
     let comment: Comment
     let viewModel: CommentsViewModel
@@ -154,10 +153,7 @@ struct ExpandableCommentMessage: View {
 
     // MARK: - 正文展开折叠
 
-    /// 正文和「展开」按钮。
-    ///
-    /// 以前这里是个返回两个视图的 ViewBuilder，交给外层 VStack 去排；现在收成
-    /// 一个 VStack，外层每一段的间距才能一眼看清。
+    /// 正文与展开按钮使用独立 VStack，统一管理它们与外层区块的间距。
     var body: some View {
         VStack(alignment: .leading, spacing: CommentLayout.textVerticalSpacing) {
             messageBody

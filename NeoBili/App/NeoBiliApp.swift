@@ -34,15 +34,12 @@ struct NeoBiliApp: App {
         AppFont.applyChromeAppearance()
         _ = RecommendationSourcePreference.launched
 
-        // 封面/头像的压缩数据完全依赖 URLSession 的 HTTP 缓存（解码位图另有
-        // 内存缓存）。系统默认 URLCache 只有几百 KB 内存 / 10MB 磁盘，feed 场景
-        // 必然抖动回源；放大后回滚列表和二次进页直接命中磁盘。
+        // 封面与头像的压缩响应由 AppNetwork.session 的 URLCache 缓存；解码位图使用独立内存缓存。
         URLCache.shared = URLCache(memoryCapacity: 64 * 1024 * 1024,
                                    diskCapacity: 256 * 1024 * 1024,
                                    directory: nil)
 
-        // 设备标识和 WBI 签名密钥是每个接口都要用的前置条件。
-        // 启动时先在后台取好，第一批推荐和第一个视频就不用排在它们后面。
+        // 后台预热网页设备标识和 WBI 密钥，减少首次需要它们的请求等待。
         if !isTestHost, !identityResetFailed, !capturedDeviceUnavailable {
             RecommendationExperiment.configure(environment: ProcessInfo.processInfo.environment)
             DeviceIdentity.shared.warmUp()

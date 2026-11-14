@@ -1,9 +1,7 @@
 name: Build
 
 on:
-  # 功能分支经 PR 合入 develop，发布再经 PR 合入 main；只在 PR 时测试，
-  # 避免同一提交被「推送」和「PR」各跑一遍、合并后推送 main 再跑一遍。
-  # 推送版本标签时由 release.yml 负责构建。
+  # PR 与手动运行执行回归；版本标签由 release.yml 构建。
   pull_request:
   workflow_dispatch:
 
@@ -13,8 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 构建和回归合为一个任务：`verify.sh full` 本身就会编译 App、Domain/Core/Data 模块并跑完整测试。
-  # 应用用到 iOS 27 SDK 的 API，所以只支持 Xcode 27；Xcode 27 目前在 `xcode-27` runner 上（预览）。
+  # 完整验证会编译 App 及 Domain/Core/Data；导航栏 API 需要 iOS 27 SDK。
   regression:
     name: Build and deterministic regression (Xcode 27.1)
     # 仓库所有者在本仓库分支上提的 PR 使用没有保护规则的 ci-trusted，直接运行；
@@ -37,8 +34,7 @@ jobs:
           import json, os
           with open(os.environ["RUNNER_TEMP"] + "/neobili-simulators.json") as source:
               devices = json.load(source)["devices"]
-          # iOS 27.1 runtime 目前只带 iPhone Duo（折叠机型，没有顶部安全区），
-          # 依赖真机顶部安全区的布局测试在它上面无法成立；与本地一致，用 iOS 27 的标准 iPhone。
+          # 选择标准 iPhone，排除 Duo；布局回归使用带顶部安全区的机型。
           candidates = [(runtime, d) for runtime, ds in devices.items()
                         if runtime.endswith((".iOS-27-0", ".iOS-27-1"))
                         for d in ds if d.get("isAvailable") and d["name"].startswith("iPhone")

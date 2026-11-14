@@ -3,9 +3,7 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 按官方 v2 游标分页加载；批量操作只覆盖明确选中的条目。
-/// 卡片沿用搜索页/相关视频页的 `VideoListCard`，结构与首页同构
-/// （ScrollView + Button + 转场源紧跟 buttonStyle），zoom 动效和首页一致。
+/// 稍后再看按 v2 游标分页，批量操作只覆盖选中条目；转场源挂在卡片 Button 上。
 struct WatchLaterView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(AccountStore.self) private var account

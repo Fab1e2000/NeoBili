@@ -6,14 +6,14 @@
 
 | 分类 | 设置 |
 | --- | --- |
-| 外观 | 主题色、文字大小、语言、动画 |
+| 外观 | 主题色、文字大小、字体风格、语言、动画 |
 | 浏览 | 标签栏、内容过滤、推荐流、滚动与防误触 |
 | 播放 | 播放与画质、弹幕、播放器手势、控件位置 |
 | 账号 | 登录和账号管理 |
 | 高级 | 设备编号；Debug 构建另有推荐实验日志 |
 | 关于 | 应用信息 |
 
-内容过滤是筛选条件的统一入口，包括通用的画幅/时长，以及推荐专用的点赞率、播放量和关键词。推荐流页面只管理来源、授权和观看记录，并提供同一推荐过滤页的快捷入口。移动入口不改存储键、默认值或已有偏好。
+内容过滤是筛选条件的统一入口，包括通用的画幅/时长，以及推荐专用的点赞率、播放量和关键词。推荐流页面管理来源、短信授权、刷新后保留上次数据及分隔提示，并提供推荐过滤页的快捷入口。移动入口不改存储键、默认值或已有偏好。
 
 新增目的地时同时更新 `SettingsDestination`、类别列表和 `SettingsView.destinationView`；目的地标识用于无障碍和测试，应保持稳定。
 
@@ -50,6 +50,7 @@
 
 动态单卡支持退出；关注刷新后整列进入使用独立的 `dynamicRefreshEnterKey`，不受旧单卡
 进入键影响。页面淡入独立控制，系统导航、菜单与 Picker 不受自定义动画总开关影响。
+动画速度由 `AnimationSpeedSettings` 固定为进入 1.5、退出 4，不提供速度设置项。
 
 调用 `.videoCardAnimationSource(...)` 时保持列表、过滤批次和动画等待使用同一来源。
 关闭对应效果应立即释放等待任务；不得用动画开关绕过内容过滤或补查。
@@ -59,7 +60,7 @@
 主题、字号、语言由 `AppTheme`、`AppTextSize`、`AppLanguage` 管理。语言在启动时确定，
 修改后重新打开生效；新增界面文字同步维护 String Catalog。
 标签顺序、隐藏与启动页由 `MainTabSettings` 约束。主页面标题没有设置项：推荐、搜索、资料库、关注、直播
-均通过 `rootPageChrome` 使用原生 `inlineLarge` 标题并随下滑收起，头像入口放在导航栏右侧。
+均通过 `rootPageChrome` 使用原生 `inlineLarge` 标题，iOS 27 起启用随滚动收起；头像入口放在导航栏右侧。
 字体风格由 `AppFontStyle` 管理，选项为默认字体和宋体，保存到 `neobili.fontStyle`，启动时确定，
 改动后重新打开生效。宋体使用内置的思源宋体（SIL OFL，Regular 与 SemiBold 两个字重，中等及以下用
 Regular，半粗及以上用 SemiBold），同一套字形覆盖拉丁字母与简体汉字，不依赖系统的中文回退。新代码用
@@ -77,8 +78,8 @@ Regular，半粗及以上用 SemiBold），同一套字形覆盖拉丁字母与�
 网页分支使用 `V8` / `fresh_type=4`。混合模式并行获取两路、移动端优先交错、按视频标识去重，
 两路分别推进分页；单路网络失败保留成功结果并在下次分页重试失败位置，两路结束才停止。
 已登录但缺少 App 凭据时，移动端和混合模式提示授权，不自动改成匿名请求。
-移动端保留现有 iOS 身份、签名及服务器游标，没有移植 BiliPai 的 TV/Android HD 登录身份、
-静态 fingerprint 或 session。此实现是合并策略的 iOS 适配，不代表复现 Android 推荐效果。
+移动端使用统一的 iPhone 国际版身份、签名及服务器游标，详见[账号与请求边界](architecture/accounts.md)。
+网页与混合模式在该账号体系中选择各自的推荐入口。
 参考 [BiliPai 推荐实现](https://github.com/jay3-yy/BiliPai/blob/fba155c985dcf9ba2d4d354ad976f3e89a9f035f/app/src/main/java/com/android/purebilibili/data/repository/VideoRepository.kt)。
 
 ## 设备编号

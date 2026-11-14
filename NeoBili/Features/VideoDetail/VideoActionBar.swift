@@ -3,11 +3,8 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 操作栏的排版参数。只想微调界面时改这几个数字就行。
 private enum VideoActionBarLayout {
-    /// 按钮和下方数字之间的距离。
     static let captionSpacing: CGFloat = 5
-    /// 五颗按钮之间的距离，与标签同一档。
     static let buttonSpacing: CGFloat = 8
     static let buttonHeight: CGFloat = 44
     static let cornerRadius: CGFloat = 12
@@ -17,8 +14,7 @@ private enum VideoActionBarLayout {
     static let captionOpacity: Double = 0.6
 }
 
-/// 点亮状态的配色：浅主题色底，配深一档的主题色图标和数字。
-/// 主题色本身偏浅，直接当前景在浅色底上对比不够，浅色外观下压暗 30%；深色外观下原色已足够亮。
+/// 浅色外观下将主题前景压暗 30%，以保持按钮图标和文字的对比度。
 private enum VideoActionPalette {
     static func background(theme: UIColor) -> UIColor { theme.withAlphaComponent(0.16) }
     static func foreground(theme: UIColor) -> UIColor {
@@ -31,13 +27,7 @@ private enum VideoActionPalette {
     }
 }
 
-/// 视频页的操作栏：点赞、不喜欢、投币、收藏、分享。
-///
-/// 五颗圆角方块等分整行宽度，左右边缘与上方头像、标题、标签对齐，数字写在按钮下面。
-/// 内容里的按钮不用玻璃：平时与标签同色的浅灰填充，点亮后换成浅主题色底配深一档的
-/// 主题色图标。轻点执行；点赞和收藏按住 0.5 秒执行扩展操作。
-///
-/// 按钮里只放图标，数字挪到下方之后，「不喜欢」也能把文字写全，五列的视觉重心一致。
+/// 视频详情操作栏；点赞、收藏的长按动作与轻点动作互斥。
 struct VideoActionBar: View {
     @Environment(\.appThemeColor) private var themeColor
     let likeCount: Int

@@ -1,9 +1,6 @@
 import SwiftUI
 
-/// The video surface plus our own `PlayerControlsOverlay` — no system
-/// transport chrome. `VideoDetailView` reuses this same instance for both the
-/// inline and fullscreen states, just resizing it —
-/// that's what keeps playback uninterrupted across the transition.
+/// 视频渲染层与自绘控件。VideoPage 在内联和全屏布局间保留同一播放会话。
 struct InlineVideoPlayer: View {
     let viewModel: PlayerViewModel
     @Binding var controlsVisible: Bool

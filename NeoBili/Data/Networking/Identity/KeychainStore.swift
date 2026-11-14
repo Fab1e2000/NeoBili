@@ -2,8 +2,7 @@ import Foundation
 import Security
 import Synchronization
 
-/// 极小的 Keychain 封装，只用来保存登录凭据（SESSDATA / bili_jct / DedeUserID）。
-/// buvid 这类设备标识留在 UserDefaults；登录态是真正的敏感凭据，必须进 Keychain。
+/// Keychain 存取封装，用于登录凭据和服务端票据；普通设备偏好保存在 UserDefaults。
 enum KeychainStore {
     private static let service = AppNetwork.isRegression ? "com.elsterlee.NeoBili.regression" : "com.elsterlee.NeoBili"
 

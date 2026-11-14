@@ -38,12 +38,7 @@ final class NetworkingStartupTests: XCTestCase {
     }
     // MARK: - WBI 查询值转义
 
-    /// 签名和真正发出去的 URL 必须用同一套转义，而且要和服务端重算时用的
-    /// 规则（encodeURIComponent：只放行字母数字和 `-_.~`）一致。
-    ///
-    /// 以前这里放行了 `, : / +`，`dm_img_inter` 里的逗号冒号就没被转义，
-    /// 我们算的摘要和服务端算的对不上；宽松接口照常返回数据，UP 主投稿列表
-    /// 这种严格接口直接回 -403。
+    /// 签名与实际 URL 使用同一套 WBI 转义，仅保留字母、数字与 -_.~。
     func testWBIQueryValueEncodingMatchesReferenceImplementation() throws {
         func encoded(_ value: String) throws -> String {
             try XCTUnwrap(value.addingPercentEncoding(withAllowedCharacters: .wbiQueryValueAllowed))

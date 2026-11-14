@@ -9,14 +9,8 @@
 本节把此前点名的各条线索逐条收敛。分类只有三种，结论各自带证据版本
 （8.89 静态 / 9.13 抓包 / 本地实测 / 当前源码）；顺序不代表优先级。
 
-本轮消费的官方侧新证据来自 S1 各区的证据明细（`DerivedData/Validation/team-t1`、
-`team-t2`、`team-g1`、`team-g3` 的 findings，含 t1/t2 第二轮与 g3 尾部），本文只引用其中的
-地址与指令结论，并另行核对 NeoBili 源码侧调用；findings 里的复现命令不在此重复。
-独立验证席位（`DerivedData/Validation/team-g2/verify-report.md`，含第二轮）复核了本文与本轮
-证据：基线抽样 0 错误；增量结论可复现 35／部分 5／**不可复现 1**／未复核 1；R01–R25 齐全、
-相对链接无死链、未发现证据等级被越权提升。其中不可复现的一条（Q4/V20）是“`setCanceled:`
-不主动置位”，已按反证改写（见 R12 与「已闭合」表）；Q3 指出 R11 编号证据只到“存在 +1
-循环”，已收敛为 P0 残余；Q5/Q6 属协议文档覆盖清单措辞，已由对应席位处理。
+官方侧证据按原研究目录的函数地址、字段及版本引用；下表保留独立复核后的结果。
+当前产品接入状态集中在[实现与协议差异](differences.md)，研究问题按功能需要继续追踪。
 
 - **已闭合**：源码锚点与官方侧锚点齐备，判定可直接引用，不再单列。
 - **明确残余**：仍缺一侧证据，写出下一步可执行动作；缺证据处不补结论。
@@ -26,8 +20,8 @@
 
 | 条目 | 证据（源码 + 官方锚点） | 现判定 |
 | --- | --- | --- |
-| 普通网络刷新与缓存恢复的 compactMap 编号 | 8.89 HD回调0x10df59978、Swift DataFactory 0x101a3e1dc→0x101a4340c→0x101a3e5a4、缓存恢复同链；源码 [AppRecommendationPage](../../../NeoBili/Data/Networking/Recommendation/AppRecommendationPage.swift) | NeoBili 不保存批次/原下标是已证事实，不是缺证据；9.13 编号选择机制另见残余（R11/R20） |
-| 播放 stash、tracker 继承与时间回执的差异 | R13/R16/R17/R22 各自的 8.89 地址与源码锚点（见[源码锚点索引](differences.md#源码锚点索引本轮逐条核查)） | 差异方向与缺失实现已判定；9.13 是否要求这些字段另列残余 |
+| 普通网络刷新与缓存恢复的 compactMap 编号 | 8.89 HD回调0x10df59978、Swift DataFactory 0x101a3e1dc→0x101a4340c→0x101a3e5a4、缓存恢复同链；源码 [AppRecommendationPage](../../../NeoBili/Data/Networking/Recommendation/AppRecommendationPage.swift) | NeoBili 已保留过滤前 1-based 原始下标，未建立独立官方批次编号；9.13 编号选择机制另见残余（R11/R20） |
+| 播放 stash、tracker 继承与时间回执的差异 | R13/R16/R17/R22 各自的 8.89 地址与源码锚点（见[源码锚点索引](differences.md#源码锚点索引本轮逐条核查)） | 移动起播时间回执已接入；观看 stash 和 tracker 继承仍未实现，9.13 对应行为另列残余 |
 | 应用定时心跳 | 8.89 Atomic 0x11487eac8、_fireDelegates 0x1149f2f10、startBeating；源码无对应实现（[AppBehaviorEncoder](../../../NeoBili/Data/Networking/Reporting/AppBehaviorEncoder.swift)） | 缺口事实成立且可判定（R23）；不再追同一条链 |
 | Series/HD2 的请求与响应锚点 | 0x10411a640/0x10411a6e4/0x10411af68、HD2 0x10df58a10/0x10df58dfc；见[覆盖清单](../protocols/coverage.md#覆盖清单) | 请求与响应配置层已闭合；Series producer 已由 c2 §5 定位（loadBlocRequest→STLoadBloc requestWith:tab:→共享方法体 0x10411af6c），残余转“线上实验取值/tab 来源” |
 | 三次 feed/index 本地实测 | 本地实测：`DerivedData/Validation/recommendation-network-s1/` | 已闭合到“该端点与参数组合未拒绝错误 sign”；不能升级为签名被校验、ticket 有效或个性化已证 |
@@ -57,8 +51,8 @@
 
 | 条目 | 现有证据 | 下一步可执行动作 |
 | --- | --- | --- |
-| **R11-2 CardData witness +0x40 的字段归属（P0，阻挡曝光定稿；R11-1 已定稿）** | R11-1 定稿：0x101a3ed5c 的 +1 循环在 sub_101A3ECAC，是 Swift 标准库 sort 的归并 run 记账（0x101a3ecd4 `_minimumMergeRunLength`、0x101a3ed18 `_allocateBufferUninitialized`），不写任何卡片字段；`sub_101A3E5A4` 内 0x101a3e95c `add x26,x26,#1` 把 1-based 序号作 x0 传给 CardData 协议 witness 表 +0x40（0x101a3e98c `ldr x28,[x22,#0x40]`、0x101a3e9b0 `blr x28`）。**为什么不可判**：该 requirement 经协议 witness 间接派发，静态无法定位其写入字段 | `disassemble.py 0x101a40040 0x101a40180` 读 compactMap 里 CardData 的 allocObject/init 确定 +0x20/+0x28 是哪个协议 existential；再 `query_index.py '*CardData*WP*' 30` 枚举 +0x40 槽实现并反汇编；真机断点 0x101a3e9b0 读 x28 落到哪个实现 |
-| 设置功能/设置→参数的剩余同步与覆盖 | R01 表已到 8.89 builder 读值层；源码 [AppRecommendationProtocol](../../../NeoBili/Data/Networking/Recommendation/AppRecommendationProtocol.swift) 无对应状态源；T1 已证 gateway append-only 漏斗与组数组驱动，模块内次序可定、跨模块不可静态定序（组件由运行期元数据/witness 装配，无静态顺序表）；334 项表零引用。**为什么不可判**：跨模块次序属运行期；9.13 每项最终规则需抓包 | 追账号同步/覆盖次序与 9.13 每项最终规则；gateway 跨模块次序用运行期打印 `appendClass:` 入参（0x11609919c 下断点），静态映射不是替代 |
+| **R11-2 CardData witness +0x40 的字段归属（官方字段归属待定；NeoBili 原始下标策略已接入）** | R11-1 定稿：0x101a3ed5c 的 +1 循环在 sub_101A3ECAC，是 Swift 标准库 sort 的归并 run 记账（0x101a3ecd4 `_minimumMergeRunLength`、0x101a3ed18 `_allocateBufferUninitialized`），不写任何卡片字段；`sub_101A3E5A4` 内 0x101a3e95c `add x26,x26,#1` 把 1-based 序号作 x0 传给 CardData 协议 witness 表 +0x40（0x101a3e98c `ldr x28,[x22,#0x40]`、0x101a3e9b0 `blr x28`）。**为什么不可判**：该 requirement 经协议 witness 间接派发，静态无法定位其写入字段 | `disassemble.py 0x101a40040 0x101a40180` 读 compactMap 里 CardData 的 allocObject/init 确定 +0x20/+0x28 是哪个协议 existential；再 `query_index.py '*CardData*WP*' 30` 枚举 +0x40 槽实现并反汇编；真机断点 0x101a3e9b0 读 x28 落到哪个实现 |
+| 设置功能/设置→参数的剩余同步与覆盖 | 设置参数研究已到 8.89 builder 读值层；源码 [AppRecommendationProtocol](../../../NeoBili/Data/Networking/Recommendation/AppRecommendationProtocol.swift) 无对应状态源；T1 已证 gateway append-only 漏斗与组数组驱动，模块内次序可定、跨模块不可静态定序（组件由运行期元数据/witness 装配，无静态顺序表）；334 项表零引用。**为什么不可判**：跨模块次序属运行期；9.13 每项最终规则需抓包 | 追账号同步/覆盖次序与 9.13 每项最终规则；gateway 跨模块次序用运行期打印 `appendClass:` 入参（0x11609919c 下断点），静态映射不是替代 |
 | Swift 兴趣选择与重编号范围 | R11-1 已定稿（sub_101A3ECAC 的 +1 循环是 stdlib sort 记账，不写卡片字段）；sub_101A3E5A4 内以 1-based 序号调 CardData witness +0x40，字段归属见上方 P0 行。T2 S-1 把 helper 语义闭合到 `sub_101A538D8` 的三种提前返回与 `setContentOffset:` 调用。**为什么不可判**：编号循环边界未读出；回执账号所有权需运行期样本 | 反汇编 `0x101a53fd0–0x101a55004` 与 `0x101a5a800–0x101a5b600` 读编号循环边界；回执账号所有权追 `setSourceType:` 写入者 |
 | 缓存后端过期与活 VM 取消/账号边界 | R20 已有 flush 门控、key、weak-load 与 commit 点地址；T2 C-10 固定写入点 0x101a5a914（scene/version/expirationTime=0）与 FallbackCache 承接。**为什么不可判**：后端过期语义需服务端确认，跨账号污染未实测 | 过期语义交尾部 FallbackCache 章节（task-6）；本项只保留“活 VM 取消防串扰”追查 |
 | 登记资料的运行期取值与 wire 缺省（三字段/请求/回执/落盘已闭合） | 静态部分见「已闭合」表：classRef 0x11f7f02b8 仅 1 处引用；POST /x/resource/fingerprint；门禁 error nil+HTTP 200+data+bili_deviceId、不校验 code；保存 0x115fd74a4 + Keychain service 3。**为什么不可判**：GPB“未设置的可选标量不写 wire”属库语义推断、本镜像未验证，实际取值需运行期 | 真机断点 dump：`-[BFCDeviceToken serverBUVID]_block` 0x115fd72e4 的 `getDeviceInfo` 返回处读 AES 明文；9.13 抓包核回执字段；见[设备登记与访客生命周期](../protocols/device-registration.md#设备登记与访客生命周期) |
@@ -75,22 +69,14 @@ Neuron 64 MiB 分支可达性（S-6）、心跳文件缓存 TTL/账号过滤（S
 安装方（S-8）、`extendFields` 冲突优先级（S-4）、`sourceType` 写入者（S-3）、
 gateway 跨模块相对次序（T1 R2-1，需运行期 `appendClass:` 入参）、Kotlin 共享 property writer 路径（G3 §2）、
 DD 通知的动态注册路径（G3 §5）与以运行期字符串为参数的整 suite 清除（T1 R2-5）。
-国际版可用于字段关系线索，不能替换中国版身份配置。
+当前 NeoBili 使用国际版请求配置；旧中国版和国际版样本分别保留版本及操作条件。
 
 ### 不成立
 
 | 条目 | 判为不成立的理由 |
 | --- | --- |
-| 语言 cleanup 导航时序 | [LanguageSettingsView](../../../NeoBili/Features/Settings/LanguageSettingsView.swift) 在选择回调里直接 [AppLanguage.apply](../../../NeoBili/Domain/Models/AppLanguage.swift)，没有离开页面才提交的编辑事务；“点击日志≠生效偏好”的差异在 Neo 不存在 |
+| 语言 cleanup 导航时序 | [LanguageSettingsView](../../../NeoBili/Features/Settings/LanguageSettingsView.swift) 在选择回调里直接 [AppLanguage.apply](../../../NeoBili/Application/Settings/AppLanguage+Preferences.swift)，没有离开页面才提交的编辑事务；“点击日志≠生效偏好”的差异在 Neo 不存在 |
 | 画质 UI 实际呈现 | 8.89 静态接线只证明菜单绑定与门禁，不验收 Neo 的画质行为；Neo 画质菜单有自己的状态门禁（R02）。T2 C-11 已把实现类钉到 `BBPlayerVideoQualityListWidget makeQualityData:` 0x114535648、选择回调 0x114536030 与 `_switchToExpectQn:isAuto:needUpdate:preferToast:` 0x11453d23c（另有 UGC/HD2MP 两个同类），但 present 安装方、trial 生命周期与 CURRENT quality 更新仍是 S-10 残余。该链不产生 Neo 实施项；真正的残余是需另行授权的 HDR/权限/解码专项，不靠静态逆向闭合 |
 
-原先另列的四条已由第二批证据闭合官方侧，移入上面的「已闭合」表并在该表注明
-“对 Neo 不构成实施前置”：翻译设置外部清理、设备属性事件到结果缓存失效、
-LatestHistory 可达性/uri 消费、DD 更新结果归属。
-
-9.13 抓包/实测类新的闭合证据会继续按同样规则并入上表；本文不重做整份逆向，收到新证据后
-核对实际调用与最终赋值，再更新相关 R 项判定。
-
-当前覆盖首页请求、身份登记、卡片点击/观看关联、曝光与缓存补发、过滤去重；搜索、
-动态、推送、评论等业务只有在S1证明与这条推荐链有关时才转为实施建议，不建议照搬
-所有网络请求。普通会话跟进不等于后台永久监控或无人值守唤醒。
+当前维护范围包括首页请求、身份登记、点击/观看关联、曝光、持久行为队列和过滤去重。
+搜索、动态、推送及评论各自按对应业务契约维护；跨业务关联需要明确的调用或运行证据。

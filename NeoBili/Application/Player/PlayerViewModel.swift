@@ -494,7 +494,7 @@ final class PlayerViewModel {
         }
     }
 
-    /// 真正离开视频页时立即释放播放器、观察器和网络缓冲，保证声音立刻停止。
+    /// 终止当前播放会话，释放内核、观察器和网络任务。
     func stop() {
         endTemporaryDoubleSpeed()
         guard !isStopped else { return }

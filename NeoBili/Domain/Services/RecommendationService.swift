@@ -1,7 +1,5 @@
 import Foundation
 
-/// Recommendation operations available to application state and views.
-/// Values can be replaced per model or view hierarchy without changing global state.
 public struct RecommendationService: Sendable {
     public var recommendFeedOperation: @Sendable (RecommendationRequest) async throws -> RecommendationBatch = { _ in throw ServiceError.unconfigured("Recommendation.recommendFeed") }
     public var feedDislikeOperation: @Sendable (RecommendationFeedbackOptions, RecommendationFeedbackOptions.Reason, UUID?) async throws -> Void = { _, _, _ in throw ServiceError.unconfigured("Recommendation.feedDislike") }
