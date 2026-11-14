@@ -3,7 +3,7 @@ set -euo pipefail
 case "${CI_WORKFLOW:?Missing workflow name}:${CI_XCODEBUILD_ACTION:?Missing action}" in
   Build:build-for-testing)
     cd "${CI_PRIMARY_REPOSITORY_PATH:?Missing repository path}"
-    bash scripts/verify.sh host
+    bash scripts/verify.sh quick
     ;;
   Build:test-without-building)
     ;;

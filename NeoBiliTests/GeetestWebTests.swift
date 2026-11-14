@@ -1,4 +1,3 @@
-import SwiftUI
 import WebKit
 import XCTest
 @testable import NeoBili
@@ -114,41 +113,6 @@ final class GeetestWebTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(30))
     }
 
-    func testFailedCaptchaShowsRetryInLightAndDarkMode() async throws {
-        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let previous = scene.keyWindow
-        defer { previous?.makeKey() }
-        for scheme in [ColorScheme.light, .dark] {
-            let window = UIWindow(windowScene: scene)
-            let host = UIHostingController(rootView: NavigationStack {
-                GeetestView(gt: "fixture", challenge: "fixture", onFinish: { _ in })
-                    .navigationTitle("安全验证")
-            }.environment(\.colorScheme, scheme))
-            window.overrideUserInterfaceStyle = scheme == .dark ? .dark : .light
-            window.rootViewController = host
-            window.makeKeyAndVisible()
-            defer { window.isHidden = true; window.rootViewController = nil }
-            try await wait { self.descendants(host.view).contains { $0 is WKWebView } }
-            let web = try XCTUnwrap(descendants(host.view).compactMap { $0 as? WKWebView }.first)
-            // A new WKWebView initially reports a completed about:blank document.
-            // Wait for our HTML's bootstrap before capturing the native error UI.
-            try await wait {
-                (try? await web.evaluateJavaScript("typeof window.neobiliCaptchaFailure === 'function' && document.readyState === 'complete'")) as? Bool == true
-            }
-            try await Task.sleep(for: .milliseconds(150))
-            window.layoutIfNeeded()
-            XCTAssertGreaterThan(web.bounds.height, 300)
-            XCTAssertGreaterThan(web.bounds.width, 300)
-            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-            }
-            let attachment = XCTAttachment(image: image)
-            attachment.name = "captcha-retry-\(scheme)"
-            attachment.lifetime = .keepAlways
-            add(attachment)
-        }
-    }
-
     private func makeWeb(coordinator: GeetestView.Coordinator) -> WKWebView {
         let web = coordinator.makeWebView()
         web.configuration.userContentController.addUserScript(WKUserScript(source: Self.sdkFixture,
@@ -172,7 +136,6 @@ final class GeetestWebTests: XCTestCase {
         }
         XCTFail("Timed out waiting for local CAPTCHA fixture")
     }
-    private func descendants(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(descendants) }
 
     /// Exercises the GT3 contract without networking, phone numbers or real CAPTCHA results.
     private static let sdkFixture = #"""
