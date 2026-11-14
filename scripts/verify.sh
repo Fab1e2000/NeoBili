@@ -4,8 +4,9 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 MODE=${1:-help}
 usage() {
-  echo 'Usage: bash scripts/verify.sh quick|offline|targeted|full|network|performance [TestClass[/testMethod] ...]'
+  echo 'Usage: bash scripts/verify.sh quick|host|offline|targeted|full|network|performance [TestClass[/testMethod] ...]'
   echo 'quick: source boundaries, documentation links, diff whitespace and workflow checks (no Simulator).'
+  echo 'host: workflow scripts + host regression (no Simulator).'
   echo 'offline: host regression; targeted: selected Simulator tests; full: offline + all Simulator regression.'
   echo 'network and performance are explicit specialist checks; full does not run them.'
 }
@@ -18,7 +19,7 @@ case "$MODE" in
       [[ "$SELECTOR" =~ ^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)?$ ]] || { echo "Invalid test selector: $SELECTOR" >&2; exit 2; }
     done
     ;;
-  quick|offline|full|network|performance)
+  quick|host|offline|full|network|performance)
     [[ $# -eq 0 ]] || { usage >&2; exit 2; };;
   *) usage >&2; exit 2;;
 esac
@@ -65,10 +66,10 @@ case "$MODE" in
     ;;
   offline) run_step offline zsh offline-harness/run.sh;;
   targeted) run_step simulator bash scripts/simulator.sh test "$@";;
-  full)
+  host|full)
     run_step workflow python3 -B -m unittest discover -s scripts/tests -p 'test_*.py'
     run_step offline zsh offline-harness/run.sh
-    run_step simulator bash scripts/simulator.sh test
+    if [[ "$MODE" == full ]]; then run_step simulator bash scripts/simulator.sh test; fi
     ;;
   network) run_step network bash scripts/simulator.sh network;;
   performance) run_step performance zsh offline-harness/performance.sh;;
