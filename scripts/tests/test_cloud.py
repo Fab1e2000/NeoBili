@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("cloud_release", ROOT / "ci_scripts/release.py")
 release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
+gateway_spec = importlib.util.spec_from_file_location("cloud_gateway", ROOT / "scripts/xcode_cloud.py")
+gateway = importlib.util.module_from_spec(gateway_spec)
+gateway_spec.loader.exec_module(gateway)
 
 
 class ReleaseTests(unittest.TestCase):
@@ -130,6 +133,43 @@ class CloudHookTests(unittest.TestCase):
         result = self.run_hook("ci_pre_xcodebuild.sh", CI_WORKFLOW="Build",
                                CI_XCODEBUILD_ACTION="test-without-building")
         self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class ApprovalGatewayTests(unittest.TestCase):
+    def test_changed_source_or_target_is_rejected(self):
+        attributes = {"executionProgress": "COMPLETE", "sourceCommit": {"commitSha": "source"},
+                      "destinationCommit": {"commitSha": "target"}}
+        gateway.validate_commits(attributes, "source", "target")
+        for source, target in (("changed", "target"), ("source", "changed")):
+            with self.assertRaises(ValueError):
+                gateway.validate_commits(attributes, source, target)
+
+    def test_completed_build_without_commit_cannot_pass(self):
+        with self.assertRaises(ValueError):
+            gateway.validate_commits({"executionProgress": "COMPLETE"}, "source")
+
+    def test_pr_lookup_uses_open_pull_request_including_forks(self):
+        from unittest.mock import Mock
+        cloud = Mock(return_value={"data": [{"id": "pr-id", "attributes": {"number": 42, "isClosed": False}}]})
+        value = gateway.build_relationships(cloud, "workflow", "repo", {"pull_request": {"number": 42}}, "refs/heads/main")
+        self.assertEqual(value["pullRequest"]["data"], {"type": "scmPullRequests", "id": "pr-id"})
+        self.assertNotIn("sourceBranchOrTag", value)
+
+    def test_manual_lookup_uses_exact_ref_and_paginates(self):
+        from unittest.mock import Mock
+        cloud = Mock(side_effect=[
+            {"data": [], "links": {"next": "/next"}},
+            {"data": [{"id": "branch-id", "attributes": {"canonicalName": "refs/heads/develop", "isDeleted": False}}]},
+        ])
+        value = gateway.build_relationships(cloud, "workflow", "repo", {}, "refs/heads/develop")
+        self.assertEqual(value["sourceBranchOrTag"]["data"]["id"], "branch-id")
+
+    def test_absent_cloud_resource_fails_before_starting_build(self):
+        from unittest.mock import Mock
+        cloud = Mock(return_value={"data": []})
+        with self.assertRaises(ValueError):
+            gateway.build_relationships(cloud, "workflow", "repo", {}, "refs/heads/develop")
+        self.assertEqual(cloud.call_count, 1)
 
 
 if __name__ == "__main__":
