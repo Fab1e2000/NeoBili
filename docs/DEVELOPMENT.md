@@ -192,9 +192,21 @@ Xcode Cloud 使用 GitHub 仓库中的共享工程与 scheme，不在云端重�
 `Build` 的编译测试阶段先执行 `bash scripts/verify.sh host`，复用本地 `full` 的工作流
 脚本与离线回归；随后由 Xcode Cloud 原生 Test 动作编译并运行模拟器测试。
 测试运行阶段使用云端保存的测试产物，不再次运行宿主检查。Regression 必须通过。
-开启 Auto-cancel Builds，避免同一 PR 更新后继续跑旧提交。Build 不配置账号或发布凭据。
+Build 只启用 Manual Start 的 Branch 与 Pull Request，自动启动由 GitHub 审批入口负责。
+Build 不配置账号或发布凭据。
 日志与 `.xcresult` 在 Xcode Cloud 的构建报告中下载；宿主检查输出在自定义脚本日志中。
 本地任务完成与提交 PR 前继续运行 `bash scripts/verify.sh full`。
+
+[GitHub Build](../.github/workflows/build.yml) 在 Ubuntu 上执行审批与结果回写，不进行 Xcode 编译。
+仓库所有者从本仓库提交的 PR 使用 `ci-trusted`；其他 PR 和手动运行使用 `ci-approval`，
+沿用该 Environment 的 required reviewers。审批后运行受信任目标分支上的
+[调用脚本](../scripts/xcode_cloud.py)，启动对应 PR 的 Xcode Cloud Build，等待结果并写入
+`Xcode Cloud / Build` 状态。脚本核对审批时的源提交和目标提交；提交变化时需重新运行。
+GitHub 取消等待后，可在 Xcode Cloud 报告中取消仍在运行的构建。
+
+GitHub Actions Secrets 配置 `ASC_ISSUER_ID`、`ASC_KEY_ID`、`ASC_PRIVATE_KEY`；
+仓库变量 `CLOUD_BUILD_WORKFLOW_ID` 指向 Build 工作流。Apple 团队 API 密钥使用 Developer
+权限，只供审批入口调用；不要传入云端 Build。PR 代码只在不含发布凭据的云端环境执行。
 
 `Release` 使用 `v` 开头的 Tag Changes 和 Manual Start，关闭 Auto-cancel Builds。
 只在该工作流的 Environment 中配置 secret `NEOBILI_RELEASE_TOKEN`：GitHub fine-grained
