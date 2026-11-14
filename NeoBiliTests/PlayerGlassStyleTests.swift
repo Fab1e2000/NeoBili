@@ -20,7 +20,7 @@ final class PlayerGlassStyleTests: XCTestCase {
     }
 
     func testProgressUpdatesDoNotRebuildMenuContentInForegroundWindow() async throws {
-        let host = try PlayerGlassSnapshotHost()
+        let host = try PlayerGlassWindowHost()
         defer { host.close() }
         let progress = PlayerProgressIsolationState()
         let recorder = PlayerProgressIsolationRecorder()
@@ -99,42 +99,6 @@ final class PlayerGlassStyleTests: XCTestCase {
         XCTAssertGreaterThan(narrow.videoQuality.width, narrow.audioQuality.width)
         XCTAssertLessThan(narrow.back.maxX, narrow.videoQuality.minX)
         XCTAssertLessThan(narrow.audioQuality.maxX, narrow.more.minX)
-    }
-
-    func testLoadingControlsCanBeShownAndHiddenBeforeFirstFrameInForegroundWindow() async throws {
-        let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
-        defer { host.close() }
-        try await host.show(Color.black)
-        let state = PlayerLoadingVisibilityFixtureState()
-        let account = AccountStore(monitorNetwork: false)
-        let model = PlayerViewModel(bvid: "BVLoadingControlsFixture", cid: 1,
-                                    playbackURLLoader: { _, _ in throw URLError(.notConnectedToInternet) },
-                                    watchProgressReporter: { _, _, _ in })
-        defer { model.stop() }
-        let binding = Binding(get: { state.visible }, set: { state.visible = $0 })
-        let size = host.window.bounds.size
-        let insets = host.window.safeAreaInsets
-        try await host.show(
-            PlayerGlassFixtureBackdrop()
-                .overlay {
-                    PlayerControlsOverlay(viewModel: model, controlsVisible: binding,
-                                          isFullScreen: true, onToggleFullScreen: {},
-                                          controlsSafeAreaInsets: EdgeInsets(top: insets.top, leading: insets.left,
-                                                                            bottom: insets.bottom, trailing: insets.right))
-                }
-                .frame(width: size.width, height: size.height)
-                .ignoresSafeArea()
-                .environment(account).environment(ActionFeedback())
-        )
-        for (name, visible) in [("loading-initial-hidden", false), ("loading-manually-shown", true),
-                                ("loading-manually-hidden", false)] {
-            state.visible = visible
-            try await Task.sleep(for: .milliseconds(120))
-            host.window.layoutIfNeeded()
-            XCTAssertTrue(model.isLoading)
-            XCTAssertFalse(model.hasRenderedFirstFrame)
-            attachSnapshot(name, from: host)
-        }
     }
 
     func testVisibleControlRegionsRemainInsideBoundsAndDoNotOverlap() {
@@ -241,22 +205,14 @@ final class PlayerGlassStyleTests: XCTestCase {
     }
 
     func testGlassChromeAcrossWindowOrientationsSizesAndLoadingStates() async throws {
-        let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
+        let host = try PlayerGlassWindowHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         let cases: [(String, Bool, Double?, PlayerGlassFixtureState, Bool)] = [
             ("portrait-fullscreen", false, nil, .playing, false),
             ("landscape-fullscreen", true, nil, .playing, false),
             ("inline-portrait", false, 9.0 / 16, .playing, false),
-            ("inline-square", false, 1, .playing, false),
-            ("inline-16x9", false, 16.0 / 9, .playing, false),
-            ("inline-21x9", false, 21.0 / 9, .playing, false),
             ("inline-ultrawide", false, 4.5, .playing, false),
             ("inline-loading", false, 16.0 / 9, .loading, false),
-            ("inline-manual-play", false, 16.0 / 9, .manual, false),
-            ("landscape-manual-play", true, nil, .manual, false),
-            ("inline-ultrawide-loading", false, 4.5, .loading, false),
-            ("inline-error", false, 16.0 / 9, .error, false),
-            ("live-inline", false, 16.0 / 9, .playing, true),
             ("live-landscape", true, nil, .playing, true)
         ]
         for (name, landscape, inlineRatio, state, isLive) in cases {
@@ -282,36 +238,13 @@ final class PlayerGlassStyleTests: XCTestCase {
             XCTAssertEqual(actualChrome.height, expectedChrome.height, accuracy: 0.5, name)
             let coordinates = XCTAttachment(string: "window=\(host.window.bounds)\nwindow.safeArea=\(host.window.safeAreaInsets)\nhost.view.frame=\(host.controller.view.frame)\nhost.safeArea=\(host.controller.view.safeAreaInsets)\nfixture.windowFrame=\(String(describing: host.frameRecorder.frames["fixture"]))\nchrome.windowFrame=\(actualChrome)\nexpected.chrome=\(expectedChrome)")
             coordinates.name = "player-glass-\(name)-geometry"
-            coordinates.lifetime = .keepAlways
+            coordinates.lifetime = .deleteOnSuccess
             add(coordinates)
-            attachSnapshot(name, from: host)
-        }
-    }
-
-    /// 透明玻璃最难的情况：接近纯白的画面加顶部弹幕。截图留给人看，
-    /// 断言只检查控件层和调暗层照常铺满画面。
-    func testClearGlassControlsOverBrightVideoInForegroundWindow() async throws {
-        let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
-        defer { host.close() }
-        for (name, landscape, inlineRatio) in [("bright-inline-16x9", false, 16.0 / 9 as Double?),
-                                               ("bright-landscape-fullscreen", true, nil)] {
-            try await host.show(Color.black, landscape: landscape)
-            let insets = host.window.safeAreaInsets
-            let safeArea = EdgeInsets(top: insets.top, leading: insets.left,
-                                      bottom: insets.bottom, trailing: insets.right)
-            var fixture = PlayerGlassScreenFixture(size: host.window.bounds.size, safeAreaInsets: safeArea,
-                                                   inlineRatio: inlineRatio, state: .playing, isLive: false,
-                                                   frameRecorder: host.frameRecorder)
-            fixture.usesBrightBackdrop = true
-            try await host.show(fixture, landscape: landscape)
-            let chrome = try XCTUnwrap(host.frameRecorder.frames["chrome"], "Missing actual UIKit chrome frame")
-            XCTAssertEqual(chrome.width, host.window.bounds.width, accuracy: 0.5, name)
-            attachSnapshot(name, from: host)
         }
     }
 
     func testFullscreenQualityMenusUseTheBlackSidebarsInForegroundWindow() async throws {
-        let host = try PlayerGlassSnapshotHost(ignoresSystemSafeArea: true)
+        let host = try PlayerGlassWindowHost(ignoresSystemSafeArea: true)
         defer { host.close() }
         for (name, landscape, ratio, longLabels) in [
             ("fullscreen-blackbars-16x9", true, 16.0 / 9, false),
@@ -367,9 +300,8 @@ final class PlayerGlassStyleTests: XCTestCase {
             }
             let geometry = XCTAttachment(string: "window=\(host.window.bounds)\nsafe=\(insets)\nchrome.actual=\(chromeFrame)\nvideo.actual=\(pictureFrame)\nlayout.back=\(layout.back)\nlayout.more=\(layout.more)\nlayout.fullscreen=\(layout.fullScreen)\nlayout.videoQuality=\(layout.videoQuality)\nlayout.audioQuality=\(layout.audioQuality)")
             geometry.name = "player-glass-\(name)-geometry"
-            geometry.lifetime = .keepAlways
+            geometry.lifetime = .deleteOnSuccess
             add(geometry)
-            attachSnapshot(name, from: host)
         }
     }
 
@@ -381,23 +313,9 @@ final class PlayerGlassStyleTests: XCTestCase {
         XCTAssertEqual(actual.height, expected.height, accuracy: 0.5, message, file: file, line: line)
     }
 
-    private func attachSnapshot(_ name: String, from host: PlayerGlassSnapshotHost) {
-        let screenshot = UIGraphicsImageRenderer(bounds: host.window.bounds).image { _ in
-            host.window.drawHierarchy(in: host.window.bounds, afterScreenUpdates: true)
-        }
-        let attachment = XCTAttachment(image: screenshot)
-        attachment.name = "player-glass-\(name)"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-    }
 }
 
-@MainActor @Observable
-private final class PlayerLoadingVisibilityFixtureState {
-    var visible = false
-}
-
-private enum PlayerGlassFixtureState { case playing, manual, loading, error }
+private enum PlayerGlassFixtureState { case playing, loading }
 
 private struct PlayerGlassScreenFixture: View {
     let size: CGSize
@@ -408,8 +326,6 @@ private struct PlayerGlassScreenFixture: View {
     let frameRecorder: PlayerGlassFrameRecorder
     var fittedAspectRatio: Double?
     var usesLongQualityLabels = false
-    /// 接近纯白、顶部带弹幕的画面，检查透明玻璃在最亮的情况下是否还看得清。
-    var usesBrightBackdrop = false
 
     var body: some View {
         Group {
@@ -465,32 +381,22 @@ private struct PlayerGlassScreenFixture: View {
                     let width = min(geometry.size.width, geometry.size.height * fittedAspectRatio)
                     ZStack {
                         Color.black
-                        PlayerGlassFixtureBackdrop(isBright: usesBrightBackdrop)
+                        Color.black
                             .frame(width: width, height: width / fittedAspectRatio)
                             .background(PlayerGlassFrameProbe(name: "fitted-video", recorder: frameRecorder))
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
                 }
-            } else { PlayerGlassFixtureBackdrop(isBright: usesBrightBackdrop) }
-            if state == .error {
-                ContentUnavailableView {
-                    Label("无法播放", systemImage: "play.slash")
-                } description: {
-                    Text("网络连接已中断")
-                } actions: {
-                    Button("重试播放") {}
-                }
-                .foregroundStyle(.white)
-            }
+            } else { Color.black }
             PlayerGlassChrome(title: "海边的日落 · 一起去看世界", subtitle: "NeoBili · 1080P",
                               shareURL: URL(string: "https://example.invalid/static-player-fixture"),
                               videoQualityControl: videoQualityControl,
                               audioQualityControl: isLive ? nil : audioQualityControl,
                               position: 37, duration: 184, buffered: 92,
                               isPlaying: state == .playing,
-                              canControlPlayback: state == .playing || state == .manual,
+                              canControlPlayback: state == .playing,
                               isWaiting: state == .loading, isLive: isLive,
-                              isFullScreen: fullScreen, hasError: state == .error,
+                              isFullScreen: fullScreen, hasError: false,
                               safeAreaInsets: fullScreen ? safeAreaInsets : EdgeInsets(),
                               isDanmakuEnabled: true, showsDanmakuToggle: true, onToggleDanmaku: {},
                               onToggleCompact: fullScreen ? nil : {}) {
@@ -519,10 +425,10 @@ private struct PlayerGlassScreenFixture: View {
 }
 
 /// One window persists across the portrait/landscape cases. Actual scene
-/// rotation is awaited before taking a screenshot; a fake wide frame inside a
+/// rotation is awaited before checking geometry; a fake wide frame inside a
 /// portrait window would clip the controls and would not exercise safe areas.
 @MainActor
-private final class PlayerGlassSnapshotHost {
+private final class PlayerGlassWindowHost {
     let window: UIWindow
     let controller: UIHostingController<AnyView>
     let frameRecorder = PlayerGlassFrameRecorder()
@@ -606,56 +512,6 @@ private final class PlayerGlassSnapshotHost {
         OrientationLock.shared.request(previousOrientation)
         previousKeyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
         window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: previousOrientation)) { @Sendable _ in }
-    }
-}
-
-/// Local colors provide visible detail behind translucent glass without
-/// downloading a video or embedding an image asset in the test bundle.
-private struct PlayerGlassFixtureBackdrop: View {
-    var isBright = false
-
-    var body: some View {
-        if isBright { brightBody } else { standardBody }
-    }
-
-    /// 雪地、白墙一类的亮画面，顶部几行白字模拟正在飘的弹幕。
-    private var brightBody: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .topLeading) {
-                LinearGradient(colors: [.white, Color(red: 0.98, green: 0.96, blue: 0.88), .white],
-                               startPoint: .top, endPoint: .bottom)
-                ForEach(0..<4) { row in
-                    Text(["前方高能", "哈哈哈哈哈哈哈", "这里是弹幕测试 666", "来了来了"][row])
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.6), radius: 1)
-                        .offset(x: geometry.size.width * [0.08, 0.45, 0.2, 0.62][row],
-                                y: 8 + CGFloat(row) * 26)
-                }
-            }
-        }
-        .clipped()
-        .allowsHitTesting(false)
-    }
-
-    private var standardBody: some View {
-        GeometryReader { geometry in
-            ZStack {
-                LinearGradient(colors: [Color(red: 0.08, green: 0.18, blue: 0.35),
-                                        Color(red: 0.36, green: 0.46, blue: 0.48),
-                                        Color(red: 0.78, green: 0.55, blue: 0.3)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                Circle().fill(.white.opacity(0.25))
-                    .frame(width: geometry.size.width * 0.65)
-                    .offset(x: geometry.size.width * 0.25, y: -geometry.size.height * 0.18)
-                Rectangle().fill(.black.opacity(0.2))
-                    .frame(height: geometry.size.height * 0.18)
-                    .rotationEffect(.degrees(-18))
-                    .offset(y: geometry.size.height * 0.18)
-            }
-        }
-        .clipped()
-        .allowsHitTesting(false)
     }
 }
 

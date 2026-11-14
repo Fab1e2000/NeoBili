@@ -9,4 +9,4 @@ if ! bash scripts/verify.sh quick; then
     echo 'pre-push: quick validation failed; push blocked.' >&2
     exit 1
 fi
-echo 'pre-push: quick checks passed; full regression is required before PR submission and in CI.'
+echo 'pre-push: quick checks passed; run affected tests locally; Xcode Cloud runs full regression.'

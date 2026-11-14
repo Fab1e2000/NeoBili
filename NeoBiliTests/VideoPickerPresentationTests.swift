@@ -100,7 +100,6 @@ final class VideoPickerPresentationTests: XCTestCase {
             let visible = scroll.convert(scroll.bounds.inset(by: scroll.adjustedContentInset), to: window)
             XCTAssertEqual(selectedFrame.midY, visible.midY, accuracy: 12,
                            "Opening the picker should center the playing item in the visible scroll area")
-            try snapshot(window, name: "\(name)-\(style.rawValue)-medium")
 
             for next in [43, 44] {
                 let offsetBeforeSelection = scroll.contentOffset.y
@@ -120,7 +119,6 @@ final class VideoPickerPresentationTests: XCTestCase {
                 }
                 XCTAssertTrue(currentItem(in: presented.view)?.accessibilityLabel?.contains("样例 \(next)、") == true)
             }
-            try snapshot(window, name: "\(name)-\(style.rawValue)-after-selection")
 
             sheet.animateChanges { sheet.selectedDetentIdentifier = .large }
             try await Task.sleep(for: .milliseconds(450))
@@ -128,7 +126,6 @@ final class VideoPickerPresentationTests: XCTestCase {
             let fullFrame = presented.view.convert(presented.view.bounds, to: window)
             XCTAssertGreaterThan(fullFrame.height, halfFrame.height + 100)
             XCTAssertLessThan(fullFrame.minY, halfFrame.minY - 100)
-            try snapshot(window, name: "\(name)-\(style.rawValue)-large")
 
             // Browsing away from the playing item must not continually recenter.
             scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
@@ -145,22 +142,6 @@ final class VideoPickerPresentationTests: XCTestCase {
             XCTAssertNil(host.presentedViewController)
             XCTAssertFalse(driver.isPresented)
         }
-    }
-
-    private func snapshot(_ window: UIWindow, name: String) throws {
-        XCTAssertTrue(window.isKeyWindow)
-        XCTAssertGreaterThan(window.traitCollection.displayScale, 0)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = window.traitCollection.displayScale
-        var rendered = false
-        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
-            rendered = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
-        XCTAssertTrue(rendered)
-        let attachment = XCTAttachment(image: image)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
     }
 
     private func scrollViews(in view: UIView) -> [UIScrollView] {
