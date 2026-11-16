@@ -32,18 +32,18 @@ bash scripts/verify.sh full
 | 模式 | 执行内容 | 使用时机 |
 | --- | --- | --- |
 | `quick` | 源码依赖边界、本地文档链接、已暂存与未暂存差异格式、工作流脚本回归 | 开发中快速检查、每次推送；不编译 Swift、不启动 Simulator |
-| `host` | 工作流脚本与宿主机离线回归 | Xcode Cloud 编译测试前的共同检查 |
 | `offline` | 宿主机离线回归（含源码边界与文档检查） | 纯逻辑修改后的验证 |
 | `targeted TestClass[/testMethod] ...` | 指定 Simulator 测试，可传多个选择器 | 开发中验证受影响行为；必须指定测试 |
-| `full` | 工作流脚本回归、离线回归、完整确定性 Simulator 回归 | 任务完成、提交 PR 前及 PR CI |
+| `full` | `quick` 与完整确定性 Simulator 回归 | 跨模块改动、测试基础设施变更、发布前；PR 由 Xcode Cloud 执行同等检查 |
 | `network` | 显式联网 Simulator 验收 | 需要验证真实接口时 |
 | `performance` | 宿主机确定性性能检查 | 性能改动的相关验证 |
 
-`full` 中某一步失败仍继续收集其余步骤的结果，任一步失败则整体失败。每次调用生成独立的
+`full` 中某一步失败仍继续收集其余步骤的结果，任一步失败则整体失败。
+业务回归统一由 Regression 计划执行；宿主机 `offline` 是按需定位工具，不在 `full` 或 CI 中重复编译。每次调用生成独立的
 `DerivedData/Validation/*-verify-模式/`，包含环境、逐步日志和 `summary.tsv`；
 Simulator 的环境、`.xcresult` 与测试数量摘要由底层脚本保存在另一个独立运行目录，路径见
-验证入口的 Simulator 日志。通过 `quick` 或 `targeted` 不代表完整回归通过；`full` 不执行
-联网、性能或真机专项。底层日志中的跳过项仍需在交付时说明。
+验证入口的 Simulator 日志。联网、性能和真机专项使用独立入口。
+底层日志中的跳过项仍需在交付时说明。
 
 本地推送检查使用仓库中的 `.githooks/pre-push`，每个克隆启用一次：
 
@@ -54,8 +54,9 @@ git config --local core.hooksPath .githooks
 启用后，每次 `git push` 只执行 `bash scripts/verify.sh quick`；任一步失败都会阻止推送，
 日志保存在 `DerivedData/Validation/`。hook 不启动 Simulator，不重复任务完成阶段的完整回归。
 检查使用当前工作区，推送前应先提交修改并检出要推送的版本；它不验证其他待推送 ref，
-也不替代完整回归或 CI。任务完成时及提交 PR 前，对最终代码执行一次 `full`；同一份代码已在
-完成阶段验证后，不必因推送重复执行。后续代码或相关配置变化后，应重新验证。
+也不替代相关功能测试或 CI。本地完成受影响的 `targeted` 测试即可提交普通 PR，
+完整回归交给 Xcode Cloud。跨模块重构、测试入口或计划变更、准备发布时，本地运行一次 `full`。
+同一代码和环境下复用已通过的结果；后续只重跑受改动影响的检查。
 
 脚本默认选择唯一可用的 `iPhone 18 Pro`。用 `NEOBILI_SIMULATOR_ID` 指定 UDID，或用
 `NEOBILI_SIMULATOR_NAME` 与 `NEOBILI_SIMULATOR_RUNTIME`（例如 `iOS-27-0`）指定机型和系统。
@@ -82,7 +83,7 @@ NEOBILI_FAIL_RUNTIME_ISSUES=1 bash scripts/simulator.sh test -- -enableAddressSa
 | 层级 | 入口 | 数据与用途 |
 | --- | --- | --- |
 | 宿主机离线 | `bash scripts/verify.sh offline` | 生产纯逻辑、受控请求响应，无需启动模拟器 |
-| 确定性回归 | `bash scripts/verify.sh full`（含离线） / `⌘U`（仅 Simulator） | 隔离存储、假身份、注入数据；包括 UIKit/SwiftUI 窗口测试 |
+| 确定性回归 | `bash scripts/verify.sh full`（含快速检查） / `⌘U`（仅 Simulator） | 隔离存储、假身份、注入数据；包括 UIKit/SwiftUI 窗口测试 |
 | 联网验收 | `bash scripts/verify.sh network` / `NeoBili-Network` scheme | 显式开启推荐接口与直播弹幕检查，可在 Simulator 运行 |
 | 真机专项 | `NeoBili-Device` scheme | 显式开启直播播放和授权 4K 解码验收 |
 
@@ -92,6 +93,20 @@ Regression 固定使用简体中文与中国区域，保证文案断言不受宿
 不要为修复环境问题扩大跳过列表。布局测试使用本地数据和前台窗口，不因玻璃外观就限定真机。
 
 ## 数据与前台隔离
+
+离线缓存的状态机、资源验证、独立进度和布局回归纳入默认 Regression。后台下载传输
+在此配置下不创建系统会话，测试使用受控传输与临时目录。实际 mpv 本地双轨播放通过
+显式 Debug 测试方案运行，使用测试包中的合成音视频，不读取账号或下载线上媒体：
+
+```sh
+bash scripts/simulator.sh test OfflinePlaybackIntegrationTests -- -configuration Debug -testPlan OfflinePlayback
+```
+
+该方案检查首帧、拖动、字幕同步及播放结束，并保存画面附件。手机锁屏后台下载、蜂窝
+切换及飞行模式冷启动属于真机验收，按本节设备授权约定单独安排。
+
+Network 方案还包含公开短视频的真实后台会话下载：验证视频、声音、封面、弹幕和可用字幕
+全部完成后能生成本地播放源，使用临时目录并在结束时清理测试任务；单次下载上限 30 MB。
 
 Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用模拟器、使用不同沙盒。
 它不包含本地签名覆盖；账号使用内存 `CredentialStorage`，测试可注入独立身份和 UserDefaults。
@@ -110,7 +125,7 @@ App 持有的默认网络入口 `AppNetwork.session` 由 Data 工厂创建，在
 
 ## 结构与文档检查
 
-`offline-harness/run.sh` 首先运行源码依赖边界和本地文档链接检查。也可以单独执行：
+`quick`、`full` 和云端编译前检查均验证源码依赖边界与本地文档链接。也可以单独执行：
 
 ```sh
 python3 scripts/check-architecture.py
@@ -123,9 +138,10 @@ python3 scripts/check-doc-links.py
 
 ## 修改后的检查
 
-- 开发中使用 `quick`，逻辑或接口修改运行 `offline` 或相关 `targeted` 回归；任务完成运行一次
-  `full`，提交 PR 前确认结果对应最终代码。推送 hook 只做快速检查，PR CI 独立执行完整验证。
-- 界面修改：补受影响操作、布局截图、相关深浅色/字号/方向验证，确认前台窗口和显示缩放。
+- 文档和脚本修改运行 `quick`；功能修改运行受影响的 `targeted` 回归。纯逻辑定位可按需用
+  `offline`。跨模块、测试基础设施与发布前运行 `full`；普通 PR 的完整回归由 CI 负责。
+- 界面修改：验证受影响操作和实际布局断言，用代表性的深浅色、字号和方向组合覆盖不同
+  布局分支。截图用于明确要求的视觉验收或失败诊断，不为同一行为展开所有组合。
 - 性能修改：用可复现内容及相同配置比较耗时、内存、滚动或播放器生命周期；记录工具链、
   系统、机型、配置、场景及指标。宿主机确定性性能检查入口为 `bash scripts/verify.sh performance`；
   上报身份缓存、事件序号迁移与凭据读取次数可单独运行 `zsh offline-harness/behavior-performance.sh`，
@@ -137,6 +153,13 @@ python3 scripts/check-doc-links.py
 
 脚本把日志、环境信息、`.xcresult` 和摘要写入 `DerivedData/Validation/` 的独立运行目录。
 交付说明必须区分失败、跳过、未执行及通过；未跑专项时不宣称专项通过。不要将运行流水写回规范文档。
+
+### 测试维护
+
+每个回归用例对应一个可观察的失败：请求或状态错误、数据丢失、交互失效、布局遮挡等。
+新增前先查现有用例，优先补充断言或输入样例；相同业务规则在一处维护。
+删除已被覆盖的重复测试、只检查测试夹具自身状态的断言，以及只生成截图却不判断产品行为的测试。
+截图、性能实验和联网验收按任务需要执行；计时实验应有比较目标，不放进默认功能回归。
 
 ## 官方推荐请求对比
 
@@ -186,16 +209,16 @@ Xcode Cloud 使用 GitHub 仓库中的共享工程与 scheme，不在云端重�
 
 | 工作流 | 环境与动作 | 结果 |
 | --- | --- | --- |
-| `Build` | Xcode 27.2；`NeoBili` scheme；Test 动作，指定 `Regression` 计划；iPhone 18 Pro / iOS 27.2 | 工作流脚本、离线检查和完整确定性模拟器回归 |
+| `Build` | Xcode 27.2；`NeoBili` scheme；Test 动作，指定 `Regression` 计划；iPhone 18 Pro / iOS 27.2 | 快速检查和完整确定性模拟器回归 |
 | `Release` | Xcode 27.2；`NeoBili-Release` scheme；Build 动作，Any iOS Device | ad-hoc 签名的侧载 IPA、SHA256SUMS.txt 与 GitHub Release 草稿 |
 
-`Build` 的编译测试阶段先执行 `bash scripts/verify.sh host`，复用本地 `full` 的工作流
-脚本与离线回归；随后由 Xcode Cloud 原生 Test 动作编译并运行模拟器测试。
-测试运行阶段使用云端保存的测试产物，不再次运行宿主检查。Regression 必须通过。
+`Build` 的编译测试阶段先执行 `bash scripts/verify.sh quick`，检查源码边界、文档和工作流
+脚本；随后由 Xcode Cloud 原生 Test 动作编译并运行 Regression。业务代码只编译这一轮。
+测试运行阶段使用云端保存的测试产物。Regression 必须通过。
 Build 只启用 Manual Start 的 Branch 与 Pull Request，自动启动由 GitHub 审批入口负责。
 Build 不配置账号或发布凭据。
 日志与 `.xcresult` 在 Xcode Cloud 的构建报告中下载；宿主检查输出在自定义脚本日志中。
-本地任务完成与提交 PR 前继续运行 `bash scripts/verify.sh full`。
+本地按上面的改动范围选择验证入口，普通 PR 不要求再跑一次本机全量回归。
 
 [GitHub Build](../.github/workflows/build.yml) 在 Ubuntu 上执行审批与结果回写，不进行 Xcode 编译。
 仓库所有者从本仓库提交的 PR 使用 `ci-trusted`；其他 PR 和手动运行使用 `ci-approval`，
@@ -241,7 +264,7 @@ personal access token，仅选择 NeoBili 仓库并授予 Contents 的读写权�
 
 1. 在待合并分支更新 `project.yml` 的版本和递增的构建号，运行 `xcodegen generate`，
    同时提交生成的 `Info.plist` 与工程变化；编写 `docs/releases/vX.Y.Z.md`。
-2. 功能/修复 PR 经当前离线、Simulator 和 CI 验证后合入 `develop`，再通过发布 PR 合入 `main`。
+2. 功能/修复 PR 经受影响的本机测试和 CI 验证后合入 `develop`，再通过发布 PR 合入 `main`。
 3. 在通过 CI 的 `main` 提交创建并推送 `vX.Y.Z` 标签。Xcode Cloud 的 Release 工作流校验标签和
    `CFBundleShortVersionString` 一致，构建 IPA、做 ad-hoc 签名、生成校验和与 **Release 草稿**。
    安装包没有 Apple 开发者证书；ad-hoc 签名是为了让 SideStore、Sideloadly 能用用户自己的 Apple ID 重签。

@@ -26,7 +26,7 @@ struct MineView: View {
                 if let profile = account.profile {
                     loggedInView(profile)
                 } else if account.isRestoringSession {
-                    LoadingTaskAnchor()
+                    VStack { LoadingTaskAnchor(); offlineEntry.padding() }
                 } else if account.isLoggedIn {
                     ContentUnavailableView {
                         Label("账号信息暂未加载", systemImage: "wifi.exclamationmark")
@@ -36,6 +36,7 @@ struct MineView: View {
                         Button("重试") { Task { await account.refreshProfile() } }
                             .disabled(account.isRefreshingProfile)
                         Button("退出登录", role: .destructive) { confirmLogout = true }
+                        offlineEntry
                     }
                 } else {
                     loggedOutView
@@ -67,6 +68,7 @@ struct MineView: View {
                 .appTextSize()
         }
         .onChange(of: account.sessionID) {
+            guard serviceSheet != .offlineCache else { return }
             serviceSheet = nil
             nowPlaying.isServiceSheetPresented = false
         }
@@ -97,6 +99,7 @@ struct MineView: View {
             Button("短信验证码登录") { loginSheet = .sms }
                 .buttonStyle(.borderedProminent)
             .padding(.top, 4)
+            offlineEntry.padding(.top, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -122,6 +125,7 @@ struct MineView: View {
             .listRowSeparator(.hidden)
 
             Section {
+                offlineEntry
                 serviceRow(
                     icon: "star.fill",
                     color: .orange,
@@ -146,12 +150,12 @@ struct MineView: View {
         }
     }
 
-    /// 个人信息卡片。
-    ///
-    /// 头像居中放大、名字单独占一行，等级 / 大会员 / 硬币收成一排 chip 摆在下面。
-    /// 之前是「左头像 + 右两行」的列表行样式：名字要和大会员徽章抢同一行的宽度，
-    /// 名字一长就被压缩，等级和硬币又挤在第二行，几种字号和圆角混在一起。
-    /// 竖排之后每一层只承担一件事，长名字也不会挤到徽章。
+    private var offlineEntry: some View {
+        serviceRow(icon: "arrow.down.circle.fill", color: .green,
+                   title: String(localized: "离线缓存"), service: .offlineCache)
+    }
+
+    /// 个人资料竖排展示，昵称与等级、会员和硬币徽章各占一行。
     private func profileCard(_ profile: AccountStore.Profile) -> some View {
         VStack(spacing: 12) {
             BiliImage(url: profile.secureAvatarURL)

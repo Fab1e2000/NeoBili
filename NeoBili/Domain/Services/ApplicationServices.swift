@@ -17,6 +17,7 @@ public struct ApplicationServices: Sendable {
     public var streaming = LiveService()
     public var community = CommunityService()
     public var recommendation = RecommendationService()
+    public var offlineCache = OfflineCacheService()
 
     public init(
         currentAppBuvid: @escaping @Sendable () async -> String = { "" },
@@ -32,7 +33,8 @@ public struct ApplicationServices: Sendable {
         comment: CommentService = CommentService(),
         streaming: LiveService = LiveService(),
         community: CommunityService = CommunityService(),
-        recommendation: RecommendationService = RecommendationService()
+        recommendation: RecommendationService = RecommendationService(),
+        offlineCache: OfflineCacheService = OfflineCacheService()
     ) {
         self.currentAppBuvid = currentAppBuvid
         self.exportDiagnostics = exportDiagnostics
@@ -48,6 +50,7 @@ public struct ApplicationServices: Sendable {
         self.streaming = streaming
         self.community = community
         self.recommendation = recommendation
+        self.offlineCache = offlineCache
     }
 }
 

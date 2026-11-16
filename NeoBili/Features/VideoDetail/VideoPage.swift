@@ -26,6 +26,11 @@ struct VideoPage: View {
 
     /// 收起状态下标题最多显示几行。展开后标题不再截断，简介正文也跟着铺开。
 
+    private let offlineCache: OfflineCacheStore
+    @State private var offlinePartsPicker: VideoPickerPresentation<[OfflineCacheEntry]>?
+
+    init(offlineCache: OfflineCacheStore = .shared) { self.offlineCache = offlineCache }
+
     private var viewModel: VideoDetailViewModel? { store.detailViewModel }
 
     private var isFullScreen: Bool { isPortraitFullScreen || verticalSizeClass == .compact }
@@ -62,6 +67,7 @@ struct VideoPage: View {
     @State private var seasonPicker: VideoPickerPresentation<UgcSeason>?
     @State private var partsPicker: VideoPickerPresentation<VideoPartsPickerContent>?
     @State private var isShowingFavoriteFolders = false
+    @State private var cacheSelection: VideoDetailRoute?
     @State private var isShowingDanmakuComposer = false
     @State private var isShowingFullScreenDanmakuInput = false
     /// 发弹幕面板的草稿和位置：没发出去就关掉时保留。
@@ -86,6 +92,7 @@ struct VideoPage: View {
                     VideoTagSearchPage(keyword: route.keyword)
                 }
         }
+        .task { if store.offline != nil { offlineCache.connect() } }
         .onAppear {
             installCommentTimeJump()
             commentAuthor.setHandler { [path = $spacePath] member in
@@ -124,9 +131,15 @@ struct VideoPage: View {
     /// 视频页上弹出的面板：合集、分 P、发弹幕、收藏夹。单独拆出来以减轻主体的类型推断负担。
     private func withSheets(_ content: some View) -> some View {
         content
+        .sheet(item: $cacheSelection) { route in
+            OfflineDownloadSheet(bvid: route.bvid, cid: route.cid).appTextSize()
+        }
         .sheet(item: $seasonPicker) { picker in
             UgcSeasonPlaybackSheet(season: picker.content)
                 .appTextSize()
+        }
+        .sheet(item: $offlinePartsPicker) { picker in
+            OfflinePartsPlaybackSheet(entries: picker.content, cache: offlineCache).appTextSize()
         }
         .sheet(item: $partsPicker) { picker in
             VideoPartsPlaybackSheet(parts: picker.content.parts, coverURL: picker.content.coverURL)
@@ -221,6 +234,7 @@ struct VideoPage: View {
                     VStack(spacing: 0) {
                         VideoSectionBar(selection: $store.section,
                                         commentCount: store.commentsViewModel?.displayCount ?? viewModel?.detail?.stat.reply ?? 0,
+                                        showsComments: store.offline == nil,
                                         onSendDanmaku: sendDanmakuAction)
                             .background(.bar)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sectionBarHeight = $0 }
@@ -333,7 +347,7 @@ struct VideoPage: View {
             InlineVideoPlayer(
                 viewModel: player,
                 controlsVisible: $playerControlsVisible,
-                coverURL: viewModel?.detail?.secureCoverURL ?? store.route?.secureCoverURL,
+                coverURL: store.offline?.coverURL ?? viewModel?.detail?.secureCoverURL ?? store.route?.secureCoverURL,
                 isFullScreen: isFullScreen,
                 onToggleFullScreen: toggleFullScreen,
                 onSendDanmaku: sendDanmakuAction,
@@ -344,7 +358,8 @@ struct VideoPage: View {
                 onDismiss: store.goBack,
                 videoTitle: viewModel?.detail?.title ?? store.route?.title ?? "",
                 videoSubtitle: viewModel?.detail?.owner.name ?? store.route?.artist ?? "",
-                shareURL: store.route.flatMap { URL(string: "https://www.bilibili.com/video/\($0.bvid)") }
+                shareURL: onlineShareURL,
+                onCache: onlineCacheAction
             )
         } else {
             // 等待详情或等待用户点播放时都保留列表封面。
@@ -469,16 +484,18 @@ struct VideoPage: View {
                     .containerRelativeFrame(.horizontal)
                     .id(VideoPageSection.description)
 
-                commentsSection
-                    .frame(maxHeight: .infinity)
-                    .containerRelativeFrame(.horizontal)
-                    .id(VideoPageSection.comments)
+                if store.offline == nil {
+                    commentsSection
+                        .frame(maxHeight: .infinity)
+                        .containerRelativeFrame(.horizontal)
+                        .id(VideoPageSection.comments)
+                }
             }
             .scrollTargetLayout()
         }
         .scrollPosition(id: position)
         .scrollTargetBehavior(.paging)
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.hidden, axes: .horizontal)
     }
 
     @ViewBuilder
@@ -497,9 +514,40 @@ struct VideoPage: View {
 
     private var descriptionSection: some View {
         VideoDescriptionContent(store: store, viewModel: viewModel,
-                                components: viewModel?.detail.map(infoComponents) ?? [],
+                                components: store.offline.map(offlineInfoComponents) ?? viewModel?.detail.map(infoComponents) ?? [],
+                                showsRelated: store.offline == nil,
                                 consume: consumeVideoScroll, end: finishVideoCollapse,
                                 canConsume: canConsumeVideoScroll, canContinue: canContinueCollapseMomentum)
+    }
+
+    private func offlineInfoComponents(_ descriptor: OfflinePlaybackDescriptor) -> [VideoDescriptionComponent] {
+        let video = descriptor.entry.video
+        let entries = offlineCache.entries(in: video.groupID)
+        var components = [VideoDescriptionComponent("owner", revision: [video.author]) {
+            VideoOwnerRow(owner: VideoOwner(mid: 0, name: video.author, face: ""), avatarURL: nil,
+                          card: nil, isFollowing: false, onToggleFollow: {}, onOpenSpace: {}, isOffline: true)
+                .padding(.horizontal, Self.contentInset).padding(.top, 12).padding(.bottom, 10)
+        }, VideoDescriptionComponent(introduction: VideoIntroductionCard(
+            title: video.title,
+            metadata: String(localized: "本地播放 · \(PlaybackQuality.videoTitle(descriptor.entry.quality))"),
+            isExpanded: Binding(get: { store.isDescriptionExpanded }, set: { store.isDescriptionExpanded = $0 }))) ]
+        if entries.count > 1 || !video.partTitle.isEmpty {
+            let index = entries.firstIndex(where: { $0.id == descriptor.entry.id }).map { $0 + 1 }
+            components.append(VideoDescriptionComponent("parts", revision: [video.id, entries.count]) {
+                Group {
+                    if video.groupID.hasPrefix("season:") {
+                        UgcSeasonRow(title: video.groupTitle, total: entries.count, currentIndex: index) {
+                            offlinePartsPicker = VideoPickerPresentation(content: entries)
+                        }
+                    } else {
+                        VideoPartsRow(currentPartName: video.displayTitle, total: entries.count, currentIndex: index) {
+                            offlinePartsPicker = VideoPickerPresentation(content: entries)
+                        }
+                    }
+                }.padding(.horizontal, Self.contentInset).padding(.bottom, 14)
+            })
+        }
+        return components
     }
 
     private func infoComponents(_ detail: VideoDetail) -> [VideoDescriptionComponent] {
@@ -549,8 +597,25 @@ struct VideoPage: View {
                     presentFavoriteFolders()
                 }
             },
-            onPickFavoriteFolder: presentFavoriteFolders
+            onPickFavoriteFolder: presentFavoriteFolders,
+            onCache: showCacheSelection
         )
+    }
+
+    private func showCacheSelection() {
+        guard var route = store.route else { return }
+        route.cid = store.activeCid
+        cacheSelection = route
+    }
+
+    private var onlineShareURL: URL? {
+        guard store.offline == nil, let route = store.route else { return nil }
+        return URL(string: "https://www.bilibili.com/video/\(route.bvid)")
+    }
+
+    private var onlineCacheAction: (() -> Void)? {
+        guard store.offline == nil else { return nil }
+        return showCacheSelection
     }
 
     /// 详情加载好之后才显示「发弹幕」。

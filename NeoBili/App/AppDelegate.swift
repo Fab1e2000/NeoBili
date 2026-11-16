@@ -12,7 +12,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // 排版参数，避免与 SwiftUI 死锁。此时 UIKit 已就绪，还没有任何 SwiftUI 界面更新。
         let textSizeIndex = UserDefaults.standard.object(forKey: AppTextSize.storageKey) as? Int ?? AppTextSize.defaultIndex
         PreparedTitle.warmUp(dynamicTypeSize: AppTextSize.size(at: textSizeIndex))
+        if ProcessInfo.processInfo.environment["NEOBILI_TEST_HOST"] != "1" {
+            Task { await OfflineCacheComposition.repository.start() }
+        }
         return true
+    }
+
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        OfflineBackgroundEvents.shared.register(identifier, completion: completionHandler)
     }
 
     func application(

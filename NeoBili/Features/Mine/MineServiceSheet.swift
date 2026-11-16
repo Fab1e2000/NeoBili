@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum MineService: String, Identifiable {
-    case favorites, history, watchLater, settings
+    case favorites, history, watchLater, settings, offlineCache
     var id: String { rawValue }
 }
 
@@ -38,6 +38,7 @@ struct MineServiceSheet: View {
         case .history: HistoryView()
         case .watchLater: WatchLaterView()
         case .settings: SettingsView()
+        case .offlineCache: OfflineCacheView()
         }
     }
 }

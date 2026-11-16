@@ -88,7 +88,7 @@ final class WatchLaterUpgradeTests: XCTestCase {
         XCTAssertEqual(model.items.map(\.id), [2]); XCTAssertFalse(model.isRemoving)
     }
 
-    func testSelectionScreenshotsLightDarkAndLargeText() async throws {
+    func testSelectionLayoutInPageAndTabAcrossAppearanceAndTextSize() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.keyWindow; let window = UIWindow(windowScene: scene)
         defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
@@ -130,9 +130,6 @@ final class WatchLaterUpgradeTests: XCTestCase {
                     XCTAssertLessThanOrEqual(title.maxY, author.minY)
                     XCTAssertLessThanOrEqual(author.maxY, duration.minY)
                 }
-                let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-                let attachment = XCTAttachment(image: image); attachment.name = "watchlater-\(mode)-\(name)"; attachment.lifetime = .keepAlways; add(attachment)
-                try image.pngData()?.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("watchlater-\(mode)-\(name).png"))
             }
         }
     }

@@ -91,19 +91,14 @@ class ValidationWorkflowTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("staged-diff\tfailed", self.summary())
 
-    def test_full_runs_both_stages_after_offline_failure(self):
-        self.env["OFFLINE_STATUS"] = "9"
+    def test_full_runs_simulator_after_quick_failure_without_host_recompilation(self):
+        self.env["ARCHITECTURE_STATUS"] = "7"
         result = self.run_verify("full")
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.calls(), ["offline ", "simulator test"])
-        self.assertIn("offline\tfailed\t9", self.summary())
-        self.assertIn("simulator\tpassed", self.summary())
-
-    def test_host_runs_shared_checks_without_starting_simulator(self):
-        self.assertEqual(self.run_verify("host").returncode, 0)
-        self.assertEqual(self.calls(), ["offline "])
+        self.assertEqual(self.calls(), ["simulator test"])
+        self.assertIn("architecture\tfailed\t7", self.summary())
         self.assertIn("workflow\tpassed", self.summary())
-        self.assertIn("offline\tpassed", self.summary())
+        self.assertIn("simulator\tpassed", self.summary())
 
     def test_full_propagates_simulator_failure(self):
         self.env["SIMULATOR_STATUS"] = "65"

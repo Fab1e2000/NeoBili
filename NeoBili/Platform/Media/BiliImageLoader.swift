@@ -135,7 +135,9 @@ enum BiliImageLoader {
                      pipeline: BiliImagePipeline = .live,
                      download: (@Sendable (URL) async throws -> Data)? = nil) async throws -> UIImage {
         try await pipeline.cache.image(for: url, pixelSize: pixelSize) {
-            let data = try await (download ?? pipeline.download)(url)
+            let data: Data
+            if url.isFileURL { data = try Data(contentsOf: url) }
+            else { data = try await (download ?? pipeline.download)(url) }
             try await pipeline.decodeGate.enter()
             do {
                 try Task.checkCancellation()

@@ -38,7 +38,7 @@ struct LiveView: View {
                 set: { if let value = $0 { source = value } }
             ))
             .scrollTargetBehavior(.paging)
-            .scrollIndicators(.hidden)
+            .scrollIndicators(.hidden, axes: .horizontal)
             // 标题用原生栏内大标题；来源切换器常驻在导航栏下方，使用切边背景。
             .safeAreaBar(edge: .top, spacing: 0) { sourcePicker }
             .scrollEdgeEffectStyle(.hard, for: .top)

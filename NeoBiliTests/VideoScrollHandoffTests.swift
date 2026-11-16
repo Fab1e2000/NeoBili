@@ -76,6 +76,39 @@ final class VideoScrollHandoffTests: XCTestCase {
         XCTAssertEqual(rig.scroll.contentInset.bottom, 300)
     }
 
+    func testIndicatorFollowsVisiblePlayerWithoutChangingReadingOffset() {
+        let rig = Rig()
+        XCTAssertEqual(rig.scroll.verticalScrollIndicatorInsets.top, 300)
+        rig.scroll.draggingForTest = true
+        rig.move(120)
+        XCTAssertEqual(rig.scroll.verticalScrollIndicatorInsets.top, 180)
+        rig.move(450)
+        XCTAssertEqual(rig.scroll.verticalScrollIndicatorInsets.top, 100)
+        XCTAssertEqual(rig.observer.readingOffset, 250)
+        rig.scroll.draggingForTest = false
+        rig.distance = 0
+        rig.observer.configure(rig.geometry, page: .comments, ownsInsets: true)
+        XCTAssertEqual(rig.scroll.verticalScrollIndicatorInsets.top, 300)
+        XCTAssertEqual(rig.observer.readingOffset, 250)
+        rig.observer.detach()
+        XCTAssertEqual(rig.scroll.verticalScrollIndicatorInsets.top, 0)
+    }
+
+    func testSwiftUIInsetUpdatesPreserveIndicatorTrackAndComposerBottomMargin() {
+        let rig = Rig()
+        rig.observer.detach()
+        rig.observer.configure(rig.geometry, page: .comments, ownsInsets: false)
+        rig.observer.attach()
+        let contentInset = rig.scroll.contentInset
+        rig.scroll.verticalScrollIndicatorInsets = UIEdgeInsets(top: 0, left: 0, bottom: 80, right: 0)
+        XCTAssertEqual(rig.scroll.verticalScrollIndicatorInsets.top, 300)
+        XCTAssertEqual(rig.scroll.verticalScrollIndicatorInsets.bottom, 80)
+        XCTAssertEqual(rig.scroll.contentInset, contentInset)
+        rig.observer.detach()
+        XCTAssertEqual(rig.scroll.verticalScrollIndicatorInsets.top, 0)
+        XCTAssertEqual(rig.scroll.verticalScrollIndicatorInsets.bottom, 80)
+    }
+
     func testRefreshHoldAtTopDoesNotCollapsePlayerOrResetNativeOffset() {
         let rig = Rig()
         let refresh = TestRefreshControl()

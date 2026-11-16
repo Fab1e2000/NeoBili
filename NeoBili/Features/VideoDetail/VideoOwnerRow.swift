@@ -14,6 +14,7 @@ struct VideoOwnerRow: View {
     let onToggleFollow: () -> Void
     /// 头像是进 UP 主空间页的入口。
     let onOpenSpace: () -> Void
+    var isOffline = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -40,12 +41,13 @@ struct VideoOwnerRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(isOffline)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(owner.name)的个人空间")
+            .accessibilityLabel(isOffline ? owner.name : "\(owner.name)的个人空间")
             .accessibilityValue(subtitle ?? "")
             .accessibilityIdentifier("video.owner.open")
 
-            followButton
+            if !isOffline { followButton }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

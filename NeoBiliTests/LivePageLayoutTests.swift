@@ -93,6 +93,15 @@ final class LivePageLayoutTests: XCTestCase {
                            host.window.bounds, "The fixture must use the real full window: \(name)")
             XCTAssertLessThan(host.window.bounds.width, host.window.bounds.height, name)
 
+            let lists = descendants(of: host.controller.view).compactMap { $0 as? UIScrollView }
+                .filter(\.alwaysBounceVertical)
+            XCTAssertFalse(lists.isEmpty, name)
+            XCTAssertTrue(lists.allSatisfy(\.showsVerticalScrollIndicator),
+                          "Horizontal paging must preserve the live lists' vertical indicators: \(name)")
+            for list in lists {
+                XCTAssertEqual(list.bounds.width, host.window.bounds.width, accuracy: 1, name)
+            }
+
             let controls = descendants(of: host.controller.view).compactMap { $0 as? UISegmentedControl }
             XCTAssertTrue(controls.contains { $0.numberOfSegments == (loggedIn ? 2 : 1) },
                           "The native source selector must reflect the fixture's account: \(name)")

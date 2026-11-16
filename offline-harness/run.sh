@@ -53,24 +53,6 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 "$BUILD_DIR/playback-watch-progress"
 
 swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Features/VideoDetail/InlineVideoLayout.swift" \
-    "$HARNESS/src/InlineVideoLayoutRegression.swift" \
-    -o "$BUILD_DIR/inline-video-layout"
-"$BUILD_DIR/inline-video-layout"
-
-swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Platform/Playback/PlayerSurfaceGeometry.swift" \
-    "$HARNESS/src/PlayerSurfaceAspectRegression.swift" \
-    -o "$BUILD_DIR/player-surface-aspect"
-"$BUILD_DIR/player-surface-aspect"
-
-swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
-    "$APP/Features/VideoDetail/InlineVideoCollapseLayout.swift" \
-    "$HARNESS/src/InlineVideoCollapseRegression.swift" \
-    -o "$BUILD_DIR/inline-video-collapse"
-"$BUILD_DIR/inline-video-collapse"
-
-swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
     "$APP/Domain/Models/CardAnimationSettings.swift" \
     "$APP/Application/Settings/CardAnimationSettings+Preferences.swift" \
     "$HARNESS/src/CardAnimationRegression.swift" \

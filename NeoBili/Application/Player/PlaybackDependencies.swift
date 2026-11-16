@@ -13,4 +13,5 @@ struct PlaybackDependencies {
     let progress: PlaybackProgressStore
     let likes: VideoLikeStore
     let systemMedia: any SystemMediaControlling
+    var offlineProgress: PlaybackProgressStore? = nil
 }

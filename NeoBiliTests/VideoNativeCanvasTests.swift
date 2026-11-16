@@ -112,6 +112,10 @@ final class VideoNativeCanvasTests: XCTestCase {
             scroll.setContentOffset(CGPoint(x: 0, y: distance + 900), animated: false)
             scroll.setContentOffset(CGPoint(x: 0, y: distance), animated: false)
             try await Task.sleep(for: .milliseconds(100))
+            let indicator = try await ScrollIndicatorSnapshot.frame(in: scroll, window: window)
+            XCTAssertGreaterThanOrEqual(indicator.minY, canvasOrigin + 498 - distance,
+                                        "distance=\(distance), indicator=\(indicator), insets=\(scroll.verticalScrollIndicatorInsets)")
+            XCTAssertLessThan(indicator.minY, window.bounds.maxY - scroll.contentInset.bottom - 20)
             let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
                 window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
             }
@@ -120,6 +124,31 @@ final class VideoNativeCanvasTests: XCTestCase {
                                  "First comment is geometrically at the top but not rendered at distance \(distance)")
             let attachment = XCTAttachment(image: image)
             attachment.name = "production-comments-top-\(Int(distance))"; attachment.lifetime = .keepAlways; add(attachment)
+        }
+    }
+
+    func testProductionDescriptionIndicatorFollowsCollapseAndExpansionAtLargeTextSize() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let model = CanvasFixtureState()
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let host = UIHostingController(rootView: NativeCanvasFixture(model: model, nativeDescription: true)
+            .environment(AccountStore()).environment(ActionFeedback()).environment(NowPlayingStore())
+            .dynamicTypeSize(.xxxLarge).preferredColorScheme(.dark))
+        window.rootViewController = host; window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        try await Task.sleep(for: .milliseconds(300))
+        let scroll = try XCTUnwrap(descendants(host.view).compactMap { $0 as? UICollectionView }.first)
+        let origin = scroll.convert(scroll.bounds.origin, to: window).y
+        for distance: CGFloat in [0, 333, 498, 0] {
+            model.distance = distance
+            try await Task.sleep(for: .milliseconds(100))
+            let indicator = try await ScrollIndicatorSnapshot.frame(in: scroll, window: window)
+            XCTAssertGreaterThanOrEqual(indicator.minY, origin + 498 - distance,
+                                        "distance=\(distance), indicator=\(indicator), insets=\(scroll.verticalScrollIndicatorInsets)")
+            XCTAssertLessThan(indicator.maxY, window.bounds.maxY)
+            add(ScrollIndicatorSnapshot.attachment(window: window, name: "description-indicator-\(Int(distance))-dark-large"))
         }
     }
 
@@ -150,8 +179,10 @@ final class VideoNativeCanvasTests: XCTestCase {
 private struct NativeCanvasFixture: View {
     @Bindable var model: CanvasFixtureState
     var comments: CommentsViewModel? = nil
+    var nativeDescription = false
     @State private var barHeight: CGFloat = 44
     @State private var position = ScrollPosition(edge: .top)
+    @State private var descriptionScroll = VideoDescriptionScrollState()
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
@@ -175,7 +206,7 @@ private struct NativeCanvasFixture: View {
                 page("评论", section: .comments).id(VideoPageSection.comments)
             }.scrollTargetLayout()
         }.scrollPosition(id: Binding(get: { model.section }, set: { if let value = $0 { model.section = value } }))
-            .scrollTargetBehavior(.paging).scrollIndicators(.hidden)
+            .scrollTargetBehavior(.paging).scrollIndicators(.hidden, axes: .horizontal)
     }
     private func page(_ name: String, section: VideoPageSection) -> some View {
         Group {
@@ -183,6 +214,17 @@ private struct NativeCanvasFixture: View {
                 CommentsView(viewModel: comments, scrollPosition: $position, collapseConsume: { _ in 0 }, canCollapse: { _ in false })
             } else if section == .comments, model.loadingComments {
                 VideoCommentsLoadingView(consume: { _ in 0 }, canConsume: { _ in false })
+            } else if section == .description, nativeDescription {
+                VideoDescriptionCollection(videos: [], components: [
+                    VideoDescriptionComponent("indicator-content", revision: []) {
+                        VStack {
+                            ForEach(0..<60) { index in
+                                Text("简介内容 \(index)").frame(maxWidth: .infinity, minHeight: 60)
+                            }
+                        }
+                    }
+                ], scrollState: descriptionScroll, onSelect: { _ in }, consume: { _ in 0 }, end: {},
+                   canConsume: { _ in false }, canContinue: { false })
             } else {
                 ScrollView {
             LazyVStack { ForEach(0..<200) { id in

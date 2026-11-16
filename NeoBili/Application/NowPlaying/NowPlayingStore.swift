@@ -23,6 +23,9 @@ final class NowPlayingStore {
     private(set) var commentsViewModel: CommentsViewModel?
     private(set) var player: PlayerViewModel?
     private(set) var livePlayer: LivePlayerModel?
+    private(set) var offline: OfflinePlaybackDescriptor?
+    private var offlineService: OfflineCacheService?
+    private var offlineOpenRequest = UUID()
     private var hasRequestedPlayback = false
     var isWaitingForPlayback: Bool { route != nil && !hasRequestedPlayback }
 
@@ -163,7 +166,7 @@ final class NowPlayingStore {
     /// 从推荐页或搜索页的卡片打开。
     /// 点的是正在播的那个视频时只重新显示，不重新加载，进度也不会丢。
     func open(_ newRoute: VideoDetailRoute, from sourceID: String) {
-        if livePlayer != nil { close() }
+        if livePlayer != nil || offline != nil { close() }
         isVideoPageDismissalInProgress = false
         isVideoPageInteractionInProgress = false
         dismissalPlaybackPhase = nil
@@ -303,6 +306,7 @@ final class NowPlayingStore {
 
     /// 关闭视频页并彻底停止播放。
     func close() {
+        releaseOffline()
         minimizeReleaseTask?.cancel()
         holdsTabBarMinimize = false
         pendingPresentationID = nil
@@ -363,6 +367,7 @@ final class NowPlayingStore {
 
     /// 换一个视频。整份状态归零后重新开始加载。
     private func start(_ newRoute: VideoDetailRoute) {
+        releaseOffline()
         cancelLoads()
         player?.stop()
         player = nil
@@ -414,6 +419,7 @@ final class NowPlayingStore {
     }
 
     private func startPlayerIfPossible() {
+        guard offline == nil else { return }
         guard hasRequestedPlayback, let route, let cid = activeCid else { return }
         // 已经在放这一个了就不要重建，否则会打断正在进行的播放。
         if let player, player.bvid == route.bvid, player.cid == cid {
@@ -477,5 +483,46 @@ final class NowPlayingStore {
             task.cancel()
         }
         loadTasks.removeAll()
+    }
+
+    func openOffline(_ id: String, service: OfflineCacheService, from sourceID: String) async throws {
+        let request = UUID(); offlineOpenRequest = request
+        if offline?.entry.id == id { requestPageExpansion(from: sourceID); return }
+        let descriptor = try await service.playback(id)
+        guard offlineOpenRequest == request, !Task.isCancelled else {
+            await service.releasePlayback(descriptor.leaseID); return
+        }
+        close()
+        offline = descriptor; offlineService = service
+        section = .description
+        isDescriptionExpanded = false
+        descriptionScroll = VideoDescriptionScrollState()
+        let video = descriptor.entry.video
+        route = VideoDetailRoute(bvid: video.bvid, cid: video.cid, cover: descriptor.coverURL?.absoluteString,
+                                 title: video.displayTitle, artist: video.author, aid: video.aid)
+        selectedCid = video.cid; hasRequestedPlayback = true
+        let model = PlayerViewModel(bvid: video.bvid, cid: video.cid, offline: descriptor,
+            configuration: playbackConfiguration,
+            progressStore: dependencies.offlineProgress ?? PlaybackProgressStore(defaults: defaults, storageNamespace: "offline"),
+            dependencies: dependencies)
+        player = model
+        model.updateSystemMediaMetadata(title: video.displayTitle, artist: video.author, artworkURL: descriptor.coverURL)
+        playerLoadTask = Task { await model.load() }
+        requestPageExpansion(from: sourceID)
+    }
+
+    private func releaseOffline() {
+        offlineOpenRequest = UUID()
+        if let offline, let offlineService {
+            if let player {
+                player.stop { Task { await offlineService.releasePlayback(offline.leaseID) } }
+            } else { Task { await offlineService.releasePlayback(offline.leaseID) } }
+        }
+        offline = nil; offlineService = nil
+    }
+
+    func removeOfflineProgress(for entry: OfflineCacheEntry) {
+        let progress = dependencies.offlineProgress ?? PlaybackProgressStore(defaults: defaults, storageNamespace: "offline")
+        progress.remove(bvid: entry.video.bvid, cid: entry.video.cid)
     }
 }
