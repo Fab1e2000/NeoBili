@@ -94,6 +94,20 @@ Regression 固定使用简体中文与中国区域，保证文案断言不受宿
 
 ## 数据与前台隔离
 
+离线缓存的状态机、资源验证、独立进度和布局回归纳入默认 Regression。后台下载传输
+在此配置下不创建系统会话，测试使用受控传输与临时目录。实际 mpv 本地双轨播放通过
+显式 Debug 测试方案运行，使用测试包中的合成音视频，不读取账号或下载线上媒体：
+
+```sh
+bash scripts/simulator.sh test OfflinePlaybackIntegrationTests -- -configuration Debug -testPlan OfflinePlayback
+```
+
+该方案检查首帧、拖动、字幕同步及播放结束，并保存画面附件。手机锁屏后台下载、蜂窝
+切换及飞行模式冷启动属于真机验收，按本节设备授权约定单独安排。
+
+Network 方案还包含公开短视频的真实后台会话下载：验证视频、声音、封面、弹幕和可用字幕
+全部完成后能生成本地播放源，使用临时目录并在结束时清理测试任务；单次下载上限 30 MB。
+
 Regression 安装为 `com.elsterlee.NeoBili.regression`，与日常应用共用模拟器、使用不同沙盒。
 它不包含本地签名覆盖；账号使用内存 `CredentialStorage`，测试可注入独立身份和 UserDefaults。
 应用测试宿主保留窗口但不加载业务根页面或预热真实接口。

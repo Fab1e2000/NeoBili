@@ -3,9 +3,9 @@ import Foundation
 /// 本机续播记录不依赖登录或历史记录接口；分 P 用 cid 分开保存。
 @MainActor
 final class PlaybackProgressStore {
-    private static let legacyStorageKey = "neobili.playbackProgress.v1"
-    private static let indexKey = "neobili.playbackProgress.v2.keys"
-    private static let entryPrefix = "neobili.playbackProgress.v2.entry."
+    private let legacyStorageKey: String
+    private let indexKey: String
+    private let entryPrefix: String
 
     private struct Entry: Codable {
         let position: TimeInterval
@@ -16,28 +16,32 @@ final class PlaybackProgressStore {
     private let defaults: UserDefaults
     private let now: () -> Date
     private let maximumEntries: Int
-    private var entries: [String: Entry]
+    private var entries: [String: Entry] = [:]
 
-    init(defaults: UserDefaults = .standard, maximumEntries: Int = 2_000,
+    init(defaults: UserDefaults = .standard, maximumEntries: Int = 2_000, storageNamespace: String? = nil,
          now: @escaping () -> Date = Date.init) {
         self.defaults = defaults
+        let prefix = storageNamespace.map { "neobili.\($0).playbackProgress" } ?? "neobili.playbackProgress"
+        legacyStorageKey = prefix + ".v1"
+        indexKey = prefix + ".v2.keys"
+        entryPrefix = prefix + ".v2.entry."
         self.maximumEntries = max(maximumEntries, 1)
         self.now = now
         let decoder = JSONDecoder()
-        if let keys = defaults.stringArray(forKey: Self.indexKey) {
+        if let keys = defaults.stringArray(forKey: indexKey) {
             entries = Dictionary(uniqueKeysWithValues: keys.compactMap { key in
-                guard let data = defaults.data(forKey: Self.entryPrefix + key),
+                guard let data = defaults.data(forKey: entryPrefix + key),
                       let entry = try? decoder.decode(Entry.self, from: data) else { return nil }
                 return (key, entry)
             })
         } else {
-            entries = defaults.data(forKey: Self.legacyStorageKey)
+            entries = defaults.data(forKey: legacyStorageKey)
                 .flatMap { try? decoder.decode([String: Entry].self, from: $0) } ?? [:]
             // Commit the index after every old record has been copied. A process
             // interruption before this point safely retries the v1 migration.
             for key in entries.keys { persistEntry(for: key) }
             persistIndex()
-            defaults.removeObject(forKey: Self.legacyStorageKey)
+            defaults.removeObject(forKey: legacyStorageKey)
         }
     }
 
@@ -73,7 +77,7 @@ final class PlaybackProgressStore {
                 .dropFirst(maximumEntries).map(\.key)
             for expiredKey in expiredKeys {
                 entries[expiredKey] = nil
-                defaults.removeObject(forKey: Self.entryPrefix + expiredKey)
+                defaults.removeObject(forKey: entryPrefix + expiredKey)
             }
         }
         if isNewEntry || needsTrimming { persistIndex() }
@@ -83,7 +87,7 @@ final class PlaybackProgressStore {
         let key = key(bvid: bvid, cid: cid)
         guard entries.removeValue(forKey: key) != nil else { return }
         persistIndex()
-        defaults.removeObject(forKey: Self.entryPrefix + key)
+        defaults.removeObject(forKey: entryPrefix + key)
     }
 
     private func key(bvid: String, cid: Int) -> String { "\(bvid):\(cid)" }
@@ -102,13 +106,13 @@ final class PlaybackProgressStore {
     /// saved video on the main actor every five seconds scales with history.
     private func persistEntry(for key: String) {
         guard let entry = entries[key], let data = try? JSONEncoder().encode(entry) else { return }
-        defaults.set(data, forKey: Self.entryPrefix + key)
+        defaults.set(data, forKey: entryPrefix + key)
     }
 
     /// Membership changes only when a new video is watched or a record removed;
     /// ordinary progress updates and repeated pause/exit callbacks skip this.
     private func persistIndex() {
-        defaults.set(Array(entries.keys), forKey: Self.indexKey)
+        defaults.set(Array(entries.keys), forKey: indexKey)
     }
 }
 

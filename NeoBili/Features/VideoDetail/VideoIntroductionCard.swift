@@ -8,21 +8,28 @@ import UIKit
 /// and standalone previews. The collection uses IntroductionView directly.
 struct VideoIntroductionCard: View {
     let title: String
-    let stat: VideoStat
-    let pubdate: Int
+    let metadata: String
     let desc: String
     @Binding var isExpanded: Bool
 
+    init(title: String, stat: VideoStat, pubdate: Int, desc: String, isExpanded: Binding<Bool>) {
+        self.init(title: title, metadata: NativeVideoIntroductionCard.metadataText(stat: stat, pubdate: pubdate),
+                  desc: desc, isExpanded: isExpanded)
+    }
+
+    init(title: String, metadata: String, desc: String = "", isExpanded: Binding<Bool>) {
+        self.title = title; self.metadata = metadata; self.desc = desc; _isExpanded = isExpanded
+    }
+
     var body: some View {
-        NativeVideoIntroductionCard(title: title, stat: stat, pubdate: pubdate, desc: desc,
+        NativeVideoIntroductionCard(title: title, metadata: metadata, desc: desc,
                                     isExpanded: isExpanded, onToggle: { isExpanded.toggle() })
     }
 }
 
 struct NativeVideoIntroductionCard: UIViewRepresentable {
     let title: String
-    let stat: VideoStat
-    let pubdate: Int
+    let metadata: String
     let desc: String
     let isExpanded: Bool
     let onToggle: () -> Void
@@ -30,7 +37,7 @@ struct NativeVideoIntroductionCard: UIViewRepresentable {
 
     func makeUIView(context: Context) -> IntroductionView { IntroductionView() }
     func updateUIView(_ view: IntroductionView, context: Context) {
-        view.configure(title: title, metadata: Self.metadataText(stat: stat, pubdate: pubdate),
+        view.configure(title: title, metadata: metadata,
                        description: desc, expanded: isExpanded, typeSize: typeSize)
         view.onToggle = onToggle
     }

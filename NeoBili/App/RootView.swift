@@ -13,7 +13,9 @@ extension EnvironmentValues {
 }
 
 struct RootView: View {
-    @State private var nowPlaying = NowPlayingStore()
+    @State private var nowPlaying: NowPlayingStore
+    @State private var cacheNavigation: OfflineCacheNavigation
+    private let offlineCache: OfflineCacheStore
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
@@ -45,6 +47,14 @@ struct RootView: View {
     /// 新页面的浓度：切换那一刻置 0，随后淡入。
     @State private var tabContentOpacity: Double = 1
     @State private var tabSwitchTask: Task<Void, Never>?
+
+    init(nowPlaying: NowPlayingStore = NowPlayingStore(),
+         cacheNavigation: OfflineCacheNavigation = OfflineCacheNavigation(),
+         offlineCache: OfflineCacheStore = .shared) {
+        _nowPlaying = State(initialValue: nowPlaying)
+        _cacheNavigation = State(initialValue: cacheNavigation)
+        self.offlineCache = offlineCache
+    }
 
     var body: some View {
         TabView(selection: tabSelection) {
@@ -96,6 +106,7 @@ struct RootView: View {
         .appFontStyle()
         .modifier(AppAuthorizationRecovery(account: account))
         .environment(nowPlaying)
+        .environment(\.offlineCacheNavigation, cacheNavigation)
         .environment(\.videoPreparation, nowPlaying.preparationCache)
         .environment(account)
         .environment(feedback)
@@ -123,7 +134,15 @@ struct RootView: View {
         .onChange(of: animatesPageEntrance) { _, enabled in
             if !enabled { finishTabEntrance() }
         }
-        .onChange(of: account.sessionID) { nowPlaying.close() }
+        .onChange(of: account.sessionID) {
+            if nowPlaying.offline == nil { nowPlaying.close() }
+            Task { await OfflineCacheComposition.repository.accountDidChange() }
+        }
+        .onChange(of: cacheNavigation.requestID) { _, request in
+            guard request != nil else { return }
+            if nowPlaying.isExpanded { nowPlaying.dismissVideoPage() }
+            switchTab(to: .offlineCache)
+        }
         // 当前页被隐藏时切到第一个仍显示的标签。
         .onChange(of: visibleTabs) { _, visible in
             if displayedTab != .search, !visible.contains(displayedTab), let first = visible.first {
@@ -150,13 +169,21 @@ struct RootView: View {
             LibraryTabPage(tab: tab)
                 .id(account.sessionID)
                 .tint(.primary)
+        case .offlineCache:
+            NavigationStack {
+                OfflineCacheView(cache: offlineCache, showsDownloads: cacheNavigation.requestID != nil)
+            }
+            .id(cacheNavigation.requestID)
+            .tint(.primary)
+            .onAppear { OrientationController.enterPortrait() }
         case .search:
             EmptyView()
         }
     }
 
     private var visibleTabs: [MainTab] {
-        MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs)
+        MainTabSettings.visible(order: tabOrder, hidden: hiddenTabs,
+                                revealing: displayedTab == .offlineCache ? .offlineCache : nil)
     }
 
     private func submitSearch(_ keyword: String?) {

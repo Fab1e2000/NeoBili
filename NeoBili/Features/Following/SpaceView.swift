@@ -72,7 +72,7 @@ struct SpaceView: View {
             }
             .scrollPosition(id: Binding<Tab?>(get: { tab }, set: { if let value = $0 { tab = value } }))
             .scrollTargetBehavior(.paging)
-            .scrollIndicators(.hidden)
+            .scrollIndicators(.hidden, axes: .horizontal)
             .overlay(alignment: .top) {
                 VStack(spacing: 0) {
                     SpaceCollapsingHeader(motion: headerMotion, height: headerHeight) {
@@ -162,6 +162,7 @@ struct SpaceView: View {
             .frame(minHeight: max(viewportHeight - pickerHeight, 0), alignment: .top)
             .padding(.top, headerHeight + pickerHeight)
         }
+        .modifier(SpaceScrollIndicators(motion: headerMotion, headerHeight: headerHeight, pickerHeight: pickerHeight))
         .scrollPosition(pageTab == .videos ? $videoPosition : $dynamicPosition)
         .scrollBounceBehavior(.always, axes: .vertical)
         .onScrollPhaseChange { _, phase in
@@ -487,10 +488,20 @@ struct SpaceView: View {
     }
 }
 
-/// Only the clipping view observes this per-frame value. The page lists do not.
+/// Only header clipping and indicator margins observe this per-frame value.
 @MainActor @Observable
 private final class SpaceHeaderMotion {
     var collapse: CGFloat = 0
+}
+
+private struct SpaceScrollIndicators: ViewModifier {
+    let motion: SpaceHeaderMotion
+    let headerHeight: CGFloat
+    let pickerHeight: CGFloat
+
+    func body(content: Content) -> some View {
+        content.contentMargins(.top, max(0, headerHeight - motion.collapse) + pickerHeight, for: .scrollIndicators)
+    }
 }
 
 private struct SpaceCollapsingHeader<Content: View>: View {

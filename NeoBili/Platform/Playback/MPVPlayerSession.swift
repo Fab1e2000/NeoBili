@@ -98,12 +98,12 @@ final class MPVPlayerSession {
         viewController.seek(to: max(seconds, 0))
     }
 
-    func stop() {
-        guard !isStopped else { return }
+    func stop(afterStopped: (@MainActor @Sendable () -> Void)? = nil) {
+        guard !isStopped else { viewController.stop(afterStopped: afterStopped); return }
         isStopped = true
         requestsAudio = false
         let audioSession = audioSession, owner = audioOwner
-        viewController.stop { audioSession.release(owner) }
+        viewController.stop { audioSession.release(owner); afterStopped?() }
     }
 
     func refreshAudioFocusIfNeeded() {

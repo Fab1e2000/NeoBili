@@ -25,13 +25,14 @@ struct VideoSectionBar: View {
     /// 评论总数，跟在「评论」后面显示。还没加载出来（为 0）时不显示，
     /// 免得先出现一个 0 再跳成真实数字。
     var commentCount: Int = 0
+    var showsComments = true
     /// 打开发弹幕面板。为 nil（详情还没加载好）时不显示按钮。
     var onSendDanmaku: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
             Picker("视频内容", selection: animatedSelection) {
-                ForEach(VideoPageSection.allCases) { section in
+                ForEach(showsComments ? VideoPageSection.allCases : [.description]) { section in
                     Text(title(for: section)).tag(section)
                 }
             }

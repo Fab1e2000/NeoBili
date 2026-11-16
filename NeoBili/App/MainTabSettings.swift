@@ -2,7 +2,7 @@ import Foundation
 
 /// 主页面。搜索是系统的搜索标签，固定在标签栏末尾，不参与排序和隐藏。
 enum MainTab: String, Hashable, CaseIterable, Identifiable {
-    case live, home, following, watchLater, favorites, history, search
+    case live, home, following, offlineCache, watchLater, favorites, history, search
 
     var id: String { rawValue }
 
@@ -11,6 +11,7 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
         case .live: String(localized: "直播")
         case .home: String(localized: "推荐")
         case .following: String(localized: "关注")
+        case .offlineCache: String(localized: "缓存")
         case .watchLater: String(localized: "稍后再看")
         case .favorites: String(localized: "收藏")
         case .history: String(localized: "历史")
@@ -23,6 +24,7 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
         switch self {
         case .favorites: String(localized: "我的收藏")
         case .history: String(localized: "历史记录")
+        case .offlineCache: String(localized: "离线缓存")
         default: title
         }
     }
@@ -32,6 +34,7 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
         case .live: "dot.radiowaves.left.and.right"
         case .home: "house.fill"
         case .following: "person.2.fill"
+        case .offlineCache: "arrow.down.circle.fill"
         case .watchLater: "flag.checkered"
         case .favorites: "star.fill"
         case .history: "clock.arrow.circlepath"
@@ -40,7 +43,7 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
     }
 
     /// 可以排序、隐藏、设为启动页的标签。
-    static let reorderable: [MainTab] = [.live, .home, .following, .watchLater, .favorites, .history]
+    static let reorderable: [MainTab] = [.live, .home, .following, .offlineCache, .watchLater, .favorites, .history]
 }
 
 /// 标签栏的排序、隐藏和启动时打开的页面。
@@ -48,8 +51,8 @@ enum MainTabSettings {
     static let orderKey = "neobili.tabOrder"
     static let hiddenKey = "neobili.hiddenTabs"
     static let launchKey = "neobili.launchTab"
-    static let defaultOrder: [MainTab] = [.home, .live, .following, .watchLater, .favorites, .history]
-    /// 新加入的列表页默认收起，保持原来的三个主页面。
+    static let defaultOrder: [MainTab] = [.home, .live, .following, .offlineCache, .watchLater, .favorites, .history]
+    /// 资料库列表默认收起；缓存与推荐、直播、关注一起显示。
     static let defaultHidden: Set<MainTab> = [.watchLater, .favorites, .history]
     static let defaultLaunch = MainTab.home
     /// 标签栏最多 5 个：超过 5 个时系统会自动生成「更多」并把搜索挤出末尾，所以不允许超出。
@@ -81,10 +84,15 @@ enum MainTabSettings {
     }
 
     /// 标签栏实际显示的页面。至少保留一个，全部隐藏时退回推荐页。
-    static func visible(order: String, hidden: String?) -> [MainTab] {
+    static func visible(order: String, hidden: String?, revealing requested: MainTab? = nil) -> [MainTab] {
         let hidden = effectiveHidden(order: order, hidden: hidden)
-        let visible = self.order(from: order).filter { !hidden.contains($0) }
-        return visible.isEmpty ? [defaultLaunch] : visible
+        var visible = self.order(from: order).filter { !hidden.contains($0) }
+        if visible.isEmpty { visible = [defaultLaunch] }
+        if let requested, requested != .search, !visible.contains(requested) {
+            if visible.count == maxVisible { visible.removeLast() }
+            visible.append(requested)
+        }
+        return visible
     }
 
     /// 启动页若被隐藏，就打开第一个显示的标签。

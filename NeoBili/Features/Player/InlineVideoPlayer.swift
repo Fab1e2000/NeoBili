@@ -21,6 +21,7 @@ struct InlineVideoPlayer: View {
     var videoTitle = ""
     var videoSubtitle = ""
     var shareURL: URL?
+    var onCache: (() -> Void)? = nil
 
     @AppStorage(DanmakuSettings.videoEnabledKey) private var danmakuEnabled = DanmakuSettings.defaultValue
 
@@ -45,8 +46,12 @@ struct InlineVideoPlayer: View {
             }
 
             if !viewModel.hasRenderedFirstFrame, let coverURL {
-                BiliImage(url: coverURL)
-                    .aspectRatio(contentMode: .fit)
+                if coverURL.isFileURL { OfflineArtwork(url: coverURL).aspectRatio(contentMode: .fit) }
+                else { BiliImage(url: coverURL).aspectRatio(contentMode: .fit) }
+            }
+
+            if viewModel.isOffline {
+                VStack { Spacer(); OfflineSubtitleOverlay(player: viewModel, controlsVisible: controlsVisible) }
             }
 
             if let message = viewModel.errorMessage {
@@ -73,7 +78,8 @@ struct InlineVideoPlayer: View {
                 onDismiss: onDismiss,
                 videoTitle: videoTitle,
                 videoSubtitle: videoSubtitle,
-                shareURL: shareURL
+                shareURL: shareURL,
+                onCache: onCache
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

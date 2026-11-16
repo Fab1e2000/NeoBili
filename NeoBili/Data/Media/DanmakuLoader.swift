@@ -33,16 +33,26 @@ public enum DanmakuLoader {
         return delegate.items
     }
 
+    nonisolated static func parseValidated(_ data: Data) throws -> [DanmakuItem] {
+        let parser = XMLParser(data: data)
+        let delegate = ParserDelegate(limit: maximumItems)
+        parser.delegate = delegate
+        guard parser.parse(), delegate.root == "i" else { throw URLError(.cannotParseResponse) }
+        return delegate.items
+    }
+
     private final class ParserDelegate: NSObject, XMLParserDelegate {
         private let limit: Int
         private(set) var items: [DanmakuItem] = []
         private var pendingAttributes: [String: String]?
         private var text = ""
+        private(set) var root: String?
 
         init(limit: Int) { self.limit = limit }
 
         func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
                     qualifiedName: String?, attributes: [String: String]) {
+            if root == nil { root = elementName }
             guard !Task.isCancelled else { parser.abortParsing(); return }
             guard elementName == "d" else { return }
             pendingAttributes = attributes

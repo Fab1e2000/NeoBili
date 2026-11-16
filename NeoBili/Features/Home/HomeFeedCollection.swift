@@ -50,9 +50,9 @@ struct HomeFeedCollection: UIViewRepresentable {
         // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
         view.alwaysBounceVertical = true
         view.showsHorizontalScrollIndicator = false
-        // 边距全部由 safeInsets 给出，不让 UIKit 自动叠加安全区：挂上固定标题栏后
-        // 列表拿到的系统安全区是 0；而自动模式下刷新暂停滚动的那一刻边距会跳变。
+        // 内容和滚动条边距统一使用外层量出的 safeInsets，关闭 UIKit 的安全区叠加。
         view.contentInsetAdjustmentBehavior = .never
+        view.automaticallyAdjustsScrollIndicatorInsets = false
         applyInsets(to: view)
         // 顶部沿用系统默认的 scroll edge effect，与历史、收藏等原生列表一致；底部不加。
         view.topEdgeEffect.isHidden = !pinsTitleBar
