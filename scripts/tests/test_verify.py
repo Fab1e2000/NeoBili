@@ -100,6 +100,12 @@ class ValidationWorkflowTests(unittest.TestCase):
         self.assertIn("workflow\tpassed", self.summary())
         self.assertIn("simulator\tpassed", self.summary())
 
+    def test_host_runs_shared_checks_without_starting_simulator(self):
+        self.assertEqual(self.run_verify("host").returncode, 0)
+        self.assertEqual(self.calls(), ["offline "])
+        self.assertIn("workflow\tpassed", self.summary())
+        self.assertIn("offline\tpassed", self.summary())
+
     def test_full_propagates_simulator_failure(self):
         self.env["SIMULATOR_STATUS"] = "65"
         self.assertNotEqual(self.run_verify("full").returncode, 0)
