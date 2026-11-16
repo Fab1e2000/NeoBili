@@ -61,6 +61,10 @@ final class HomeFeedNavigationBarTests: XCTestCase {
         }
         let feed = try XCTUnwrap(collection(in: host.view))
         let top = -feed.adjustedContentInset.top
+        let indicator = try await ScrollIndicatorSnapshot.frame(in: feed, window: window)
+        XCTAssertEqual(indicator.minY, feed.verticalScrollIndicatorInsets.top + 3, accuracy: 1,
+                       "The navigation safe area must be applied to the indicator once")
+        add(ScrollIndicatorSnapshot.attachment(window: window, name: "home-scroll-indicator-top"))
         // 向下滚、回滚几个来回，每步都让布局和导航栏有机会响应。
         for _ in 0..<3 {
             for step in 0..<40 {
@@ -75,6 +79,14 @@ final class HomeFeedNavigationBarTests: XCTestCase {
             }
         }
         XCTAssertEqual(feed.contentOffset.y, top, accuracy: 2)
+        window.overrideUserInterfaceStyle = .dark
+        feed.setContentOffset(CGPoint(x: 0, y: feed.contentSize.height - feed.bounds.height + feed.contentInset.bottom), animated: false)
+        let bottomIndicator = try await ScrollIndicatorSnapshot.frame(in: feed, window: window)
+        // UIKit also reserves room for the display's rounded lower corners.
+        let bottomLimit = max(feed.verticalScrollIndicatorInsets.bottom, window.safeAreaInsets.top)
+        XCTAssertGreaterThanOrEqual(bottomIndicator.maxY, window.bounds.maxY - bottomLimit - 4,
+                                    "The bottom safe area must be applied to the indicator once")
+        add(ScrollIndicatorSnapshot.attachment(window: window, name: "home-scroll-indicator-bottom-dark"))
     }
 
     /// 回归：自适应高度的「上次看到这里」分隔条不能随它与安全区的重叠量改变高度。

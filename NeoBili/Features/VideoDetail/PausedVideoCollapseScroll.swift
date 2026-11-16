@@ -10,6 +10,8 @@ struct VideoScrollContext {
     let reservation: CGFloat
     let distance: @MainActor () -> CGFloat
     let isActive: @MainActor (VideoPageSection) -> Bool
+
+    @MainActor var indicatorTopInset: CGFloat { max(0, reservation - distance()) }
 }
 
 extension EnvironmentValues {
@@ -44,9 +46,11 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
         private var page = VideoPageSection.comments
         private var ownsInsets = false
         private var originalInsets = UIEdgeInsets.zero
+        private var originalIndicatorTop: CGFloat = 0
         private var appliedInsets = UIEdgeInsets.zero
         private var offsetObservation: NSKeyValueObservation?
         private var insetObservation: NSKeyValueObservation?
+        private var indicatorObservation: NSKeyValueObservation?
         private var sizeObservation: NSKeyValueObservation?
         private var correcting = false
         private var representedDistance: CGFloat = 0
@@ -68,6 +72,7 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
                     guard scroll !== target else { synchronize(); return }
                     detach()
                     scroll = target; originalInsets = target.contentInset
+                    originalIndicatorTop = target.verticalScrollIndicatorInsets.top
                     readingOffset = max(0, target.contentOffset.y + target.adjustedContentInset.top)
                     lastOffset = target.contentOffset.y + target.adjustedContentInset.top
                     synchronize()
@@ -85,6 +90,9 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
                             }
                             self.synchronize()
                         }
+                    }
+                    indicatorObservation = target.observe(\.verticalScrollIndicatorInsets, options: [.new]) { [weak self] _, _ in
+                        MainActor.assumeIsolated { self?.synchronizeIndicator() }
                     }
                     sizeObservation = target.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
                         MainActor.assumeIsolated {
@@ -107,6 +115,7 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
                 appliedInsets = inset
                 if scroll.contentInset != inset { scroll.contentInset = inset }
             }
+            synchronizeIndicator()
             if geometry.isActive(page) {
                 let nextDistance = geometry.distance()
                 let target = readingOffset + nextDistance - scroll.adjustedContentInset.top
@@ -139,6 +148,17 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
                 representedDistance = geometry.distance()
             }
             readingOffset = max(0, offset - representedDistance)
+            synchronizeIndicator()
+        }
+
+        /// The fixed canvas extends behind the player. Keep the thumb in its
+        /// visible viewport, including when SwiftUI refreshes native insets.
+        private func synchronizeIndicator() {
+            guard let scroll, let geometry else { return }
+            let top = originalIndicatorTop + geometry.indicatorTopInset
+            if scroll.verticalScrollIndicatorInsets.top != top {
+                scroll.verticalScrollIndicatorInsets.top = top
+            }
         }
 
         private func horizontalPagerIsMoving() -> Bool {
@@ -158,7 +178,13 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
         func detach() {
             offsetObservation?.invalidate(); insetObservation?.invalidate(); sizeObservation?.invalidate()
             offsetObservation = nil; insetObservation = nil; sizeObservation = nil
-            if ownsInsets, let scroll { scroll.contentInset = originalInsets }
+            indicatorObservation?.invalidate(); indicatorObservation = nil
+            if let scroll {
+                if ownsInsets { scroll.contentInset = originalInsets }
+                if geometry != nil {
+                    scroll.verticalScrollIndicatorInsets.top = originalIndicatorTop
+                }
+            }
             scroll = nil; representedDistance = 0
         }
     }

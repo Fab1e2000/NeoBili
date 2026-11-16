@@ -34,6 +34,9 @@
             default = "YES"
             reference = "container:Config/Regression.xctestplan">
          </TestPlanReference>
+         <TestPlanReference
+            reference = "container:Config/OfflinePlayback.xctestplan">
+         </TestPlanReference>
       </TestPlans>
       <MacroExpansion>
          <BuildableReference

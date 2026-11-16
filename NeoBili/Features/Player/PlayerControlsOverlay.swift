@@ -22,6 +22,7 @@ struct PlayerControlsOverlay: View {
     var videoTitle = ""
     var videoSubtitle = ""
     var shareURL: URL?
+    var onCache: (() -> Void)? = nil
 
     @State private var isScrubbing = false
     @State private var scrubTime: Double = 0
@@ -42,7 +43,7 @@ struct PlayerControlsOverlay: View {
             .init(position: isScrubbing ? scrubTime : viewModel.currentTime,
                   duration: viewModel.duration, buffered: viewModel.bufferedTime,
                   previewStore: viewModel.storyboardStore,
-                  previewVideo: VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid))
+                  previewVideo: viewModel.isOffline ? nil : VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid))
         }
     }
 
@@ -102,7 +103,7 @@ struct PlayerControlsOverlay: View {
             }
         }
         .task(id: canControlPlayback) {
-            guard canControlPlayback else { return }
+            guard canControlPlayback, !viewModel.isOffline else { return }
             await viewModel.storyboardStore.load(VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid))
             await viewModel.storyboardStore.prepare(at: viewModel.currentTime)
         }
@@ -122,8 +123,13 @@ struct PlayerControlsOverlay: View {
             scheduleAutoHide()
         }
 
-        Button(isAddingWatchLater ? "正在加入稍后再看…" : "稍后再看", systemImage: "flag", action: addToWatchLater)
-            .disabled(isAddingWatchLater || viewModel.bvid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        if !viewModel.isOffline {
+            Button(isAddingWatchLater ? "正在加入稍后再看…" : "稍后再看", systemImage: "flag", action: addToWatchLater)
+                .disabled(isAddingWatchLater || viewModel.bvid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if let onCache { Button("缓存", systemImage: "arrow.down.circle", action: onCache) }
+        } else if viewModel.offline?.subtitles.isEmpty == false {
+            OfflineSubtitleMenu(player: viewModel)
+        }
         Menu("定时休眠", systemImage: "moon.zzz") {
             ForEach(PlayerViewModel.sleepOptions, id: \.self) { sleepMenuButton($0) }
             sleepMenuButton(.afterVideoEnd)

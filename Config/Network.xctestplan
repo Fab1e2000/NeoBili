@@ -28,7 +28,8 @@
       "parallelizable": false,
       "selectedTests": [
         "AppRecommendationTests/testAppEndpointReturnsPlayableCardsOverNetwork()",
-        "DanmakuNetworkSmokeTests"
+        "DanmakuNetworkSmokeTests",
+        "OfflineCacheNetworkTests"
       ]
     }
   ],

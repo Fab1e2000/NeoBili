@@ -43,6 +43,8 @@ struct VideoPartsSheet: View {
     let parts: [VideoPart]
     let currentCid: Int?
     var coverURL: URL? = nil
+    var coverURLs: [Int: URL] = [:]
+    var title = "分P"
     let onSelect: (VideoPart) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -56,7 +58,7 @@ struct VideoPartsSheet: View {
                             onSelect(part)
                         } label: {
                             VideoListCard(
-                                coverURL: coverURL,
+                                coverURL: coverURLs[part.cid] ?? coverURL,
                                 title: part.part,
                                 author: part.cid == currentCid ? String(localized: "P\(part.page) · 正在播放") : "P\(part.page)",
                                 playCount: -1,
@@ -75,7 +77,7 @@ struct VideoPartsSheet: View {
             .videoPickerInitialPosition(target: parts.first(where: { $0.cid == currentCid })?.id)
             .background(Color(uiColor: .systemGroupedBackground))
             .leftEdgeTapDeadZone()
-            .navigationTitle("分P")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

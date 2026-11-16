@@ -61,6 +61,7 @@ struct VideoActionBar: View {
     let onFavorite: () -> Void
     /// 按住收藏 0.5 秒＝挑收藏夹；轻点执行收藏／取消。
     let onPickFavoriteFolder: () -> Void
+    var onCache: (() -> Void)? = nil
 
     @State private var showsShare = false
 
@@ -104,6 +105,17 @@ struct VideoActionBar: View {
             )
 
             shareItem
+            if let onCache {
+                VStack(spacing: VideoActionBarLayout.captionSpacing) {
+                    Button(action: onCache) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 23)).frame(maxWidth: .infinity)
+                            .frame(height: VideoActionBarLayout.buttonHeight)
+                            .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain).accessibilityLabel("缓存")
+                    captionText(String(localized: "缓存"), isActive: false)
+                }.frame(maxWidth: .infinity)
+            }
         }
         .controlSize(.large)
         .sheet(isPresented: $showsShare) {

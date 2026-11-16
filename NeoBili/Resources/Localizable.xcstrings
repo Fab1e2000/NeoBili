@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "缓存" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloads"
+          }
+        }
+      }
+    },
+    "离线缓存" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline Downloads"
+          }
+        }
+      }
+    },
     "正在加载安全验证": {
       "localizations": {
         "en": {

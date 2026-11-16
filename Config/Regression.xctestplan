@@ -28,7 +28,9 @@
         "AppRecommendationTests/testAppEndpointReturnsPlayableCardsOverNetwork()",
         "DanmakuNetworkSmokeTests",
         "LiveDeviceSmokeTests",
-        "VideoQualityDeviceSmokeTests"
+        "VideoQualityDeviceSmokeTests",
+        "OfflinePlaybackIntegrationTests",
+        "OfflineCacheNetworkTests"
       ]
     }
   ],

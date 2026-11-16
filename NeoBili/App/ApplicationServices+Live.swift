@@ -10,12 +10,13 @@ import AVFAudio
 extension ApplicationServices {
     static let live = makeLive(identity: .shared, client: .shared, session: AppNetwork.session,
                               diagnostics: .shared, network: .shared, recommendationSession: .shared,
-                              reporter: .shared, clickReporter: .shared)
+                              reporter: .shared, clickReporter: .shared, offlineCache: OfflineCacheComposition.repository.service)
 
     static func makeLive(identity: DeviceIdentity, client: APIClient, session: URLSession,
                          diagnostics: RecommendationDiagnostics, network: AppNetworkMetadata,
                          recommendationSession: AppRecommendationSession, reporter: AppBehaviorReporter,
                          clickReporter: RecommendationClickReporter,
+                         offlineCache: OfflineCacheService = OfflineCacheService(),
                          filter: @escaping @Sendable () -> RecommendationFilter = { .current() }) -> Self {
         Self(
             currentAppBuvid: { await identity.appBuvid() },
@@ -32,7 +33,8 @@ extension ApplicationServices {
             streaming: .live(client: client, identity: identity, session: session),
             community: .live(client: client, identity: identity),
             recommendation: .live(client: client, identity: identity, session: recommendationSession,
-                                  network: network, clickReporter: clickReporter, filter: filter)
+                                  network: network, clickReporter: clickReporter, filter: filter),
+            offlineCache: offlineCache
         )
     }
 }
@@ -62,7 +64,8 @@ extension PlaybackDependencies {
         preparation: ApplicationServices.playbackPreparation,
         progress: PlaybackProgressStore(),
         likes: .shared,
-        systemMedia: SystemNowPlayingCenter.shared
+        systemMedia: SystemNowPlayingCenter.shared,
+        offlineProgress: PlaybackProgressStore(defaults: UserDefaults(suiteName: "neobili.offline-progress")!)
     )
 }
 
@@ -87,6 +90,7 @@ extension SystemNowPlayingCenter {
         output: .system(), notifications: .default,
         interruptionObject: AVAudioSession.sharedInstance(), idleTimer: PlaybackIdleTimer(),
         artworkLoader: { url in
+            if url.isFileURL { return try Data(contentsOf: url) }
             var request = URLRequest(url: url)
             request.timeoutInterval = 8
             request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")

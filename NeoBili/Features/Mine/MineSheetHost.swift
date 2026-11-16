@@ -7,6 +7,8 @@ extension View {
 }
 
 private struct MineSheetHost: ViewModifier {
+    @Environment(\.offlineCacheNavigation) private var cacheNavigation
+    @Environment(NowPlayingStore.self) private var nowPlaying
     @State private var isPresented = false
     @State private var openAction = EnvironmentAction<Void> { _ in }
 
@@ -17,6 +19,11 @@ private struct MineSheetHost: ViewModifier {
                 openAction.setHandler { [isPresented = $isPresented] in
                     isPresented.wrappedValue = true
                 }
+            }
+            .onChange(of: cacheNavigation?.requestID) { _, request in
+                guard request != nil else { return }
+                isPresented = false
+                nowPlaying.isServiceSheetPresented = false
             }
             .sheet(isPresented: $isPresented) {
                 MineView()
