@@ -59,7 +59,7 @@
 
 主题、字号、语言由 `AppTheme`、`AppTextSize`、`AppLanguage` 管理。语言在启动时确定，
 修改后重新打开生效；新增界面文字同步维护 String Catalog。
-标签顺序、隐藏与启动页由 `MainTabSettings` 约束。主页面标题没有设置项：推荐、搜索、资料库、关注、直播
+标签顺序、隐藏与启动页由 `MainTabSettings` 约束，包含默认显示的「缓存」页。主页面标题没有设置项：推荐、搜索、资料库、关注、直播
 均通过 `rootPageChrome` 使用原生 `inlineLarge` 标题，iOS 27 起启用随滚动收起；头像入口放在导航栏右侧。
 字体风格由 `AppFontStyle` 管理，选项为默认字体和宋体，保存到 `neobili.fontStyle`，启动时确定，
 改动后重新打开生效。宋体使用内置的思源宋体（SIL OFL，Regular 与 SemiBold 两个字重，中等及以下用

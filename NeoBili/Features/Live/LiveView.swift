@@ -38,7 +38,7 @@ struct LiveView: View {
                 set: { if let value = $0 { source = value } }
             ))
             .scrollTargetBehavior(.paging)
-            .scrollIndicators(.hidden)
+            .scrollIndicators(.hidden, axes: .horizontal)
             // 标题用原生栏内大标题；来源切换器常驻在导航栏下方，使用切边背景。
             .safeAreaBar(edge: .top, spacing: 0) { sourcePicker }
             .scrollEdgeEffectStyle(.hard, for: .top)
@@ -90,10 +90,8 @@ private struct LiveFeedPage: View {
     private let model: LiveFeedModel
     @State private var entranceClock = VideoEntranceClock()
     @State private var previousEntranceGeneration: Int?
-    @State private var refreshTask: Task<Void, Never>?
-    @State private var isRefreshing = false
-    @State private var refreshID = UUID()
-    @State private var listOpacity = 1.0
+    /// 暂存刷新由统一控制器持有任务；页面只提供取回、提交与丢弃。
+    @State private var refresh = ListRefreshController()
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var isAwayFromTop = false
     @State private var shortcutTask: Task<Void, Never>?
@@ -152,11 +150,11 @@ private struct LiveFeedPage: View {
             if !enabled { entranceClock.finishAnimations() }
         }
         .onChange(of: animatesExit) { _, enabled in
-            if !enabled { withAnimation(nil) { listOpacity = 1 } }
+            if !enabled { refresh.restoreContent() }
         }
         // 与推荐页一致：重复点「直播」标签，不在顶部时回到顶部，已在顶部时刷新。
         .onTabReselected(.live) {
-            guard isActive, shortcutTask == nil, !isRefreshing else { return }
+            guard isActive, shortcutTask == nil, !refresh.isRefreshing else { return }
             if isAwayFromTop {
                 withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .top) }
                 // 回顶动画结束前忽略重复点击，避免误触发刷新。
@@ -191,8 +189,8 @@ private struct LiveFeedPage: View {
                                 .task { await model.loadMoreIfNeeded(current: room) }
                         }
                     }
-                    .opacity(animatesExit ? listOpacity : 1)
-                    .allowsHitTesting(listOpacity == 1)
+                    .opacity(refresh.contentOpacity)
+                    .allowsHitTesting(refresh.contentOpacity == 1)
                     pagination
                 }
             }
@@ -201,7 +199,7 @@ private struct LiveFeedPage: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
             .background {
-                ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing && !model.isLoading,
+                ShortPullRefresh(threshold: refreshDistance, enabled: !refresh.isRefreshing && !model.isLoading,
                                  onProgress: { _, _ in },
                                  onRefresh: startRefresh)
             }
@@ -225,7 +223,7 @@ private struct LiveFeedPage: View {
             } description: {
                 Text(message)
             } actions: {
-                Button("重新加载") { Task { await refreshFeed() } }
+                Button("重新加载") { startRefresh() }
             }
         } else {
             ContentUnavailableView {
@@ -251,7 +249,7 @@ private struct LiveFeedPage: View {
             Button("加载更多") { Task { await model.loadMore() } }
                 .font(.app(.subheadline))
                 .frame(minHeight: 44)
-                .disabled(model.isLoading || isRefreshing)
+                .disabled(model.isLoading || refresh.isRefreshing)
         } else {
             Text("已经到底了").font(.app(.footnote)).foregroundStyle(.secondary).padding(.vertical, 12)
         }
@@ -264,58 +262,25 @@ private struct LiveFeedPage: View {
         }
     }
 
-    private func refreshFeed() async {
-        guard !isRefreshing, !model.isLoading else { return }
-        let requestID = UUID()
-        refreshID = requestID
-        isRefreshing = true
-        let duration = animatesExit && !model.rooms.isEmpty ? FeedRefreshTuning.fadeExit : 0
-        // 与推荐页一致：松手即开始淡出，请求并行进行，两者都结束后再换上新内容；全程不显示提示。
-        let exitStart = ProcessInfo.processInfo.systemUptime
-        if duration > 0 { withAnimation(.easeOut(duration: duration)) { listOpacity = 0 } }
-        defer {
-            if refreshID == requestID {
-                model.discardStagedRefresh()
-                withAnimation(nil) {
-                    listOpacity = 1
-                    isRefreshing = false
-                }
-            }
-        }
-        await model.refresh(staged: true)
-        guard !Task.isCancelled, refreshID == requestID else { return }
-        // 刷新失败时 defer 直接恢复旧内容。
-        guard model.errorMessage == nil else { return }
-        if duration > 0 {
-            let remaining = max(0, duration - (ProcessInfo.processInfo.systemUptime - exitStart))
-            do {
-                try await CardAnimationSettings.waitWhileEnabled(
-                    for: remaining,
-                    category: .video, phase: .exit, source: .live
-                )
-            } catch { return }
-        }
-        guard !Task.isCancelled, refreshID == requestID else { return }
-        withAnimation(nil) {
-            model.commitStagedRefresh()
-            listOpacity = 1
-        }
-    }
-
+    /// 与推荐页一致：松手即开始淡出，请求并行进行，两者都结束后再换上新内容；全程不显示提示。
     private func startRefresh() {
-        guard !isRefreshing, !model.isLoading else { return }
-        refreshTask = Task { await refreshFeed() }
+        guard !refresh.isRefreshing, !model.isLoading else { return }
+        refresh.start(
+            hasContent: !model.rooms.isEmpty,
+            animatesExit: animatesExit,
+            source: .live,
+            fetch: {
+                await model.refresh(staged: true)
+                // 刷新失败时控制器直接恢复旧内容。
+                return !Task.isCancelled && model.errorMessage == nil
+            },
+            commit: { model.commitStagedRefresh() },
+            discard: { model.discardStagedRefresh() }
+        )
     }
 
     private func resetRefreshPresentation() {
-        refreshTask?.cancel()
-        refreshTask = nil
-        model.discardStagedRefresh()
-        refreshID = UUID()
-        withAnimation(nil) {
-            listOpacity = 1
-            isRefreshing = false
-        }
+        refresh.reset(discard: model.discardStagedRefresh)
     }
 }
 

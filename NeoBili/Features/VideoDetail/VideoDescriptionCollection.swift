@@ -28,7 +28,7 @@ struct VideoDescriptionComponent {
     }
     @MainActor init(introduction: VideoIntroductionCard, bottomSpacing: CGFloat = 12) {
         id = "introduction"
-        revision = [introduction.title, introduction.desc, AnyHashable(introduction.stat), introduction.pubdate, introduction.isExpanded]
+        revision = [introduction.title, introduction.desc, introduction.metadata, introduction.isExpanded]
         content = AnyView(EmptyView())
         self.introduction = introduction
         self.bottomSpacing = bottomSpacing
@@ -63,6 +63,8 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         let view = UICollectionView(frame: .zero, collectionViewLayout: layout)
         view.backgroundColor = .systemBackground
         view.alwaysBounceVertical = true
+        view.showsHorizontalScrollIndicator = false
+        view.automaticallyAdjustsScrollIndicatorInsets = false
         view.selfSizingInvalidation = .enabledIncludingConstraints
         view.bottomEdgeEffect.isHidden = true
         view.register(IntroductionCollectionCell.self, forCellWithReuseIdentifier: "introduction")
@@ -79,6 +81,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
     func updateUIView(_ view: UICollectionView, context: Context) {
         let c = context.coordinator
         c.environment = context.environment
+        view.verticalScrollIndicatorInsets.bottom = context.environment.commentBottomInset
         c.onSelect = onSelect
         c.onReachEnd = onReachEnd
         c.collapse.consume = consume
@@ -350,7 +353,7 @@ final class IntroductionCollectionCell: UICollectionViewCell {
     func configure(_ card: VideoIntroductionCard, typeSize: DynamicTypeSize, bottomSpacing: CGFloat) {
         self.bottomSpacing = bottomSpacing
         introductionView.configure(title: card.title,
-            metadata: NativeVideoIntroductionCard.metadataText(stat: card.stat, pubdate: card.pubdate),
+            metadata: card.metadata,
             description: card.desc, expanded: card.isExpanded, typeSize: typeSize)
         introductionView.onToggle = { [weak self] in
             card.isExpanded.toggle()
@@ -400,6 +403,7 @@ struct VideoDescriptionContent: View {
     let store: NowPlayingStore
     let viewModel: VideoDetailViewModel?
     let components: [VideoDescriptionComponent]
+    var showsRelated = true
     let consume: (CGFloat) -> CGFloat
     let end: () -> Void
     let canConsume: (CGFloat) -> Bool
@@ -413,7 +417,7 @@ struct VideoDescriptionContent: View {
         let relatedError = viewModel?.relatedErrorMessage
         let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering)
         // 相关视频不加分区标题，直接接在操作栏（或合集、分P 入口）下面，间距由上方组件自带。
-        let status = (videos.isEmpty || relatedError != nil ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty, relatedError]) {
+        let status = (showsRelated && (videos.isEmpty || relatedError != nil) ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty, relatedError]) {
             if loading { ProgressView().padding(24) }
             else if let relatedError {
                 VStack(spacing: 12) {

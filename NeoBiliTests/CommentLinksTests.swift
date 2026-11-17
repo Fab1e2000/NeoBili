@@ -92,7 +92,7 @@ final class CommentLinksLayoutTests: XCTestCase {
         for width in [CGFloat(390), 700] {
             for scheme in [ColorScheme.light, .dark] {
                 for size in [DynamicTypeSize.large, .accessibility3] {
-                    let content = CommentRow(comment: comment, viewModel: CommentsViewModel(aid: 1))
+                    let content = SnapshotCommentRow(comment: comment, viewModel: CommentsViewModel(aid: 1))
                         .padding(16).frame(width: width)
                         .environment(AccountStore())
                         .environment(\.commentTimeJump, action)

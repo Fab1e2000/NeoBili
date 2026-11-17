@@ -188,6 +188,7 @@ schemes:
       testPlans:
         - path: Config/Regression.xctestplan
           defaultPlan: true
+        - path: Config/OfflinePlayback.xctestplan
     profile:
       config: Release
     archive:

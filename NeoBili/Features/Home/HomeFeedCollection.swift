@@ -45,9 +45,9 @@ struct HomeFeedCollection: UIViewRepresentable {
         // 对应 PiliPlus 的 AlwaysScrollableScrollPhysics：即使卡片不足一屏，也允许向下拉动刷新。
         view.alwaysBounceVertical = true
         view.showsHorizontalScrollIndicator = false
-        // 边距全部由 safeInsets 给出，不让 UIKit 自动叠加安全区：挂上固定标题栏后
-        // 列表拿到的系统安全区是 0；而自动模式下刷新暂停滚动的那一刻边距会跳变。
+        // 内容和滚动条边距统一使用外层量出的 safeInsets，关闭 UIKit 的安全区叠加。
         view.contentInsetAdjustmentBehavior = .never
+        view.automaticallyAdjustsScrollIndicatorInsets = false
         applyInsets(to: view)
         // 顶部沿用系统默认的 scroll edge effect，与历史、收藏等原生列表一致；底部不加。
         view.topEdgeEffect.isHidden = !pinsTitleBar
@@ -209,6 +209,10 @@ struct HomeFeedCollection: UIViewRepresentable {
         /// App 的文字档位，决定标题预排版用的字号。
         private var dynamicTypeSize: DynamicTypeSize = .large
         var removalAnimationDuration: Double?
+        /// 滚动回调里的曝光与内联预览采样按固定间隔合并；滚动停止时再补一次最终位置。
+        /// 头部回弹位移仍逐帧更新，它只改一个格子的 transform。
+        private var lastObservationSample: CFTimeInterval = 0
+        private static let observationInterval: CFTimeInterval = 0.1
 
         func attach(_ view: UICollectionView) {
             collectionView = view
@@ -575,11 +579,27 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            updateExposure()
+            let now = CACurrentMediaTime()
+            if now - lastObservationSample >= Self.observationInterval {
+                lastObservationSample = now
+                updateExposure()
+            }
             guard let collectionView,
                   let indexPath = dataSource?.indexPath(for: Self.headerID),
                   let cell = collectionView.cellForItem(at: indexPath) else { return }
             positionHeader(cell, in: scrollView)
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            if !decelerate { updateExposure() }
+        }
+
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            updateExposure()
+        }
+
+        func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+            updateExposure()
         }
 
         func scrollViewDidChangeAdjustedContentInset(_ scrollView: UIScrollView) {

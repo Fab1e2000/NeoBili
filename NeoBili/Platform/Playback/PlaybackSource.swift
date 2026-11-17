@@ -22,6 +22,7 @@ struct PlaybackSource: Sendable, Hashable {
     let audio: PlaybackStream?
     let duration: TimeInterval
     let isDASH: Bool
+    var segments: [URL] = []
 
     init(video: PlaybackStream, audio: PlaybackStream?, duration: TimeInterval, isDASH: Bool? = nil) {
         self.video = video
@@ -106,6 +107,12 @@ enum PlaybackSourceBuilder {
     /// 长度必须按字节数（UTF-8）算，不能按字符数，否则多字节字符会导致地址
     /// 从中间被截断。
     static func edlURL(for source: PlaybackSource) -> String {
+        if source.segments.count > 1 {
+            return "edl://!no_chapters;" + source.segments.map {
+                let value = $0.absoluteString
+                return "%\(value.utf8.count)%\(value)"
+            }.joined(separator: ";")
+        }
         let videoURLString = source.video.primary.absoluteString
         guard let audio = source.audio else { return videoURLString }
         let audioURLString = audio.primary.absoluteString

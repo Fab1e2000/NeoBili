@@ -50,9 +50,16 @@ private struct CommentThreadHost: ViewModifier {
 struct CommentThreadView: View {
     let root: Comment
     let viewModel: CommentsViewModel
+    private let actions: CommentRowActions
 
     @Environment(\.dismiss) private var dismiss
     @Environment(ActionFeedback.self) private var feedback
+
+    init(root: Comment, viewModel: CommentsViewModel) {
+        self.root = root
+        self.viewModel = viewModel
+        self.actions = CommentRowActions(viewModel: viewModel)
+    }
 
     private var replies: [Comment] { viewModel.allReplies(for: root) }
 
@@ -63,7 +70,10 @@ struct CommentThreadView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     // 根评论自己不再画楼中楼那一块——它下面接的就是全部回复。
-                    CommentRow(comment: viewModel.currentRoot(root), viewModel: viewModel, showsReplies: false)
+                    CommentRow(model: viewModel.rowModel(for: viewModel.currentRoot(root),
+                                                         root: root, showsReplies: false),
+                               actions: actions)
+                        .equatable()
                         .padding(.horizontal, CommentLayout.pageHorizontalInset)
                         .padding(.vertical, CommentLayout.rowVerticalPadding)
 
@@ -72,11 +82,14 @@ struct CommentThreadView: View {
                     sectionHeader
 
                     ForEach(replies) { reply in
-                        CommentRow(comment: reply, viewModel: viewModel, showsReplies: false, root: root)
+                        let loadsMore = tailIDs.contains(reply.id)
+                        CommentRow(model: viewModel.rowModel(for: reply, root: root, showsReplies: false),
+                                   actions: actions)
+                            .equatable()
                             .padding(.horizontal, CommentLayout.pageHorizontalInset)
                             .padding(.vertical, CommentLayout.rowVerticalPadding)
-                            .task(id: tailIDs.contains(reply.id) ? replies.last?.id : nil) {
-                                guard tailIDs.contains(reply.id) else { return }
+                            .task(id: loadsMore) {
+                                guard loadsMore else { return }
                                 await viewModel.loadMoreRepliesIfNeeded(current: reply, root: root)
                             }
                     }

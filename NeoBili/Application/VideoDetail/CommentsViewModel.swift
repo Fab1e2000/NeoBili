@@ -32,6 +32,8 @@ final class CommentsViewModel {
     private(set) var deletingIDs: Set<Int> = []
     private(set) var deletedIDs: Set<Int> = []
     private(set) var likeOverrides: [Int: Bool] = [:]
+    /// 正文展开状态。放在模型里，列表复用宿主或重新配置行时不会丢失。
+    private(set) var expandedIDs: Set<Int> = []
     var actionMessage: String?
 
     @ObservationIgnored private var drafts: [Int: CommentDraft] = [:]
@@ -80,7 +82,37 @@ final class CommentsViewModel {
 
     func isUploader(_ comment: Comment) -> Bool { comment.isAuthored(by: uploaderID) }
     func isPinned(_ comment: Comment) -> Bool { pinnedIDs.contains(comment.id) }
+    func isExpanded(_ comment: Comment) -> Bool { expandedIDs.contains(comment.id) }
+    func toggleExpanded(_ comment: Comment) {
+        if !expandedIDs.insert(comment.id).inserted { expandedIDs.remove(comment.id) }
+    }
     func currentRoot(_ root: Comment) -> Comment { latestRoots[root.id] ?? root }
+
+    /// 行显示所需的完整快照；父级一次求值内构建，行本身不再读模型。
+    func rowModel(for comment: Comment, root: Comment? = nil, showsReplies: Bool = true) -> CommentRowModel {
+        let previews: [CommentRowModel.Reply]
+        if showsReplies {
+            previews = replies(for: comment).map {
+                CommentRowModel.Reply(comment: $0, isUploader: isUploader($0),
+                                      isDeleting: deletingIDs.contains($0.id))
+            }
+        } else {
+            previews = []
+        }
+        return CommentRowModel(
+            comment: comment, root: root, showsReplies: showsReplies,
+            isUploader: isUploader(comment),
+            isPinned: isPinned(comment),
+            isDeleting: deletingIDs.contains(comment.id),
+            isExpanded: expandedIDs.contains(comment.id),
+            isLiked: isLiked(comment), likeCount: likeCount(comment),
+            replyCount: replyCount(for: comment),
+            previewReplies: previews,
+            isLoadingReplies: isLoadingReplies(comment),
+            replyError: replyErrors[comment.id],
+            showsAllReplies: showsReplies && shouldShowAllReplies(comment)
+        )
+    }
 
     func commentDraft(root: Int) -> CommentDraft {
         if let draft = drafts[root] { return draft }
@@ -153,8 +185,15 @@ final class CommentsViewModel {
             let pinned = visibleUnique(page.pinnedReplies)
             pinnedIDs = Set(pinned.map(\.id))
             // Local submissions remain visible until the server includes them in a page.
-            comments = visibleUnique(pinned + submittedRoots + incoming)
-            commentIDs = Set(comments.map(\.id))
+            var merged: [Comment] = []
+            var known: Set<Int> = []
+            merged.reserveCapacity(pinned.count + submittedRoots.count + incoming.count)
+            for comment in pinned + submittedRoots + incoming
+            where !deletedIDs.contains(comment.id) && known.insert(comment.id).inserted {
+                merged.append(comment)
+            }
+            comments = merged
+            commentIDs = known
             absorbRoots(page.pinnedReplies + incoming, revision: revision)
             submittedRoots.removeAll { serverCommentIDs.contains($0.id) || deletedIDs.contains($0.id) }
             if uploaderID == nil { uploaderID = page.uploaderID }
@@ -201,21 +240,37 @@ final class CommentsViewModel {
             let incoming = page.replies ?? []
             let previousCoverage = serverCommentIDs.count
             serverCommentIDs.formUnion(incoming.map(\.id))
+
+            // 本页只做尾部增量：整列不重新拼接、不重扫去重。
+            var updated = comments
             if !page.pinnedReplies.isEmpty {
                 pinnedIDs.formUnion(page.pinnedReplies.map(\.id).filter { !deletedIDs.contains($0) })
-                let pinned = visibleUnique(page.pinnedReplies + comments.filter { pinnedIDs.contains($0.id) })
-                comments = visibleUnique(pinned + comments)
-                commentIDs = Set(comments.map(\.id))
+                var insertedPinned: [Comment] = []
+                for pinned in page.pinnedReplies
+                where !deletedIDs.contains(pinned.id) && commentIDs.insert(pinned.id).inserted {
+                    insertedPinned.append(pinned)
+                }
+                if !insertedPinned.isEmpty { updated.insert(contentsOf: insertedPinned, at: 0) }
             }
-            comments.append(contentsOf: incoming.filter { !deletedIDs.contains($0.id) && commentIDs.insert($0.id).inserted })
+            var fresh: [Comment] = []
+            fresh.reserveCapacity(incoming.count)
+            for comment in incoming
+            where !deletedIDs.contains(comment.id) && commentIDs.insert(comment.id).inserted {
+                fresh.append(comment)
+            }
+            updated.append(contentsOf: fresh)
+
             absorbRoots(page.pinnedReplies + incoming, revision: revision)
             submittedRoots.removeAll { serverCommentIDs.contains($0.id) }
             nextPage = number + 1
-            totalCount = max(comments.count, reconciledCount(page.page.count, root: nil,
+            let newTotal = max(updated.count, reconciledCount(page.page.count, root: nil,
                 incoming: Set(incoming.map(\.id)), since: revision))
             updateAllCount(page, revision: revision)
-            hasMore = Self.hasNextPage(incoming: incoming, covered: serverCommentIDs.count,
-                                      previousCoverage: previousCoverage, page: number, info: page.page)
+            let more = Self.hasNextPage(incoming: incoming, covered: serverCommentIDs.count,
+                                        previousCoverage: previousCoverage, page: number, info: page.page)
+            comments = updated
+            totalCount = newTotal
+            hasMore = more
         } catch {
             guard request == generation, !error.isCancellation else { return }
             errorMessage = error.localizedDescription
@@ -413,7 +468,8 @@ final class CommentsViewModel {
 
     private func absorbRoots(_ roots: [Comment], revision: Int) {
         for root in roots where !deletedIDs.contains(root.id) {
-            latestRoots[root.id] = root
+            // 内容没有变化的根评论不写回，避免一次分页把整批条目标脏。
+            if latestRoots[root.id] != root { latestRoots[root.id] = root }
             rootCountRevisions[root.id] = revision
             if replyCountOverrides[root.id] != nil {
                 replyCountOverrides[root.id] = reconciledCount(root.rcount, root: root.id,

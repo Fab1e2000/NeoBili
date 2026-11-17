@@ -18,6 +18,7 @@ final class ListRefreshController {
     func start(
         hasContent: Bool, animatesExit: Bool, source: VideoCardAnimationSource,
         category: CardAnimationCategory = .video,
+        fadeIn: Bool = false,
         fetch: @escaping @MainActor () async -> Bool,
         commit: @escaping @MainActor () -> Void,
         discard: @escaping @MainActor () -> Void
@@ -25,8 +26,14 @@ final class ListRefreshController {
         guard !isRefreshing else { return }
         task = Task { [self] in
             await run(hasContent: hasContent, animatesExit: animatesExit, source: source, category: category,
-                      fetch: fetch, commit: commit, discard: discard)
+                      fadeIn: fadeIn, fetch: fetch, commit: commit, discard: discard)
         }
+    }
+
+    /// 动画设置或减弱动态效果中途关闭时恢复可见内容，请求与任务继续。
+    func restoreContent() {
+        guard isRefreshing, contentOpacity < 1 else { return }
+        withAnimation(nil) { contentOpacity = 1 }
     }
 
     /// 页面消失、换账号时恢复到静止状态，丢弃进行中的刷新。
@@ -43,6 +50,7 @@ final class ListRefreshController {
 
     private func run(
         hasContent: Bool, animatesExit: Bool, source: VideoCardAnimationSource, category: CardAnimationCategory,
+        fadeIn: Bool,
         fetch: @MainActor () async -> Bool,
         commit: @MainActor () -> Void,
         discard: @MainActor () -> Void
@@ -53,11 +61,14 @@ final class ListRefreshController {
         let duration = animatesExit && hasContent ? FeedRefreshTuning.fadeExit : 0
         let exitStart = ProcessInfo.processInfo.systemUptime
         if duration > 0 { withAnimation(.easeOut(duration: duration)) { contentOpacity = 0 } }
+        var committed = false
         defer {
             if refreshID == requestID {
                 discard()
                 withAnimation(nil) {
-                    contentOpacity = 1
+                    // 提交后正常结束时模型值已是 1，不再改写以保留正在进行的换入淡入；
+                    // 淡入等待期间被取消时仍要恢复可见。
+                    if !committed || contentOpacity < 1 { contentOpacity = 1 }
                     isRefreshing = false
                 }
             }
@@ -72,9 +83,15 @@ final class ListRefreshController {
             } catch { return }
         }
         guard !Task.isCancelled, refreshID == requestID else { return }
+        committed = true
         withAnimation(nil) {
             commit()
-            contentOpacity = 1
+            contentOpacity = fadeIn ? 0 : 1
+        }
+        if fadeIn {
+            do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
+            guard !Task.isCancelled, refreshID == requestID else { return }
+            withAnimation(.easeIn(duration: FeedRefreshTuning.fadeIn)) { contentOpacity = 1 }
         }
     }
 }

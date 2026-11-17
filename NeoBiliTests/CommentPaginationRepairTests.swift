@@ -153,6 +153,27 @@ final class CommentPaginationRepairTests: XCTestCase {
         XCTAssertFalse(model.hasMoreReplies(root))
     }
 
+    /// 后续页只把新增置顶项补到最前，已加载的评论保持原有顺序与身份，不整列重拼。
+    func testLaterPagePinnedCommentIsInsertedWithoutReorderingLoadedRows() async throws {
+        let first = try (1...20).map { try comment($0) }
+        let second = try (21...40).map { try comment($0) }
+        let pinned = try comment(99)
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
+            if page == 1 {
+                return CommentPage(page: .init(num: 1, size: 20, count: 40), replies: first)
+            }
+            return CommentPage(page: .init(num: 2, size: 20, count: 40),
+                               replies: second, pinnedReplies: [pinned])
+        })
+        await model.loadInitial()
+        let firstPageIDs = model.comments.map(\.id)
+        await model.loadMoreIfNeeded(current: first[19])
+        XCTAssertEqual(model.comments.map(\.id), [99] + firstPageIDs + second.map(\.id))
+        XCTAssertEqual(Array(model.comments.prefix(firstPageIDs.count + 1).dropFirst().map(\.id)),
+                       firstPageIDs, "existing rows keep their order")
+        XCTAssertFalse(model.hasMore)
+    }
+
     private func waitUntil(_ ready: () -> Bool) async {
         for _ in 0..<10_000 {
             if ready() { return }

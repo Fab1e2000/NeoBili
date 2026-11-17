@@ -15,6 +15,9 @@ final class PlayerViewModel {
     let storyboardStore = VideoStoryboardStore()
     let bvid: String
     let cid: Int
+    let offline: OfflinePlaybackDescriptor?
+    var isOffline: Bool { offline != nil }
+    var selectedSubtitleID: String?
     private(set) var configuration: VideoPlaybackConfiguration
     private(set) var session: MPVPlayerSession
     /// 弹幕控制器与播放器同生命周期；开关打开时由界面触发创建。
@@ -248,6 +251,7 @@ final class PlayerViewModel {
     init(telemetry: TelemetryService? = nil,
         bvid: String,
         cid: Int,
+        offline: OfflinePlaybackDescriptor? = nil,
         aid: Int = 0, playbackEntry: PlaybackEntry = .other, playbackSession: String? = nil,
         configuration: VideoPlaybackConfiguration = .fastStart,
         playbackURLLoader: PlaybackURLLoader? = nil,
@@ -266,7 +270,9 @@ final class PlayerViewModel {
         dependencies: PlaybackDependencies = .live
     ) {
         self.dependencies = dependencies
-        let telemetry = telemetry ?? dependencies.services.telemetry
+        self.offline = offline
+        selectedSubtitleID = offline?.subtitles.first(where: { $0.language.hasPrefix("zh") })?.id ?? offline?.subtitles.first?.id
+        let telemetry = offline == nil ? (telemetry ?? dependencies.services.telemetry) : TelemetryService()
         let progressStore = progressStore ?? dependencies.progress
         let services = dependencies.services
         let watchPlaybackSession = playbackSession ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
@@ -286,12 +292,16 @@ final class PlayerViewModel {
         }
         self.sourceOpener = sourceOpener
         self.sleepTimer = PlaybackSleepTimer(waiter: sleepWaiter)
-        self.danmakuLoader = danmakuLoader
+        if let offline { self.danmakuLoader = { @Sendable _ in offline.danmaku } }
+        else { self.danmakuLoader = danmakuLoader }
         let watchProgressSender: PlaybackWatchProgressSender?
         let watchReportSender: PlaybackWatchReportSender?
         // Bind before scheduling any async work: a delayed heartbeat must never
         // acquire credentials from a later login, including the same account.
-        if let watchReportReporter {
+        if offline != nil {
+            watchProgressSender = nil
+            watchReportSender = nil
+        } else if let watchReportReporter {
             watchProgressSender = nil
             watchReportSender = PlaybackWatchReportSender(report: watchReportReporter)
         } else if let watchProgressReporter {
@@ -372,6 +382,27 @@ final class PlayerViewModel {
         isBuffering = false
 
         do {
+            if let offline {
+                guard let first = offline.videoURLs.first else { throw OfflineCacheError.missingFile }
+                var source = PlaybackSource(video: .init(primary: first, backups: []),
+                    audio: offline.audioURL.map { .init(primary: $0, backups: []) }, duration: offline.entry.video.duration)
+                source.segments = offline.videoURLs
+                sourceCandidates = [source]; candidateIndex = 0
+                selectedVideoQuality = offline.entry.quality
+                selectedAudioQuality = offline.entry.audioQuality
+                selectedVideoWidth = offline.entry.width; selectedVideoHeight = offline.entry.height
+                if let width = offline.entry.width, let height = offline.entry.height, height > 0 {
+                    displayAspectRatio = Double(width) / Double(height)
+                }
+                duration = source.duration
+                if !hasPreparedInitialSource {
+                    currentTime = progressStore.resumePosition(bvid: bvid, cid: cid, duration: duration)
+                    hasPreparedInitialSource = true
+                }
+                resumeState.prepareForOpen(at: currentTime)
+                try await sourceOpener(session, source, currentTime)
+                return
+            }
             let payload = try await playbackURLLoader(bvid, cid)
             try Task.checkCancellation()
             guard !isStopped else { return }
@@ -409,8 +440,9 @@ final class PlayerViewModel {
         recoveryTask?.cancel()
         recoveryTask = nil
         replaceSession()
-        await dependencies.preparation.invalidatePlaybackURL(bvid: bvid, cid: cid,
-                                                                 expectedSessionID: loginSessionID)
+        if !isOffline {
+            await dependencies.preparation.invalidatePlaybackURL(bvid: bvid, cid: cid, expectedSessionID: loginSessionID)
+        }
         guard !isStopped, !Task.isCancelled else { isLoading = false; return }
         if let metadata {
             updateSystemMediaMetadata(title: metadata.title, artist: metadata.artist, artworkURL: metadata.artworkURL)
@@ -495,9 +527,9 @@ final class PlayerViewModel {
     }
 
     /// 终止当前播放会话，释放内核、观察器和网络任务。
-    func stop() {
+    func stop(afterStopped: (@MainActor @Sendable () -> Void)? = nil) {
         endTemporaryDoubleSpeed()
-        guard !isStopped else { return }
+        guard !isStopped else { session.stop(afterStopped: afterStopped); return }
         savePlaybackProgress()
         isStopped = true
         qualityRequestID = UUID()
@@ -510,15 +542,15 @@ final class PlayerViewModel {
         recoveryTask = nil
         cancelSleepTimer()
         disableDanmaku()
-        Task {
+        if !isOffline { Task {
             await dependencies.preparation.cancelPlaybackURL(bvid: bvid, cid: cid,
                 ownerID: playbackRequestOwnerID, sessionID: loginSessionID)
-        }
+        } }
         reporting.enqueueLegacyCheckpoint()
         reporting.finishPlayerBehavior(context: reportingContext)
         reporting.finishWatchReport(context: reportingContext)
         reporting.interrupt()
-        session.stop()
+        session.stop(afterStopped: afterStopped)
         dependencies.systemMedia.deactivate(sessionID: systemMediaSessionID)
         isPlaying = false
         isLoading = false

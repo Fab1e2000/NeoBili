@@ -32,6 +32,8 @@ final class SearchViewModel {
     private(set) var results: [SearchResultItem] = []
     /// 每次首批结果发布时递增，让相同关键词的重新搜索也能触发进入动画。
     private(set) var resultsGeneration = 0
+    /// 结果列表每变一次加一，视图的过滤缓存据此重算。
+    private(set) var resultsRevision = 0
     private(set) var isLoading = false
     private(set) var errorMessage: String?
     /// 已经真正搜过的那个词。为空表示这一页还没搜过东西，页面停在提示状态。
@@ -86,6 +88,7 @@ final class SearchViewModel {
         loadMoreError = nil
         submittedKeyword = ""
         results = []
+        resultsRevision += 1
         suggestions = []
         errorMessage = nil
         isLoading = false
@@ -138,6 +141,7 @@ final class SearchViewModel {
         // Keep the index across pages instead of rescanning the accumulated list.
         let incoming = (page.result ?? []).filter { !$0.bvid.isEmpty && knownResultIDs.insert($0.bvid).inserted }
         results.append(contentsOf: incoming)
+        resultsRevision += 1
         if number == 1 { resultsGeneration += 1 }
         pageNumber = number
         // 有总页数时以接口为准；缺失时在空页或整页重复时停止。

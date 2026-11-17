@@ -199,6 +199,7 @@ final class HomeViewModel {
                 lastRefreshAt = boundary - removed
             }
             videos.removeAll { $0.owner.mid == owner.mid }
+            videosRevision += 1
             return String(localized: "已拉黑 \(owner.name)")
         } catch {
             guard currentSessionID() == session, !Self.isCancellation(error) else { return nil }
@@ -210,6 +211,7 @@ final class HomeViewModel {
     private func remove(_ video: VideoSummary) {
         guard let index = videos.firstIndex(where: { $0.bvid == video.bvid }) else { return }
         videos.remove(at: index)
+        videosRevision += 1
         if let lastRefreshAt, index < lastRefreshAt { self.lastRefreshAt = lastRefreshAt - 1 }
     }
 
@@ -227,13 +229,39 @@ final class HomeViewModel {
     /// 按行惰性布局；分隔条放在包含刷新边界的完整一行之后。
     var feedRows: [HomeFeedRow] { HomeFeedRow.group(feedItems) }
 
+    /// 页面真正显示的过滤/分组结果。body 会在刷新淡入等无关状态变化时反复求值，
+    /// 输入（列表、刷新边界、过滤设置、元数据版本）不变时直接复用。
+    @ObservationIgnored private var rowsCache: (key: RowsKey, rows: [HomeFeedRow])?
+    private struct RowsKey: Equatable {
+        let videos: Int
+        let refreshBoundary: Int?
+        let hidesPortraitVideos: Bool
+        let minimumSeconds: Int
+        let metadataRevision: Int
+    }
+    @ObservationIgnored private var videosRevision = 0
+#if NEOBILI_REGRESSION
+    private(set) var feedRowsComputationCount = 0
+#endif
+
     /// 保留原始列表，设置变化时只重算页面内容，关闭过滤后无需重新请求。
     func feedRows(hidingKnownPortraitVideos hidesPortraitVideos: Bool) -> [HomeFeedRow] {
+        let key = RowsKey(videos: videosRevision,
+                          refreshBoundary: lastRefreshAt,
+                          hidesPortraitVideos: hidesPortraitVideos,
+                          minimumSeconds: filtering.duration.minimumSeconds,
+                          metadataRevision: filtering.metadata.metadataRevision)
+        if let cache = rowsCache, cache.key == key { return cache.rows }
         let visibleItems = feedItems.filter { item in
             guard case .video(let video) = item else { return true }
             return video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: self.filtering)
         }
-        return HomeFeedRow.group(visibleItems)
+        let rows = HomeFeedRow.group(visibleItems)
+#if NEOBILI_REGRESSION
+        feedRowsComputationCount += 1
+#endif
+        rowsCache = (key, rows)
+        return rows
     }
 
     func hasVisibleVideos(hidingKnownPortraitVideos hidesPortraitVideos: Bool) -> Bool {
@@ -333,6 +361,11 @@ final class HomeViewModel {
         guard batch.session == currentSessionID(), batch.source == source else { return }
         applyRefresh(batch.videos)
         appRefreshCursor = batch.refreshCursor ?? 0
+    }
+
+    /// 离开页面、换账号或刷新被取消时丢弃寄存批次，避免它一直挡住分页。
+    func discardStagedRefresh() {
+        pendingRefresh = nil
     }
 
     func loadMoreIfNeeded(current video: VideoSummary, hidingKnownPortraitVideos hidesPortraitVideos: Bool = false) async {
@@ -453,6 +486,7 @@ final class HomeViewModel {
         let keepsLastData = defaults.object(forKey: RecommendationFilter.keepLastDataKey) as? Bool ?? true
         guard keepsLastData, !videos.isEmpty else {
             videos = newVideos
+            videosRevision += 1
             lastRefreshAt = nil
             return
         }
@@ -462,6 +496,7 @@ final class HomeViewModel {
         let previousVideos = videos.prefix(keepCount).filter { !newIDs.contains($0.bvid) }
 
         videos = newVideos + previousVideos
+        videosRevision += 1
         let showsTip = defaults.object(forKey: RecommendationFilter.lastSeenTipKey) as? Bool ?? true
         lastRefreshAt = previousVideos.isEmpty || !showsTip ? nil : newVideos.count
     }
@@ -472,6 +507,7 @@ final class HomeViewModel {
         let uniqueBatch = Self.removingDuplicates(from: batch)
             .filter { !existingIDs.contains($0.bvid) }
         videos.append(contentsOf: uniqueBatch)
+        if !uniqueBatch.isEmpty { videosRevision += 1 }
     }
 
     private static func removingDuplicates(from videos: [VideoSummary]) -> [VideoSummary] {

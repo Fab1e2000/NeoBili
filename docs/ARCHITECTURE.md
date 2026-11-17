@@ -23,6 +23,8 @@ NeoBili 是使用 SwiftUI、UIKit 和 MPVKit 的 iOS 客户端，没有单独部
 
 通常的请求路径是：`View → Application model → Domain service → Data adapter → APIClient`。简单的一次性操作可以由 View 使用环境中的服务完成；分页、重试和长任务由状态模型持有。
 
+Domain 服务操作全部是 `@Sendable` 闭包（架构检查禁止 `*Operation` 标注 `@MainActor`）。网络会话、签名、JSON/Protobuf 解码，以及直播二进制帧的 zlib 解压、粘包拆分和消息 JSON 解析都在主线程之外执行；Application 只把结果写回页面状态。首页推荐等大列表的过滤与分组结果按列表、设置和元数据修订号记忆化，刷新淡入等无关状态变化不会重复全量扫描。
+
 编译模块依赖如下；Domain 与 Core 没有项目内依赖：
 
 ```mermaid

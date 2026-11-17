@@ -250,9 +250,13 @@ struct FavoriteFolderView: View {
     @State private var isSelecting = false
     @State private var selectedIDs: Set<Int> = []
     @State private var isRemovingSelected = false
+    @State private var filterMemo = FilteredVideosMemo<FavMedia>()
+    /// 列表内容每变一次加一，过滤缓存据此重算；body 的无关重算仍复用结果。
+    @State private var contentRevision = 0
 
     private var visibleVideos: [FavMedia] {
-        videos.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
+        filterMemo.videos(videos, revision: contentRevision,
+                          hidesPortraitVideos: hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
@@ -338,6 +342,7 @@ struct FavoriteFolderView: View {
         .onChange(of: account.sessionID) { _, _ in
             loadID = UUID()
             videos = []; selectedIDs = []; isSelecting = false
+            contentRevision += 1
             isLoading = false; isLoadingMore = false
             isRemovingSelected = false
             removals = ListRemovalState()
@@ -438,6 +443,7 @@ struct FavoriteFolderView: View {
         let lookup = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let ids = Set(targets.map(\.id))
         videos.removeAll { ids.contains($0.id) }
+        contentRevision += 1
         let result = await LibraryBatchRemoval.perform(ids: targets.map(\.id),
             isCurrent: { account.sessionID == owner },
             confirm: { await feedback.confirmRemoval(String(localized: "已移出收藏夹")) },
@@ -447,6 +453,7 @@ struct FavoriteFolderView: View {
             })
         guard account.sessionID == owner else { return }
         videos = snapshot.filter { !result.succeeded.contains($0.id) }
+        contentRevision += 1
         selectedIDs.subtract(result.succeeded)
         if selectedIDs.isEmpty { isSelecting = false }
         if let error = result.error { feedback.show(error) }
@@ -501,6 +508,7 @@ struct FavoriteFolderView: View {
         guard staged.revision == removals.revision, !removals.hasPending else { return }
         entranceGeneration += 1
         videos = staged.videos
+        contentRevision += 1
         selectedIDs.formIntersection(Set(videos.map(\.id)))
         if selectedIDs.isEmpty { isSelecting = false }
         page = 2
@@ -523,6 +531,7 @@ struct FavoriteFolderView: View {
             let incoming = (payload.medias ?? []).filter(\.isVideo)
             entranceGeneration += 1
             videos = LibraryPageRules.unique(incoming, excluding: removals.hiddenIDs)
+            contentRevision += 1
             selectedIDs.formIntersection(Set(videos.map(\.id)))
             page = 2
             hasMore = LibraryPageRules.hasMoreFavorites(rawCount: payload.medias?.count ?? 0)
@@ -559,6 +568,7 @@ struct FavoriteFolderView: View {
             let incoming = (payload.medias ?? []).filter(\.isVideo)
             let existing = Set(videos.map(\.id))
             videos.append(contentsOf: LibraryPageRules.unique(incoming, excluding: existing.union(removals.hiddenIDs)))
+            contentRevision += 1
             // 不足一页说明到底了。
             hasMore = LibraryPageRules.hasMoreFavorites(rawCount: payload.medias?.count ?? 0)
             page += 1
@@ -582,17 +592,20 @@ struct FavoriteFolderView: View {
         do {
             removals.hide(media.id)
             removedIndex = removals.remove(media.id, from: &videos)
+            contentRevision += 1
             guard await feedback.confirmRemoval(String(localized: "已移出收藏夹")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await services.library.removeFavorite(folderID: folder.id, aid: media.id, expectedSessionID: identitySession)
             guard account.sessionID == sessionID else { return }
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             videos.removeAll { $0.id == media.id }
+            contentRevision += 1
             selectedIDs.remove(media.id)
             if selectedIDs.isEmpty { isSelecting = false }
         } catch {
             if account.sessionID == sessionID, let removedIndex {
                 removals.restore(media, at: removedIndex, in: &videos)
+                contentRevision += 1
             }
             if account.sessionID == sessionID, !error.isCancellation { feedback.show(error.localizedDescription) }
         }

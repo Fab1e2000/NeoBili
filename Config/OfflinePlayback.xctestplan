@@ -1,0 +1,37 @@
+{
+  "configurations": [
+    {
+      "id": "7A150A11-9FB2-4A5B-A786-1D716020154A",
+      "name": "OfflinePlayback",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "language": "zh-Hans",
+    "region": "CN",
+    "environmentVariableEntries": [
+      {
+        "key": "NEOBILI_TEST_HOST",
+        "value": "1"
+      },
+      {
+        "key": "NEOBILI_OFFLINE_PLAYBACK_SMOKE",
+        "value": "1"
+      }
+    ]
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:NeoBili.xcodeproj",
+        "identifier": "A3CF3B66D543AA90E0660785",
+        "name": "NeoBiliTests"
+      },
+      "parallelizable": false,
+      "selectedTests": [
+        "OfflinePlaybackIntegrationTests"
+      ]
+    }
+  ],
+  "version": 1
+}

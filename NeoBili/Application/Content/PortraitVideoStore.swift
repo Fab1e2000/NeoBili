@@ -29,6 +29,8 @@ final class PortraitVideoStore {
 
     private static let storageKey = "neobili.portraitVideoCache.v1"
     private var entries: [String: Entry]
+    /// 每解析出一条新结果就加一；列表过滤缓存据此判断是否需要重算。
+    private(set) var metadataRevision = 0
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let loader: @MainActor (String) async throws -> Metadata
@@ -243,6 +245,7 @@ final class PortraitVideoStore {
                               durationChecked: true,
                               expiresAt: now().addingTimeInterval(portrait == nil ? 300 : 7 * 86_400))
         revision += 1
+        metadataRevision += 1
         if entries.count > 2_000 {
             if let oldest = entries.min(by: { $0.value.expiresAt < $1.value.expiresAt })?.key {
                 entries[oldest] = nil

@@ -122,72 +122,26 @@ final class LiveDanmakuModel {
         switch event {
         case .connection(let state): connection = state
         case .popularity(let value): popularity = value
-        case .message(let body): parse(messageJSON: body)
+        case .parsed(let event): apply(event)
         }
     }
 
-    /// op=5 的 JSON 消息。只消费 DANMU_MSG 与 SC；其他 cmd 按 PiliPlus 默认忽略。
-    private func parse(messageJSON body: Data) {
-        guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-              let command = root["cmd"] as? String else { return }
-        if command.hasPrefix("DANMU_MSG") {
-            append(danmaku: root["info"])
-        } else if command == "SUPER_CHAT_MESSAGE" {
-            if let data = root["data"] { append(superChat: data) }
-        } else if command == "SUPER_CHAT_MESSAGE_DELETE" {
-            // 官方下架的 SC 立即移除（PiliPlus 注释掉了这段，这里按协议实现）。
-            if let data = root["data"] as? [String: Any],
-               let ids = data["ids"] as? [Int] {
-                deletedSuperChatIDs.formUnion(ids)
-                pruneSuperChats()
-            }
+    /// 数据层已解析完成；这里只把结果转成展示值，不再接触原始 JSON。
+    private func apply(_ event: LiveDanmakuParsedEvent) {
+        switch event {
+        case .danmaku(let payload):
+            let size = payload.emoteURL.map { _ in CGSize(width: payload.emoteWidth, height: payload.emoteHeight) }
+            append(message: Message(
+                id: UUID().uuidString, name: payload.name, text: payload.text,
+                color: payload.color, emoteURL: payload.emoteURL, emoteSize: size,
+                medal: payload.medal.map { Medal(name: $0.name, level: $0.level) }
+            ))
+        case .superChat(let payload):
+            append(superChat: payload)
+        case .superChatDeleted(let ids):
+            deletedSuperChatIDs.formUnion(ids)
+            pruneSuperChats()
         }
-    }
-
-    private func append(danmaku info: Any?) {
-        guard let info = info as? [Any?], info.count > 2 else { return }
-        let text = info[1] as? String ?? ""
-        guard !text.isEmpty else { return }
-
-        let legacyUser = info[2] as? [Any] ?? []
-        var name = legacyUser.count > 1 ? legacyUser[1] as? String ?? "" : ""
-        var medal: Medal?
-        var emote: URL?
-        var emoteSize: CGSize?
-        let header = info[0] as? [Any?] ?? []
-        var color: UInt32? = header.count > 3 ? (header[3] as? UInt32) : nil
-        if let first = info[0] as? [Any?], first.count > 15,
-           let content = first[15] as? [String: Any] {
-            if let user = content["user"] as? [String: Any] {
-                name = (user["base"] as? [String: Any])?["name"] as? String ?? name
-                if let medalValue = user["medal"] as? [String: Any],
-                   let medalName = medalValue["name"] as? String, !medalName.isEmpty {
-                    medal = Medal(name: medalName, level: medalValue["level"] as? Int ?? 0)
-                }
-            }
-            // extra 是一段内嵌 JSON 字符串：颜色、表情弹幕类型与表情表都在里面。
-            if let extraText = content["extra"] as? String,
-               let extra = try? JSONSerialization.jsonObject(with: Data(extraText.utf8)) as? [String: Any] {
-                if let raw = extra["color"] as? Int { color = UInt32(bitPattern: Int32(truncatingIfNeeded: raw)) }
-                let isEmote = extra["dm_type"] as? Int == 1
-                if isEmote, let emots = extra["emots"] as? [String: Any],
-                   let match = emots[text] as? [String: Any],
-                   let urlString = match["url"] as? String {
-                    emote = URL(string: urlString)
-                    emoteSize = CGSize(width: match["width"] as? Int ?? 0, height: match["height"] as? Int ?? 0)
-                }
-            }
-            // 大表情（整条弹幕就是一张图）在 info[0][13]。
-            if emote == nil, let big = first[13] as? [String: Any],
-               let urlString = big["url"] as? String, !urlString.isEmpty {
-                emote = URL(string: urlString)
-                emoteSize = CGSize(width: big["width"] as? Int ?? 0, height: big["height"] as? Int ?? 0)
-            }
-        }
-        guard !name.isEmpty else { return }
-        let message = Message(id: UUID().uuidString, name: name, text: text, color: color,
-                              emoteURL: emote, emoteSize: emoteSize, medal: medal)
-        append(message: message)
     }
 
     func append(message: Message) {
@@ -217,29 +171,24 @@ final class LiveDanmakuModel {
         messages = updated
     }
 
-    private func append(superChat value: Any?) {
-        guard let data = value as? [String: Any],
-              let id = data["id"] as? Int,
-              let price = data["price"] as? Int,
-              let message = data["message"] as? String else { return }
-        let userInfo = data["user_info"] as? [String: Any] ?? [:]
+    private func append(superChat payload: LiveDanmakuSuperChatPayload) {
         let superChat = SuperChat(
-            id: id,
-            price: price,
-            message: message,
-            userName: userInfo["uname"] as? String ?? "",
-            faceURL: (userInfo["face"] as? String).flatMap(URL.init),
-            start: data["start_time"] as? Double ?? Date().timeIntervalSince1970,
-            end: data["end_time"] as? Double ?? Date().timeIntervalSince1970,
-            backgroundColor: Color(hex: data["background_color"] as? String) ?? Color(hex: "#EDF5FF")!,
-            bottomColor: Color(hex: data["background_bottom_color"] as? String) ?? Color(hex: "#2A60B2")!,
-            priceColor: Color(hex: data["background_price_color"] as? String) ?? Color(hex: "#7497CD")!,
-            fontColor: Color(hex: data["message_font_color"] as? String) ?? Color(hex: "#FFFFFF")!
+            id: payload.id,
+            price: payload.price,
+            message: payload.message,
+            userName: payload.userName,
+            faceURL: payload.faceURL,
+            start: payload.start,
+            end: payload.end,
+            backgroundColor: Color(hex: payload.backgroundColor) ?? Color(hex: "#EDF5FF")!,
+            bottomColor: Color(hex: payload.bottomColor) ?? Color(hex: "#2A60B2")!,
+            priceColor: Color(hex: payload.priceColor) ?? Color(hex: "#7497CD")!,
+            fontColor: Color(hex: payload.fontColor) ?? Color(hex: "#FFFFFF")!
         )
-        deletedSuperChatIDs.remove(id)
-        hiddenSuperChatIDs.remove(id)
+        deletedSuperChatIDs.remove(superChat.id)
+        hiddenSuperChatIDs.remove(superChat.id)
         // 新 SC 置顶，历史保持服务端顺序（PiliPlus insert(0) 的等价行为）。
-        superChats.removeAll { $0.id == id }
+        superChats.removeAll { $0.id == superChat.id }
         superChats.insert(superChat, at: 0)
         pruneSuperChats()
     }
@@ -260,9 +209,10 @@ final class LiveDanmakuModel {
         // 服务端按时间正序；append 是「新条目插到最前」，所以正序迭代后
         // 最新的排在最前，prune 的 removeLast 丢的也是最旧的。
         for entry in list {
-            if let id = entry["id"] as? Int,
-               deletedSuperChatIDs.contains(id) || hiddenSuperChatIDs.contains(id) { continue }
-            append(superChat: entry)
+            guard let payload = LiveDanmakuMessageParser.superChat(from: entry),
+                  !deletedSuperChatIDs.contains(payload.id),
+                  !hiddenSuperChatIDs.contains(payload.id) else { continue }
+            append(superChat: payload)
         }
     }
 

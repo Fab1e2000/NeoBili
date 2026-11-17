@@ -47,6 +47,12 @@ def main():
                 errors.append(f"{path.relative_to(ROOT)}: {name} crosses the {layer} boundary")
         if layer in {"Features", "Application", "Domain"} and re.search(r"\b(?:URLSession|URLRequest|APIClient|DeviceIdentity)\b", text):
             errors.append(f"{path.relative_to(ROOT)}: transport/identity belongs in Data or Platform")
+        # Service operations describe I/O the Application layer awaits; pinning them
+        # to MainActor would put signing, decoding and parsing back on the UI thread.
+        if layer == "Domain" and path.parent.name == "Services":
+            for number, line in enumerate(text.splitlines(), 1):
+                if re.search(r"\b\w+Operation\b\s*:", line) and "@MainActor" in line:
+                    errors.append(f"{path.relative_to(ROOT)}:{number}: service operations must stay nonisolated")
         if layer == "Domain" and re.search(r"import (?:SwiftUI|UIKit|WebKit|MPVKit)\b", text):
             errors.append(f"{path.relative_to(ROOT)}: domain values must not import UI frameworks")
     if errors:

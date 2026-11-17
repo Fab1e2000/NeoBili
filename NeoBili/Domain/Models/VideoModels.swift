@@ -235,6 +235,10 @@ public struct VideoPart: Decodable, Identifiable, Hashable, Sendable {
     public var dimension: VideoDimension? = nil
     public var id: Int { cid }
 
+    public init(cid: Int, page: Int, part: String, duration: Int, dimension: VideoDimension? = nil) {
+        self.cid = cid; self.page = page; self.part = part; self.duration = duration; self.dimension = dimension
+    }
+
     public var formattedDuration: String {
         guard duration > 0 else { return "" }
         let hours = duration / 3600

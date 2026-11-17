@@ -559,7 +559,7 @@ final class LiveDanmakuLifecycleTests: XCTestCase {
             model.start(roomID: 1)
             try await waitForHistory { gate.pending[1] != nil }
             if deleted {
-                model.receive(.message(Data(#"{"cmd":"SUPER_CHAT_MESSAGE_DELETE","data":{"ids":[11]}}"#.utf8)))
+                model.receive(.parsed(.superChatDeleted([11])))
             } else {
                 model.hideSuperChat(11)
             }

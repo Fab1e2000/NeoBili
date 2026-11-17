@@ -26,6 +26,11 @@ struct VideoPage: View {
 
     /// 收起状态下标题最多显示几行。展开后标题不再截断，简介正文也跟着铺开。
 
+    private let offlineCache: OfflineCacheStore
+    @State private var offlinePartsPicker: VideoPickerPresentation<[OfflineCacheEntry]>?
+
+    init(offlineCache: OfflineCacheStore = .shared) { self.offlineCache = offlineCache }
+
     private var viewModel: VideoDetailViewModel? { store.detailViewModel }
 
     private var isFullScreen: Bool { isPortraitFullScreen || verticalSizeClass == .compact }
@@ -48,7 +53,8 @@ struct VideoPage: View {
 
     @State private var collapseLayout = InlineVideoCollapseLayout(expandedHeight: 0, standardHeight: 0, allowsCompact: false)
     /// 同一段滚动距离先缩小竖屏画面，暂停后才继续将画面收进 56pt 标题栏。
-    @State private var videoCollapseDistance: CGFloat = 0
+    /// 放在独立观察盒子里：滚动逐帧只失效依赖它的子视图，不重建整页。
+    @State private var collapseMotion = VideoCollapseMotion()
     @State private var sectionBarHeight: CGFloat = 44
     @State private var detailErrorHeight: CGFloat = 0
     /// 内容区顶部的圆角半径（连续曲率），在预览页里调定。
@@ -58,6 +64,7 @@ struct VideoPage: View {
     @State private var seasonPicker: VideoPickerPresentation<UgcSeason>?
     @State private var partsPicker: VideoPickerPresentation<VideoPartsPickerContent>?
     @State private var isShowingFavoriteFolders = false
+    @State private var cacheSelection: VideoDetailRoute?
     @State private var isShowingDanmakuComposer = false
     @State private var isShowingFullScreenDanmakuInput = false
     /// 发弹幕面板的草稿和位置：没发出去就关掉时保留。
@@ -82,6 +89,7 @@ struct VideoPage: View {
                     VideoTagSearchPage(keyword: route.keyword)
                 }
         }
+        .task { if store.offline != nil { offlineCache.connect() } }
         .onAppear {
             installCommentTimeJump()
             commentAuthor.setHandler { [path = $spacePath] member in
@@ -120,9 +128,15 @@ struct VideoPage: View {
     /// 视频页上弹出的面板：合集、分 P、发弹幕、收藏夹。单独拆出来以减轻主体的类型推断负担。
     private func withSheets(_ content: some View) -> some View {
         content
+        .sheet(item: $cacheSelection) { route in
+            OfflineDownloadSheet(bvid: route.bvid, cid: route.cid).appTextSize()
+        }
         .sheet(item: $seasonPicker) { picker in
             UgcSeasonPlaybackSheet(season: picker.content)
                 .appTextSize()
+        }
+        .sheet(item: $offlinePartsPicker) { picker in
+            OfflinePartsPlaybackSheet(entries: picker.content, cache: offlineCache).appTextSize()
         }
         .sheet(item: $partsPicker) { picker in
             VideoPartsPlaybackSheet(parts: picker.content.parts, coverURL: picker.content.coverURL)
@@ -177,27 +191,17 @@ struct VideoPage: View {
                 standardHeight: Self.inlineVideoHeight(for: layoutSize),
                 allowsCompact: isPortraitVideo
             )
-            // 在渲染这一帧就重算画幅并限位，避免异步元数据／首帧与 onChange 不同拍时跳高或闪出隐藏画面。
-            let inlineDistance = layout == collapseLayout
-                ? layout.constrainedDistance(videoCollapseDistance, for: collapsePhase)
-                : layout.rebasedDistance(videoCollapseDistance, from: collapseLayout, for: collapsePhase)
-            let distance = isFullScreen ? 0 : inlineDistance
-            let hidesVideo = !isFullScreen && layout.hidesVideo(for: distance)
-            let videoHeight = isFullScreen ? geometry.size.height : layout.containerHeight(for: distance)
-            let collapseProgress = isFullScreen ? 0 : layout.visualProgress(for: distance, phase: collapsePhase)
             VStack(spacing: 0) {
-                ZStack {
-                    videoArea(isVideoHidden: hidesVideo)
-                        .frame(width: geometry.size.width,
-                               height: videoHeight)
-                        .allowsHitTesting(collapseProgress == 0)
-                        .accessibilityHidden(collapseProgress > 0)
-
+                CollapsibleVideoSlot(
+                    motion: collapseMotion,
+                    layout: layout,
+                    previousLayout: collapseLayout,
+                    phase: collapsePhase,
+                    isFullScreen: isFullScreen,
+                    size: CGSize(width: geometry.size.width, height: geometry.size.height)
+                ) { isVideoHidden in
+                    videoArea(isVideoHidden: isVideoHidden)
                 }
-                .frame(width: geometry.size.width,
-                       height: videoHeight)
-                .clipped()
-                .contentShape(Rectangle())
                 .background {
                     PlayerReturnGestureGuard(enabled: spacePath.isEmpty)
                         .allowsHitTesting(false)
@@ -217,6 +221,7 @@ struct VideoPage: View {
                     VStack(spacing: 0) {
                         VideoSectionBar(selection: $store.section,
                                         commentCount: store.commentsViewModel?.displayCount ?? viewModel?.detail?.stat.reply ?? 0,
+                                        showsComments: store.offline == nil,
                                         onSendDanmaku: sendDanmakuAction)
                             .background(.bar)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sectionBarHeight = $0 }
@@ -229,7 +234,7 @@ struct VideoPage: View {
                                 minimumContentHeight: max(0, canvasHeight - (layout.expandedHeight - layout.minimumHeight)
                                                           + layout.maximumDistance(for: collapsePhase)),
                                 reservation: layout.expandedHeight - layout.minimumHeight,
-                                distance: { videoCollapseDistance },
+                                distance: { collapseMotion.distance },
                                 isActive: { store.section == $0 && canInteractWithVideoCollapse })))
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -243,9 +248,9 @@ struct VideoPage: View {
                             .fill(Color(uiColor: .systemBackground))
                     }
                     .background(alignment: .top) {
-                        themeColor.opacity(collapseProgress)
-                            .frame(height: contentCornerRadius)
-                            .allowsHitTesting(false)
+                        CollapsedThemeStrip(motion: collapseMotion, layout: layout,
+                                            previousLayout: collapseLayout, phase: collapsePhase,
+                                            color: themeColor, height: contentCornerRadius)
                     }
                     .background {
                         PlayerReturnGestureGuard(enabled: spacePath.isEmpty,
@@ -263,18 +268,19 @@ struct VideoPage: View {
                    alignment: .top)
             .overlay(alignment: .top) {
                 if !isFullScreen {
-                    InlineVideoCollapseOverlay(progress: collapseProgress, videoHeight: videoHeight,
-                                               topInset: geometry.safeAreaInsets.top,
-                                               player: store.player, onBack: store.goBack) {
+                    CollapseChromeSlot(motion: collapseMotion, layout: layout,
+                                       previousLayout: collapseLayout, phase: collapsePhase,
+                                       topInset: geometry.safeAreaInsets.top,
+                                       player: store.player, onBack: store.goBack) {
                         withAnimation(.easeInOut(duration: 0.25)) {
-                            videoCollapseDistance = 0
+                            collapseMotion.distance = 0
                             store.player?.play()
                         }
                     }
                 }
             }
             .onChange(of: layout, initial: true) { _, layout in
-                videoCollapseDistance = layout.rebasedDistance(videoCollapseDistance, from: collapseLayout, for: collapsePhase)
+                collapseMotion.distance = layout.rebasedDistance(collapseMotion.distance, from: collapseLayout, for: collapsePhase)
                 collapseLayout = layout
             }
         }
@@ -288,12 +294,12 @@ struct VideoPage: View {
                 .allowsHitTesting(false)
         }
         .onChange(of: store.route?.id) {
-            videoCollapseDistance = 0
+            collapseMotion.distance = 0
             playerControlsVisible = false
             spacePath = NavigationPath()
         }
         .onChange(of: store.activeCid) { old, _ in
-            if old != nil { videoCollapseDistance = 0; playerControlsVisible = false }
+            if old != nil { collapseMotion.distance = 0; playerControlsVisible = false }
         }
         .onChange(of: collapsePhase) { _, phase in
             if phase == .loading {
@@ -301,7 +307,7 @@ struct VideoPage: View {
                 clampVideoCollapse()
             } else {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    videoCollapseDistance = collapseLayout.distanceAfterPlaybackChange(videoCollapseDistance, to: phase)
+                    collapseMotion.distance = collapseLayout.distanceAfterPlaybackChange(collapseMotion.distance, to: phase)
                 }
             }
         }
@@ -329,18 +335,19 @@ struct VideoPage: View {
             InlineVideoPlayer(
                 viewModel: player,
                 controlsVisible: $playerControlsVisible,
-                coverURL: viewModel?.detail?.secureCoverURL ?? store.route?.secureCoverURL,
+                coverURL: store.offline?.coverURL ?? viewModel?.detail?.secureCoverURL ?? store.route?.secureCoverURL,
                 isFullScreen: isFullScreen,
                 onToggleFullScreen: toggleFullScreen,
                 onSendDanmaku: sendDanmakuAction,
                 onToggleCompact: compactVideoAction,
-                isCompact: videoCollapseDistance > 0,
+                isCompact: collapseMotion.distance > 0,
                 isDanmakuSuppressed: isVideoHidden,
                 controlsSafeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
                 onDismiss: store.goBack,
                 videoTitle: viewModel?.detail?.title ?? store.route?.title ?? "",
                 videoSubtitle: viewModel?.detail?.owner.name ?? store.route?.artist ?? "",
-                shareURL: store.route.flatMap { URL(string: "https://www.bilibili.com/video/\($0.bvid)") }
+                shareURL: onlineShareURL,
+                onCache: onlineCacheAction
             )
         } else {
             // 等待详情或等待用户点播放时都保留列表封面。
@@ -380,7 +387,7 @@ struct VideoPage: View {
                                                                  selectedID: 0, isEnabled: false, onSelect: { _ in }),
                         canControlPlayback: store.isWaitingForPlayback && viewModel?.errorMessage == nil,
                         isWaiting: !store.isWaitingForPlayback && viewModel?.errorMessage == nil,
-                        isFullScreen: isFullScreen, isCompact: videoCollapseDistance > 0,
+                        isFullScreen: isFullScreen, isCompact: collapseMotion.distance > 0,
                         hasError: viewModel?.errorMessage != nil,
                         safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
                         onBack: { if isFullScreen { toggleFullScreen() } else { store.goBack() } },
@@ -396,13 +403,13 @@ struct VideoPage: View {
 
     private func canConsumeVideoScroll(_ distance: CGFloat) -> Bool {
         guard canInteractWithVideoCollapse else { return false }
-        return distance < 0 ? videoCollapseDistance > 0
-            : videoCollapseDistance < collapseLayout.maximumDistance(for: collapsePhase)
+        return distance < 0 ? collapseMotion.distance > 0
+            : collapseMotion.distance < collapseLayout.maximumDistance(for: collapsePhase)
     }
 
     private func canContinueCollapseMomentum() -> Bool {
         guard canInteractWithVideoCollapse else { return false }
-        return collapseLayout.maximumDistance(for: collapsePhase) > 0 && videoCollapseDistance > 0
+        return collapseLayout.maximumDistance(for: collapsePhase) > 0 && collapseMotion.distance > 0
     }
 
     private var canInteractWithVideoCollapse: Bool {
@@ -413,23 +420,23 @@ struct VideoPage: View {
 
     private func consumeVideoScroll(_ distance: CGFloat) -> CGFloat {
         guard canConsumeVideoScroll(distance) else { return 0 }
-        let old = videoCollapseDistance
+        let old = collapseMotion.distance
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            videoCollapseDistance = collapseLayout.constrainedDistance(old + distance, for: collapsePhase)
+            collapseMotion.distance = collapseLayout.constrainedDistance(old + distance, for: collapsePhase)
         }
-        return videoCollapseDistance - old
+        return collapseMotion.distance - old
     }
 
     private func clampVideoCollapse() {
-        videoCollapseDistance = collapseLayout.constrainedDistance(videoCollapseDistance, for: collapsePhase)
+        collapseMotion.distance = collapseLayout.constrainedDistance(collapseMotion.distance, for: collapsePhase)
     }
 
     private func toggleCompactVideo() {
         guard canInteractWithVideoCollapse else { return }
         withAnimation(.easeInOut(duration: 0.25)) {
-            videoCollapseDistance = videoCollapseDistance > 0 ? 0 : collapseLayout.compactTravel
+            collapseMotion.distance = collapseMotion.distance > 0 ? 0 : collapseLayout.compactTravel
         }
     }
 
@@ -459,16 +466,18 @@ struct VideoPage: View {
                     .containerRelativeFrame(.horizontal)
                     .id(VideoPageSection.description)
 
-                commentsSection
-                    .frame(maxHeight: .infinity)
-                    .containerRelativeFrame(.horizontal)
-                    .id(VideoPageSection.comments)
+                if store.offline == nil {
+                    commentsSection
+                        .frame(maxHeight: .infinity)
+                        .containerRelativeFrame(.horizontal)
+                        .id(VideoPageSection.comments)
+                }
             }
             .scrollTargetLayout()
         }
         .scrollPosition(id: position)
         .scrollTargetBehavior(.paging)
-        .scrollIndicators(.hidden)
+        .scrollIndicators(.hidden, axes: .horizontal)
     }
 
     @ViewBuilder
@@ -477,6 +486,8 @@ struct VideoPage: View {
 
         if let commentsViewModel = store.commentsViewModel {
             CommentsView(viewModel: commentsViewModel, scrollPosition: $store.commentsScroll,
+                         initialOffset: store.commentScrollBox.offset,
+                         onOffsetChanged: { store.commentScrollBox.offset = $0 },
                          collapseConsume: consumeVideoScroll, collapseEnd: finishVideoCollapse,
                          canCollapse: canConsumeVideoScroll, collapseCanContinue: canContinueCollapseMomentum)
                 .environment(\.commentTimeJump, commentTimeJump)
@@ -487,9 +498,40 @@ struct VideoPage: View {
 
     private var descriptionSection: some View {
         VideoDescriptionContent(store: store, viewModel: viewModel,
-                                components: viewModel?.detail.map(infoComponents) ?? [],
+                                components: store.offline.map(offlineInfoComponents) ?? viewModel?.detail.map(infoComponents) ?? [],
+                                showsRelated: store.offline == nil,
                                 consume: consumeVideoScroll, end: finishVideoCollapse,
                                 canConsume: canConsumeVideoScroll, canContinue: canContinueCollapseMomentum)
+    }
+
+    private func offlineInfoComponents(_ descriptor: OfflinePlaybackDescriptor) -> [VideoDescriptionComponent] {
+        let video = descriptor.entry.video
+        let entries = offlineCache.entries(in: video.groupID)
+        var components = [VideoDescriptionComponent("owner", revision: [video.author]) {
+            VideoOwnerRow(owner: VideoOwner(mid: 0, name: video.author, face: ""), avatarURL: nil,
+                          card: nil, isFollowing: false, onToggleFollow: {}, onOpenSpace: {}, isOffline: true)
+                .padding(.horizontal, Self.contentInset).padding(.top, 12).padding(.bottom, 10)
+        }, VideoDescriptionComponent(introduction: VideoIntroductionCard(
+            title: video.title,
+            metadata: String(localized: "本地播放 · \(PlaybackQuality.videoTitle(descriptor.entry.quality))"),
+            isExpanded: Binding(get: { store.isDescriptionExpanded }, set: { store.isDescriptionExpanded = $0 }))) ]
+        if entries.count > 1 || !video.partTitle.isEmpty {
+            let index = entries.firstIndex(where: { $0.id == descriptor.entry.id }).map { $0 + 1 }
+            components.append(VideoDescriptionComponent("parts", revision: [video.id, entries.count]) {
+                Group {
+                    if video.groupID.hasPrefix("season:") {
+                        UgcSeasonRow(title: video.groupTitle, total: entries.count, currentIndex: index) {
+                            offlinePartsPicker = VideoPickerPresentation(content: entries)
+                        }
+                    } else {
+                        VideoPartsRow(currentPartName: video.displayTitle, total: entries.count, currentIndex: index) {
+                            offlinePartsPicker = VideoPickerPresentation(content: entries)
+                        }
+                    }
+                }.padding(.horizontal, Self.contentInset).padding(.bottom, 14)
+            })
+        }
+        return components
     }
 
     private func infoComponents(_ detail: VideoDetail) -> [VideoDescriptionComponent] {
@@ -539,8 +581,25 @@ struct VideoPage: View {
                     presentFavoriteFolders()
                 }
             },
-            onPickFavoriteFolder: presentFavoriteFolders
+            onPickFavoriteFolder: presentFavoriteFolders,
+            onCache: showCacheSelection
         )
+    }
+
+    private func showCacheSelection() {
+        guard var route = store.route else { return }
+        route.cid = store.activeCid
+        cacheSelection = route
+    }
+
+    private var onlineShareURL: URL? {
+        guard store.offline == nil, let route = store.route else { return nil }
+        return URL(string: "https://www.bilibili.com/video/\(route.bvid)")
+    }
+
+    private var onlineCacheAction: (() -> Void)? {
+        guard store.offline == nil else { return nil }
+        return showCacheSelection
     }
 
     /// 详情加载好之后才显示「发弹幕」。

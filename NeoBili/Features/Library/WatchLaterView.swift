@@ -20,6 +20,7 @@ struct WatchLaterView: View {
     private let onLayout: (([String: CGRect]) -> Void)?
     @State private var model: WatchLaterModel
     @State private var refresh = ListRefreshController()
+    @State private var filterMemo = FilteredVideosMemo<WatchLaterItem>()
 
     init(model: WatchLaterModel = WatchLaterModel(), isTabRoot: Bool = false, onLayout: (([String: CGRect]) -> Void)? = nil) {
         self.isTabRoot = isTabRoot
@@ -32,7 +33,8 @@ struct WatchLaterView: View {
     private var errorMessage: String? { model.errorMessage }
 
     private var visibleItems: [WatchLaterItem] {
-        items.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
+        filterMemo.videos(items, revision: model.contentRevision,
+                          hidesPortraitVideos: hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {

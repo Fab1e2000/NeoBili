@@ -44,9 +44,13 @@ struct HistoryView: View {
     @State private var isSelecting = false
     @State private var selectedIDs: Set<String> = []
     @State private var isRemovingSelected = false
+    @State private var filterMemo = FilteredVideosMemo<HistoryItem>()
+    /// 列表内容每变一次加一，过滤缓存据此重算；body 的无关重算仍复用结果。
+    @State private var contentRevision = 0
 
     private var visibleItems: [HistoryItem] {
-        items.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
+        filterMemo.videos(items, revision: contentRevision,
+                          hidesPortraitVideos: hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
@@ -142,6 +146,7 @@ struct HistoryView: View {
         .onChange(of: account.sessionID) { _, _ in
             loadID = UUID()
             items = []; selectedIDs = []; isSelecting = false
+            contentRevision += 1
             isLoading = false; isLoadingMore = false
             isRemovingSelected = false
             removals = ListRemovalState()
@@ -244,6 +249,7 @@ struct HistoryView: View {
         let lookup = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let ids = Set(targets.map(\.id))
         items.removeAll { ids.contains($0.id) }
+        contentRevision += 1
         let result = await LibraryBatchRemoval.perform(ids: targets.map(\.id),
             isCurrent: { account.sessionID == owner },
             confirm: { await feedback.confirmRemoval(String(localized: "已移除历史记录")) },
@@ -253,6 +259,7 @@ struct HistoryView: View {
             })
         guard account.sessionID == owner else { return }
         items = snapshot.filter { !result.succeeded.contains($0.id) }
+        contentRevision += 1
         selectedIDs.subtract(result.succeeded)
         if selectedIDs.isEmpty { isSelecting = false }
         if let error = result.error { feedback.show(error) }
@@ -309,6 +316,7 @@ struct HistoryView: View {
         guard page.revision == removals.revision, !removals.hasPending else { return }
         entranceGeneration += 1
         items = page.items
+        contentRevision += 1
         selectedIDs.formIntersection(Set(items.map(\.id)))
         if selectedIDs.isEmpty { isSelecting = false }
         hasMore = page.hasMore
@@ -332,6 +340,7 @@ struct HistoryView: View {
             let incoming = payload.allItems.filter(\.isVideo)
             entranceGeneration += 1
             items = LibraryPageRules.unique(incoming, excluding: removals.hiddenIDs)
+            contentRevision += 1
             selectedIDs.formIntersection(Set(items.map(\.id)))
 
             hasMore = LibraryPageRules.advancesHistory(max: payload.cursor?.max,
@@ -371,6 +380,7 @@ struct HistoryView: View {
             let incoming = payload.allItems.filter(\.isVideo)
             let existing = Set(items.map(\.id))
             items.append(contentsOf: LibraryPageRules.unique(incoming, excluding: existing.union(removals.hiddenIDs)))
+            contentRevision += 1
 
             hasMore = LibraryPageRules.advancesHistory(max: payload.cursor?.max,
                 viewAt: payload.cursor?.resolvedViewAt, fromMax: cursorMax, fromViewAt: cursorViewAt)
@@ -393,17 +403,20 @@ struct HistoryView: View {
         do {
             removals.hide(item.id)
             removedIndex = removals.remove(item.id, from: &items)
+            contentRevision += 1
             guard await feedback.confirmRemoval(String(localized: "已移除历史记录")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await services.library.deleteHistory(kid: item.kidParam, expectedSessionID: identitySession)
             guard account.sessionID == sessionID else { return }
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             items.removeAll { $0.id == item.id }
+            contentRevision += 1
             selectedIDs.remove(item.id)
             if selectedIDs.isEmpty { isSelecting = false }
         } catch {
             if account.sessionID == sessionID, let removedIndex {
                 removals.restore(item, at: removedIndex, in: &items)
+                contentRevision += 1
             }
             if account.sessionID == sessionID, !error.isCancellation { feedback.show(error.localizedDescription) }
         }

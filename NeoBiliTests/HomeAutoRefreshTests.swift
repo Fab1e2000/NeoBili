@@ -43,8 +43,47 @@ final class HomeAutoRefreshTests: XCTestCase {
         }
     }
 
-    func testReturningNeverClaimsAutomaticRefreshEvenWithServerPolicy() async throws {
-        var calls = 0
+    /// 取消或离开页面后丢弃的暂存批次不能被迟到的提交换进列表。
+    func testDiscardedStagedRefreshIsNeverCommitted() async {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let staged = VideoSummary(bvid: "BVstaged", aid: 2, cid: 2, title: "staged", pic: "", desc: "",
+                                  duration: 60, pubdate: 0, owner: video.owner, stat: video.stat)
+        var next = video
+        let model = HomeViewModel(defaults: defaults, fetchRecommendations: { _ in
+            RecommendationBatch(videos: [next], nextRequest: nil)
+        })
+        await model.loadInitial()
+        XCTAssertEqual(model.videos.map(\.bvid), ["BVrefresh"])
+
+        next = staged
+        await model.refresh(staged: true, userInitiated: true)
+        XCTAssertEqual(model.videos.map(\.bvid), ["BVrefresh"], "the staged batch stays hidden")
+
+        model.discardStagedRefresh()
+        model.commitStagedRefresh()
+        XCTAssertEqual(model.videos.map(\.bvid), ["BVrefresh"], "a discarded batch never replaces the list")
+    }
+
+    /// 列表与过滤输入不变时，页面求值复用已算好的行，不再全量重扫。
+    func testFilteredRowsAreReusedUntilAnInputChanges() async {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let filtering = VideoFilterDependencies(
+            duration: VideoDurationFilterSettings(defaults: UserDefaults(suiteName: UUID().uuidString)!),
+            metadata: PortraitVideoStore(defaults: UserDefaults(suiteName: UUID().uuidString)!,
+                metadataLoader: { _ in throw URLError(.cannotConnectToHost) }))
+        let model = HomeViewModel(defaults: defaults, filtering: filtering, fetchRecommendations: { _ in
+            RecommendationBatch(videos: [self.video], nextRequest: nil)
+        })
+        await model.loadInitial()
+        _ = model.feedRows(hidingKnownPortraitVideos: false)
+        let first = model.feedRowsComputationCount
+        _ = model.feedRows(hidingKnownPortraitVideos: false)
+        XCTAssertEqual(model.feedRowsComputationCount, first, "unchanged inputs reuse the cached rows")
+        _ = model.feedRows(hidingKnownPortraitVideos: true)
+        XCTAssertEqual(model.feedRowsComputationCount, first + 1, "a filter change recomputes")
+    }
+
+    func testReturningNeverClaimsAutomaticRefreshEvenWithServerPolicy() async throws {        var calls = 0
         let policy = try config(#"{"auto_refresh_time":1}"#)
         let model = HomeViewModel(defaults: UserDefaults(suiteName: UUID().uuidString)!, fetchRecommendations: { request in
             calls += 1

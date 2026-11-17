@@ -15,9 +15,11 @@ struct SearchResultsView: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
+    @State private var filterMemo = FilteredVideosMemo<SearchResultItem>()
 
     private var visibleResults: [SearchResultItem] {
-        viewModel.results.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
+        filterMemo.videos(viewModel.results, revision: viewModel.resultsRevision,
+                          hidesPortraitVideos: hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {

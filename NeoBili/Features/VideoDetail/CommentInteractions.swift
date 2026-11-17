@@ -10,8 +10,9 @@ extension EnvironmentValues {
 
 extension View {
     func commentAuthorHost() -> some View { modifier(CommentAuthorHost()) }
-    func commentActions(comment: Comment, root: Comment? = nil, viewModel: CommentsViewModel) -> some View {
-        modifier(CommentActions(comment: comment, root: root, viewModel: viewModel))
+    func commentActions(comment: Comment, root: Comment? = nil,
+                        isDeleting: Bool, actions: CommentRowActions) -> some View {
+        modifier(CommentActions(comment: comment, root: root, isDeleting: isDeleting, actions: actions))
     }
 }
 
@@ -36,7 +37,8 @@ private struct CommentAuthorHost: ViewModifier {
 private struct CommentActions: ViewModifier {
     let comment: Comment
     let root: Comment?
-    let viewModel: CommentsViewModel
+    let isDeleting: Bool
+    let actions: CommentRowActions
     @Environment(AccountStore.self) private var account
     @State private var deletion: CommentsViewModel.Deletion?
 
@@ -45,14 +47,15 @@ private struct CommentActions: ViewModifier {
             .contextMenu {
                 Button("复制全文", systemImage: "doc.on.doc") {
                     UIPasteboard.general.string = comment.message
-                    viewModel.actionMessage = String(localized: "已复制全文")
+                    actions.copyMessage(comment.message)
                 }
                 .accessibilityIdentifier("comment.copy.\(comment.id)")
-                if viewModel.canDelete(comment, accountID: account.accountID, isLoggedIn: account.isLoggedIn) {
+                if actions.canDelete(comment, accountID: account.accountID, isLoggedIn: account.isLoggedIn) {
                     Button("删除评论", systemImage: "trash", role: .destructive) {
-                        deletion = viewModel.deletion(for: comment, root: root, accountID: account.accountID, isLoggedIn: account.isLoggedIn)
+                        deletion = actions.deletion(for: comment, root: root,
+                                                    accountID: account.accountID, isLoggedIn: account.isLoggedIn)
                     }
-                    .disabled(viewModel.deletingIDs.contains(comment.id))
+                    .disabled(isDeleting)
                     .accessibilityIdentifier("comment.delete.\(comment.id)")
                 }
             }
@@ -60,7 +63,7 @@ private struct CommentActions: ViewModifier {
                    presenting: deletion) { target in
                 Button("取消", role: .cancel) {}
                 Button("删除", role: .destructive) {
-                    Task { await viewModel.delete(target, accountID: account.accountID, isLoggedIn: account.isLoggedIn) }
+                    actions.delete(target, accountID: account.accountID, isLoggedIn: account.isLoggedIn)
                 }
             } message: { _ in Text("删除后无法恢复。") }
             .onChange(of: account.sessionID) { deletion = nil }

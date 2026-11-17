@@ -25,7 +25,7 @@ struct MineView: View {
                 if let profile = account.profile {
                     loggedInView(profile)
                 } else if account.isRestoringSession {
-                    LoadingTaskAnchor()
+                    VStack { LoadingTaskAnchor(); offlineEntry.padding() }
                 } else if account.isLoggedIn {
                     ContentUnavailableView {
                         Label("账号信息暂未加载", systemImage: "wifi.exclamationmark")
@@ -35,6 +35,7 @@ struct MineView: View {
                         Button("重试") { Task { await account.refreshProfile() } }
                             .disabled(account.isRefreshingProfile)
                         Button("退出登录", role: .destructive) { confirmLogout = true }
+                        offlineEntry
                     }
                 } else {
                     loggedOutView
@@ -66,6 +67,7 @@ struct MineView: View {
                 .appTextSize()
         }
         .onChange(of: account.sessionID) {
+            guard serviceSheet != .offlineCache else { return }
             serviceSheet = nil
             nowPlaying.isServiceSheetPresented = false
         }
@@ -96,6 +98,7 @@ struct MineView: View {
             Button("短信验证码登录") { loginSheet = .sms }
                 .buttonStyle(.borderedProminent)
             .padding(.top, 4)
+            offlineEntry.padding(.top, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -121,6 +124,7 @@ struct MineView: View {
             .listRowSeparator(.hidden)
 
             Section {
+                offlineEntry
                 serviceRow(
                     icon: "star.fill",
                     color: .orange,
@@ -143,6 +147,11 @@ struct MineView: View {
                 Text("我的服务")
             }
         }
+    }
+
+    private var offlineEntry: some View {
+        serviceRow(icon: "arrow.down.circle.fill", color: .green,
+                   title: String(localized: "离线缓存"), service: .offlineCache)
     }
 
     /// 个人资料竖排展示，昵称与等级、会员和硬币徽章各占一行。

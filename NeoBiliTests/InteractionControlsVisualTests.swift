@@ -65,7 +65,7 @@ final class InteractionControlsVisualTests: XCTestCase {
                         }
                     }
                     ForEach(comments) { comment in
-                        CommentRow(comment: comment, viewModel: model, showsReplies: false)
+                        SnapshotCommentRow(comment: comment, viewModel: model, showsReplies: false)
                     }
                 }.padding(16).padding(.top, window.safeAreaInsets.top + 16)
             }
