@@ -115,8 +115,8 @@ struct HomeView: View {
                 pinsTitleBar: pinsTitleBar,
                 safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity,
-                // 补位整段 0.3 秒，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。
-                removalAnimationDuration: animatesExit ? 0.3 : nil
+                // 补位整段跟各页同一时长，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。
+                removalAnimationDuration: animatesExit ? RemovalFill.duration : nil
             )
             .opacity(animatesExit ? refresh.contentOpacity : 1)
             // 内容从状态栏、标题栏和标签栏下面滑过；被忽略的这段安全区量出来补进列表边距。

@@ -10,6 +10,7 @@ public struct LibraryService: Sendable {
     public var removeFavoriteOperation: @Sendable (Int, Int, UUID?) async throws -> Void = { _, _, _ in throw ServiceError.unconfigured("Library.removeFavorite") }
     public var unfavoriteEverywhereOperation: @Sendable (Int) async throws -> Void = { _ in throw ServiceError.unconfigured("Library.unfavoriteEverywhere") }
     public var deleteFavoriteFoldersOperation: @Sendable ([Int], UUID?) async throws -> Void = { _, _ in throw ServiceError.unconfigured("Library.deleteFavoriteFolders") }
+    public var addFavoriteFolderOperation: @Sendable (String, String, Bool, UUID?) async throws -> FavFolder = { _, _, _, _ in throw ServiceError.unconfigured("Library.addFavoriteFolder") }
     public var addWatchLaterOperation: @Sendable (Int?, String?) async throws -> Void = { _, _ in throw ServiceError.unconfigured("Library.addWatchLater") }
     public var watchLaterPageOperation: @Sendable (String, String, UUID) async throws -> WatchLaterListPage = { _, _, _ in throw ServiceError.unconfigured("Library.watchLaterPage") }
     public var removeWatchLaterOperation: @Sendable (Int, UUID?) async throws -> Void = { _, _ in throw ServiceError.unconfigured("Library.removeWatchLater") }
@@ -50,6 +51,10 @@ public struct LibraryService: Sendable {
         try await deleteFavoriteFoldersOperation(folderIDs, expectedSessionID)
     }
 
+    public func addFavoriteFolder(title: String, intro: String, isPublic: Bool, expectedSessionID: UUID? = nil) async throws -> FavFolder {
+        try await addFavoriteFolderOperation(title, intro, isPublic, expectedSessionID)
+    }
+
     public func addWatchLater(aid: Int?, bvid: String?) async throws {
         try await addWatchLaterOperation(aid, bvid)
     }
@@ -72,6 +77,7 @@ public struct LibraryService: Sendable {
         removeFavoriteOperation: @escaping @Sendable (Int, Int, UUID?) async throws -> Void = { _, _, _ in throw ServiceError.unconfigured("Library.removeFavorite") },
         unfavoriteEverywhereOperation: @escaping @Sendable (Int) async throws -> Void = { _ in throw ServiceError.unconfigured("Library.unfavoriteEverywhere") },
         deleteFavoriteFoldersOperation: @escaping @Sendable ([Int], UUID?) async throws -> Void = { _, _ in throw ServiceError.unconfigured("Library.deleteFavoriteFolders") },
+        addFavoriteFolderOperation: @escaping @Sendable (String, String, Bool, UUID?) async throws -> FavFolder = { _, _, _, _ in throw ServiceError.unconfigured("Library.addFavoriteFolder") },
         addWatchLaterOperation: @escaping @Sendable (Int?, String?) async throws -> Void = { _, _ in throw ServiceError.unconfigured("Library.addWatchLater") },
         watchLaterPageOperation: @escaping @Sendable (String, String, UUID) async throws -> WatchLaterListPage = { _, _, _ in throw ServiceError.unconfigured("Library.watchLaterPage") },
         removeWatchLaterOperation: @escaping @Sendable (Int, UUID?) async throws -> Void = { _, _ in throw ServiceError.unconfigured("Library.removeWatchLater") }
@@ -85,6 +91,7 @@ public struct LibraryService: Sendable {
         self.removeFavoriteOperation = removeFavoriteOperation
         self.unfavoriteEverywhereOperation = unfavoriteEverywhereOperation
         self.deleteFavoriteFoldersOperation = deleteFavoriteFoldersOperation
+        self.addFavoriteFolderOperation = addFavoriteFolderOperation
         self.addWatchLaterOperation = addWatchLaterOperation
         self.watchLaterPageOperation = watchLaterPageOperation
         self.removeWatchLaterOperation = removeWatchLaterOperation

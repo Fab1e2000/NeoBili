@@ -54,6 +54,8 @@ struct CommentThreadView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
 
     init(root: Comment, viewModel: CommentsViewModel) {
         self.root = root
@@ -86,6 +88,7 @@ struct CommentThreadView: View {
                         CommentRow(model: viewModel.rowModel(for: reply, root: root, showsReplies: false),
                                    actions: actions)
                             .equatable()
+                            .removalFillTransition()
                             .padding(.horizontal, CommentLayout.pageHorizontalInset)
                             .padding(.vertical, CommentLayout.rowVerticalPadding)
                             .task(id: loadsMore) {
@@ -96,6 +99,7 @@ struct CommentThreadView: View {
 
                     footer
                 }
+                .removalFill(ids: replies.map(\.id), enabled: cardAnimations && !reduceMotion)
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
             .scrollEdgeEffectHidden(true, for: .bottom)

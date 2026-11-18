@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 评论列表本体（没有自己的 ScrollView）。
@@ -9,6 +12,8 @@ struct CommentsList: View {
     let viewModel: CommentsViewModel
     private let actions: CommentRowActions
     @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
 
     init(viewModel: CommentsViewModel) {
         self.viewModel = viewModel
@@ -29,6 +34,7 @@ struct CommentsList: View {
                 // 追加一页不会让所有行重新挂任务。
                 CommentRow(model: viewModel.rowModel(for: comment), actions: actions)
                     .equatable()
+                    .removalFillTransition()
                     .padding(.horizontal, CommentLayout.pageHorizontalInset)
                     .padding(.vertical, CommentLayout.rowVerticalPadding)
                     .task(id: paginationIDs.contains(comment.id)) {
@@ -46,6 +52,7 @@ struct CommentsList: View {
                 loadError(message)
             }
         }
+        .removalFill(ids: comments.map(\.id), enabled: cardAnimations && !reduceMotion)
         .commentThreadHost(viewModel: viewModel)
         .commentLinkHost()
         // 和视频页一样走非模态浮层，别用 alert 去和 fullScreenCover 抢 present。
@@ -78,6 +85,8 @@ struct CommentsView: View {
     var onOffsetChanged: ((CGFloat) -> Void)? = nil
     @Environment(\.videoScrollContext) private var geometry
     @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
     var collapseConsume: ((CGFloat) -> CGFloat)? = nil
     var collapseEnd: (() -> Void)? = nil
     var canCollapse: ((CGFloat) -> Bool)? = nil
@@ -93,7 +102,8 @@ struct CommentsView: View {
             onOffsetChanged: onOffsetChanged,
             collapseConsume: collapseConsume,
             collapseEnd: collapseEnd,
-            canCollapse: canCollapse
+            canCollapse: canCollapse,
+            animatesRemoval: cardAnimations && !reduceMotion
         )
         .overlay {
             GeometryReader { proxy in

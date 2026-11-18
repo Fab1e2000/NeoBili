@@ -5,6 +5,8 @@ struct OfflineCacheView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(\.applicationServices) private var services
     @Environment(\.appThemeColor) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
     @Bindable var cache: OfflineCacheStore
     private let groupID: String?
     @State private var showsDownloads: Bool
@@ -25,6 +27,7 @@ struct OfflineCacheView: View {
     }
     private var title: String { completed.first.map { groupID == nil ? "离线缓存" : $0.video.groupTitle } ?? "离线缓存" }
     private var selectedEntries: [OfflineCacheEntry] { completed.filter { selected.contains($0.id) } }
+    private var animatesRemoval: Bool { cardAnimations && !reduceMotion }
 
     private func grouped(_ entries: [OfflineCacheEntry]) -> [(id: String, entries: [OfflineCacheEntry])] {
         Dictionary(grouping: entries, by: { $0.video.groupID })
@@ -35,7 +38,7 @@ struct OfflineCacheView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                if groupID == nil { overview }
+                if groupID == nil { cachePicker }
                 if let message = cache.snapshot.error { Text(message).font(.app(.footnote)).foregroundStyle(.red) }
                 if showsDownloads { downloads }
                 else { library }
@@ -78,30 +81,11 @@ struct OfflineCacheView: View {
         .task { cache.connect() }
     }
 
-    private var overview: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("\(completed.count) 个视频，随时可以观看").font(.app(.subheadline)).foregroundStyle(.secondary)
-            VStack(spacing: 8) {
-                ViewThatFits(in: .horizontal) {
-                    HStack {
-                        Text("\(Self.size(cache.snapshot.occupiedBytes)) 已缓存")
-                        Spacer()
-                        Text("可用 \(Self.size(cache.snapshot.availableBytes))").foregroundStyle(.secondary)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("\(Self.size(cache.snapshot.occupiedBytes)) 已缓存")
-                        Text("可用 \(Self.size(cache.snapshot.availableBytes))").foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }.font(.app(.caption))
-                ProgressView(value: Double(cache.snapshot.occupiedBytes),
-                             total: Double(max(1, cache.snapshot.occupiedBytes + cache.snapshot.availableBytes)))
-                    .tint(accent).accessibilityLabel("缓存空间占用")
-            }
-            Picker("缓存状态", selection: $showsDownloads) {
-                Text("已缓存").tag(false)
-                Text("下载中 \(cache.snapshot.tasks.count)").tag(true)
-            }.pickerStyle(.segmented)
-        }
+    private var cachePicker: some View {
+        Picker("缓存状态", selection: $showsDownloads) {
+            Text("已缓存").tag(false)
+            Text("下载中 \(cache.snapshot.tasks.count)").tag(true)
+        }.pickerStyle(.segmented)
     }
 
     @ViewBuilder private var library: some View {
@@ -110,25 +94,30 @@ struct OfflineCacheView: View {
                                    description: Text("在视频详情或播放器菜单中选择缓存。"))
         } else {
             VStack(spacing: 12) {
-                HStack {
-                    Text(groupID == nil ? "我的离线片单" : "已缓存选集").font(.app(.subheadline, weight: .semibold))
-                    Spacer()
-                    Text("全部已就绪").font(.app(.caption)).foregroundStyle(.secondary)
+                if groupID != nil {
+                    Text("已缓存选集").font(.app(.subheadline, weight: .semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 LazyVStack(spacing: 10) {
                     if groupID != nil {
-                        ForEach(completed) { entry in cachedItem([entry], isGroup: false) }
+                        ForEach(completed) { entry in
+                            cachedItem([entry], isGroup: false)
+                                .removalFillTransition()
+                        }
                     } else {
-                        ForEach(grouped(completed), id: \.id) { group in
+                        let groups = grouped(completed)
+                        ForEach(groups, id: \.id) { group in
                             cachedItem(group.entries, isGroup: group.entries.count > 1 || group.entries.first?.video.partTitle.isEmpty == false)
+                                .removalFillTransition()
                         }
                     }
                 }
-                OfflineReadyNote()
                 if groupID != nil && !isEditing {
                     Button("删除整组", role: .destructive) { askToDelete(completed) }.font(.app(.footnote))
                 }
             }
+            .removalFill(ids: groupID != nil ? completed.map(\.id) : grouped(completed).map(\.id),
+                         enabled: animatesRemoval)
         }
     }
 
@@ -189,8 +178,9 @@ struct OfflineCacheView: View {
         if cache.snapshot.tasks.isEmpty {
             ContentUnavailableView("暂无下载任务", systemImage: "arrow.down.circle")
         } else {
+            let groups = grouped(cache.snapshot.tasks)
             LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(grouped(cache.snapshot.tasks), id: \.id) { group in
+                ForEach(groups, id: \.id) { group in
                     Text(group.entries.first?.video.groupTitle ?? "")
                         .font(.app(.subheadline, weight: .semibold)).padding(.top, 2)
                     ForEach(group.entries) { entry in
@@ -204,9 +194,11 @@ struct OfflineCacheView: View {
                             }, allowCellular: { cellularTask = entry },
                             changeQuality: { changingQuality = entry },
                             cancel: { cache.perform { [service = cache.service] in try await service.cancel(entry.id) } })
+                            .removalFillTransition()
                     }
                 }
             }
+            .removalFill(ids: groups.flatMap { $0.entries.map(\.id) }, enabled: animatesRemoval)
         }
     }
 

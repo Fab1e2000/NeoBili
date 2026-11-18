@@ -1,6 +1,9 @@
 #if canImport(NeoBiliData)
 @testable import NeoBiliData
 #endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import XCTest
 import Synchronization
 @testable import NeoBili
@@ -67,6 +70,56 @@ final class LibraryPageRulesTests: XCTestCase {
         }
     }
 
+    func testFavoriteFolderDecodesOptionalCover() throws {
+        let withCover = try JSONDecoder().decode(
+            FavFolder.self,
+            from: Data(#"{"id":1,"title":"山野","media_count":2,"attr":2,"cover":"//i0.hdslb.com/a.jpg"}"#.utf8))
+        XCTAssertEqual(withCover.secureCoverURL, URL(string: "https://i0.hdslb.com/a.jpg"))
+        let withoutCover = try JSONDecoder().decode(
+            FavFolder.self,
+            from: Data(#"{"id":1,"title":"默认","media_count":0}"#.utf8))
+        XCTAssertNil(withoutCover.cover)
+        XCTAssertNil(withoutCover.secureCoverURL)
+    }
+
+    func testDefaultFolderIsMarkedByAttributeBit() {
+        XCTAssertTrue(FavFolder(id: 1, title: "默认", mediaCount: 0, attr: 0).isDefaultFolder)
+        XCTAssertTrue(FavFolder(id: 2, title: "私密默认", mediaCount: 0, attr: 1).isDefaultFolder)
+        XCTAssertFalse(FavFolder(id: 3, title: "自建", mediaCount: 0, attr: 2).isDefaultFolder)
+        XCTAssertFalse(FavFolder(id: 4, title: "缺标记", mediaCount: 0).isDefaultFolder)
+    }
+
+    @MainActor
+    func testCreateFavoriteFolderSendsTitlePrivacyAndCSRF() async throws {
+        let suite = "neobili.folder-edit.tests.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let identity = DeviceIdentity(defaults: defaults, credentials: .memory(), allowsNetwork: false, purgeCookies: {})
+        await identity.saveLogin(.init(sessdata: "fixture-one", biliJct: "csrf-one", dedeUserID: "1"), accessKey: nil)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FolderDeletionProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        FolderDeletionProtocol.requests.withLock { $0 = [] }
+        let client = APIClient(session: session, authentication: { await identity.authenticatedRequestSnapshot() })
+
+        let created = try await BiliAPI.addFavoriteFolder(
+            title: "山野", intro: "周末", isPublic: false, expectedSessionID: identity.loginSessionID,
+            client: client, identity: identity)
+        XCTAssertEqual(created.id, 9)
+        XCTAssertEqual(created.title, "新收藏")
+        XCTAssertFalse(created.isDefaultFolder)
+
+        let requests = FolderDeletionProtocol.requests.withLock { $0 }
+        let add = try XCTUnwrap(requests.first)
+        let addQuery = URLComponents(url: try XCTUnwrap(add.url), resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(add.url?.path, "/x/v3/fav/folder/add")
+        XCTAssertEqual(addQuery?.first { $0.name == "title" }?.value, "山野")
+        XCTAssertEqual(addQuery?.first { $0.name == "intro" }?.value, "周末")
+        XCTAssertEqual(addQuery?.first { $0.name == "privacy" }?.value, "1")
+        XCTAssertEqual(addQuery?.first { $0.name == "csrf" }?.value, "csrf-one")
+    }
+
     func testMixedFavoritePageUsesUnfilteredServerCount() {
         // A full page may contain courses or collections that are not shown as video rows.
         XCTAssertTrue(LibraryPageRules.hasMoreFavorites(rawCount: 20))
@@ -83,7 +136,10 @@ private final class FolderDeletionProtocol: URLProtocol, @unchecked Sendable {
         Self.requests.withLock { $0.append(request) }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(#"{"code":0,"data":{}}"#.utf8))
+        let body = request.url?.path.contains("folder/add") == true
+            ? Data(#"{"code":0,"data":{"id":9,"title":"新收藏","media_count":0,"attr":2}}"#.utf8)
+            : Data(#"{"code":0,"data":{}}"#.utf8)
+        client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}

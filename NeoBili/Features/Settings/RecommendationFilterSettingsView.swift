@@ -12,6 +12,8 @@ struct RecommendationFilterSettingsView: View {
     @AppStorage(RecommendationFilter.zoneBanWordKey) private var zoneBanWord = ""
     @AppStorage(RecommendationFilter.exemptFollowedKey) private var exemptsFollowed = true
     @State private var blockedMids: [Int] = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
 
     var body: some View {
         Form {
@@ -48,7 +50,12 @@ struct RecommendationFilterSettingsView: View {
                             LabeledContent("UID", value: String(mid))
                             Button("解除本地屏蔽") {
                                 RecommendationFilter.unblock(mid)
-                                blockedMids = RecommendationFilter.current().blockedMids.sorted()
+                                let next = RecommendationFilter.current().blockedMids.sorted()
+                                if cardAnimations && !reduceMotion {
+                                    withAnimation(RemovalFill.animation) { blockedMids = next }
+                                } else {
+                                    blockedMids = next
+                                }
                             }
                             .buttonStyle(.borderless)
                         }

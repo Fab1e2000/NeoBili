@@ -16,12 +16,14 @@ struct CommentCollectionView: UIViewRepresentable {
     var collapseConsume: ((CGFloat) -> CGFloat)? = nil
     var collapseEnd: (() -> Void)? = nil
     var canCollapse: ((CGFloat) -> Bool)? = nil
+    /// 动画总开关开着、且没开减弱动态效果时，删除评论才补位。
+    var animatesRemoval = false
 
     func makeCoordinator() -> Coordinator { Coordinator(worker: self) }
 
     func makeUIView(context: Context) -> UICollectionView {
         let coordinator = context.coordinator
-        let layout = UICollectionViewCompositionalLayout { [weak coordinator] _, _ in
+        let layout = RemovalFillLayout { [weak coordinator] _, _ in
             let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1),
                                               heightDimension: .estimated(220))
             let item = NSCollectionLayoutItem(layoutSize: size)
@@ -65,6 +67,7 @@ struct CommentCollectionView: UIViewRepresentable {
         private weak var collectionView: UICollectionView?
         private var dataSource: UICollectionViewDiffableDataSource<Int, ItemID>?
         private var rowsByID: [Int: CommentRowModel] = [:]
+        private var appliedCommentIDs: [Int] = []
         private var environment = EnvironmentValues()
         private var actions: CommentRowActions?
         private var lastScrollRevision = 0
@@ -127,6 +130,8 @@ struct CommentCollectionView: UIViewRepresentable {
 
         private func apply(rows: [CommentRowModel]) {
             guard let dataSource else { return }
+            let previousRows = rowsByID
+            let previousIDs = appliedCommentIDs
             var newByID: [Int: CommentRowModel] = [:]
             newByID.reserveCapacity(rows.count)
             var ids: [ItemID] = [.header]
@@ -138,17 +143,32 @@ struct CommentCollectionView: UIViewRepresentable {
                 if rowsByID[row.comment.id] != row { changed.append(.comment(row.comment.id)) }
             }
             ids.append(.footer)
-            let previousIDs = Set(rowsByID.keys)
+            let previousRowIDs = Set(rowsByID.keys)
             rowsByID = newByID
+            appliedCommentIDs = rows.map(\.comment.id)
 
             var snapshot = NSDiffableDataSourceSnapshot<Int, ItemID>()
             snapshot.appendSections([0])
             snapshot.appendItems(ids, toSection: 0)
             // 新出现的行由 cell 配置自然补齐；已有行只有快照变化时才重新配置。
-            let reconfigure = changed.filter { previousIDs.contains(reconfigureID($0)) }
+            let reconfigure = changed.filter { previousRowIDs.contains(reconfigureID($0)) }
             if !reconfigure.isEmpty { snapshot.reconfigureItems(reconfigure) }
-            dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
-                self?.updateMinimumHeightInset()
+            let removal = RemovalFill.isRemovalOnly(previousIDs, appliedCommentIDs)
+            let nested = previousIDs == appliedCommentIDs && Self.removedPreviewReplies(from: previousRows, to: rows)
+            if worker.animatesRemoval, !previousIDs.isEmpty, removal || nested,
+               let layout = collectionView?.collectionViewLayout as? RemovalFillLayout {
+                layout.shrinksDeletedItems = removal
+                RemovalFill.perform {
+                    dataSource.apply(snapshot, animatingDifferences: true)
+                    self.collectionView?.layoutIfNeeded()
+                } completion: { [weak self] _ in
+                    layout.shrinksDeletedItems = false
+                    self?.updateMinimumHeightInset()
+                }
+            } else {
+                dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+                    self?.updateMinimumHeightInset()
+                }
             }
 
             if !restoredOffset, !rows.isEmpty {
@@ -162,6 +182,20 @@ struct CommentCollectionView: UIViewRepresentable {
                     view.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
                 }
             }
+        }
+
+        /// 根评论还在，只是楼中楼预览少了。这一行变矮，下面的评论要跟着上移。
+        private static func removedPreviewReplies(from previous: [Int: CommentRowModel], to rows: [CommentRowModel]) -> Bool {
+            var shrank = false
+            for row in rows {
+                guard let old = previous[row.comment.id] else { return false }
+                let oldIDs = old.previewReplies.map(\.comment.id)
+                let newIDs = row.previewReplies.map(\.comment.id)
+                if oldIDs == newIDs { continue }
+                guard RemovalFill.isRemovalOnly(oldIDs, newIDs) else { return false }
+                shrank = true
+            }
+            return shrank
         }
 
         private func reconfigureID(_ id: ItemID) -> Int {
@@ -192,6 +226,7 @@ struct CommentCollectionView: UIViewRepresentable {
             cell.contentConfiguration = UIHostingConfiguration {
                 content(for: id)
                     .environment(\.self, environment)
+                    .environment(\.removalFillTracksIdentity, false)
             }
             .margins(.all, 0)
             .minSize(height: 0)

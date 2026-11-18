@@ -49,6 +49,25 @@ extension BiliAPI {
         )
     }
 
+    /// 新建收藏夹。`privacy` 0 为公开，1 为私密；封面留空，不上传图片。
+    static func addFavoriteFolder(title: String, intro: String, isPublic: Bool,
+                                  expectedSessionID: UUID? = nil,
+                                  client: APIClient, identity: DeviceIdentity) async throws -> FavFolder {
+        let sessionID = expectedSessionID ?? identity.loginSessionID
+        let csrf = await identity.csrfToken ?? ""
+        return try await client.post(
+            path: "x/v3/fav/folder/add",
+            form: [
+                "title": title,
+                "intro": intro,
+                "privacy": isPublic ? "0" : "1",
+                "cover": "",
+                "csrf": csrf
+            ],
+            expectedSessionID: sessionID
+        )
+    }
+
     /// 删除整个收藏夹。可以一次删多个，服务端要求逗号分隔。
     static func deleteFavoriteFolders(folderIDs: [Int], expectedSessionID: UUID? = nil,
                                       client: APIClient, identity: DeviceIdentity) async throws {

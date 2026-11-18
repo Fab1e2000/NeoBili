@@ -131,22 +131,30 @@ struct WatchLaterMenuButton: View {
 
     var body: some View {
         Button {
-            guard account.isLoggedIn else {
-                feedback.show(String(localized: "请先登录"))
-                return
-            }
-            Task {
-                do {
-                    try await services.library.addWatchLater(aid: aid, bvid: bvid)
-                    feedback.show(String(localized: "已加入稍后再看"))
-                } catch {
-                    feedback.show(error.localizedDescription)
-                }
-            }
+            WatchLaterAction.add(aid: aid, bvid: bvid, services: services, account: account, feedback: feedback)
         } label: {
             Label("稍后再看", systemImage: "flag")
         }
         .disabled(aid == nil && bvid == nil)
+    }
+}
+
+@MainActor
+enum WatchLaterAction {
+    static func add(aid: Int?, bvid: String?, services: ApplicationServices, account: AccountStore, feedback: ActionFeedback) {
+        guard aid != nil || bvid != nil else { return }
+        guard account.isLoggedIn else {
+            feedback.show(String(localized: "请先登录"))
+            return
+        }
+        Task {
+            do {
+                try await services.library.addWatchLater(aid: aid, bvid: bvid)
+                feedback.show(String(localized: "已加入稍后再看"))
+            } catch {
+                feedback.show(error.localizedDescription)
+            }
+        }
     }
 }
 

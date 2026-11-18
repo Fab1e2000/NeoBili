@@ -2,6 +2,7 @@
 import NeoBiliDomain
 #endif
 import SwiftUI
+import UIKit
 
 /// 收藏夹列表（账号创建的全部收藏夹，含默认收藏夹）。
 struct FavoritesView: View {
@@ -23,6 +24,11 @@ struct FavoritesView: View {
     @State private var errorMessage: String?
     /// 待删除的收藏夹。提交后不可恢复，保留确认和短暂撤销窗口。
     @State private var folderPendingDeletion: FavFolder?
+    @State private var showsCreator = false
+    @State private var openedFolder: FavFolder?
+    /// 列表铺满全屏后要避让的上下距离（状态栏、大标题、标签栏），量好交给列表。
+    @State private var safeInsets = EdgeInsets()
+    @Environment(RootToolbarAccessory.self) private var toolbarAccessory: RootToolbarAccessory?
 
     var body: some View {
         Group {
@@ -37,52 +43,33 @@ struct FavoritesView: View {
             } else if !isLoading, folders.isEmpty {
                 ContentUnavailableView("还没有收藏夹", systemImage: "star")
             } else {
-                List {
-                    // 不占高度的一行，只用来挂下拉手势的观察者。
-                    Color.clear
-                        .frame(height: 0)
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .background { ListPullRefresh(enabled: canRefresh, onRefresh: startRefresh) }
-                    ForEach(folders) { folder in
-                        NavigationLink {
-                            FavoriteFolderView(folder: folder)
-                        } label: {
-                            HStack {
-                                Image(systemName: "folder.fill")
-                                    .foregroundStyle(.orange)
-                                Text(folder.title)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(String(localized: "\(folder.mediaCount) 个内容"))
-                                    .font(.app(.caption))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        // 和「取消收藏」同一种交互：长按弹菜单。
-                        .buttonStyle(.plain)
-        .contextMenu {
-                            Button(role: .destructive) {
-                                folderPendingDeletion = folder
-                            } label: {
-                                Label("删除收藏夹", systemImage: "trash")
-                            }
-                        }
-                    }
-                }
-                // 与推荐页一致：松手后旧内容淡出，新内容到了再换入。
-                .opacity(animatesExit ? refresh.contentOpacity : 1)
-                .allowsHitTesting(refresh.contentOpacity == 1)
-                .scrollBounceBehavior(.always, axes: .vertical)
-                .accessibilityAction(named: "刷新收藏夹", startRefresh)
+                // 列表铺到标题栏和标签栏下面，边距用量出的安全区，标题栏才能随下滑收起。
+                FavoriteFolderList(
+                    folders: folders,
+                    contentOpacity: animatesExit ? refresh.contentOpacity : 1,
+                    animatesRemoval: animatesExit,
+                    safeInsets: safeInsets,
+                    onOpen: { openedFolder = $0 },
+                    onDelete: { folderPendingDeletion = $0 }
+                )
+                .ignoresSafeArea()
+                .onGeometryChange(for: EdgeInsets.self, of: \.safeAreaInsets) { safeInsets = $0 }
             }
         }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触条目。
         .leftEdgeTapDeadZone()
         .navigationTitle("收藏")
+        .navigationDestination(item: $openedFolder) { folder in
+            FavoriteFolderView(folder: folder)
+        }
         .toolbar {
-            // 从「我的服务」进入时右上角提供刷新；作为标签页挂载时只有下拉刷新。
+            // 标签页的头像由根页统一画在最右侧。新建按钮交给它放在头像左边，避免把头像挤偏。
+            if !isTabRoot {
+                ToolbarItem(placement: .topBarTrailing) {
+                    createFolderButton
+                }
+            }
+            // 从「我的服务」进入时右上角提供刷新。收藏页没有下拉刷新。
             if !isTabRoot {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("刷新", systemImage: "arrow.clockwise", action: startRefresh)
@@ -91,6 +78,12 @@ struct FavoritesView: View {
                         .accessibilityIdentifier("favorites.refresh")
                 }
             }
+        }
+        .sheet(isPresented: $showsCreator) {
+            NewFavoriteFolderSheet { title, intro, isPublic in
+                try await createFolder(title: title, intro: intro, isPublic: isPublic)
+            }
+            .appTextSize()
         }
         .overlay {
             if isLoading, folders.isEmpty { LoadingTaskAnchor() }
@@ -106,25 +99,66 @@ struct FavoritesView: View {
             }
             await load()
         }
-        .onDisappear { refresh.reset(discard: { stagedFolders = nil }) }
+        .onAppear { publishCreateButton() }
+        .onChange(of: isLoading || folders.isEmpty) { publishCreateButton() }
+        .onDisappear {
+            if isTabRoot { toolbarAccessory?.button = nil }
+            refresh.reset(discard: { stagedFolders = nil })
+        }
         .onChange(of: account.sessionID) { refresh.reset(discard: { stagedFolders = nil }) }
-        .confirmationDialog(
-            // 整个收藏夹的删除提交后不可恢复，先说明影响范围。
-            String(localized: "删除「\(folderPendingDeletion?.title ?? "")」后，里面的 \(folderPendingDeletion?.mediaCount ?? 0) 个内容也会一并消失。可在提示中撤销，提交后无法恢复。"),
+        // 居中提示。确认框会锚在来源上，从列表长按菜单弹出时会贴到标签栏。
+        .alert(
+            "删除收藏夹",
             isPresented: Binding(
                 get: { folderPendingDeletion != nil },
                 set: { if !$0 { folderPendingDeletion = nil } }
             ),
-            titleVisibility: .visible
-        ) {
+            presenting: folderPendingDeletion
+        ) { folder in
             Button("删除收藏夹", role: .destructive) {
-                if let folder = folderPendingDeletion {
-                    Task { await delete(folder) }
-                }
+                Task { await delete(folder) }
                 folderPendingDeletion = nil
             }
             Button("取消", role: .cancel) { folderPendingDeletion = nil }
+        } message: { folder in
+            Text(String(localized: "删除「\(folder.title)」后，里面的 \(folder.mediaCount) 个内容也会一并消失。可在提示中撤销，提交后无法恢复。"))
         }
+    }
+
+    private func createFolder(title: String, intro: String, isPublic: Bool) async throws {
+        guard account.accountID != nil else {
+            throw FavoriteFolderEditError(message: String(localized: "登录状态已失效，请重新登录"))
+        }
+        let sessionID = account.sessionID
+        let identitySession = services.session.currentID()
+        let created = try await services.library.addFavoriteFolder(
+            title: title, intro: intro, isPublic: isPublic, expectedSessionID: identitySession)
+        guard account.sessionID == sessionID else { return }
+        var next = folders.filter { $0.id != created.id }
+        if next.first?.isDefaultFolder == true {
+            next.insert(created, at: min(1, next.count))
+        } else {
+            next.insert(created, at: 0)
+        }
+        folders = next
+    }
+
+    private var createFolderButton: some View {
+        Button("新建收藏夹", systemImage: "folder.badge.plus") { showsCreator = true }
+            .labelStyle(.iconOnly)
+            .disabled(isLoading && folders.isEmpty)
+            .accessibilityIdentifier("favorites.create")
+    }
+
+    private func publishCreateButton() {
+        guard isTabRoot, let toolbarAccessory else { return }
+        toolbarAccessory.button = RootToolbarAccessory.ButtonSpec(
+            title: "新建收藏夹",
+            systemImage: "folder.badge.plus",
+            identifier: "favorites.create",
+            disabled: isLoading && folders.isEmpty,
+            action: { showsCreator = true }
+        )
     }
 
     private func delete(_ folder: FavFolder) async {
@@ -149,7 +183,7 @@ struct FavoritesView: View {
 
     private var canRefresh: Bool { !refresh.isRefreshing && !isLoading && !folderRemovals.hasPending }
 
-    /// 手动下拉刷新：旧内容淡出的同时重新取收藏夹，两者都结束后一次换入。
+    /// 「我的」里的刷新按钮：旧内容淡出的同时重新取收藏夹，两者都结束后一次换入。
     private func startRefresh() {
         guard canRefresh else { return }
         refresh.start(hasContent: !folders.isEmpty, animatesExit: animatesExit, source: .favorites,
@@ -211,6 +245,74 @@ struct FavoritesView: View {
     }
 }
 
+private struct FavoriteFolderEditError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+private struct NewFavoriteFolderSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+    @State private var intro = ""
+    @State private var isPublic = true
+    @State private var isSubmitting = false
+    @State private var errorMessage: String?
+    let submit: (String, String, Bool) async throws -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("名称", text: $title)
+                TextField("简介", text: $intro, axis: .vertical)
+                    .lineLimit(3...6)
+                Toggle("公开", isOn: $isPublic)
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.app(.footnote))
+                        .foregroundStyle(.red)
+                }
+            }
+            .navigationTitle("新建收藏夹")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                        .disabled(isSubmitting)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { Task { await commit() } }
+                        .disabled(trimmedTitle.isEmpty || isSubmitting)
+                }
+            }
+            .onChange(of: title) { _, value in
+                if value.count > 20 { title = String(value.prefix(20)) }
+            }
+            .onChange(of: intro) { _, value in
+                if value.count > 200 { intro = String(value.prefix(200)) }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var trimmedTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func commit() async {
+        let name = trimmedTitle
+        guard !name.isEmpty, !isSubmitting else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            try await submit(name, intro, isPublic)
+            dismiss()
+        } catch {
+            if !error.isCancellation { errorMessage = error.localizedDescription }
+        }
+    }
+}
+
 /// 收藏夹视频使用 VideoListCard；转场源直接挂在卡片 Button 上。
 struct FavoriteFolderView: View {
     @Environment(\.applicationServices) private var services
@@ -243,7 +345,7 @@ struct FavoriteFolderView: View {
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
-    /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `remove`。
+    /// 正在删除的条目。刷新结果会排除它们，避免把刚移出的视频带回来。
     @State private var removals = ListRemovalState<Int>()
     @State private var loadID = UUID()
     @State private var entranceGeneration = 0
@@ -251,6 +353,7 @@ struct FavoriteFolderView: View {
     @State private var selectedIDs: Set<Int> = []
     @State private var isRemovingSelected = false
     @State private var filterMemo = FilteredVideosMemo<FavMedia>()
+    @State private var menuRegistry = ResolvedMenuRegistry<Int>()
     /// 列表内容每变一次加一，过滤缓存据此重算；body 的无关重算仍复用结果。
     @State private var contentRevision = 0
 
@@ -283,6 +386,7 @@ struct FavoriteFolderView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(visibleVideos) { media in
                             row(media, loadsNextPage: paginationIDs.contains(media.id))
+                                .removalFillTransition()
                         }
                         if hasMore, !isLoadingMore {
                             Button("继续加载") { Task { await loadNextPage() } }
@@ -302,6 +406,11 @@ struct FavoriteFolderView: View {
                             .padding()
                         }
                     }
+                    .background {
+                        ResolvedMenuInstaller(registry: menuRegistry, menu: rowMenu)
+                    }
+                    // 删除看源列表的身份：过滤只改可见行，不触发补位。翻页是末尾追加，同样不动画。
+                    .removalFill(ids: videos.map(\.id), enabled: animatesExit, scope: .removalAndInlineRestore)
                     // 与推荐页一致：松手后旧卡片淡出，新内容到了再换入。
                     .opacity(animatesExit ? refresh.contentOpacity : 1)
                     .allowsHitTesting(refresh.contentOpacity == 1)
@@ -394,25 +503,10 @@ struct FavoriteFolderView: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selectedIDs.contains(media.id) ? .isSelected : [])
-        .contextMenu {
-            if !isSelecting {
-                Button {
-                    isSelecting = true; selectedIDs = [media.id]
-                } label: { Label("多选", systemImage: "checkmark.circle") }
-                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing)
-            }
-            WatchLaterMenuButton(aid: media.id, bvid: media.bvid)
-
-            Button(role: .destructive) {
-                Task { await remove(media) }
-            } label: {
-                Label("取消收藏", systemImage: "star.slash")
-            }
-        }
-        // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。前缀避免与首页
-        // 同一视频的转场源在共享命名空间里撞 id。
+        .background { ResolvedMenuMarker(id: media.id, registry: menuRegistry) }
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { menuRegistry.setLayoutFrame(media.id, $0) }
+        .onDisappear { menuRegistry.clearLayoutFrame(media.id) }
         .videoTransitionSource("fav-\(summary?.bvid ?? "")", in: videoTransition)
-        // 移除动效第一段：原地淡出、占位不变，列表此时不动。
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
@@ -422,6 +516,26 @@ struct FavoriteFolderView: View {
                 await preparation.prefetchWhenSettled(bvid: summary.bvid)
             }
         }
+    }
+
+    private func rowMenu(for id: Int) -> UIMenu {
+        let busy = isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing
+        var actions: [UIAction] = []
+        if !isSelecting {
+            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, fallback: id) { target in
+                isSelecting = true
+                selectedIDs = [target]
+            })
+        }
+        actions.append(menuRegistry.action("稍后再看", systemImage: "flag", fallback: id) { target in
+            guard let media = videos.first(where: { $0.id == target }) else { return }
+            WatchLaterAction.add(aid: media.id, bvid: media.bvid, services: services, account: account, feedback: feedback)
+        })
+        actions.append(menuRegistry.action("取消收藏", systemImage: "star.slash", destructive: true, enabled: !busy, fallback: id) { target in
+            guard let media = videos.first(where: { $0.id == target }) else { return }
+            Task { await remove(media) }
+        })
+        return UIMenu(children: actions)
     }
 
     private func removeSelected() async {

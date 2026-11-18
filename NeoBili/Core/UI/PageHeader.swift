@@ -56,6 +56,21 @@ struct PageHeader: View {
     }
 }
 
+/// 主页面头像左侧的附加按钮。头像始终贴在最右，各页位置保持一致。
+@MainActor
+@Observable
+final class RootToolbarAccessory {
+    struct ButtonSpec {
+        var title: String
+        var systemImage: String
+        var identifier: String
+        var disabled: Bool
+        var action: () -> Void
+    }
+
+    var button: ButtonSpec?
+}
+
 // MARK: - 原生大标题
 
 /// 主页面的原生栏内大标题，右侧放置自绘圆形玻璃头像入口。
@@ -65,6 +80,7 @@ struct RootPageChrome: ViewModifier {
     let barFollowsCollapse: Bool
     @Environment(AccountStore.self) private var account
     @Environment(\.openMine) private var openMine
+    @Environment(RootToolbarAccessory.self) private var toolbarAccessory: RootToolbarAccessory?
 
     func body(content: Content) -> some View {
         content
@@ -74,10 +90,20 @@ struct RootPageChrome: ViewModifier {
             .modifier(MinimizingNavigationBar(adjustsSafeArea: barFollowsCollapse))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { openMine?(()) } label: { avatar }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("我的")
-                        .accessibilityHint("打开个人页面")
+                    HStack(spacing: 8) {
+                        if let button = toolbarAccessory?.button {
+                            Button(button.title, systemImage: button.systemImage, action: button.action)
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.glass)
+                                .buttonBorderShape(.circle)
+                                .disabled(button.disabled)
+                                .accessibilityIdentifier(button.identifier)
+                        }
+                        Button { openMine?(()) } label: { avatar }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("我的")
+                            .accessibilityHint("打开个人页面")
+                    }
                 }
                 // 系统工具栏玻璃会按内容撑成胶囊；关掉它，圆形玻璃由头像自己绘制。
                 .sharedBackgroundVisibility(.hidden)

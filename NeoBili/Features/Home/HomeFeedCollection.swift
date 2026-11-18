@@ -341,10 +341,8 @@ struct HomeFeedCollection: UIViewRepresentable {
             // 翻页、刷新、设置变化仍然直接套用，不引入额外的动画。
             let previous = latestIDs + earlierIDs
             let current = latest + earlier
-            let remaining = Set(current)
-            let isRemovalOnly = current.count < previous.count && marker == hasMarker
+            let isRemovalOnly = RemovalFill.isRemovalOnly(previous, current) && marker == hasMarker
                 && showsHeaderRow == hasHeaderRow && changed.isEmpty && !needsReconfigureAll
-                && previous.filter(remaining.contains) == current
             // 没有变化时直接返回：刷新淡出、滚动开关这些状态也会触发这里。
             guard structureChanged || !changed.isEmpty || needsReconfigureAll else { return }
             // Index paths can point at different cards after refresh/removal.
@@ -407,12 +405,11 @@ struct HomeFeedCollection: UIViewRepresentable {
                 snapshot.reconfigureItems(changed)
             }
             needsReconfigureAll = false
-            if isRemovalOnly, let duration = removalAnimationDuration,
+            if isRemovalOnly, removalAnimationDuration != nil,
                let collectionView, let layout = collectionView.collectionViewLayout as? HomeFeedLayout {
                 // 被移除的卡缩小淡出，后面的卡用略带回弹的曲线移到新位置。
                 layout.shrinksDeletedItems = true
-                UIView.animate(withDuration: duration, delay: 0, usingSpringWithDamping: 0.88, initialSpringVelocity: 0,
-                               options: [.allowUserInteraction, .beginFromCurrentState]) {
+                RemovalFill.perform {
                     dataSource.apply(snapshot, animatingDifferences: true)
                 } completion: { _ in
                     layout.shrinksDeletedItems = false

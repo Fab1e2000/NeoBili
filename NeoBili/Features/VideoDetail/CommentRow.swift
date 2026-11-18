@@ -287,11 +287,21 @@ private struct CommentReplyPreview: View {
     let model: CommentRowModel
     let actions: CommentRowActions
     @Environment(\.openCommentThread) private var openCommentThread
+    @Environment(\.removalFillTracksIdentity) private var tracksIdentity
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
+
+    private var animatesPreviewRemoval: Bool { tracksIdentity && cardAnimations && !reduceMotion }
 
     var body: some View {
-        if model.replyCount > 0 {
-            replySection.padding(.top, CommentLayout.replyBlockGap)
+        Group {
+            if model.replyCount > 0 {
+                replySection
+                    .padding(.top, CommentLayout.replyBlockGap)
+                    .removalFillTransition()
+            }
         }
+        .removalFill(ids: model.previewReplies.map(\.comment.id), enabled: animatesPreviewRemoval)
     }
 
     // MARK: - 楼中楼预览
@@ -302,6 +312,7 @@ private struct CommentReplyPreview: View {
                 // 用户名和内容排在同一段文字里，这样回复读起来更紧凑。
                 // 用户名单独作为一段前缀交给同一个渲染器，表情才能和文字排在一行。
                 CommentPreviewMessage(reply: reply, root: comment, actions: actions)
+                    .removalFillTransition()
                     // 楼中楼只折叠回复数量，不截断单条正文，也不预留隐藏行高度。
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)

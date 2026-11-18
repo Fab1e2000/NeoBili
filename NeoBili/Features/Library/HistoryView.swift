@@ -37,7 +37,7 @@ struct HistoryView: View {
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
-    /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `delete`。
+    /// 正在删除的条目。刷新结果会排除它们，避免把刚删掉的记录带回来。
     @State private var removals = ListRemovalState<String>()
     @State private var loadID = UUID()
     @State private var entranceGeneration = 0
@@ -45,6 +45,7 @@ struct HistoryView: View {
     @State private var selectedIDs: Set<String> = []
     @State private var isRemovingSelected = false
     @State private var filterMemo = FilteredVideosMemo<HistoryItem>()
+    @State private var menuRegistry = ResolvedMenuRegistry<String>()
     /// 列表内容每变一次加一，过滤缓存据此重算；body 的无关重算仍复用结果。
     @State private var contentRevision = 0
 
@@ -77,6 +78,7 @@ struct HistoryView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(visibleItems) { item in
                             row(item, loadsNextPage: paginationIDs.contains(item.id))
+                                .removalFillTransition()
                         }
                         if hasMore, !isLoadingMore {
                             Button("继续加载") { Task { await loadNextPage() } }
@@ -96,6 +98,11 @@ struct HistoryView: View {
                             .padding()
                         }
                     }
+                    .background {
+                        ResolvedMenuInstaller(registry: menuRegistry, menu: rowMenu)
+                    }
+                    // 删除看源列表的身份：过滤只改可见行，不触发补位。翻页是末尾追加，同样不动画。
+                    .removalFill(ids: items.map(\.id), enabled: animatesExit, scope: .removalAndInlineRestore)
                     // 与推荐页一致：松手后旧卡片淡出，新内容到了再换入。
                     .opacity(animatesExit ? refresh.contentOpacity : 1)
                     .allowsHitTesting(refresh.contentOpacity == 1)
@@ -198,25 +205,10 @@ struct HistoryView: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selectedIDs.contains(item.id) ? .isSelected : [])
-        .contextMenu {
-            if !isSelecting {
-                Button {
-                    isSelecting = true; selectedIDs = [item.id]
-                } label: { Label("多选", systemImage: "checkmark.circle") }
-                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing)
-            }
-            WatchLaterMenuButton(aid: summary?.aid, bvid: summary?.bvid)
-
-            Button(role: .destructive) {
-                Task { await delete(item) }
-            } label: {
-                Label("删除这条历史", systemImage: "trash")
-            }
-        }
-        // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。前缀避免与首页
-        // 同一视频的转场源在共享命名空间里撞 id。
+        .background { ResolvedMenuMarker(id: item.id, registry: menuRegistry) }
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { menuRegistry.setLayoutFrame(item.id, $0) }
+        .onDisappear { menuRegistry.clearLayoutFrame(item.id) }
         .videoTransitionSource("history-\(summary?.bvid ?? "")", in: videoTransition)
-        // 移除动效第一段：原地淡出、占位不变，列表此时不动。
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
@@ -228,6 +220,27 @@ struct HistoryView: View {
                 )
             }
         }
+    }
+
+    private func rowMenu(for id: String) -> UIMenu {
+        let busy = isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing
+        var actions: [UIAction] = []
+        if !isSelecting {
+            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, fallback: id) { target in
+                isSelecting = true
+                selectedIDs = [target]
+            })
+        }
+        actions.append(menuRegistry.action("稍后再看", systemImage: "flag", fallback: id) { target in
+            guard let item = items.first(where: { $0.id == target }) else { return }
+            WatchLaterAction.add(aid: item.asVideoSummary?.aid, bvid: item.asVideoSummary?.bvid,
+                                 services: services, account: account, feedback: feedback)
+        })
+        actions.append(menuRegistry.action("删除这条历史", systemImage: "trash", destructive: true, enabled: !busy, fallback: id) { target in
+            guard let item = items.first(where: { $0.id == target }) else { return }
+            Task { await delete(item) }
+        })
+        return UIMenu(children: actions)
     }
 
     private func removeSelected() async {
