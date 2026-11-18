@@ -44,9 +44,13 @@ enum CommentLinks {
                   url.pathComponents.count >= 3, url.pathComponents[1] == "video" {
             token = url.pathComponents[2]
         } else { return nil }
-        // Part/time parameters must not silently open the wrong part/position.
+        // 分享链接常带 p=1，那就是第一集，和默认打开是同一处。
+        // 其他分 P 或起播时间不能静默落到第一集开头，那些仍交给浏览器。
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        if query.contains(where: { ["p", "t", "start_progress"].contains($0.name) }) { return nil }
+        if query.contains(where: { item in
+            if item.name == "t" || item.name == "start_progress" { return true }
+            return item.name == "p" && item.value != "1"
+        }) { return nil }
         if token.range(of: #"^BV[1-9A-HJ-NP-Za-km-z]{10}$"#, options: .regularExpression) != nil {
             return VideoDetailRoute(bvid: token)
         }

@@ -30,9 +30,10 @@ final class CommentLinksTests: XCTestCase {
         for value in ["javascript:alert(1)", "file:///tmp/test", "https://user:password@example.com"] {
             XCTAssertNil(CommentLinks.webURL(value))
         }
-        for value in ["https://www.bilibili.com.evil.example/video/BV17x411w7KC", "https://example.com/video/BV17x411w7KC", "https://www.bilibili.com/video/BV17x411w7KC?p=2"] {
+        for value in ["https://www.bilibili.com.evil.example/video/BV17x411w7KC", "https://example.com/video/BV17x411w7KC", "https://www.bilibili.com/video/BV17x411w7KC?p=2", "https://m.bilibili.com/video/BV17x411w7KC?p=1&t=30"] {
             XCTAssertNil(CommentLinks.videoRoute(try XCTUnwrap(URL(string: value))))
         }
+        XCTAssertEqual(CommentLinks.videoRoute(URL(string: "https://m.bilibili.com/video/BV1Vt411N7xQ?p=1&share_source=COPY&unique_k=CHZpPzy")!)?.bvid, "BV1Vt411N7xQ")
         XCTAssertNotNil(CommentLinks.videoRoute(URL(string: "https://m.bilibili.com/video/av170001")!))
     }
 
