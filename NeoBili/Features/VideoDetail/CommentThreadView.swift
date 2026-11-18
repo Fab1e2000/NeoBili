@@ -102,7 +102,8 @@ struct CommentThreadView: View {
             .background(Color(uiColor: .systemBackground))
             .commentComposer(viewModel: viewModel, root: root)
             .commentAuthorHost()
-            .refreshable { await viewModel.refreshReplies(for: root) }
+            // 顶部下拉留给 sheet 退出。列表停在顶部时，系统接手向下拖动；
+            // 离开顶部时仍由列表滚动。刷新控件会抢走这段手势。
             .navigationTitle("回复")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
