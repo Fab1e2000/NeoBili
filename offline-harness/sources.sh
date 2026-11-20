@@ -59,14 +59,12 @@ cp \
     "$APP/Data/Networking/Endpoints/BiliAPI+VideoActions.swift" \
     "$APP/Data/Networking/Recommendation/AppRecommendationSession.swift" \
     "$APP/Data/Networking/Recommendation/AppRecommendationPage.swift" \
-    "$APP/Domain/Models/AppRecommendationRefreshConfig.swift" \
     "$APP/Domain/Models/VideoIdentifier.swift" \
     "$APP/Data/Networking/Recommendation/AppRelatedPage+Decoding.swift" \
     "$APP/Domain/Models/AppRelatedPage.swift" \
     "$APP/Data/Networking/Reporting/RecommendationClick.swift" \
     "$APP/Data/Networking/Recommendation/AppRecommendationDisplay.swift" \
     "$APP/Data/Networking/Recommendation/WebRecommendationPage.swift" \
-    "$APP/Data/Networking/Identity/BiliPassport.swift" \
     "$APP/Domain/Models/LoginModels.swift" \
     "$APP/Data/Networking/Identity/SMSPassport.swift" \
     "$APP/Domain/Models/SMSLoginModels.swift" \

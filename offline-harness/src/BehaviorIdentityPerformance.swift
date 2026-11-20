@@ -23,7 +23,7 @@ struct BehaviorIdentityPerformance {
         }, write: memory.write)
         let identity = DeviceIdentity(defaults: defaults, credentials: credentials,
             allowsNetwork: false, eventSerialDefaults: serialDefaults, purgeCookies: {})
-        let cookies = BiliPassport.LoginCookies(sessdata: "fixture", biliJct: "fixture", dedeUserID: "42")
+        let cookies = LoginModels.LoginCookies(sessdata: "fixture", biliJct: "fixture", dedeUserID: "42")
         await identity.saveLogin(cookies, accessKey: "fixture")
         func snapshot(_ identity: DeviceIdentity) async throws -> AppDeviceSnapshot {
             try await identity.appDeviceSnapshot(expectedSessionID: identity.loginSessionID)

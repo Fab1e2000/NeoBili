@@ -119,7 +119,7 @@ final class AuditRegressionTests: XCTestCase {
         XCTAssertFalse(restored.hasAppCredential)
 
         let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
-        await account.completeLogin(BiliPassport.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42"))
+        await account.completeLogin(LoginModels.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42"))
         for _ in 0..<20 where !account.hasAppCredential { await Task.yield() }
         XCTAssertEqual(exchanges, 0)
         XCTAssertFalse(account.hasAppCredential)
@@ -151,7 +151,7 @@ final class AuditRegressionTests: XCTestCase {
             credentials: { AccountCredentialsSnapshot(hasCredentials: true, accountID: 42) },
             save: { _, _ in XCTFail("App authorization must not replace web login") },
             clear: { XCTFail("App authorization must not log out") }, profile: { payload },
-            exchangeAppCredential: { throw BiliPassport.PassportError.rejected("账号未登录 (code -101)") },
+            exchangeAppCredential: { throw LoginModels.PassportError.rejected("账号未登录 (code -101)") },
             saveAppAuthorization: { key, mid in XCTAssertEqual(key, "fixture"); XCTAssertEqual(mid, 42); saved += 1 }
         )
         let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
@@ -162,7 +162,7 @@ final class AuditRegressionTests: XCTestCase {
         XCTAssertTrue(account.isLoggedIn)
         XCTAssertFalse(account.hasAppCredential)
         let session = account.sessionID
-        let cookies = BiliPassport.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42")
+        let cookies = LoginModels.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42")
         try await account.completeAppAuthorization(cookies, accessKey: "fixture", expectedSessionID: session)
         XCTAssertEqual(saved, 1)
         XCTAssertTrue(account.hasAppCredential)

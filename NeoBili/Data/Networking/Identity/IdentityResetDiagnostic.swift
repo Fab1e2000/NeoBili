@@ -33,7 +33,6 @@ public enum IdentityResetDiagnostic {
         credentials.write(buvid, key)
         guard credentials.read(key) == buvid else { throw Failure.credentialDeletion }
         defaults.set(buvid, forKey: key)
-        defaults.set("random", forKey: "neobili.appBuvid.mode")
         defaults.set(true, forKey: marker)
         return true
     }

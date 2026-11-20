@@ -8,14 +8,11 @@ struct HomeView: View {
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
-    @Environment(\.openMine) private var openMine
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    /// 标题由外层原生导航栏提供，列表里不再放页头行。
-    private let pinsTitleBar = true
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .recommendation)
 
@@ -111,8 +108,6 @@ struct HomeView: View {
                 controller: feedController,
                 onRefresh: { startRefresh() },
                 onOpenLastSeen: { startRefresh(scrollToTop: true) },
-                onOpenMine: { openMine?(()) },
-                pinsTitleBar: pinsTitleBar,
                 safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity,
                 // 补位整段跟各页同一时长，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。

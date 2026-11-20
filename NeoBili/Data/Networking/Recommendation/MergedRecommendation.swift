@@ -49,7 +49,7 @@ enum MergedRecommendation {
         }
         return RecommendationBatch(videos: videos,
             nextRequest: next.appFinished && next.webFinished ? nil : next,
-            refreshConfig: appBatch?.refreshConfig, appCursor: next.appCursor,
+            appCursor: next.appCursor,
             refreshCursor: appBatch?.refreshCursor, exposurePolicy: appBatch?.exposurePolicy)
     }
 }

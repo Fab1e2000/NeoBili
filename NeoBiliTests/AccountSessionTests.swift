@@ -164,39 +164,6 @@ final class AccountSessionTests: XCTestCase {
         XCTAssertNil(course.asVideoSummary)
     }
 
-    // MARK: - 扫码轮询状态解析
-
-    func testQRPollReadsBusinessCodeFromDataNotEnvelope() throws {
-        // 顶层 code 恒为 0，业务状态在 data.code —— 读错位置会把未扫码误判成已确认。
-        let waiting = Data(#"{"code":0,"message":"0","data":{"url":"","refresh_token":"","timestamp":1,"code":86101,"message":"未扫码"}}"#.utf8)
-        if case .waiting = try BiliPassport.pollOutcome(fromPayload: waiting, cookies: nil) {} else {
-            XCTFail("86101 应解析为 waiting")
-        }
-
-        let scanned = Data(#"{"code":0,"message":"0","data":{"url":"","refresh_token":"","timestamp":1,"code":86090,"message":"已扫码未确认"}}"#.utf8)
-        if case .scanned = try BiliPassport.pollOutcome(fromPayload: scanned, cookies: nil) {} else {
-            XCTFail("86090 应解析为 scanned")
-        }
-
-        let expired = Data(#"{"code":0,"message":"0","data":{"url":"","refresh_token":"","timestamp":1,"code":86038,"message":"二维码已失效"}}"#.utf8)
-        if case .expired = try BiliPassport.pollOutcome(fromPayload: expired, cookies: nil) {} else {
-            XCTFail("86038 应解析为 expired")
-        }
-
-        // data.code == 0 表示确认成功，但凭据在 Set-Cookie 头里；没带凭据必须报错，
-        // 而不是把「未扫码」当成功。
-        let confirmed = Data(#"{"code":0,"message":"0","data":{"url":"https://passport.bilibili.com","refresh_token":"","timestamp":1,"code":0,"message":""}}"#.utf8)
-        XCTAssertThrowsError(try BiliPassport.pollOutcome(fromPayload: confirmed, cookies: nil))
-        if case .confirmed(let cookies, _) = try BiliPassport.pollOutcome(
-            fromPayload: confirmed,
-            cookies: BiliPassport.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "1")
-        ) {
-            XCTAssertEqual(cookies.sessdata, "s")
-        } else {
-            XCTFail("带凭据时应解析为 confirmed")
-        }
-    }
-
     // MARK: - 收藏夹 / 历史响应解包
 
     func testFavFolderListUnwrapsDataList() throws {

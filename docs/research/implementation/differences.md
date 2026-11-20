@@ -587,7 +587,7 @@ YYModel黑名单排除该marker；S1 configure直接保留输入model/items，�
 或reset，因此同model重建及失败fallback保留它。全局reset、新响应对象复用及账号
 边界证据不足；这是子对象曝光标记，不是MID/ID/IndexPath持久去重池。
 
-**NeoBili 当前实现**：首页解析卡片、游标、refreshConfig 和曝光策略，没有 `interest_choose`、
+**NeoBili 当前实现**：首页解析卡片、游标和曝光策略，没有 `interest_choose`、
 启动/二次兴趣选择 endpoint、引导界面或安装成功标记。
 现有“不感兴趣”使用独立 dislike 通道；直播的 `device_type=0` 只属于直播请求。
 

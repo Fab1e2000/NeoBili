@@ -23,25 +23,21 @@ final class PlaybackAudioSession {
             return Self(configure: {
                 try session.setCategory(.playback, mode: .moviePlayback)
             }, activate: { complete in
-                #if compiler(>=6.4)
                 if #available(iOS 27.0, *) {
                     session.activate(options: []) { success, _ in
                         Task { @MainActor in complete(success) }
                     }
                     return
                 }
-                #endif
                 do { try session.setActive(true); complete(true) }
                 catch { complete(false) }
             }, deactivate: { complete in
-                #if compiler(>=6.4)
                 if #available(iOS 27.0, *) {
                     session.deactivate(options: [.notifyOthersOnDeactivation]) { success, _ in
                         Task { @MainActor in complete(success) }
                     }
                     return
                 }
-                #endif
                 do { try session.setActive(false, options: [.notifyOthersOnDeactivation]); complete(true) }
                 catch { complete(false) }
             })

@@ -19,19 +19,6 @@ final class VideoInteractionTests: XCTestCase {
         XCTAssertEqual(signed["sign"], "e42136be757f3273645368087dac2509")
     }
 
-    func testIPhoneTokenOnlyExchangeRequiresMatchingAccount() throws {
-        let payload = Data(#"{"code":0,"data":{"mid":42,"access_token":"ios-token"}}"#.utf8)
-        let cookies = BiliPassport.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42")
-        guard case .confirmed(let confirmed, let key) = try BiliPassport.appPollOutcome(
-            fromPayload: payload, fallbackCookies: cookies
-        ) else { return XCTFail("Expected confirmed") }
-        XCTAssertEqual(confirmed, cookies)
-        XCTAssertEqual(key, "ios-token")
-        XCTAssertThrowsError(try BiliPassport.appPollOutcome(fromPayload: payload))
-        XCTAssertThrowsError(try BiliPassport.appPollOutcome(fromPayload: payload,
-            fallbackCookies: .init(sessdata: "s", biliJct: "j", dedeUserID: "99")))
-    }
-
     // MARK: - APP 端签名
 
     func testAppSignMatchesReferenceQuery() {
@@ -77,61 +64,6 @@ final class VideoInteractionTests: XCTestCase {
         XCTAssertEqual(signed["sign"], "9913b9701975cfd73d0e1b70431e4f8c")
         XCTAssertEqual(AppSigner.signed(["open_event": "", "splash_id": ""], purpose: .passport,
                                        timestamp: 1_700_000_000), signed)
-    }
-
-    // MARK: - App 扫码轮询
-
-    func testAppQRPollExtractsCookiesAndAccessKey() throws {
-        let payload = Data(#"""
-        {"code":0,"message":"0","data":{"mid":10000,"access_token":"tv-token","refresh_token":"r",
-        "expires_in":1,"cookie_info":{"cookies":[
-        {"name":"SESSDATA","value":"sess%2Cdata"},
-        {"name":"bili_jct","value":"csrf"},
-        {"name":"DedeUserID","value":"10000"}]}}}
-        """#.utf8)
-
-        guard case .confirmed(let cookies, let accessKey) = try BiliPassport.appPollOutcome(fromPayload: payload) else {
-            return XCTFail("code 0 应解析为 confirmed")
-        }
-        XCTAssertEqual(cookies.sessdata, "sess%2Cdata")
-        XCTAssertEqual(cookies.biliJct, "csrf")
-        XCTAssertEqual(cookies.dedeUserID, "10000")
-        XCTAssertEqual(accessKey, "tv-token")
-    }
-
-    func testCookieExchangeConfirmationUsesPassportAndUnchangedCurrentCredentials() throws {
-        let request = try BiliPassport.makeAppConfirmationRequest(authCode: "fixture-auth", cookies: .init(sessdata: "sess%2Cdata", biliJct: "csrf+value", dedeUserID: "42"))
-        XCTAssertEqual(request.url?.host, "passport.bilibili.com")
-        XCTAssertEqual(request.url?.scheme, "https")
-        XCTAssertEqual(request.httpMethod, "POST")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), "SESSDATA=sess%2Cdata; bili_jct=csrf+value; DedeUserID=42")
-        XCTAssertFalse(request.httpShouldHandleCookies)
-        let body = try XCTUnwrap(String(data: XCTUnwrap(request.httpBody), encoding: .utf8))
-        var components = URLComponents(); components.percentEncodedQuery = body
-        let form = Dictionary(uniqueKeysWithValues: components.queryItems!.map { ($0.name, $0.value!) })
-        XCTAssertEqual(form["csrf"], "csrf+value")
-        XCTAssertEqual(form["auth_code"], "fixture-auth")
-        XCTAssertEqual(form["scanning_type"], "3")
-        let mismatch = Data(#"{"code":0,"data":{"mid":43,"access_token":"fixture","cookie_info":{"cookies":[{"name":"SESSDATA","value":"s"},{"name":"bili_jct","value":"j"},{"name":"DedeUserID","value":"42"}]}}}"#.utf8)
-        XCTAssertThrowsError(try BiliPassport.appPollOutcome(fromPayload: mismatch))
-    }
-
-    func testAppQRPollMapsPendingAndExpired() throws {
-        let pending = Data(#"{"code":86039,"message":"二维码尚未确认","data":null}"#.utf8)
-        guard case .waiting = try BiliPassport.appPollOutcome(fromPayload: pending) else {
-            return XCTFail("86039 应解析为 waiting")
-        }
-
-        let expired = Data(#"{"code":86038,"message":"二维码已失效","data":null}"#.utf8)
-        guard case .expired = try BiliPassport.appPollOutcome(fromPayload: expired) else {
-            return XCTFail("86038 应解析为 expired")
-        }
-    }
-
-    /// code 0 但没带下 Cookie 时不能当成登录成功，否则会写入一份空凭据。
-    func testAppQRPollWithoutCookiesThrows() {
-        let payload = Data(#"{"code":0,"message":"0","data":{"access_token":"t"}}"#.utf8)
-        XCTAssertThrowsError(try BiliPassport.appPollOutcome(fromPayload: payload))
     }
 
     // MARK: - 新增响应体解码

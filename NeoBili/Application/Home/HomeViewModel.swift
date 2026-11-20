@@ -268,13 +268,6 @@ final class HomeViewModel {
         videos.contains { $0.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: self.filtering) }
     }
 
-
-    /// 自动刷新明确关闭，服务端返回的间隔不会改变这个策略。
-    func claimAutomaticRefresh(_ trigger: AppRecommendationRefreshConfig.Trigger) -> Bool {
-        // auto_refresh_state=4: returning to the app or home never consumes another batch.
-        false
-    }
-
     private var nextRequest: RecommendationRequest?
     private var appRefreshCursor = 0
     private var cursorSession: UUID?

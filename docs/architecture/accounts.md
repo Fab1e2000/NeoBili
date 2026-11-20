@@ -61,7 +61,6 @@ App 身份统一使用 `iphone_i/91300300`，statistics 使用 appId 14/version 
 它是官方当前系统 IDFV；真实值不进入源码或分发构建。
 续期 bili_local_id 使用独立的本地设备编号；device_id 优先服务器登记回执，缺失时用该本地编号。
 原生请求手动携带 Cookie，不做没有消费者的系统 Cookie/WebKit SSO 同步。
-旧扫码/密码协议代码保留用于原有回归，没有生产入口，也不再自动通过扫码链路换取 token。
 凭据以 iOS scope 隔离，旧 Android/HD token 保存在原存储但不参与 iOS 请求；缺少 iOS token 时使用当前账号手机号补授权，失败保留原 Cookie。保存前核对账号与登录会话，防止迟到结果覆盖新会话。
 官方 fingerprint 是带加密 key/content 的 POST；分析包中的标识及加密依据见
 [待确认参数](../research/recommendation-parameters.md)。生产已接入版本受限的 fingerprint 适配器：基于 8.89 公钥和 AES-ECB/PKCS7＋RSA-PKCS1 包装，

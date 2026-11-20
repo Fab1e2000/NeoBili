@@ -21,10 +21,9 @@ final class HomeLargeCardTests: XCTestCase {
     }
 
     #if NEOBILI_REGRESSION
-    func testUnchangedRowsSkipPreparationButContentHeaderAndEnvironmentStillUpdate() throws {
+    func testUnchangedRowsSkipPreparationAndContentAndEnvironmentChangesReconfigure() throws {
         let collection = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
         let coordinator = HomeFeedCollection.Coordinator()
-        coordinator.showsHeaderRow = false
         coordinator.attach(collection)
         let source = try XCTUnwrap(collection.dataSource as? UICollectionViewDiffableDataSource<HomeFeedCollection.Section, String>)
         let videos = (0..<1_000).map { video($0) }
@@ -52,17 +51,11 @@ final class HomeLargeCardTests: XCTestCase {
         XCTAssertEqual(source.snapshot().itemIdentifiers,
             ([0, 2, 1] + Array(3..<1_000)).map { "video-fixture-\($0)" })
 
-        coordinator.showsHeaderRow = true
-        coordinator.apply(changedRows)
-        XCTAssertEqual(coordinator.rowPreparationCount, 3)
-        XCTAssertEqual(source.snapshot().sectionIdentifiers.first, .header)
-        XCTAssertEqual(source.snapshot().numberOfItems, 1_001)
-
         coordinator.update(environment: EnvironmentValues(), hidesPortraitVideos: true)
         coordinator.apply(changedRows)
-        XCTAssertEqual(coordinator.rowPreparationCount, 4, "Environment changes still reconfigure unchanged rows")
+        XCTAssertEqual(coordinator.rowPreparationCount, 3, "Environment changes still reconfigure unchanged rows")
         coordinator.apply(changedRows)
-        XCTAssertEqual(coordinator.rowPreparationCount, 4)
+        XCTAssertEqual(coordinator.rowPreparationCount, 3)
     }
 
     #endif
@@ -121,7 +114,7 @@ final class HomeLargeCardTests: XCTestCase {
         let model=HomeViewModel(fetchRecommendations:{_ in .init(videos:[],nextRequest:nil)})
         let host=UIHostingController(rootView:HomeFeedCollection(rows:HomeFeedRow.group(videos.map(HomeFeedItem.video)),
             viewModel:model,hidesPortraitVideos:false,isRefreshing:false,isInteractionEnabled:true,
-            refreshDistance:100,controller:HomeFeedScrollController(),onRefresh:{},onOpenLastSeen:{},pinsTitleBar:true)
+            refreshDistance:100,controller:HomeFeedScrollController(),onRefresh:{},onOpenLastSeen:{})
             .environment(AccountStore(monitorNetwork:false)).environment(NowPlayingStore()).environment(ActionFeedback()))
         window.rootViewController=host;window.makeKeyAndVisible()
         func find(_ view:UIView)->UICollectionView? {
@@ -174,7 +167,7 @@ final class HomeLargeCardTests: XCTestCase {
         let host = UIHostingController(rootView: HomeFeedCollection(
             rows: HomeFeedRow.group(videos.map(HomeFeedItem.video)), viewModel: model,
             hidesPortraitVideos: false, isRefreshing: false, isInteractionEnabled: true,
-            refreshDistance: 100, controller: HomeFeedScrollController(), onRefresh: {}, onOpenLastSeen: {}, pinsTitleBar: true)
+            refreshDistance: 100, controller: HomeFeedScrollController(), onRefresh: {}, onOpenLastSeen: {})
             .environment(AccountStore(monitorNetwork: false)).environment(NowPlayingStore()).environment(ActionFeedback())
             .environment(\.videoCardAnimationOverrides, VideoCardAnimationOverrides(enter: false, exit: false)))
         window.rootViewController = host
