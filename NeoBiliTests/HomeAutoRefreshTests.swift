@@ -143,7 +143,7 @@ final class HomeAutoRefreshTests: XCTestCase {
             let failure = URLError(.timedOut)
             response?.resume(throwing: failure)
             await load.value
-            XCTAssertEqual(model.errorMessage, changesAccount ? nil : failure.localizedDescription)
+            XCTAssertEqual(model.errorMessage, changesAccount ? nil : String(localized: "请求超时，请稍后重试。"))
             XCTAssertTrue(model.videos.isEmpty)
             XCTAssertFalse(model.isLoading)
         }

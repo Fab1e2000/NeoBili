@@ -26,10 +26,12 @@ struct HomeView: View {
     @State private var refresh = ListRefreshController()
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
+    @State private var refreshFailure: String?
 
-    init(isSelected: Bool = true, filtering: VideoFilterDependencies = .live) {
+    init(isSelected: Bool = true, filtering: VideoFilterDependencies = .live, viewModel: HomeViewModel? = nil) {
         self.isSelected = isSelected
-        _viewModel = State(initialValue: HomeViewModel(source: RecommendationSourcePreference.launched, filtering: filtering))
+        _viewModel = State(initialValue: viewModel ?? HomeViewModel(source: RecommendationSourcePreference.launched,
+                                                                  filtering: filtering))
     }
 
     private var animatesExit: Bool {
@@ -50,6 +52,7 @@ struct HomeView: View {
             // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。
             .onChange(of: HomeFeedAccount(accountID: account.accountID,
                                           hasAppCredential: account.hasAppCredential)) { _, current in
+                refreshFailure = nil
                 Task { await viewModel.refreshIfAccountChanged(to: current) }
             }
             .onAppear {
@@ -124,6 +127,14 @@ struct HomeView: View {
                 startRefresh()
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let refreshFailure, !refresh.isRefreshing, !viewModel.videos.isEmpty {
+                InlineLoadFailure(title: "推荐未能刷新", message: refreshFailure) {
+                    startRefresh()
+                }
+                .background(.bar)
+            }
+        }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
     }
@@ -145,7 +156,9 @@ struct HomeView: View {
     }
 
     private func startRefresh(scrollToTop: Bool = false) {
-        guard !refresh.isRefreshing else { return }
+        guard !refresh.isRefreshing, !viewModel.isLoading else { return }
+        refreshFailure = nil
+        let session = account.sessionID
         refresh.start(
             hasContent: !viewModel.videos.isEmpty,
             animatesExit: animatesExit,
@@ -154,7 +167,9 @@ struct HomeView: View {
                 // Keep existing content until the request is ready, including when
                 // animation settings change in the middle of the request.
                 await viewModel.refresh(staged: true, userInitiated: true)
-                return !Task.isCancelled && viewModel.errorMessage == nil
+                guard !Task.isCancelled, account.sessionID == session else { return false }
+                refreshFailure = viewModel.videos.isEmpty ? nil : viewModel.errorMessage
+                return viewModel.errorMessage == nil
             },
             commit: {
                 // Commit data and restore opacity in one transaction. The individual
@@ -184,7 +199,7 @@ private struct HomeFeedStatusOverlay: View {
                 .opacity(contentOpacity)
         } else if let message = viewModel.errorMessage, viewModel.videos.isEmpty {
             ContentUnavailableView {
-                Label("加载失败", systemImage: "wifi.slash")
+                Label("推荐加载失败", systemImage: "wifi.slash")
             } description: {
                 Text(message)
             } actions: {

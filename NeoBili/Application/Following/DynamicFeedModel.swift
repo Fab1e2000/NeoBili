@@ -110,7 +110,7 @@ final class DynamicFeedModel {
             else { applyRefresh(feed) }
         } catch {
             guard likeStore.sessionID == accountSessionID, loadGeneration == generation, !error.isCancellation else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 

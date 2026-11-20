@@ -41,6 +41,266 @@
         }
       }
     },
+    "当前没有网络连接。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You're offline."
+          }
+        }
+      }
+    },
+    "请求超时，请稍后重试。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The request timed out. Try again later."
+          }
+        }
+      }
+    },
+    "回复加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load replies"
+          }
+        }
+      }
+    },
+    "无法加载更多回复" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load more replies"
+          }
+        }
+      }
+    },
+    "评论未能更新" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to update comments"
+          }
+        }
+      }
+    },
+    "无法加载更多评论" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load more comments"
+          }
+        }
+      }
+    },
+    "视频详情加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load video details"
+          }
+        }
+      }
+    },
+    "热搜加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load trending searches"
+          }
+        }
+      }
+    },
+    "无法加载更多搜索结果" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load more search results"
+          }
+        }
+      }
+    },
+    "无法加载更多直播" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load more live streams"
+          }
+        }
+      }
+    },
+    "关注列表加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load followed creators"
+          }
+        }
+      }
+    },
+    "无法加载更多关注" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load more followed creators"
+          }
+        }
+      }
+    },
+    "动态加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load posts"
+          }
+        }
+      }
+    },
+    "投稿加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load uploads"
+          }
+        }
+      }
+    },
+    "收藏夹加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load favorite folders"
+          }
+        }
+      }
+    },
+    "无法加载更多历史记录" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load more watch history"
+          }
+        }
+      }
+    },
+    "无法加载更多收藏视频" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load more favorite videos"
+          }
+        }
+      }
+    },
+    "稍后再看未能刷新" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to refresh Watch Later"
+          }
+        }
+      }
+    },
+    "无法加载更多稍后再看视频" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load more Watch Later videos"
+          }
+        }
+      }
+    },
+    "推荐未能刷新" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to refresh recommendations"
+          }
+        }
+      }
+    },
+    "推荐加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load recommendations"
+          }
+        }
+      }
+    },
+    "动态未能刷新" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to refresh posts"
+          }
+        }
+      }
+    },
+    "直播列表未能刷新" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to refresh live streams"
+          }
+        }
+      }
+    },
+    "相关视频加载失败" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load related videos"
+          }
+        }
+      }
+    },
+    "无法加载更多相关视频" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to load more related videos"
+          }
+        }
+      }
+    },
+    "暂时无法与哔哩哔哩建立安全连接，请稍后重试。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A secure connection to Bilibili couldn't be established. Try again later."
+          }
+        }
+      }
+    },
     "请检查网络连接后重试。": {
       "localizations": {
         "en": {

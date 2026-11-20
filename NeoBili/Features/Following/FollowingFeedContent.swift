@@ -24,7 +24,7 @@ struct FollowingFeedContent: View {
             loadingPlaceholder
         } else if let message = feed.errorMessage, feed.entries.isEmpty {
             ContentUnavailableView {
-                Label("加载失败", systemImage: "wifi.slash")
+                Label("动态加载失败", systemImage: "wifi.slash")
             } description: {
                 Text(message)
             } actions: {
@@ -40,6 +40,9 @@ struct FollowingFeedContent: View {
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 300)
         } else {
+            if let message = feed.errorMessage {
+                InlineLoadFailure(title: "动态未能刷新", message: message, onRetry: onRetry)
+            }
             let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) ?? true }
             if visibleEntries.isEmpty {
                 if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {

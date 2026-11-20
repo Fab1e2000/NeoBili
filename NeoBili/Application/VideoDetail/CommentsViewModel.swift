@@ -207,7 +207,7 @@ final class CommentsViewModel {
         } catch {
             guard request == generation, !error.isCancellation else { return }
             failedReloadSort = requestedSort
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 
@@ -274,7 +274,7 @@ final class CommentsViewModel {
             hasMore = more
         } catch {
             guard request == generation, !error.isCancellation else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 
@@ -371,7 +371,7 @@ final class CommentsViewModel {
             else { moreRepliesIDs.remove(root) }
         } catch {
             guard replyGeneration[root, default: 0] == request, !deletedIDs.contains(root), !error.isCancellation else { return }
-            replyErrors[root] = error.localizedDescription
+            replyErrors[root] = error.loadFailureDescription
             if replacing { failedReplyRefreshes.insert(root) }
             else { moreRepliesIDs.remove(root) }
         }

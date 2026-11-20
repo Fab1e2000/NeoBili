@@ -52,7 +52,7 @@ struct WatchLaterView: View {
                 } actions: {
                     Button("重试") { Task { await model.load(refresh: true) } }
                 }
-            } else if !isLoading, visibleItems.isEmpty, !model.hasMore {
+            } else if !isLoading, visibleItems.isEmpty, !model.hasMore, errorMessage == nil {
                 ContentUnavailableView(
                     items.isEmpty ? "稍后再看是空的" : "没有可显示的视频",
                     systemImage: items.isEmpty ? "flag.checkered" : "rectangle.slash"
@@ -234,9 +234,9 @@ struct WatchLaterView: View {
     private var paginationFooter: some View {
         Group {
             if let error = model.errorMessage {
-                VStack {
-                    Text(error).font(.app(.footnote)).foregroundStyle(.secondary)
-                    Button("重试") { Task { await model.load() } }
+                InlineLoadFailure(title: model.failedRefresh ? "稍后再看未能刷新" : "无法加载更多稍后再看视频",
+                                  message: error) {
+                    Task { await model.load() }
                 }
             } else if model.isLoading {
                 ProgressView()

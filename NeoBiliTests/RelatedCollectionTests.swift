@@ -102,12 +102,13 @@ final class RelatedCollectionTests: XCTestCase {
         var shouldFail = true
         let page = try AppRelatedPage(payload: Data(), isView: false, accountSession: UUID())
         let model = VideoDetailViewModel(bvid: "BVFixture", relatedPageLoader: { _ in
-            if shouldFail { throw URLError(.notConnectedToInternet) }
+            if shouldFail { throw URLError(.secureConnectionFailed) }
             return page
         })
         XCTAssertTrue(model.isWaitingForFirstRelated)
         await model.loadRelated()
         XCTAssertFalse(model.isWaitingForFirstRelated)
+        XCTAssertEqual(model.relatedErrorMessage, String(localized: "暂时无法与哔哩哔哩建立安全连接，请稍后重试。"))
         let store = NowPlayingStore()
         let content = VideoDescriptionContent(store: store, viewModel: model, components: [],
             consume: { _ in 0 }, end: {}, canConsume: { _ in false }, canContinue: { false })
@@ -135,6 +136,7 @@ final class RelatedCollectionTests: XCTestCase {
             attachment.name = "Related failure \(style == .dark ? "dark" : "light")"
             attachment.lifetime = .keepAlways
             add(attachment)
+            try assertRetryIsCentered(in: status.convert(status.bounds, to: window), image: image)
         }
         shouldFail = false
         await model.retryRelated()
@@ -142,6 +144,26 @@ final class RelatedCollectionTests: XCTestCase {
         XCTAssertNil(model.relatedErrorMessage)
         XCTAssertFalse(model.isLoadingRelated)
         XCTAssertFalse(model.isWaitingForFirstRelated)
+    }
+
+    private func assertRetryIsCentered(in status: CGRect, image: UIImage) throws {
+        let scale = image.scale
+        // Sample through the lower half of the bordered button, below the description.
+        let row = CGRect(x: round(status.minX * scale), y: round((status.maxY - 26) * scale),
+                         width: round(status.width * scale), height: 1)
+        let strip = try XCTUnwrap(image.cgImage?.cropping(to: row))
+        let width = strip.width
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: 1, bitsPerComponent: 8,
+                                             bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(),
+                                             bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        context.draw(strip, in: CGRect(x: 0, y: 0, width: width, height: 1))
+        let pixels = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
+        let background = Int(pixels[0])
+        let buttonPixels = (0..<width).filter { abs(Int(pixels[$0]) - background) > 7 }
+        let left = try XCTUnwrap(buttonPixels.first)
+        let right = try XCTUnwrap(buttonPixels.last)
+        XCTAssertGreaterThan(CGFloat(right - left) / scale, 30)
+        XCTAssertEqual(CGFloat(left + right) / (2 * scale), status.width / 2, accuracy: 2)
     }
 
     func testPaginationRetryIsAfterRetainedRowsAndCanBeRemoved() async throws {

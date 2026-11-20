@@ -369,7 +369,7 @@ struct FavoriteFolderView: View {
                             row(media, loadsNextPage: paginationIDs.contains(media.id))
                                 .removalFillTransition()
                         }
-                        if model.hasMore, !model.isLoadingMore {
+                        if model.hasMore, !model.isLoadingMore, model.errorMessage == nil {
                             Button("继续加载") { Task { await model.loadNextPage(services: services, folder: folder, refreshing: refresh.isRefreshing) } }
                                 .padding(.vertical, 12)
                                 .disabled(model.isLoading)
@@ -379,12 +379,10 @@ struct FavoriteFolderView: View {
                                 .padding(.vertical, 12)
                         }
                         if let errorMessage = model.errorMessage, !model.videos.isEmpty {
-                            VStack(spacing: 8) {
-                                Text(errorMessage).font(.app(.footnote)).foregroundStyle(.secondary)
-                                Button("重试加载") { Task { await model.loadNextPage(services: services, folder: folder, refreshing: refresh.isRefreshing) } }
-                                    .disabled(model.isLoading || model.isLoadingMore)
+                            InlineLoadFailure(title: "无法加载更多收藏视频", message: errorMessage,
+                                              isRetryDisabled: model.isLoading || model.isLoadingMore) {
+                                Task { await model.loadNextPage(services: services, folder: folder, refreshing: refresh.isRefreshing) }
                             }
-                            .padding()
                         }
                     }
                     .background {

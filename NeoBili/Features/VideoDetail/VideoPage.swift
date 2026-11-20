@@ -211,11 +211,7 @@ struct VideoPage: View {
                     // 选择器固定在播放器下方，作为简介和评论两页的顶部栏：内容从它下面滑过，
                     // 由系统给出与主页一致的原生顶部模糊。
                     if store.player != nil, let message = viewModel?.errorMessage {
-                        VStack(spacing: 8) {
-                            Text(message).font(.app(.callout)).foregroundStyle(.secondary)
-                            Button("重试", systemImage: "arrow.clockwise", action: store.retryDetail)
-                        }
-                        .padding()
+                        InlineLoadFailure(title: "视频详情加载失败", message: message, onRetry: store.retryDetail)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { detailErrorHeight = $0 }
                     }
                     VStack(spacing: 0) {
@@ -361,7 +357,7 @@ struct VideoPage: View {
 
                 if let message = viewModel?.errorMessage {
                     ContentUnavailableView {
-                        Label("加载失败", systemImage: "exclamationmark.triangle")
+                        Label("视频详情加载失败", systemImage: "exclamationmark.triangle")
                     } description: {
                         Text(message)
                     } actions: {

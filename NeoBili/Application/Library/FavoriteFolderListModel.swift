@@ -167,7 +167,7 @@ final class FavoriteFolderListModel {
             errorMessage = nil
         } catch {
             guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 

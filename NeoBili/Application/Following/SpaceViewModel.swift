@@ -145,7 +145,7 @@ final class SpaceViewModel {
             guard !Task.isCancelled, !error.isCancellation else { return }
             // 刷新失败保留已可读的投稿和分页游标；首屏失败仍展示错误页。
             if videos.isEmpty { hasMoreVideos = false }
-            videosError = error.localizedDescription
+            videosError = error.loadFailureDescription
         }
     }
 
@@ -167,7 +167,7 @@ final class SpaceViewModel {
             return true
         } catch {
             guard !Task.isCancelled, !error.isCancellation else { return false }
-            videosError = error.localizedDescription
+            videosError = error.loadFailureDescription
             return false
         }
     }

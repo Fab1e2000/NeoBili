@@ -63,12 +63,9 @@ struct SearchResultsView: View {
                     }
                 }
                 if let message = viewModel.loadMoreError {
-                    VStack(spacing: 8) {
-                        Text(message).font(.app(.caption)).foregroundStyle(.secondary)
-                        Button("重试加载") { Task { await viewModel.loadMore() } }
-                            .buttonStyle(.bordered)
+                    InlineLoadFailure(title: "无法加载更多搜索结果", message: message) {
+                        Task { await viewModel.loadMore() }
                     }
-                    .padding()
                 } else if viewModel.hasMore, !visibleResults.isEmpty {
                     LoadingTaskAnchor()
                         .frame(maxWidth: .infinity)

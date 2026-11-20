@@ -32,11 +32,13 @@ struct FavoriteFolderSheet: View {
                 if isLoading {
                     LoadingTaskAnchor().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let errorMessage {
-                    ContentUnavailableView(
-                        "加载失败",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(errorMessage)
-                    )
+                    ContentUnavailableView {
+                        Label("收藏夹加载失败", systemImage: "star.slash")
+                    } description: {
+                        Text(errorMessage)
+                    } actions: {
+                        Button("重试") { Task { await loadFolders() } }
+                    }
                 } else if folders.isEmpty {
                     ContentUnavailableView("没有收藏夹", systemImage: "star")
                 } else {
@@ -102,6 +104,8 @@ struct FavoriteFolderSheet: View {
 
     private func loadFolders() async {
         isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
         do {
             let loaded = try await services.library.favoriteFolders(ownerMid: ownerMid, videoAid: videoAid)
             folders = loaded
@@ -109,8 +113,7 @@ struct FavoriteFolderSheet: View {
             originalSelection = existing
             selection = existing
         } catch {
-            errorMessage = error.localizedDescription
+            if !error.isCancellation { errorMessage = error.loadFailureDescription }
         }
-        isLoading = false
     }
 }

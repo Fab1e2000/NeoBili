@@ -465,7 +465,7 @@ final class HomeViewModel {
         } catch {
             guard activeLoadID == loadID, currentSessionID() == session, !Self.isCancellation(error) else { return }
             // 与 PiliPlus 一致：已有推荐时刷新失败也保留旧内容，不把页面替换成错误页。
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 

@@ -64,13 +64,7 @@ struct CommentsList: View {
     }
 
     private func loadError(_ message: String) -> some View {
-        VStack(spacing: 8) {
-            Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
-            Button("重试加载评论") { Task { await viewModel.retry() } }
-                .disabled(viewModel.isLoading || viewModel.isRefreshing || viewModel.isLoadingMore)
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
+        CommentListLoadFailure(viewModel: viewModel, message: message)
     }
 }
 
@@ -143,14 +137,21 @@ struct CommentListFooter: View {
                     .padding()
             }
             if let message = viewModel.errorMessage, !viewModel.comments.isEmpty, !viewModel.didFailReload {
-                VStack(spacing: 8) {
-                    Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
-                    Button("重试加载评论") { Task { await viewModel.retry() } }
-                        .disabled(viewModel.isLoading || viewModel.isRefreshing || viewModel.isLoadingMore)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
+                CommentListLoadFailure(viewModel: viewModel, message: message)
             }
+        }
+    }
+}
+
+struct CommentListLoadFailure: View {
+    let viewModel: CommentsViewModel
+    let message: String
+
+    var body: some View {
+        InlineLoadFailure(title: viewModel.didFailReload ? "评论未能更新" : "无法加载更多评论",
+                          message: message, retryTitle: "重试加载评论",
+                          isRetryDisabled: viewModel.isLoading || viewModel.isRefreshing || viewModel.isLoadingMore) {
+            Task { await viewModel.retry() }
         }
     }
 }

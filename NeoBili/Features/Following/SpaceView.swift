@@ -323,18 +323,10 @@ struct SpaceView: View {
         let visibleVideos = viewModel.videos.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: viewModel.filtering)
 
         if let message = viewModel.videosError, !viewModel.videos.isEmpty {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("加载失败", systemImage: "wifi.slash")
-                    Text(message).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Button("重试") { Task { await viewModel.reloadVideos() } }
-                    .disabled(viewModel.isLoadingVideos)
+            InlineLoadFailure(title: "投稿加载失败", message: message,
+                              isRetryDisabled: viewModel.isLoadingVideos) {
+                Task { await viewModel.reloadVideos() }
             }
-            .font(.app(.footnote))
-            .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
-            .padding(.vertical, 12)
         }
 
         if visibleVideos.isEmpty, viewModel.videos.hasPendingVideoDimensions(hidesPortraitVideos, filtering: viewModel.filtering) {
@@ -343,7 +335,7 @@ struct SpaceView: View {
             LoadingTaskAnchor().padding(.vertical, 40)
         } else if let message = viewModel.videosError, viewModel.videos.isEmpty {
             ContentUnavailableView {
-                Label("加载失败", systemImage: "wifi.slash")
+                Label("投稿加载失败", systemImage: "video.slash")
             } description: {
                 Text(message)
             } actions: {
@@ -412,7 +404,7 @@ struct SpaceView: View {
             LoadingTaskAnchor().padding(.vertical, 40)
         } else if let message = feed.errorMessage, feed.entries.isEmpty {
             ContentUnavailableView {
-                Label("加载失败", systemImage: "wifi.slash")
+                Label("动态加载失败", systemImage: "wifi.slash")
             } description: {
                 Text(message)
             } actions: {
@@ -423,6 +415,11 @@ struct SpaceView: View {
             ContentUnavailableView("还没有动态", systemImage: "bell.slash")
                 .padding(.vertical, 20)
         } else {
+            if let message = feed.errorMessage {
+                InlineLoadFailure(title: "动态未能刷新", message: message) {
+                    Task { await feed.refresh() }
+                }
+            }
             let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: viewModel.filtering) ?? true }
             if visibleEntries.isEmpty {
                 if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos, filtering: viewModel.filtering) {

@@ -119,7 +119,7 @@ final class VideoDetailViewModel {
             coinCount = loaded.stat.coin
             favoriteCount = loaded.stat.favorite
         } catch {
-            if !error.isCancellation { errorMessage = error.localizedDescription }
+            if !error.isCancellation { errorMessage = error.loadFailureDescription }
         }
     }
 
@@ -155,7 +155,7 @@ final class VideoDetailViewModel {
         } catch {
             // Preserve App tracking and existing cards; a failed request is not an empty result.
             guard !error.isCancellation, likeStore.sessionID == sessionID else { return }
-            relatedErrorMessage = error.localizedDescription
+            relatedErrorMessage = error.loadFailureDescription
         }
     }
 

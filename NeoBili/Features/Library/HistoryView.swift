@@ -54,7 +54,7 @@ struct HistoryView: View {
                             row(item, loadsNextPage: paginationIDs.contains(item.id))
                                 .removalFillTransition()
                         }
-                        if model.hasMore, !model.isLoadingMore {
+                        if model.hasMore, !model.isLoadingMore, model.errorMessage == nil {
                             Button("继续加载") { Task { await model.loadNextPage(services: services, refreshing: refresh.isRefreshing) } }
                                 .padding(.vertical, 12)
                                 .disabled(model.isLoading)
@@ -64,12 +64,10 @@ struct HistoryView: View {
                                 .padding(.vertical, 12)
                         }
                         if let errorMessage = model.errorMessage, !model.items.isEmpty {
-                            VStack(spacing: 8) {
-                                Text(errorMessage).font(.app(.footnote)).foregroundStyle(.secondary)
-                                Button("重试加载") { Task { await model.loadNextPage(services: services, refreshing: refresh.isRefreshing) } }
-                                    .disabled(model.isLoading || model.isLoadingMore)
+                            InlineLoadFailure(title: "无法加载更多历史记录", message: errorMessage,
+                                              isRetryDisabled: model.isLoading || model.isLoadingMore) {
+                                Task { await model.loadNextPage(services: services, refreshing: refresh.isRefreshing) }
                             }
-                            .padding()
                         }
                     }
                     .background {

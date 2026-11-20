@@ -155,19 +155,10 @@ struct CommentThreadView: View {
                 .frame(maxWidth: .infinity)
                 .padding()
         } else if let error = viewModel.replyErrors[root.id] {
-            VStack(spacing: 10) {
-                Text(error)
-                    .font(.app(.subheadline))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-
-                Button("重试") {
-                    Task { await viewModel.retryReplies(for: root) }
-                }
-                .font(.app(.subheadline, weight: .medium))
+            InlineLoadFailure(title: replies.isEmpty ? "回复加载失败" : "无法加载更多回复",
+                              message: error) {
+                Task { await viewModel.retryReplies(for: root) }
             }
-            .frame(maxWidth: .infinity)
-            .padding()
         } else if replies.isEmpty {
             ContentUnavailableView("还没有回复", systemImage: "bubble.left")
                 .padding(.vertical, 40)

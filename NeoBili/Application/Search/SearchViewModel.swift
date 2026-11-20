@@ -24,7 +24,7 @@ final class SearchViewModel {
             var seen = Set<String>()
             hotSearches = payload.filter { !$0.keyword.isEmpty && seen.insert($0.keyword).inserted }
         } catch {
-            if !Task.isCancelled { hotSearchError = error.localizedDescription }
+            if !Task.isCancelled { hotSearchError = error.loadFailureDescription }
         }
     }
 
@@ -114,7 +114,7 @@ final class SearchViewModel {
                 append(page, number: 1)
             } catch {
                 guard !Task.isCancelled, generation == request else { return }
-                errorMessage = error.localizedDescription
+                errorMessage = error.loadFailureDescription
             }
         }
     }
@@ -133,7 +133,7 @@ final class SearchViewModel {
             append(page, number: next)
         } catch {
             guard !Task.isCancelled, generation == request else { return }
-            loadMoreError = error.localizedDescription
+            loadMoreError = error.loadFailureDescription
         }
     }
 

@@ -8,6 +8,53 @@ import XCTest
 /// 推荐页放进原生导航栏（大标题 + 下滑收起）后，列表的布局不能陷入自我失效的递归。
 @MainActor
 final class HomeFeedNavigationBarTests: XCTestCase {
+    func testManualRefreshFailureReservesSpaceAboveRetainedCards() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let video = VideoSummary(bvid: "home-refresh-error", aid: 1, cid: 1, title: "Existing video",
+                                 pic: "", desc: "", duration: 60, pubdate: 0,
+                                 owner: VideoOwner(mid: 1, name: "Test", face: ""),
+                                 stat: VideoStat(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0))
+        @MainActor final class Fixture { var fails = true }
+        let fixture = Fixture()
+        let model = HomeViewModel(fetchRecommendations: { request in
+            if request.isRefresh, fixture.fails { throw URLError(.notConnectedToInternet) }
+            return .init(videos: [video], nextRequest: nil)
+        })
+        let host = UIHostingController(rootView: HomeView(viewModel: model)
+            .environment(AccountStore(monitorNetwork: false))
+            .environment(NowPlayingStore())
+            .environment(ActionFeedback()))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousWindow?.makeKey()
+        }
+        func collection(in view: UIView) -> UICollectionView? {
+            if let list = view as? UICollectionView { return list }
+            return view.subviews.lazy.compactMap { collection(in: $0) }.first
+        }
+        try await Task.sleep(for: .milliseconds(350))
+        let list = try XCTUnwrap(collection(in: host.view))
+        let originalTop = list.contentInset.top
+        XCTAssertEqual(model.videos.map(\.bvid), [video.bvid])
+
+        NotificationCenter.default.post(name: .mainTabReselected, object: MainTab.home)
+        try await Task.sleep(for: .milliseconds(450))
+        XCTAssertEqual(model.errorMessage, String(localized: "当前没有网络连接。"))
+        XCTAssertEqual(model.videos.map(\.bvid), [video.bvid])
+        XCTAssertGreaterThan(list.contentInset.top, originalTop + 44)
+
+        fixture.fails = false
+        NotificationCenter.default.post(name: .mainTabReselected, object: MainTab.home)
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(list.contentInset.top, originalTop, accuracy: 1)
+    }
+
     func testLoadingSkeletonUsesTheFeedCardDimensions() throws {
         for (width, height, scheme, textSize, leadingLargeCard) in [
             (CGFloat(408), CGFloat(650), ColorScheme.light, DynamicTypeSize.large, false),

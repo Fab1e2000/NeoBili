@@ -450,13 +450,10 @@ struct VideoDescriptionContent: View {
             if showsSkeleton { RelatedVideosSkeleton() }
             else if loading { ProgressView().padding(24) }
             else if let relatedError {
-                VStack(spacing: 12) {
-                    Text(relatedError).font(.app(.subheadline)).foregroundStyle(.secondary)
-                    Button("重试") { Task { await viewModel?.retryRelated() } }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("related.retry")
+                InlineLoadFailure(title: all.isEmpty ? "相关视频加载失败" : "无法加载更多相关视频",
+                                  message: relatedError, retryIdentifier: "related.retry") {
+                    Task { await viewModel?.retryRelated() }
                 }
-                .padding(16)
             } else {
                 Text(all.isEmpty ? "暂时没有相关视频" : "相关视频已被内容过滤设置隐藏")
                     .font(.app(.subheadline)).foregroundStyle(.secondary).padding(16)

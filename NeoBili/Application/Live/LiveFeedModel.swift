@@ -97,7 +97,7 @@ final class LiveFeedModel {
             }
         } catch {
             guard generation == requestID, !Task.isCancelled, !error.isCancellation else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 
@@ -139,7 +139,7 @@ final class LiveFeedModel {
             sourcePageSignatures = result.sourcePageSignatures
         } catch {
             guard generation == requestID, !Task.isCancelled, !error.isCancellation else { return }
-            paginationError = error.localizedDescription
+            paginationError = error.loadFailureDescription
         }
     }
 

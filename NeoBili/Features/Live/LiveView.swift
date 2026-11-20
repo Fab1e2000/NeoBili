@@ -198,6 +198,9 @@ private struct LiveFeedPage: View {
                     .frame(maxWidth: .infinity, minHeight: 330)
                     .padding(.horizontal, 8)
             } else {
+                if let message = model.errorMessage, !refresh.isRefreshing {
+                    InlineLoadFailure(title: "直播列表未能刷新", message: message, onRetry: startRefresh)
+                }
                 LazyVGrid(columns: columns, spacing: 10) {
                     ForEach(model.rooms) { room in
                         Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
@@ -256,7 +259,9 @@ private struct LiveFeedPage: View {
         if model.isLoadingMore {
             ProgressView().padding(.vertical, 12)
         } else if let message = model.paginationError {
-            retryMessage(message) { await model.loadMore() }
+            InlineLoadFailure(title: "无法加载更多直播", message: message) {
+                Task { await model.loadMore() }
+            }
         } else if model.hasMore {
             Button("加载更多") { Task { await model.loadMore() } }
                 .font(.app(.subheadline))
@@ -264,13 +269,6 @@ private struct LiveFeedPage: View {
                 .disabled(model.isLoading || refresh.isRefreshing)
         } else {
             Text("已经到底了").font(.app(.footnote)).foregroundStyle(.secondary).padding(.vertical, 12)
-        }
-    }
-
-    private func retryMessage(_ message: String, action: @escaping @MainActor () async -> Void) -> some View {
-        VStack(spacing: 6) {
-            Text(message).font(.app(.footnote)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("重试") { Task { await action() } }.frame(minHeight: 44)
         }
     }
 
