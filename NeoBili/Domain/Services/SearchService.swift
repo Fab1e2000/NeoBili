@@ -1,7 +1,5 @@
 import Foundation
 
-/// Search operations available to application state and views.
-/// Values can be replaced per model or view hierarchy without changing global state.
 public struct SearchService: Sendable {
     public var hotSearches: @Sendable () async throws -> [HotSearchItem] = { throw ServiceError.unconfigured("Search.hotSearches") }
 

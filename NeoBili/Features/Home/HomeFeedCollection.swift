@@ -4,13 +4,8 @@ import NeoBiliDomain
 import SwiftUI
 import UIKit
 
-/// 推荐页的双列列表，由 UICollectionView 承载，卡片内容仍是 SwiftUI。
-///
-/// SwiftUI 的 LazyVStack 每进来一页新数据都要把整个列表重新整理一遍，
-/// 卡片也要等进入屏幕的那一帧才现场创建，真机录到最重的掉帧（25–50ms）
-/// 都出在翻页那一刻。这里改成 UIKit：翻页只插入新增的行，已在屏幕上的行
-/// 不重算；格子会提前准备，滑出屏幕后复用。每张卡独占原生格子和宿主，
-/// 避免系统 zoom 对来源宿主施加的变换牵连同排卡片。分隔条仍横跨两列。
+/// 推荐列表由 UICollectionView 承载，每张卡独占原生 cell 和 SwiftUI 宿主，
+/// 隔离系统 zoom 对来源宿主的变换。普通卡双列排列，大卡和分隔条跨两列。
 struct HomeFeedCollection: UIViewRepresentable {
     let rows: [HomeFeedRow]
     let viewModel: HomeViewModel
@@ -25,7 +20,7 @@ struct HomeFeedCollection: UIViewRepresentable {
     let onRefresh: () -> Void
     let onOpenLastSeen: () -> Void
     var onOpenMine: () -> Void = {}
-    /// 标题栏固定在外层时，列表里不再插入页头行。
+    /// 兼容自绘页头的布局入口；当前 HomeView 固定传 false，使用外层原生导航栏。
     var pinsTitleBar = false
     /// 列表忽略安全区铺满全屏，状态栏（+ 固定标题栏）和标签栏的高度由外层量好传入。
     var safeInsets = EdgeInsets()
@@ -128,7 +123,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         case header
         /// 连续的普通卡共用一节；全宽大卡单独成节。首张卡提供稳定标识。
         case cards(String)
-        /// 「上次看到这里」分隔条，单独一节，高度按内容自适应。
+        /// 「上次看到这里」独立成节，高度由 HomeCardLayout 按文字与字号计算。
         case marker
     }
 
@@ -144,7 +139,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         var imagePipeline: BiliImagePipeline = .live
         var hidesPortraitVideos = false
 
-        /// 这些值变了，已显示的格子要重新配置；只有设置改变时才会变。
+        /// 格子的环境快照；账号、外观、过滤或依赖变化时重新配置已显示格子。
         struct Signature: Equatable {
             var nowPlaying: ObjectIdentifier?
             var account: ObjectIdentifier?
@@ -173,7 +168,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         var onRefresh: () -> Void = {}
         var onOpenLastSeen: () -> Void = {}
         var onOpenMine: () -> Void = {}
-        /// 标题栏随内容滚动时，页头作为列表第一行。
+        /// 保留的列表内页头模式，当前 HomeView 不启用。
         var showsHeaderRow = true
         private var hasHeaderRow = false
         private static let headerID = "home-page-header"
@@ -214,6 +209,10 @@ struct HomeFeedCollection: UIViewRepresentable {
         /// App 的文字档位，决定标题预排版用的字号。
         private var dynamicTypeSize: DynamicTypeSize = .large
         var removalAnimationDuration: Double?
+        /// 滚动回调里的曝光与内联预览采样按固定间隔合并；滚动停止时再补一次最终位置。
+        /// 头部回弹位移仍逐帧更新，它只改一个格子的 transform。
+        private var lastObservationSample: CFTimeInterval = 0
+        private static let observationInterval: CFTimeInterval = 0.1
 
         func attach(_ view: UICollectionView) {
             collectionView = view
@@ -342,10 +341,8 @@ struct HomeFeedCollection: UIViewRepresentable {
             // 翻页、刷新、设置变化仍然直接套用，不引入额外的动画。
             let previous = latestIDs + earlierIDs
             let current = latest + earlier
-            let remaining = Set(current)
-            let isRemovalOnly = current.count < previous.count && marker == hasMarker
+            let isRemovalOnly = RemovalFill.isRemovalOnly(previous, current) && marker == hasMarker
                 && showsHeaderRow == hasHeaderRow && changed.isEmpty && !needsReconfigureAll
-                && previous.filter(remaining.contains) == current
             // 没有变化时直接返回：刷新淡出、滚动开关这些状态也会触发这里。
             guard structureChanged || !changed.isEmpty || needsReconfigureAll else { return }
             // Index paths can point at different cards after refresh/removal.
@@ -354,9 +351,7 @@ struct HomeFeedCollection: UIViewRepresentable {
 
             // 只有原本就在列表里的行需要重配；新插入的行出现时自然会配置。
             let existing = Set(itemsByID.keys)
-            // 新进来的行立刻在后台排好标题，等它们滑进屏幕时通常已经就绪。
-            // Preserve display order: dictionary iteration can queue off-screen titles
-            // before the next visible row, forcing synchronous layout during scrolling.
+            // 按显示顺序后台预排标题，优先准备即将可见的卡片。
             let changedIDs = Set(changed)
             prepareTitles(for: items.filter { !existing.contains($0.id) || changedIDs.contains($0.id) })
             itemsByID = byID
@@ -410,12 +405,11 @@ struct HomeFeedCollection: UIViewRepresentable {
                 snapshot.reconfigureItems(changed)
             }
             needsReconfigureAll = false
-            if isRemovalOnly, let duration = removalAnimationDuration,
+            if isRemovalOnly, removalAnimationDuration != nil,
                let collectionView, let layout = collectionView.collectionViewLayout as? HomeFeedLayout {
                 // 被移除的卡缩小淡出，后面的卡用略带回弹的曲线移到新位置。
                 layout.shrinksDeletedItems = true
-                UIView.animate(withDuration: duration, delay: 0, usingSpringWithDamping: 0.88, initialSpringVelocity: 0,
-                               options: [.allowUserInteraction, .beginFromCurrentState]) {
+                RemovalFill.perform {
                     dataSource.apply(snapshot, animatingDifferences: true)
                 } completion: { _ in
                     layout.shrinksDeletedItems = false
@@ -435,7 +429,6 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         private func configure(_ cell: UICollectionViewCell, id: String) {
-            // 页头分支也要用这份局部副本，所以放在最前面声明。
             let environment = environment
             if id == Self.headerID {
                 cell.contentConfiguration = UIHostingConfiguration {
@@ -583,11 +576,27 @@ struct HomeFeedCollection: UIViewRepresentable {
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            updateExposure()
+            let now = CACurrentMediaTime()
+            if now - lastObservationSample >= Self.observationInterval {
+                lastObservationSample = now
+                updateExposure()
+            }
             guard let collectionView,
                   let indexPath = dataSource?.indexPath(for: Self.headerID),
                   let cell = collectionView.cellForItem(at: indexPath) else { return }
             positionHeader(cell, in: scrollView)
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            if !decelerate { updateExposure() }
+        }
+
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            updateExposure()
+        }
+
+        func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+            updateExposure()
         }
 
         func scrollViewDidChangeAdjustedContentInset(_ scrollView: UIScrollView) {

@@ -29,7 +29,7 @@ public struct AccountSessionClient {
     public var save: @MainActor (LoginModels.LoginCookies, String?) async -> Void
     public var clear: @MainActor () async -> Void
     public var profile: @MainActor () async throws -> AccountProfilePayload
-    /// 用当前 Cookie 换一份 App 凭据并保存。
+    /// 兼容补授权操作；生产适配器提示使用当前账号的短信验证码。
     public var exchangeAppCredential: @MainActor () async throws -> Void = {}
 
     public var saveAppAuthorization: @MainActor (String, Int) async throws -> Void = { _, _ in throw BiliAPIError.missingAccessKey }

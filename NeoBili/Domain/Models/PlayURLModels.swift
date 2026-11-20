@@ -74,9 +74,7 @@ extension DashPayload {
     }
 }
 
-/// A legacy "progressive" (already muxed audio+video) stream. Requesting this
-/// format instead of DASH keeps MVP playback to a single file URL, with no
-/// client-side track merging required.
+/// 服务端已合并音视频的 durl 流，作为 DASH 请求后的兼容格式。
 public struct DurlItem: Decodable, Hashable, Sendable {
     public let url: String
     public let backupUrl: [String]?

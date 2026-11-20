@@ -4,7 +4,7 @@ import NeoBiliDomain
 import SwiftUI
 
 /// 推荐流里点开的图文卡：按编号取动态详情，复用关注页的动态详情页。
-/// 首页没有导航栈，所以从底部弹出，详情页右上角的关闭按钮直接收起它。
+/// 图文详情通过 sheet 呈现，右上角关闭按钮收起面板。
 struct RecommendedDynamicSheet: View {
     @Environment(\.applicationServices) private var services
     let id: String
@@ -55,7 +55,7 @@ struct RecommendedDynamicSheet: View {
     }
 }
 
-/// 推荐卡片菜单里的「访问 UP 主页」：首页没有导航栈，把 UP 主页放进弹出页打开。
+/// 推荐菜单的「访问 UP 主页」通过独立导航栈的 sheet 呈现。
 struct RecommendedSpaceSheet: View {
     let up: FollowedUp
     @Environment(\.dismiss) private var dismiss

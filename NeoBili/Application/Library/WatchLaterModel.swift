@@ -26,6 +26,8 @@ final class WatchLaterModel {
     private(set) var errorMessage: String?
     /// 列表整体换成新的第一页（首次加载或刷新）时加一，驱动卡片进入动画重新计时。
     private(set) var entranceGeneration = 0
+    /// 列表内容每变一次加一，视图的过滤缓存据此重算。
+    private(set) var contentRevision = 0
     var selectedIDs: Set<Int> = []
     var isSelecting = false
     private var failedRefresh = false
@@ -42,6 +44,7 @@ final class WatchLaterModel {
     func reset() {
         generation = UUID(); owner = nil; stagedRefresh = nil
         items = []; selectedIDs = []; isSelecting = false
+        contentRevision += 1
         isLoading = false; isRemoving = false; hasLoaded = false
         hasMore = false; nextKey = ""; splitKey = ""; errorMessage = nil; failedRefresh = false
     }
@@ -67,6 +70,7 @@ final class WatchLaterModel {
             let incoming = page.items.filter { $0.bvid?.isEmpty == false && seen.insert($0.id).inserted }
             if key.isEmpty { entranceGeneration += 1 }
             if refreshing { items = incoming } else { items += incoming }
+            contentRevision += 1
             selectedIDs.formIntersection(Set(items.map(\.id)))
             hasLoaded = true; failedRefresh = false
             // A repeated/empty cursor must never create an endless request loop.
@@ -107,6 +111,7 @@ final class WatchLaterModel {
         guard client.session() == staged.session, !isRemoving else { return }
         var seen = Set<Int>()
         items = staged.page.items.filter { $0.bvid?.isEmpty == false && seen.insert($0.id).inserted }
+        contentRevision += 1
         selectedIDs.formIntersection(Set(items.map(\.id)))
         if selectedIDs.isEmpty { isSelecting = false }
         entranceGeneration += 1
@@ -134,6 +139,7 @@ final class WatchLaterModel {
         let request = UUID(); generation = request; isRemoving = true
         let targetIDs = Set(targets.map(\.id))
         items.removeAll { targetIDs.contains($0.id) }
+        contentRevision += 1
         var succeeded: Set<Int> = []
         var failure: String?
         if await confirm(), !Task.isCancelled, client.session() == session {
@@ -145,6 +151,7 @@ final class WatchLaterModel {
         }
         guard generation == request, client.session() == session else { return nil }
         items = snapshot.filter { !succeeded.contains($0.id) }
+        contentRevision += 1
         selectedIDs.subtract(succeeded)
         isRemoving = false
         if selectedIDs.isEmpty { isSelecting = false }

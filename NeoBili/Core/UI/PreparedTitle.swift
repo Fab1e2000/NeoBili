@@ -2,16 +2,9 @@ import SwiftUI
 import Synchronization
 import UIKit
 
-/// 卡片标题的后台预排版。
-///
-/// 真机录到滑动时主线程约 8.5% 花在文字排版上，一半多是两行标题的换行；中文系统下
-/// 系统每次换行还会重新去磁盘查断字词典。标题和封面走同一条路：进入屏幕前在后台
-/// 排好版、画成一张模板图，卡片渲染时同步取用；没取到就退回普通 `Text`，显示结果一致。
-///
-/// 排版用系统的 NSStringDrawing：字体、行距、末尾省略号都和 SwiftUI `Text` 对齐（行距由
-/// SwiftUI 自己量出），但换行是「逐行排满」。SwiftUI `Text` 用的是系统内部的均衡换行，
-/// 没有公开接口能复现，真实标题里约 1/4 的换行位置会不同；这是有意接受的取舍。
-/// 缓存未命中时先显示普通文字，再在后台生成位图；不阻塞首屏和导航转场。
+/// 在后台生成两行标题位图；同步显示路径只读缓存，未命中时先显示普通文字。
+/// 位图与普通文字使用相同标题框。NSStringDrawing 与 SwiftUI Text 的换行策略不同，
+/// 替换时可能改变换行位置。含 emoji 的标题保留文字渲染。
 enum PreparedTitle {
     struct Key: Hashable, Sendable {
         let title: String
@@ -92,14 +85,8 @@ enum PreparedTitle {
         storage.object(forKey: key.cacheKey)
     }
 
-    /// 在 App 启动完成、任何 SwiftUI 界面更新之前调用一次。
-    ///
-    /// 系统排版组件第一次被使用时会做类初始化，其中会写入系统默认设置并发出通知；
-    /// SwiftUI 的 `@AppStorage` 收到通知要拿 SwiftUI 的全局锁。如果这次初始化发生在
-    /// 后台排版线程上，而主线程正持有那把锁、同时也在等同一个组件初始化完，两边就会
-    /// 互相等待（真机上出现过启动卡死被系统强制结束）。先在主线程上完整排一遍示例标题，
-    /// 让这些组件都初始化好，后台再用就不会触发。
-    /// 同时量好当前文字档位的排版参数。
+    /// 启动后、SwiftUI 更新前在主线程预热排版组件并测量当前字号，
+    /// 避免后台首次初始化排版组件时与 SwiftUI 的更新锁互相等待。
     @MainActor
     static func warmUp(dynamicTypeSize: DynamicTypeSize) {
         guard !isReady.load(ordering: .acquiring) else { return }

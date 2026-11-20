@@ -3,9 +3,7 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 按官方 v2 游标分页加载；批量操作只覆盖明确选中的条目。
-/// 卡片沿用搜索页/相关视频页的 `VideoListCard`，结构与首页同构
-/// （ScrollView + Button + 转场源紧跟 buttonStyle），zoom 动效和首页一致。
+/// 稍后再看按 v2 游标分页，批量操作只覆盖选中条目；转场源挂在卡片 Button 上。
 struct WatchLaterView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(AccountStore.self) private var account
@@ -22,6 +20,8 @@ struct WatchLaterView: View {
     private let onLayout: (([String: CGRect]) -> Void)?
     @State private var model: WatchLaterModel
     @State private var refresh = ListRefreshController()
+    @State private var menuRegistry = ResolvedMenuRegistry<Int>()
+    @State private var filterMemo = FilteredVideosMemo<WatchLaterItem>()
 
     init(model: WatchLaterModel = WatchLaterModel(), isTabRoot: Bool = false, onLayout: (([String: CGRect]) -> Void)? = nil) {
         self.isTabRoot = isTabRoot
@@ -34,7 +34,8 @@ struct WatchLaterView: View {
     private var errorMessage: String? { model.errorMessage }
 
     private var visibleItems: [WatchLaterItem] {
-        items.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
+        filterMemo.videos(items, revision: model.contentRevision,
+                          hidesPortraitVideos: hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
@@ -59,11 +60,19 @@ struct WatchLaterView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(visibleItems) { item in row(item, loadsNextPage: paginationIDs.contains(item.id)) }
+                        ForEach(visibleItems) { item in
+                            row(item, loadsNextPage: paginationIDs.contains(item.id))
+                                .removalFillTransition()
+                        }
                         if model.hasMore || model.errorMessage != nil {
                             paginationFooter
                         }
                     }
+                    .background {
+                        ResolvedMenuInstaller(registry: menuRegistry, menu: rowMenu)
+                    }
+                    // 删除看源列表的身份：过滤只改可见行，不触发补位。翻页是末尾追加，同样不动画。
+                    .removalFill(ids: items.map(\.id), enabled: animatesExit, scope: .removalAndInlineRestore)
                     // 与推荐页一致：松手后旧卡片淡出，新内容到了再换入。
                     .opacity(animatesExit ? refresh.contentOpacity : 1)
                     .allowsHitTesting(refresh.contentOpacity == 1)
@@ -180,31 +189,12 @@ struct WatchLaterView: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(model.selectedIDs.contains(item.id) ? .isSelected : [])
-        .contextMenu {
-            if !model.isSelecting {
-                Button {
-                    model.isSelecting = true
-                    model.selectedIDs = [item.id]
-                } label: {
-                    Label("多选", systemImage: "checkmark.circle")
-                }
-                .disabled(model.isRemoving || isLoading || refresh.isRefreshing)
-                .accessibilityIdentifier("watchlater.multiSelect")
-            }
-            Button(role: .destructive) {
-                Task { await remove(ids: [item.id]) }
-            } label: {
-                Label("移出稍后再看", systemImage: "flag.slash")
-            }
-        }
+        .background { ResolvedMenuMarker(id: item.id, registry: menuRegistry) }
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { menuRegistry.setLayoutFrame(item.id, $0) }
+        .onDisappear { menuRegistry.clearLayoutFrame(item.id) }
         // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。前缀避免与首页
         // 同一视频的转场源在共享命名空间里撞 id。
-        //
-        // 已知系统问题（iOS 26/27，摘掉转场源也复现）：A 的长按菜单还在
-        // 退场时立刻长按 B，弹出的胶囊还是 A 的菜单项，点「移出」删掉的是
-        // A。应用侧无法分辨菜单归属，只能等菜单完全收起再长按下一张卡。
         .videoTransitionSource("wl-\(summary?.bvid ?? "")", in: videoTransition)
-        // 移除动效第一段：原地淡出、占位不变，列表此时不动。
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
@@ -266,6 +256,21 @@ struct WatchLaterView: View {
             }
         }
         .padding()
+    }
+
+    private func rowMenu(for id: Int) -> UIMenu {
+        let busy = model.isRemoving || isLoading || refresh.isRefreshing
+        var actions: [UIAction] = []
+        if !model.isSelecting {
+            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, fallback: id) { target in
+                model.isSelecting = true
+                model.selectedIDs = [target]
+            })
+        }
+        actions.append(menuRegistry.action("移出稍后再看", systemImage: "flag.slash", destructive: true, enabled: !busy, fallback: id) { target in
+            Task { await remove(ids: [target]) }
+        })
+        return UIMenu(children: actions)
     }
 
     private func remove(ids: Set<Int>) async {

@@ -4,9 +4,7 @@ import NeoBiliDomain
 import CoreImage
 import SwiftUI
 
-/// 扫码登录页：生成二维码并每 2 秒轮询一次，直到手机确认或二维码过期。
-/// 同一台设备上登录时，先「保存二维码」，再在哔哩哔哩 App 的「扫一扫 → 相册」
-/// 里选这张图完成确认。
+/// 保留的二维码登录页面，供旧流程回归；当前账号界面只呈现 SMSLoginSheet。
 struct QRLoginSheet: View {
     @Environment(\.applicationServices) private var services
     var appAuthorizationOnly = false

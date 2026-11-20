@@ -31,14 +31,7 @@ struct PlayerSurface: UIViewControllerRepresentable {
     }
 }
 
-/// 一层只负责搭台子的容器。
-///
-/// `makeUIViewController` 之前直接把 `session.viewController` 交给 SwiftUI，
-/// 而那是 session 自己长期持有的对象。SwiftUI 认为从 make 拿到的控制器归它
-/// 管：视图重建时它会把「新」控制器挂上去，再把旧的那一个从父控制器上摘掉
-/// —— 两者是同一个实例，于是渲染层被摘走了。播放内核毫无察觉，声音照放，
-/// 画面变成一块黑。中间垫一个每次都新建的容器，SwiftUI 摘掉的就只是容器，
-/// 渲染控制器始终跟着 session 活着。
+/// SwiftUI 管理外层容器，session 管理渲染控制器；视图重建时仅拆装容器。
 @MainActor
 final class PlayerSurfaceContainerController: UIViewController, PlayerSurfaceOwnershipObserver {
     private weak var content: UIViewController?
@@ -90,13 +83,7 @@ final class PlayerSurfaceContainerController: UIViewController, PlayerSurfaceOwn
         if let content { attach(content) }
     }
 
-    /// 真正显示出来的容器要把渲染层要回来。
-    ///
-    /// SwiftUI 有时会为同一个 session 建**两个** `PlayerSurface` 容器（重新
-    /// present 视频页时实测就会），后建的那个会把渲染层从先建的那个手里抢走，
-    /// 而留在屏幕上的往往是先建的那个——于是渲染层挂在一个没进窗口的容器下面，
-    /// 声音照放，画面全黑。只有真正上屏的容器才会收到出现和布局回调，所以在
-    /// 这两处认领一次，屏幕上的那个一定拿得回来。
+    /// 仅可见且符合当前呈现归属的容器参与认领；已有合格宿主持有渲染层时保持其所有权。
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         reclaimContentIfNeeded()

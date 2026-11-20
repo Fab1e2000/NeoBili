@@ -49,9 +49,8 @@ struct FollowingView: View {
     @State private var listPosition = ScrollPosition(edge: .top)
     @State private var isAwayFromTop = false
     @State private var shortcutTask: Task<Void, Never>?
-    @State private var isRefreshing = false
-    @State private var refreshTask: Task<Void, Never>?
-    @State private var refreshOpacity = 1.0
+    /// 暂存刷新由统一控制器持有任务：淡出、并行取回、换入与淡入都不再在页面里手写。
+    @State private var refresh = ListRefreshController()
     @State private var feedOpacity = 1.0
     @State private var feedGeneration = 0
 
@@ -177,7 +176,7 @@ struct FollowingView: View {
                     feedContent
                 }
                 // 切换 UP 主与刷新都只淡动态；列表本身保持不透明，顶部模糊立即出现。
-                .opacity(feedOpacity * refreshOpacity * tabContentOpacity)
+                .opacity(feedOpacity * refresh.contentOpacity * tabContentOpacity)
                 .overlay(alignment: .top) {
                     if isSelectionLoading {
                         LoadingTaskAnchor().controlSize(.small).padding(.top, 24)
@@ -187,7 +186,7 @@ struct FollowingView: View {
                 .background(alignment: .top) {
                     ShortPullRefresh(
                         threshold: refreshDistance,
-                        enabled: !isRefreshing,
+                        enabled: !refresh.isRefreshing,
                         onProgress: { _, _ in },
                         onRefresh: startRefresh
                     )
@@ -204,7 +203,7 @@ struct FollowingView: View {
         // 即使内容不足一屏也允许下拉刷新。
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollEdgeEffectHidden(true, for: .bottom)
-        .scrollDisabled(isRefreshing && refreshOpacity < 1)
+        .scrollDisabled(refresh.isRefreshing && refresh.contentOpacity < 1)
         .accessibilityAction(named: "刷新关注动态") { startRefresh() }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
         .leftEdgeTapDeadZone()
@@ -225,7 +224,7 @@ struct FollowingView: View {
         }
         // 与推荐页一致：重复点「关注」标签，不在顶部时回到顶部，已在顶部时刷新。
         .onTabReselected(.following) {
-            guard account.isLoggedIn, shortcutTask == nil, !isRefreshing,
+            guard account.isLoggedIn, shortcutTask == nil, !refresh.isRefreshing,
                   path.isEmpty, detailEntry == nil else { return }
             if isAwayFromTop {
                 withAnimation(reduceMotion ? nil : .smooth) { listPosition.scrollTo(edge: .top) }
@@ -240,7 +239,7 @@ struct FollowingView: View {
         }
         .onChange(of: animatesCardExit) { _, enabled in
             if !enabled {
-                refreshOpacity = 1
+                refresh.restoreContent()
                 feedOpacity = 1
             }
         }
@@ -267,64 +266,36 @@ struct FollowingView: View {
     }
 
     private func startRefresh() {
-        guard !isRefreshing else { return }
+        guard !refresh.isRefreshing else { return }
         liveRefreshGeneration += 1
-        refreshTask?.cancel()
         cancelSelectionTransition()
-        isRefreshing = true
         let model = viewModel
         let feed = model.activeFeed
-        let duration = animatesCardExit ? FeedRefreshTuning.fadeExit : 0
         let stagingID = UUID()
         // 与推荐页一致：松手即开始淡出，请求并行进行，两者都结束后再换上新内容。
-        let exitStart = ProcessInfo.processInfo.systemUptime
-        refreshOpacity = 1
-        if duration > 0 { withAnimation(.easeOut(duration: duration)) { refreshOpacity = 0 } }
-
-        refreshTask = Task { @MainActor in
-            await model.refresh(staged: true, stagingID: stagingID)
-            guard !Task.isCancelled else { feed.commitStagedRefresh(id: stagingID); return }
-            guard feed.errorMessage == nil else {
-                // 刷新失败保留旧内容，直接恢复显示，不弹提示。
-                withAnimation(nil) { refreshOpacity = 1 }
-                isRefreshing = false
-                refreshTask = nil
-                return
-            }
-            if duration > 0 {
-                let remaining = max(0, duration - (ProcessInfo.processInfo.systemUptime - exitStart))
-                try? await CardAnimationSettings.waitWhileEnabled(for: remaining, category: .dynamic, phase: .exit)
-            }
-            // 离页或切换 UP 后只完成原数据源的提交，不改新页面的动画状态。
-            guard !Task.isCancelled else { feed.commitStagedRefresh(id: stagingID); return }
-            // 与推荐页一致：新内容换上后淡入。刷新回来的动态常与原来相同，
-            // 卡片自带的入场不会重播，所以由整列来淡入。
-            let animatesEnter = cardAnimationsEnabled && dynamicEnterEnabled && !reduceMotion
-            withAnimation(nil) {
+        refresh.start(
+            hasContent: !feed.entries.isEmpty,
+            animatesExit: animatesCardExit,
+            source: .recommendation,
+            category: .dynamic,
+            fadeIn: animatesCardEnter,
+            fetch: {
+                // 加载期间保留旧页面及其高度，新数据只暂存，不提前替换卡片。
+                await model.refresh(staged: true, stagingID: stagingID)
+                return !Task.isCancelled && feed.errorMessage == nil
+            },
+            commit: {
+                // 与推荐页一致：新内容换上后淡入。刷新回来的动态常与原来相同，
+                // 卡片自带的入场不会重播，所以由整列来淡入。
                 feed.commitStagedRefresh(id: stagingID)
-                refreshOpacity = animatesEnter ? 0 : 1
                 feedGeneration += 1
-                isRefreshing = false
-            }
-            if animatesEnter {
-                // 隔一帧再启动：同一帧内先置 0 再改回 1 会被合并成没有动画。
-                try? await Task.sleep(for: .milliseconds(16))
-                // 期间又开始了新的刷新时由新刷新接管浓度。
-                if !Task.isCancelled {
-                    withAnimation(.easeIn(duration: FeedRefreshTuning.fadeIn)) {
-                        refreshOpacity = 1
-                    }
-                }
-            }
-            refreshTask = nil
-        }
+            },
+            discard: { feed.discardStagedRefresh() }
+        )
     }
 
     private func cancelRefreshAnimation() {
-        refreshTask?.cancel()
-        refreshTask = nil
-        isRefreshing = false
-        refreshOpacity = 1
+        refresh.reset(discard: { viewModel.activeFeed.discardStagedRefresh() })
     }
 
 

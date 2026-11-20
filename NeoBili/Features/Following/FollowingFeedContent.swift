@@ -81,7 +81,7 @@ struct FollowingFeedContent: View {
             feed: feed,
             lastVisibleID: lastVisibleID,
             onOpenVideo: { onOpenVideo(entry) },
-            // 卡片头像和头像条的长按菜单都可以进入 UP 主页。
+            // 点击卡片头像进入 UP 主页；头像条再次点击已选 UP 时使用同一入口。
             onOpenAuthor: { onOpenAuthor(entry) },
             onLike: { onLike(entry) },
             onOpenDetail: { onOpenDetail(entry) },

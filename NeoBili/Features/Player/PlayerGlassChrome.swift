@@ -237,8 +237,7 @@ struct PlayerGlassChrome<MenuContent: View>: View {
 
     private func preferredWidth(_ control: PlayerQualityControl?) -> CGFloat? {
         guard let control else { return nil }
-        // 控制层可见时 body 以帧率重算；字体测量结果只取决于 (标题, 字号档位)，
-        // 记忆化后同帧不再重复测。
+        // 标题宽度按文字与字号缓存，避免控件更新时重复测量。
         let memoKey = "\(control.title)|\(control.options.count)|\(textScale)" as NSString
         if let memo = PlayerGlassWidthMemo.cache.object(forKey: memoKey) { return CGFloat(memo.doubleValue) }
         let font = AppFont.uiFont(ofSize: 12 * textScale, weight: .semibold)

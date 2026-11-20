@@ -23,13 +23,10 @@ struct HomeView: View {
     @State private var feedController = HomeFeedScrollController()
     /// 列表要避让的上下距离（状态栏 + 固定标题栏、标签栏），量好交给 UIKit 列表。
     @State private var safeInsets = EdgeInsets()
-    @State private var refreshTask: Task<Void, Never>?
     @State private var shortcutTask: Task<Void, Never>?
-    @State private var isRefreshing = false
-    /// 刷新的三段式可视化：松手启动淡出，网络请求并行进行，新内容等淡出结束后再落位。
-    /// 全程只有这一个量在变，卡片本身不位移，所以不会出现错位。参数集中在 FeedRefreshTuning 里。
-    @State private var listOpacity: Double = 1
-    @State private var exitTiming: FeedRefreshExitTiming?
+    /// 刷新的三段式可视化统一由控制器负责：松手启动淡出，网络请求并行进行，
+    /// 新内容等淡出结束后再落位。请求任务由控制器自己持有，列表内容变化不会取消它。
+    @State private var refresh = ListRefreshController()
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
 
@@ -91,10 +88,9 @@ struct HomeView: View {
             .environment(\.videoFiltering, viewModel.filtering)
             .videoCardAnimationSource(.recommendation)
             .onChange(of: animatesExit) { _, enabled in
-                guard !enabled else { return }
                 // A settings change must also restore an already fading feed while
                 // its request remains in flight.
-                withAnimation(nil) { listOpacity = 1; exitTiming = nil }
+                if !enabled { refresh.restoreContent() }
             }
     }
 
@@ -104,13 +100,13 @@ struct HomeView: View {
                 rows: viewModel.feedRows(hidingKnownPortraitVideos: hidesPortraitVideos),
                 viewModel: viewModel,
                 hidesPortraitVideos: hidesPortraitVideos,
-                isRefreshing: isRefreshing,
-                isInteractionEnabled: !(isRefreshing && listOpacity < 1),
+                isRefreshing: refresh.isRefreshing,
+                isInteractionEnabled: !(refresh.isRefreshing && refresh.contentOpacity < 1),
                 exposureEnabled: isSelected && scenePhase == .active && !nowPlaying.isExpanded
                     && !nowPlaying.isServiceSheetPresented && viewModel.sheet == nil
-                    && !isRefreshing && listOpacity > 0.99 && tabContentOpacity > 0.99,
+                    && !refresh.isRefreshing && refresh.contentOpacity > 0.99 && tabContentOpacity > 0.99,
                 inlinePlaybackEnabled: isSelected && scenePhase == .active && !nowPlaying.hasMedia
-                    && viewModel.sheet == nil && !isRefreshing && listOpacity > 0.99 && tabContentOpacity > 0.99,
+                    && viewModel.sheet == nil && !refresh.isRefreshing && refresh.contentOpacity > 0.99 && tabContentOpacity > 0.99,
                 refreshDistance: refreshDistance,
                 controller: feedController,
                 onRefresh: { startRefresh() },
@@ -119,10 +115,10 @@ struct HomeView: View {
                 pinsTitleBar: pinsTitleBar,
                 safeInsets: safeInsets,
                 contentOpacity: tabContentOpacity,
-                // 补位整段 0.3 秒，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。
-                removalAnimationDuration: animatesExit ? 0.3 : nil
+                // 补位整段跟各页同一时长，跟随「卡片动画」的退出开关；关掉动画或减弱动态效果时直接移除。
+                removalAnimationDuration: animatesExit ? RemovalFill.duration : nil
             )
-            .opacity(animatesExit ? listOpacity : 1)
+            .opacity(animatesExit ? refresh.contentOpacity : 1)
             // 内容从状态栏、标题栏和标签栏下面滑过；被忽略的这段安全区量出来补进列表边距。
             .ignoresSafeArea()
             .onGeometryChange(for: EdgeInsets.self, of: \.safeAreaInsets) { safeInsets = $0 }
@@ -139,7 +135,7 @@ struct HomeView: View {
     /// 重复点「推荐」标签：不在顶部时回到顶部，已在顶部时刷新。
     private func scrollToTopOrRefresh() {
         guard !nowPlaying.isExpanded, !nowPlaying.isServiceSheetPresented,
-              shortcutTask == nil, !isRefreshing else { return }
+              shortcutTask == nil, !refresh.isRefreshing else { return }
         if feedController.isAwayFromTop {
             feedController.scrollToTop(animated: true)
             // 回顶动画结束前忽略重复点击，避免误触发刷新。
@@ -153,55 +149,26 @@ struct HomeView: View {
     }
 
     private func startRefresh(scrollToTop: Bool = false) {
-        guard !isRefreshing else { return }
-        beginRefresh()
-        refreshTask = Task { @MainActor in
-            defer {
-                withAnimation(nil) { listOpacity = 1; exitTiming = nil; isRefreshing = false }
-                refreshTask = nil
-            }
-            // Keep existing content until the request is ready, including when
-            // animation settings change in the middle of the request.
-            await viewModel.refresh(staged: true, userInitiated: true)
-            guard !Task.isCancelled else { return }
-            await finishRefresh(scrollToTop: scrollToTop)
-            refreshTask = nil
-        }
-    }
-
-    private func beginRefresh() {
-        isRefreshing = true
-        guard animatesExit else { listOpacity = 1; exitTiming = nil; return }
-        let duration = FeedRefreshTuning.fadeExit
-        exitTiming = FeedRefreshExitTiming(start: ProcessInfo.processInfo.systemUptime, duration: duration)
-        withAnimation(.easeOut(duration: duration)) { listOpacity = 0 }
-    }
-
-    private func finishRefresh(scrollToTop: Bool) async {
-        guard viewModel.errorMessage == nil else {
-            isRefreshing = false
-            listOpacity = 1
-            return
-        }
-        if animatesExit, let exitTiming {
-            do {
-                try await CardAnimationSettings.waitWhileEnabled(
-                    for: exitTiming.remaining(at: ProcessInfo.processInfo.systemUptime), category: .video, phase: .exit, source: .recommendation
-                )
-            } catch {
-                return
-            }
-        }
-        guard !Task.isCancelled else { return }
-        // Commit data and restore opacity in one transaction. The individual
-        // rows own their entry clocks; refreshing never waits for those clocks.
-        withAnimation(nil) {
-            if scrollToTop { feedController.scrollToTop(animated: false) }
-            viewModel.commitStagedRefresh()
-            listOpacity = 1
-            landingGeneration += 1
-            isRefreshing = false
-        }
+        guard !refresh.isRefreshing else { return }
+        refresh.start(
+            hasContent: !viewModel.videos.isEmpty,
+            animatesExit: animatesExit,
+            source: .recommendation,
+            fetch: {
+                // Keep existing content until the request is ready, including when
+                // animation settings change in the middle of the request.
+                await viewModel.refresh(staged: true, userInitiated: true)
+                return !Task.isCancelled && viewModel.errorMessage == nil
+            },
+            commit: {
+                // Commit data and restore opacity in one transaction. The individual
+                // rows own their entry clocks; refreshing never waits for those clocks.
+                if scrollToTop { feedController.scrollToTop(animated: false) }
+                viewModel.commitStagedRefresh()
+                landingGeneration += 1
+            },
+            discard: { viewModel.discardStagedRefresh() }
+        )
     }
 }
 
@@ -236,33 +203,23 @@ private struct HomeFeedStatusOverlay: View {
     }
 }
 
-/// 首页双列视频卡片的尺寸参数。
 enum HomeCardLayout {
-    /// 页面左右留白。
     static let horizontalInset: CGFloat = 8
-    /// 左右两列之间的距离。
     static let columnSpacing: CGFloat = 8
-    /// 上下两行之间的距离。
     static let rowSpacing: CGFloat = 10
-    /// 网格顶部和底部的留白。
     static let verticalInset: CGFloat = 10
     /// 推荐封面保持 4:3。
     static let coverAspectRatio: CGFloat = 4.0 / 3.0
-    /// 封面上方两个角的圆角，和卡片本身的圆角一致。
     static let coverCornerRadius: CGFloat = 7
     /// 标题和 UP 主所在白色区域的固定高度。
     static let detailsHeight: CGFloat = 81
-    /// UP 主头像的尺寸。
     static let avatarSize = CGSize(width: 16, height: 16)
-    /// 文字区左右留白。
     static let detailsHorizontalPadding: CGFloat = 8
 
-    /// 标题可用的宽度。
     static func titleWidth(for pageWidth: CGFloat) -> CGFloat {
         max(0, columnWidth(for: pageWidth) - detailsHorizontalPadding * 2)
     }
 
-    /// 单列宽度，也是封面的宽度。
     static func columnWidth(for pageWidth: CGFloat) -> CGFloat {
         max(0, pageWidth - horizontalInset * 2 - columnSpacing) / 2
     }

@@ -3,10 +3,7 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-/// 观看历史，游标翻页。
-///
-/// 结构与首页保持同构（ScrollView + 卡片 Button + 转场源直接挂在
-/// Button 上），这样点开/退出视频页的 zoom 动效和首页完全一致。
+/// 观看历史按游标分页；转场源挂在每张卡片的 Button 上。
 struct HistoryView: View {
     /// 作为底部标签页的根页面挂载（不显示刷新按钮）。
     var isTabRoot = false
@@ -40,16 +37,21 @@ struct HistoryView: View {
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
-    /// 正在走移除动效的条目。第一段淡出靠它驱动，见 `delete`。
+    /// 正在删除的条目。刷新结果会排除它们，避免把刚删掉的记录带回来。
     @State private var removals = ListRemovalState<String>()
     @State private var loadID = UUID()
     @State private var entranceGeneration = 0
     @State private var isSelecting = false
     @State private var selectedIDs: Set<String> = []
     @State private var isRemovingSelected = false
+    @State private var filterMemo = FilteredVideosMemo<HistoryItem>()
+    @State private var menuRegistry = ResolvedMenuRegistry<String>()
+    /// 列表内容每变一次加一，过滤缓存据此重算；body 的无关重算仍复用结果。
+    @State private var contentRevision = 0
 
     private var visibleItems: [HistoryItem] {
-        items.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
+        filterMemo.videos(items, revision: contentRevision,
+                          hidesPortraitVideos: hidesPortraitVideos, filtering: filtering)
     }
 
     var body: some View {
@@ -76,6 +78,7 @@ struct HistoryView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(visibleItems) { item in
                             row(item, loadsNextPage: paginationIDs.contains(item.id))
+                                .removalFillTransition()
                         }
                         if hasMore, !isLoadingMore {
                             Button("继续加载") { Task { await loadNextPage() } }
@@ -95,6 +98,11 @@ struct HistoryView: View {
                             .padding()
                         }
                     }
+                    .background {
+                        ResolvedMenuInstaller(registry: menuRegistry, menu: rowMenu)
+                    }
+                    // 删除看源列表的身份：过滤只改可见行，不触发补位。翻页是末尾追加，同样不动画。
+                    .removalFill(ids: items.map(\.id), enabled: animatesExit, scope: .removalAndInlineRestore)
                     // 与推荐页一致：松手后旧卡片淡出，新内容到了再换入。
                     .opacity(animatesExit ? refresh.contentOpacity : 1)
                     .allowsHitTesting(refresh.contentOpacity == 1)
@@ -145,6 +153,7 @@ struct HistoryView: View {
         .onChange(of: account.sessionID) { _, _ in
             loadID = UUID()
             items = []; selectedIDs = []; isSelecting = false
+            contentRevision += 1
             isLoading = false; isLoadingMore = false
             isRemovingSelected = false
             removals = ListRemovalState()
@@ -196,25 +205,10 @@ struct HistoryView: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selectedIDs.contains(item.id) ? .isSelected : [])
-        .contextMenu {
-            if !isSelecting {
-                Button {
-                    isSelecting = true; selectedIDs = [item.id]
-                } label: { Label("多选", systemImage: "checkmark.circle") }
-                .disabled(isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing)
-            }
-            WatchLaterMenuButton(aid: summary?.aid, bvid: summary?.bvid)
-
-            Button(role: .destructive) {
-                Task { await delete(item) }
-            } label: {
-                Label("删除这条历史", systemImage: "trash")
-            }
-        }
-        // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。前缀避免与首页
-        // 同一视频的转场源在共享命名空间里撞 id。
+        .background { ResolvedMenuMarker(id: item.id, registry: menuRegistry) }
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { menuRegistry.setLayoutFrame(item.id, $0) }
+        .onDisappear { menuRegistry.clearLayoutFrame(item.id) }
         .videoTransitionSource("history-\(summary?.bvid ?? "")", in: videoTransition)
-        // 移除动效第一段：原地淡出、占位不变，列表此时不动。
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
@@ -226,6 +220,27 @@ struct HistoryView: View {
                 )
             }
         }
+    }
+
+    private func rowMenu(for id: String) -> UIMenu {
+        let busy = isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing
+        var actions: [UIAction] = []
+        if !isSelecting {
+            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, fallback: id) { target in
+                isSelecting = true
+                selectedIDs = [target]
+            })
+        }
+        actions.append(menuRegistry.action("稍后再看", systemImage: "flag", fallback: id) { target in
+            guard let item = items.first(where: { $0.id == target }) else { return }
+            WatchLaterAction.add(aid: item.asVideoSummary?.aid, bvid: item.asVideoSummary?.bvid,
+                                 services: services, account: account, feedback: feedback)
+        })
+        actions.append(menuRegistry.action("删除这条历史", systemImage: "trash", destructive: true, enabled: !busy, fallback: id) { target in
+            guard let item = items.first(where: { $0.id == target }) else { return }
+            Task { await delete(item) }
+        })
+        return UIMenu(children: actions)
     }
 
     private func removeSelected() async {
@@ -247,6 +262,7 @@ struct HistoryView: View {
         let lookup = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let ids = Set(targets.map(\.id))
         items.removeAll { ids.contains($0.id) }
+        contentRevision += 1
         let result = await LibraryBatchRemoval.perform(ids: targets.map(\.id),
             isCurrent: { account.sessionID == owner },
             confirm: { await feedback.confirmRemoval(String(localized: "已移除历史记录")) },
@@ -256,6 +272,7 @@ struct HistoryView: View {
             })
         guard account.sessionID == owner else { return }
         items = snapshot.filter { !result.succeeded.contains($0.id) }
+        contentRevision += 1
         selectedIDs.subtract(result.succeeded)
         if selectedIDs.isEmpty { isSelecting = false }
         if let error = result.error { feedback.show(error) }
@@ -312,6 +329,7 @@ struct HistoryView: View {
         guard page.revision == removals.revision, !removals.hasPending else { return }
         entranceGeneration += 1
         items = page.items
+        contentRevision += 1
         selectedIDs.formIntersection(Set(items.map(\.id)))
         if selectedIDs.isEmpty { isSelecting = false }
         hasMore = page.hasMore
@@ -335,6 +353,7 @@ struct HistoryView: View {
             let incoming = payload.allItems.filter(\.isVideo)
             entranceGeneration += 1
             items = LibraryPageRules.unique(incoming, excluding: removals.hiddenIDs)
+            contentRevision += 1
             selectedIDs.formIntersection(Set(items.map(\.id)))
 
             hasMore = LibraryPageRules.advancesHistory(max: payload.cursor?.max,
@@ -374,6 +393,7 @@ struct HistoryView: View {
             let incoming = payload.allItems.filter(\.isVideo)
             let existing = Set(items.map(\.id))
             items.append(contentsOf: LibraryPageRules.unique(incoming, excluding: existing.union(removals.hiddenIDs)))
+            contentRevision += 1
 
             hasMore = LibraryPageRules.advancesHistory(max: payload.cursor?.max,
                 viewAt: payload.cursor?.resolvedViewAt, fromMax: cursorMax, fromViewAt: cursorViewAt)
@@ -386,13 +406,7 @@ struct HistoryView: View {
         }
     }
 
-    /// 删除一条历史。
-    ///
-    /// 先把卡片移走，再发请求。原来是等接口回来才移，网络往返那几百毫秒里
-    /// 卡片一直杵在那儿，看起来就是「点了没反应，过一会儿才消失」。
-    /// 失败时按原位放回去并说明原因。
-    ///
-    /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
+    /// 先移除卡片并提供撤销窗口，确认后提交删除；失败时恢复尚未删除的条目。
     private func delete(_ item: HistoryItem) async {
         guard !isRemovingSelected, !refresh.isRefreshing, items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
         let sessionID = account.sessionID
@@ -402,17 +416,20 @@ struct HistoryView: View {
         do {
             removals.hide(item.id)
             removedIndex = removals.remove(item.id, from: &items)
+            contentRevision += 1
             guard await feedback.confirmRemoval(String(localized: "已移除历史记录")),
                   account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
             try await services.library.deleteHistory(kid: item.kidParam, expectedSessionID: identitySession)
             guard account.sessionID == sessionID else { return }
             // 同时完成的刷新也不能留下同 ID 的旧条目。
             items.removeAll { $0.id == item.id }
+            contentRevision += 1
             selectedIDs.remove(item.id)
             if selectedIDs.isEmpty { isSelecting = false }
         } catch {
             if account.sessionID == sessionID, let removedIndex {
                 removals.restore(item, at: removedIndex, in: &items)
+                contentRevision += 1
             }
             if account.sessionID == sessionID, !error.isCancellation { feedback.show(error.localizedDescription) }
         }

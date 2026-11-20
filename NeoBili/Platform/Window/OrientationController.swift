@@ -5,9 +5,7 @@ import UIKit
 /// request so system UI always observes the same coordinate space as the app.
 @MainActor
 enum OrientationController {
-    /// 横屏两个方向都放开：用户把手机往哪边转都能进全屏，而且设备已经处在
-    /// landscapeLeft 时请求也不会被判成需要反向旋转。方向集里依旧没有竖屏，
-    /// 所以 `OrientationLock` 的那条注释仍然成立。
+    /// 横屏允许左右两个方向，用户可按持机方向旋转；该方向集合排除竖屏。
     static func enterLandscape() {
         lock(to: .landscape)
     }

@@ -17,11 +17,7 @@ extension BiliAPI {
         )
     }
 
-    /// 上报观看进度（心跳）。历史记录页的数据源就是它：不报的话，
-    /// 在本 App 里看过的视频永远不会出现在 B 站的观看历史里。
-    ///
-    /// 格式对齐 PiliPlus：UGC 稿件 type=3，`played_time` 传秒数，
-    /// 看完时传 -1。未登录（拿不到 csrf）时直接不发。
+    /// Cookie 登录使用的网页观看心跳。UGC type=3，played_time 为秒数，播完传 -1；缺少 CSRF 时跳过。
     static func reportWatchProgress(bvid: String, cid: Int, playedTime: Double,
                                     expectedSessionID: UUID, client: APIClient,
                                     identity: DeviceIdentity) async throws {
@@ -43,10 +39,7 @@ extension BiliAPI {
         )
     }
 
-    /// 删除单条观看历史。
-    ///
-    /// 端点是 `x/v2/history/delete`——之前写成了 `x/web-interface/history/del`，
-    /// 那个路径根本不存在，所以返回的是 HTTP 404 而不是业务错误码。
+    /// 删除单条观看历史，kid 使用「业务名_条目号」。
     static func deleteHistory(kid: String, expectedSessionID: UUID? = nil, client: APIClient, identity: DeviceIdentity) async throws {
         let csrf = await identity.csrfToken ?? ""
         try await client.post(

@@ -154,7 +154,7 @@ final class CommentSpacingTests: XCTestCase {
     private func render(_ comment: Comment, viewModel: CommentsViewModel? = nil, dynamicTypeSize: DynamicTypeSize = .large) throws -> CGImage {
         let viewModel = viewModel ?? CommentsViewModel(aid: 1)
         let content = VStack(alignment: .leading, spacing: 0) {
-            CommentRow(comment: comment, viewModel: viewModel)
+            SnapshotCommentRow(comment: comment, viewModel: viewModel)
                 .padding(.horizontal, CommentLayout.pageHorizontalInset)
                 .padding(.vertical, CommentLayout.rowVerticalPadding)
 

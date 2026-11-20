@@ -149,8 +149,7 @@ final class CommentEmoteStore {
         let width = cg.width, height = cg.height
         guard width > 0, height > 0 else { return nil }
 
-        // 画进一张已知格式（RGBA、非预乘）的位图里再按 alpha 找边界，
-        /// 避开原图通道顺序/预乘与否的差异。
+        // 统一绘制为预乘 alpha 的 RGBA 位图，再按 alpha 通道定位有效边界。
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         guard let context = CGContext(
             data: &pixels,

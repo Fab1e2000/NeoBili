@@ -5,8 +5,7 @@ extension EnvironmentValues {
     @Entry var openMine: EnvironmentAction<Void>? = nil
 }
 
-/// 自绘页头：左侧大标题，右侧头像玻璃按钮。主页面已改用 `rootPageChrome` 的原生标题，这里只剩推荐列表里不再启用的页头行。
-/// 头像是「我的」页面的唯一入口，点按后以卡片从底部弹出。
+/// 推荐列表保留的自绘页头组件；当前主页面使用 rootPageChrome，未启用此页头行。
 struct PageHeader: View {
     let title: String
     /// 放进 UIKit 格子里时拿不到根视图的环境，由外层把打开动作传进来。
@@ -57,16 +56,31 @@ struct PageHeader: View {
     }
 }
 
+/// 主页面头像左侧的附加按钮。头像始终贴在最右，各页位置保持一致。
+@MainActor
+@Observable
+final class RootToolbarAccessory {
+    struct ButtonSpec {
+        var title: String
+        var systemImage: String
+        var identifier: String
+        var disabled: Bool
+        var action: () -> Void
+    }
+
+    var button: ButtonSpec?
+}
+
 // MARK: - 原生大标题
 
-/// 其它主页面的原生栏内大标题：标题与头像入口同在导航栏一行。
-/// 头像自绘 44pt 圆形玻璃，关闭系统工具栏背景，保证是正圆。
+/// 主页面的原生栏内大标题，右侧放置自绘圆形玻璃头像入口。
 struct RootPageChrome: ViewModifier {
     let title: String
     /// 导航栏下方还有常驻的切换条时，顶部安全区要跟着导航栏收起，切换条才会上移。
     let barFollowsCollapse: Bool
     @Environment(AccountStore.self) private var account
     @Environment(\.openMine) private var openMine
+    @Environment(RootToolbarAccessory.self) private var toolbarAccessory: RootToolbarAccessory?
 
     func body(content: Content) -> some View {
         content
@@ -76,10 +90,20 @@ struct RootPageChrome: ViewModifier {
             .modifier(MinimizingNavigationBar(adjustsSafeArea: barFollowsCollapse))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { openMine?(()) } label: { avatar }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("我的")
-                        .accessibilityHint("打开个人页面")
+                    HStack(spacing: 8) {
+                        if let button = toolbarAccessory?.button {
+                            Button(button.title, systemImage: button.systemImage, action: button.action)
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.glass)
+                                .buttonBorderShape(.circle)
+                                .disabled(button.disabled)
+                                .accessibilityIdentifier(button.identifier)
+                        }
+                        Button { openMine?(()) } label: { avatar }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("我的")
+                            .accessibilityHint("打开个人页面")
+                    }
                 }
                 // 系统工具栏玻璃会按内容撑成胶囊；关掉它，圆形玻璃由头像自己绘制。
                 .sharedBackgroundVisibility(.hidden)
@@ -108,7 +132,7 @@ struct RootPageChrome: ViewModifier {
     }
 }
 
-/// 保持顶部安全区稳定，避免导航栏收起后点标签回顶需要点两次。
+/// iOS 27 起随下滑收起导航栏；按页面布局选择是否让顶部安全区同步收缩。
 private struct MinimizingNavigationBar: ViewModifier {
     let adjustsSafeArea: Bool
 

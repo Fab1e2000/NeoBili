@@ -21,10 +21,10 @@ final class CommentFeatureLayoutTests: XCTestCase {
             for size in [DynamicTypeSize.large, .accessibility3] {
                 let content = VStack(alignment: .leading, spacing: 0) {
                     CommentSortHeader(viewModel: model)
-                    CommentRow(comment: root, viewModel: model)
+                    SnapshotCommentRow(comment: root, viewModel: model)
                         .padding(16)
                     Divider()
-                    CommentRow(comment: root.replies![0], viewModel: model, showsReplies: false, root: root)
+                    SnapshotCommentRow(comment: root.replies![0], viewModel: model, showsReplies: false, root: root)
                         .padding(16)
                 }
                 .frame(width: 390)

@@ -44,7 +44,7 @@ extension BiliAPI {
 
     // MARK: - 视频页附加信息
 
-    /// 稿件标签。这是网页端播放页现在用的那个端点，不是更早的 `x/tag/archive/tags`。
+    /// 网页视频详情的稿件标签。
     static func videoTags(aid: Int, client: APIClient) async throws -> [VideoTag] {
         try await client.get(
             path: "x/web-interface/view/detail/tag",

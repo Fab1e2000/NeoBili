@@ -263,7 +263,7 @@ NeoBili 早期 App 请求使用 Android 身份；当前 Debug 与 Release 共用
 - [公开 B 站接口资料](https://github.com/pskdje/bilibili-API-collect)：曾查询短信、签名和视频能力字段资料。
 - [bilive_client 的 app_client.ts](https://github.com/bilive/bilive_client/blob/master/bilive/lib/app_client.ts)：包含 Android guest/reg 设备资料相关实现；采集对象中的 iOS 加密字段尚未取得对应规则。
 - [analyze-feed-capture.py](../scripts/analyze-feed-capture.py)：按用户操作组分析首页请求，脱敏输出。
-- 手机 Debug 日志入口：“设置 → 推荐流 → 推荐实验日志”。保存选定请求字段、推荐卡片和响应结果；不保存原始网络正文、登录凭据或真实设备编号，容量上限为 2 MiB。
+- 手机 Debug 日志入口：“设置 → 高级 → 推荐实验日志”。保存选定请求字段、推荐卡片和响应结果；不保存原始网络正文、登录凭据或真实设备编号。单文件上限 2 MiB，轮转保留最多 4 份。
 
 ## 基础曝光及设备指纹的补齐依据
 
@@ -275,7 +275,7 @@ NeoBili 早期 App 请求使用 Android 身份；当前 Debug 与 Release 共用
 
 fingerprint 的 key 为十六进制编码的 128 字节内容，content 为 496–544 字节、整 16 字节块；访客 device_info 为 192 字节，登录 device_meta 为 1136 字节，dt 为 Base64 编码的 128 字节内容。本批 web/key 返回 1024 位 RSA 公钥。已见 64 字符 device_id/fp/bili_local_id 符合 32 位 hex、14 位可解析日期时间、16 位 hex、2 位校验的候选结构，最后一段匹配前面 hex 字节求和模 256。没有由长度和校验关系认定完整的 iOS 加密或标识生成算法。
 
-当前已从旧版 iOS 分析样本取得部分生成代码的函数体证据，尚未完整证明当前版本的明文资料与生命周期；[bilive_client](https://github.com/bilive/bilive_client/blob/master/bilive/lib/app_client.ts) 的 Android AES/RSA 实现仅作研究候选。基础曝光可复用已验收的日志包装，另外接入实际可见时段和 realtime 通道；设备登记需完成字段和版本核对后，用自身资料取得、持久化并复用对应服务器响应。细节与实施边界见 [NOTSURE.md](research/recommendation-parameters.md#基础曝光的字段来源与补齐方案)。当前生产仍未增加曝光和设备登记请求。
+当前已从旧版 iOS 分析样本取得部分生成代码的函数体证据，尚未完整证明当前版本的明文资料与生命周期；[bilive_client](https://github.com/bilive/bilive_client/blob/master/bilive/lib/app_client.ts) 的 Android AES/RSA 实现仅作研究候选。基础曝光可复用已验收的日志包装，另外接入实际可见时段和 realtime 通道；设备登记需完成字段和版本核对后，用自身资料取得、持久化并复用对应服务器响应。细节与实施边界见 [NOTSURE.md](research/recommendation-parameters.md#基础曝光的字段来源与补齐方案)。该采集阶段尚未加入曝光和设备登记；现有实现已接入，见[实现核查](RECOMMENDATION_IMPLEMENTATION_REVIEW.md)。
 
 已下载 [BiliBiliMApp 发布的 8.89.0 目标包](https://github.com/TouchFriend/BiliBiliMApp/releases/tag/3.1.0)，文件摘要匹配发布资产，包内 build 为 88900100。主程序加密标志 cryptid=0；同时加载第三方 BilibiliVideoTools 插件，因此不把它视为未经修改的官方原包。现已通过定向提取代码绕开坏符号表，并分析设备标识、fingerprint、访客和短信登录函数体；版本不同于当前采集的 9.13.0，不据此声明当前客户端完整等价。文件与核验摘要留在忽略的研究目录；原始源码和服务器端推荐算法不包含在此包中。
 

@@ -47,14 +47,6 @@ struct OfflineCover: View {
     }
 }
 
-struct OfflineReadyNote: View {
-    var body: some View {
-        Label("视频、弹幕和字幕均已保存", systemImage: "checkmark.shield")
-            .font(.app(.caption)).foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity).padding(.vertical, 12)
-    }
-}
-
 struct OfflineEpisodeRow: View {
     @Environment(\.appThemeColor) private var accent
     let number: Int

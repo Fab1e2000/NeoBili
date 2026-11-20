@@ -36,7 +36,7 @@ final class CommentSpacingEmoteTests: XCTestCase {
 
     private func render(_ comment: Comment, viewModel: CommentsViewModel) throws -> CGImage {
         let content = VStack(alignment: .leading, spacing: 0) {
-            CommentRow(comment: comment, viewModel: viewModel)
+            SnapshotCommentRow(comment: comment, viewModel: viewModel)
                 .padding(.horizontal, CommentLayout.pageHorizontalInset)
                 .padding(.vertical, CommentLayout.rowVerticalPadding)
 

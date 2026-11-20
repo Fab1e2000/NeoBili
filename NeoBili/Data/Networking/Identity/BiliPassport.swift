@@ -3,11 +3,8 @@ import NeoBiliDomain
 #endif
 import Foundation
 
-/// passport.bilibili.com 上的登录端点（扫码 / 账号密码）。
-///
-/// 这些请求不在 api.bilibili.com 域上，所以不复用 `APIClient` 的传输层；
-/// 登录成功后真正的凭据（SESSDATA 等）通过 Set-Cookie 头下发，需要从
-/// HTTP 响应头里取，而不是从 JSON 里。
+/// 保留的扫码和密码登录协议适配器，供旧流程与回归使用；当前界面入口为 SMSPassport。
+/// 网页登录从 Set-Cookie 读取凭据，App 扫码从 JSON 读取 token 与 Cookie。
 enum BiliPassport {
     typealias LoginCookies = LoginModels.LoginCookies
 
@@ -73,15 +70,7 @@ enum BiliPassport {
 
     // MARK: - App 端扫码登录
 
-    /// App（iPhone）扫码登录，用来换取 `access_key`。
-    ///
-    /// 为什么不直接用上面的网页扫码：网页登录只下发 Cookie，而「点踩」这类接口
-    /// 只存在于 app.bilibili.com 上，认的是 `access_key`（见 `APIClient.postApp`）。
-    /// App 端这条扫码链路成功时，同一份 JSON 里既有 `access_token` 也有整套
-    /// Cookie，一次扫码就能把两种凭据都拿齐，所以它是网页扫码的超集。
-    ///
-    /// 用户体验上没有区别，仍然是拿 B 站 App 扫一张二维码；手机上的确认页会
-    /// 显示服务端提供的 iPhone 登录确认页。
+    /// 旧 App 扫码链路返回 access_token 与 Cookie，当前登录界面使用短信验证码。
     typealias AppQRCodeInfo = LoginModels.AppQRCodeInfo
 
     static func generateAppQRCode(session: URLSession) async throws -> AppQRCodeInfo {
@@ -188,10 +177,7 @@ enum BiliPassport {
 
     // MARK: - 用 Cookie 换 App 凭据
 
-    /// 网页登录（账号密码、网页扫码兜底）只有 Cookie，没有 `access_key`，App 推荐就只能按访客推。
-    /// 用已登录的 Cookie 替自己确认一张iPhone App
-    /// 登录二维码，再像扫码一样轮询出 `access_key`（PiliPlus 把这个确认接口标为「cookie转access_key」）。
-    /// 旧链路仅保留用于原有回归；生产入口已改为 SMSPassport，不保证设备列表新增条目。
+    /// 旧 Cookie 换 App 凭据链路：确认二维码后轮询 token。生产补授权通过 SMSPassport 完成。
     static func exchangeAccessKey(cookies: LoginCookies, session: URLSession) async throws -> String {
         let info = try await generateAppQRCode(session: session)
         let request = try makeAppConfirmationRequest(authCode: info.authCode, cookies: cookies)
@@ -329,17 +315,8 @@ enum BiliPassport {
         return request
     }
 
-    /// 登录相关请求的统一出口：不让系统的共享 Cookie 罐插手，并且对
-    /// 「连接被中断」这类抖动补发一次。
-    ///
-    /// iOS 复用 HTTP/2 长连接时，服务端如果已经悄悄关掉了连接，正在发的请求
-    /// 会以 `-1005 networkConnectionLost`（就是那句 connection lost）失败。
-    /// GET 系统会自己重发，POST 不会——它不是幂等操作。而扫码那条 App 链路
-    /// 从生成到轮询全是 POST，于是一次抖动就把整个登录流程判了死刑。
-    ///
-    /// 关闭自动 Cookie 还有一层用意：登录态由我们自己保管（Keychain + 手写
-    /// Cookie 头），共享罐里若留着上一次登录的 SESSDATA，会被系统自动贴到
-    /// 登录请求上，让服务端看到一个自相矛盾的会话。
+    /// 旧登录请求的传输出口，禁用共享 Cookie 罐，并按本适配器策略重试一次连接错误。
+    /// SMSPassport 使用独立传输，短信写请求不自动重试。
     private static func send(_ request: URLRequest, session: URLSession) async throws -> (Data, URLResponse) {
         var request = request
         request.httpShouldHandleCookies = false

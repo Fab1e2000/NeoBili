@@ -327,9 +327,7 @@ struct Harness {
         defaults.removePersistentDomain(forName: "harness.cap")
 
         let total = 200
-        // 前 6 次调用挂住，观察并发上限；其余放行。
-        // （上限从 50 收紧到 6：一页 20 张卡片的详情请求不再瞬时并发，
-        // 避免带宽尖峰与接口风控。）
+        // 先挂起 6 次调用，验证补查并发上限；其余请求随后放行。
         let cap = 6
         let recorder = LoaderRecorder(holdCount: cap)
         let store = PortraitVideoStore(defaults: defaults, metadataLoader: recorder.loader)
