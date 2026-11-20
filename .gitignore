@@ -34,4 +34,4 @@ __pycache__/
 # Separate website and unused icon experiments; retain the production asset
 /website/
 /design/app-icon-2026/*.png
-!/design/app-icon-2026/BMark-production.png
+!/design/app-icon-2026/Cards-production.png

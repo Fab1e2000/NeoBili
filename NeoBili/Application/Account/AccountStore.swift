@@ -159,7 +159,7 @@ final class AccountStore {
         isRestoringSession = false
     }
 
-    /// 只有 Cookie 时换一份 App 凭据。返回失败原因；成功或已有凭据时返回 nil。
+    /// 调用注入的凭据补授权操作。生产适配器提示短信授权；保留此入口供兼容调用与回归。
     @discardableResult
     func ensureAppCredential() async -> String? {
         guard isLoggedIn, !hasAppCredential, !isExchangingAppCredential else { return nil }

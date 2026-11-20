@@ -29,10 +29,7 @@ extension BiliAPI {
         return card
     }
 
-    /// 某个 UP 主的投稿列表（空间页「投稿」那一栏）。
-    ///
-    /// 走 WBI 签名，并且要带上和取流同一组浏览器指纹参数：缺了它们，
-    /// 连续翻几页之后就会被风控挡下（-352）。
+    /// 空间投稿使用 WBI 签名及旧网页列表的 fingerprintParams；播放取流使用独立上下文。
     static func spaceVideos(mid: Int, page: Int, client: APIClient) async throws -> SpaceVideoPage {
         var params = [
             "mid": String(mid),

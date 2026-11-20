@@ -1,7 +1,5 @@
 import Foundation
 
-/// Community operations available to application state and views.
-/// Values can be replaced per model or view hierarchy without changing global state.
 public struct CommunityService: Sendable {
     public var dynamicVoteInfoOperation: @Sendable (Int) async throws -> DynamicVoteResponse = { _ in throw ServiceError.unconfigured("Community.dynamicVoteInfo") }
     public var submitDynamicVoteOperation: @Sendable (Int, [Int], Int, String) async throws -> Void = { _, _, _, _ in throw ServiceError.unconfigured("Community.submitDynamicVote") }

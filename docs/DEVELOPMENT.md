@@ -269,10 +269,10 @@ personal access token，仅选择 NeoBili 仓库并授予 Contents 的读写权�
    `CFBundleShortVersionString` 一致，构建 IPA、做 ad-hoc 签名、生成校验和与 **Release 草稿**。
    安装包没有 Apple 开发者证书；ad-hoc 签名是为了让 SideStore、Sideloadly 能用用户自己的 Apple ID 重签。
 4. 检查草稿的目标提交、版本说明及附件。发布草稿是独立动作，不能把创建草稿当作已发布。
-5. 草稿公开后，[SideStore 工作流](../.github/workflows/sidestore.yml)读取该版本的 IPA 大小和
-   `docs/releases/vX.Y.Z.md`，更新 `main` 与 `develop` 上的 `sidestore/apps.json`。
-   用户添加的地址是 `https://n015.top/neobili/apps.json`。公开后，工作流把 IPA、图标和这份
-   文件上传到 `n015.top`，手机不再从 GitHub 下载安装包。
+5. 草稿公开后，[SideStore 工作流](../.github/workflows/sidestore.yml)读取 IPA 大小、版本说明和
+   发布标签内 `Info.plist` 声明的权限，更新 `main` 与 `develop` 上的 `sidestore/apps.json`。
+   用户添加的地址是 `https://n015.top/neobili/apps.json`。工作流把 IPA、与项目首页共用的
+   [应用图标](../design/app-icon-2026/Cards-production.png)和软件源文件上传到 `n015.top`。
    草稿附件不能公开下载，所以公开之前不要改这份文件。需要补写时，在 Actions 里手动运行
    SideStore source，并填入已公开的标签。
 

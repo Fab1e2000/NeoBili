@@ -1,6 +1,9 @@
 #if canImport(NeoBiliData)
 @testable import NeoBiliData
 #endif
+#if canImport(NeoBiliDomain)
+@testable import NeoBiliDomain
+#endif
 import SwiftUI
 import UIKit
 import XCTest
@@ -12,10 +15,12 @@ final class RecommendationAuthorizationLayoutTests: XCTestCase {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             .first { $0.activationState == .foregroundActive })
         let previous = scene.keyWindow
-        let suite = "device-mode-ui.\(UUID())"
+        let suite = "device-identity-ui.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set("random", forKey: AppBuvid.modeKey)
+        let customBuvid = "TEST-DEVICE-IDENTITY-42"
+        defaults.set(customBuvid, forKey: DeviceIdentityPreferences.customKey)
+        defaults.set(true, forKey: DeviceIdentitySettingsView.introductionSeenKey)
         for scheme in [ColorScheme.light, .dark] {
             let window = UIWindow(windowScene: scene)
             let host = UIHostingController(rootView: NavigationStack { DeviceIdentitySettingsView() }
@@ -28,10 +33,10 @@ final class RecommendationAuthorizationLayoutTests: XCTestCase {
             let attachment = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
                 window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
             })
-            attachment.name = "device-mode-\(scheme)"
+            attachment.name = "device-identity-\(scheme)"
             attachment.lifetime = .keepAlways
             add(attachment)
-            XCTAssertEqual(defaults.string(forKey: AppBuvid.modeKey), "random")
+            XCTAssertEqual(defaults.string(forKey: DeviceIdentityPreferences.customKey), customBuvid)
         }
     }
 

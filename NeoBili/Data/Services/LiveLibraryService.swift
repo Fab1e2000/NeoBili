@@ -33,6 +33,9 @@ extension LibraryService {
             deleteFavoriteFoldersOperation: { folderIDs, expectedSessionID in
                 try await BiliAPI.deleteFavoriteFolders(folderIDs: folderIDs, expectedSessionID: expectedSessionID, client: client, identity: identity)
             },
+            addFavoriteFolderOperation: { title, intro, isPublic, expectedSessionID in
+                try await BiliAPI.addFavoriteFolder(title: title, intro: intro, isPublic: isPublic, expectedSessionID: expectedSessionID, client: client, identity: identity)
+            },
             addWatchLaterOperation: { aid, bvid in
                 try await BiliAPI.addWatchLater(aid: aid, bvid: bvid, client: client, identity: identity)
             },

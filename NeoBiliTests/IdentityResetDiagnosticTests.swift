@@ -25,7 +25,6 @@ final class IdentityResetDiagnosticTests: XCTestCase {
         let fresh = try XCTUnwrap(credentials.read(randomKey))
         XCTAssertEqual(fresh.count, 36)
         XCTAssertEqual(defaults.string(forKey: randomKey), fresh)
-        XCTAssertEqual(defaults.string(forKey: "neobili.appBuvid.mode"), "random")
         XCTAssertNil(sequence.object(forKey: "neobili.neuron.eventSerial"))
         XCTAssertEqual(defaults.string(forKey: "theme"), "dark")
         XCTAssertEqual(defaults.string(forKey: "download-directory"), "keep-downloads")

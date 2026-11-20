@@ -1,7 +1,5 @@
 import Foundation
 
-/// Comment operations available to application state and views.
-/// Values can be replaced per model or view hierarchy without changing global state.
 public struct CommentService: Sendable {
     public var shootDanmakuOperation: @Sendable (Int, String, String, TimeInterval, Int) async throws -> Int? = { _, _, _, _, _ in throw ServiceError.unconfigured("Comment.shootDanmaku") }
     public var commentsOperation: @Sendable (Int, Int, Int, CommentSort) async throws -> CommentPage = { _, _, _, _ in throw ServiceError.unconfigured("Comment.comments") }

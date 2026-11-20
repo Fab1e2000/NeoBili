@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>NeoBili · 离线缓存设计评审</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="review-header">
+    <a class="wordmark" href="index.html" aria-label="NeoBili 设计评审首页"><span class="brand-mark">n</span> NeoBili <span class="wordmark-divider"></span><span class="wordmark-sub">DESIGN STUDY</span></a>
+    <span class="prototype-label"><span></span> 交互原型 · 示例内容</span>
+  </header>
+  <main class="review-main">
+    <section class="intro">
+      <div><div class="eyebrow">OFFLINE, YOUR WAY</div><h1>把喜欢，留在身边。</h1><p>四个缓存界面方向，同一组内容。点进手机，体验完整流程。</p></div>
+      <div class="view-toggle" aria-label="展示方式"><button data-view="compare" aria-pressed="true">并排对比</button><button data-view="focus" aria-pressed="false">单独查看</button></div>
+    </section>
+    <nav class="review-toolbar" aria-label="比较页面">
+      <div class="stage-tabs" role="tablist" aria-label="功能场景">
+        <button role="tab" aria-selected="true" data-stage="library">已缓存</button>
+        <button role="tab" aria-selected="false" data-stage="select">缓存选择</button>
+        <button role="tab" aria-selected="false" data-stage="downloads">下载中</button>
+        <button role="tab" aria-selected="false" data-stage="player">离线播放</button>
+      </div>
+      <div class="focus-picks" hidden aria-label="选择方案"></div>
+      <button class="reset-demo" id="reset-demo">重置演示</button>
+    </nav>
+    <section class="concepts" id="concepts" aria-label="四套设计方案"></section>
+    <section class="review-notes" aria-labelledby="notes-title">
+      <div class="notes-heading"><span class="eyebrow">YOUR TAKE</span><h2 id="notes-title">你更喜欢哪一种？</h2><p>可以选一套，也可以组合不同方案的页面。</p></div>
+      <div class="notes-form"><div id="favorite-summary">尚未标记偏好</div><label for="review-comment">评审意见</label><textarea id="review-comment" rows="2" placeholder="例如：用 A 的列表、B 的缓存选择，保留 D 的播放器。"></textarea><div class="notes-actions"><span>偏好保存在此浏览器，复制后发给我即可。</span><button id="copy-review">复制评审意见</button></div></div>
+    </section>
+  </main>
+  <footer class="review-footer"><span>NeoBili / 离线缓存</span><span>4 个方向 · 4 个场景 · 相同功能范围</span></footer>
+  <div class="global-toast" id="global-toast" role="status" aria-live="polite"></div>
+  <script src="prototype.js"></script>
+</body>
+</html>

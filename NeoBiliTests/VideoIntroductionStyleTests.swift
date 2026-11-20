@@ -6,8 +6,8 @@ import UIKit
 import XCTest
 @testable import NeoBili
 
-/// Real-device snapshots of the two introduction components. Avatars have no
-/// URL, and all actions are local closures: there is no playback or networking.
+/// Window snapshots of the two introduction components, runnable on Simulator.
+/// Avatars and actions use local fixtures; no playback or networking is involved.
 @MainActor
 final class VideoIntroductionStyleTests: XCTestCase {
     func testOwnerAndIntroductionInBothAppearancesAndExpandedStates() async throws {

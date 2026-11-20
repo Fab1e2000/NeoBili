@@ -44,7 +44,7 @@ extension BiliAPI {
 
     // MARK: - 视频页附加信息
 
-    /// 稿件标签。这是网页端播放页现在用的那个端点，不是更早的 `x/tag/archive/tags`。
+    /// 网页视频详情的稿件标签。
     static func videoTags(aid: Int, client: APIClient) async throws -> [VideoTag] {
         try await client.get(
             path: "x/web-interface/view/detail/tag",
@@ -83,52 +83,4 @@ private struct MemberCardPayload: Decodable {
         case follower
         case archiveCount = "archive_count"
     }
-}
-
-/// 相关视频列表里偶尔混有番剧等条目，字段不一定齐全。
-/// 和推荐流一样先宽松解码，再过滤成能正常展示的普通视频，
-/// 避免其中一条异常数据让整个列表解析失败。
-private struct RelatedVideoItem: Decodable {
-    let bvid: String?
-    let aid: Int?
-    let cid: Int?
-    let title: String?
-    let pic: String?
-    let desc: String?
-    let duration: Int?
-    let pubdate: Int?
-    let owner: VideoOwner?
-    let stat: RelatedVideoStat?
-    let dimension: VideoDimension?
-
-    var asVideoSummary: VideoSummary? {
-        guard let bvid, let aid, let cid, let title, let pic,
-              let duration, let pubdate, let owner, let stat
-        else { return nil }
-        return VideoSummary(
-            bvid: bvid, aid: aid, cid: cid, title: title, pic: pic,
-            desc: desc ?? "", duration: duration, pubdate: pubdate,
-            owner: owner,
-            stat: VideoStat(
-                view: stat.view ?? 0,
-                danmaku: stat.danmaku ?? 0,
-                like: stat.like ?? 0,
-                favorite: stat.favorite ?? 0,
-                coin: stat.coin ?? 0,
-                share: stat.share ?? 0,
-                reply: stat.reply ?? 0
-            ),
-            dimension: dimension
-        )
-    }
-}
-
-private struct RelatedVideoStat: Decodable {
-    let view: Int?
-    let danmaku: Int?
-    let like: Int?
-    let favorite: Int?
-    let coin: Int?
-    let share: Int?
-    let reply: Int?
 }

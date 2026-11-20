@@ -224,12 +224,7 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
         }
     }
 
-    /// 在 MainActor 上下文里直接创建 `MPMediaItemArtwork` 会闪退：Swift 6 把
-    /// 那里创建的 requestHandler 闭包推断成 MainActor 隔离，而系统推送锁屏
-    /// 信息时是在自己的后台队列上调它序列化封面（`jpegDataWithSize:`），动态
-    /// 隔离断言当场失败（`_dispatch_assert_queue_fail`）——和 mpv 回调线程那次
-    /// 是同一类问题。放进 nonisolated 上下文创建，handler 不带任何隔离，任何
-    /// 线程调用都只是返回捕获的这张图。
+    /// 封面回调可从系统后台队列调用；在 nonisolated 上下文创建，避免继承 MainActor 隔离。
     private nonisolated static func makeArtwork(_ image: UIImage) -> MPMediaItemArtwork {
         MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }

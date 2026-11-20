@@ -70,9 +70,7 @@ actor BiliImageCache {
     }
 }
 
-/// Different visible sizes still share one HTTP transfer. URLSession retains
-/// compressed responses; this pool retains data only during the transfer.
-/// 限制同时进行的图片预取数量。
+/// 限制同时进行的图片预取数量；达到上限时跳过本次预取。
 actor BiliImagePrefetchGate {
     private static let limit = 6
     private var active = 0

@@ -70,7 +70,7 @@ extension BiliAPI {
             return copy
         }
         return RecommendationBatch(videos: videos, nextRequest: batch.nextRequest,
-            refreshConfig: batch.refreshConfig, appCursor: batch.appCursor,
+            appCursor: batch.appCursor,
             refreshCursor: batch.refreshCursor, exposurePolicy: batch.exposurePolicy)
     }
 

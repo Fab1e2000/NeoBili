@@ -1,17 +1,10 @@
 import CryptoKit
 import Foundation
 
-/// B 站 APP 端接口（app.bilibili.com、passport-tv-login）的参数签名。
-///
-/// 网页端接口靠 Cookie 认证、靠 WBI 签名（见 `WBISigner`）；APP 端是另一套：
-/// 认证靠 `access_key`，签名靠 appkey/appsec。两者互不通用，所以这里单独一份。
-///
-/// 算法本身很简单：补上 `appkey` 和秒级 `ts` → 按参数名排序拼成 query 串 →
-/// 末尾接上 appsec → 取 MD5 作为 `sign`。服务端用同样的步骤复算，对不上就返回
-/// 「API 校验密匙错误」。
+/// iPhone App 请求的参数签名，登录和业务共用同一组 iOS 密钥。
+/// 补 appkey 与秒级 ts，排序并转义参数，末尾接 appsec 后计算 MD5 sign。
 enum AppSigner {
     /// iOS 登录与业务使用同一组密钥，不能发送 Android/HD token。
-    /// 公共协议资料：docs/login/login_action/QR.md；与官方抓包签名在内存中复算一致。
     static let appKey = "27eb53fc9058f8c3"
     static let passportAppKey = appKey
     enum Purpose { case app, passport }
@@ -39,9 +32,8 @@ enum AppSigner {
 
     /// 参与签名的 query 串，也正好可以直接当请求体发出去。
     ///
-    /// 转义规则要和服务端一致：这里用的是 JavaScript `encodeURIComponent` 那一套
-    /// 保留字符集（`A-Za-z0-9-_.!~*'()` 之外全部转义）。用 Foundation 默认的
-    /// `.urlQueryAllowed` 会漏掉 `+`、`&` 等字符，签名就会对不上。
+    /// 默认保留 encodeURIComponent 字符集；nativeEncoding 供续期通道使用严格的 -_.~ 集合。
+    /// 签名和传输必须选择相同模式，避免 +、& 等分隔符改变参数。
     static func queryString(from params: [String: String], nativeEncoding: Bool = false) -> String {
         params
             .sorted { $0.key < $1.key }

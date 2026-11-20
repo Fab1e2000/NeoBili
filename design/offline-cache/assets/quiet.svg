@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#b8bf9e"/><stop offset="1" stop-color="#687d69"/></linearGradient></defs>
+<path fill="url(#bg)" d="M0 0h800v500H0z"/><path fill="#e2dcc4" d="M0 346h800v154H0z"/><path fill="#d3ceb5" d="m466 0-96 346h75L570 0Z" opacity=".5"/>
+<rect x="130" y="221" width="420" height="187" rx="9" fill="#916e4c"/><path fill="#bb9470" d="m130 221 45-48h338l37 48Z"/>
+<ellipse cx="328" cy="236" rx="148" ry="51" fill="#252d29"/><g fill="none" stroke="#697269" stroke-opacity=".5"><ellipse cx="328" cy="236" rx="132" ry="44"/><ellipse cx="328" cy="236" rx="116" ry="38"/><ellipse cx="328" cy="236" rx="99" ry="32"/><ellipse cx="328" cy="236" rx="80" ry="26"/></g>
+<ellipse cx="328" cy="236" rx="44" ry="15" fill="#da9b72"/><ellipse cx="328" cy="236" rx="5" ry="3" fill="#f0dbc1"/>
+<path d="m490 203-36 68-59-8" fill="none" stroke="#d5d3bf" stroke-width="9" stroke-linecap="round"/><circle cx="490" cy="203" r="14" fill="#4f574b"/>
+<circle cx="491" cy="343" r="15" fill="#ddd4b7"/><rect x="168" y="323" width="79" height="13" rx="3" fill="#4a5042"/><path fill="#394f3f" d="M591 140h118v267H591z"/><circle cx="650" cy="202" r="35" fill="#223b30"/><circle cx="650" cy="322" r="48" fill="#223b30"/><circle cx="650" cy="322" r="24" fill="#5a6c56"/>
+<path fill="#466348" d="M80 188q-48-58-14-102 33 17 24 80 19-55 63-46 4 42-61 72Z"/><path fill="#ede0c3" d="M55 182h56l-9 73H66Z"/>
+</svg>

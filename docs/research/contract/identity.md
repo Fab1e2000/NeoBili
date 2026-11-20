@@ -16,7 +16,7 @@
 | 4) 参数及来源 | 无请求参数。生成格式：36 字符，`Z`/`Y` + 主体第 2/12/22 字符 + 32 字符主体；不是带连字符 UUID。**首次生成分支（8.89 静态已闭）**：prefs/Keychain 均无效时 `+[BFCBuvid buvid]_block` 0x1167cbedc 先置再生成标志 0x120e71220=1（0x1167cbfd8）；IDFA 有效 → idfa[2]/[12]/[22]（0x1167cc01c/0x1167cc03c/0x1167cc05c）+ `'Z%@%@%@'`（0x11d3fc730）拼 4 字符前缀再追加完整 idfa（0x1167cc0b0）；IDFA 缺失 → identifierForVendor.UUIDString 去 '-'（0x1167cc158）同样切片用 `'Y%@%@%@'`（0x11d3fc750）。接受门 `+[BFCBuvid isValidTrackID:]` 0x1167cccfc：NSString+length>0+≠32 位十六进制黑名单常量（0x11d3fc7b0）+≠'Z'+35 个'0'（0x11d3fc7d0），不查长度；过门才 `setTrackID:`（0x1167cc2c0）+ main 队列 block 0x1167cc38c 写 Keychain('buvid')。IDFV 也无效的兜底 = `'%ld'`×(timeIntervalSince1970×1e6)（常量 0x1182ebd00，0x1167cc314/0x1167cc318），**只写内存缓存 0x120e71228（0x1167cc348），不落 prefs/Keychain，重启即重走生成**。缓存经 dispatch_once 0x120e71230。 |
 | 5) 签名与编码规则 | 不适用。Keychain 排在 IDFA/IDFV 之前，因此重装后来源只可能是 Keychain 或重新生成。 |
 | 6) 响应结构 | 不适用。 |
-| 7) 与 NeoBili 当前实现的差异 | `AppBuvid` 的新生成路径采用自身 IDFV 的 Y 分支，读取既有偏好/Keychain 并保留旧编号和 Debug 实验覆盖值；没有请求 IDFA 授权，IDFV 缺失用进程内时间兜底。官方 IDFA 分支及首次生成的现版行为未做真机验收。 |
+| 7) 与 NeoBili 当前实现的差异 | 普通应用由 App 组装层优先选择用户保存的 BUVID；留空时使用持久随机编号，启动后固定。底层 `AppBuvid` 保留偏好/Keychain、IDFV 的 Y 分支和进程内兜底供诊断与隔离测试使用；既有编号缓存保留。详见[设备编号设置](../../SETTINGS.md#设备编号)。 |
 | 8) 证据等级与版本 | 8.89 静态（0x1167cbe68 及取值链地址）；当前源码；另有既有样本 36 字符 Y/Z 值符合结构的形状证据。 |
 | 9) 残余不确定项 | 底层查询与删除已静态闭合：BFCKeychain→UICKeyChainStore，generic-password/service、可选accessGroup、account键，SecItemCopyMatching同步读取、-25300返回nil；clearAll/removeItem→SecItemDelete，成功或-25300为true。所选wrapper没有自行切队列，BUVID调用方另调main队列不等于全部Keychain操作都主线程。实际重装保留、entitlement及OS返回值属于运行边界（root-static-session/device-boundaries.md）。 |
 
@@ -30,9 +30,8 @@
 结构；这是线级形状证据，不证明 9.13 的首次生成函数与 8.89 完全相同。原值留在仓库外。
 [Apple 的 IDFV 文档](https://developer.apple.com/documentation/uikit/uidevice/identifierforvendor)
 说明同一设备上不同厂商应用的 IDFV 不同，开发安装的厂商判定涉及 bundle ID。
-NeoBili 自身 IDFV 的 Y 分支只对齐生成格式，不能据此取得官方 App 的身份或推荐状态。
-自身编号与官方编号的推荐差异不能单独归因于算法错误；当前版本来源、持久化历史与
-服务端对具体编号的关联仍需分别核验。
+NeoBili 保留该 IDFV 生成函数供诊断使用；普通应用的随机/自定义选择见 DEV-01。
+不同编号的来源、持久化历史和服务端关联分别记录，推荐效果通过有条件的运行对照观察。
 
 ### DEV-02 设备资料登记（54 项指纹 payload）
 
@@ -72,7 +71,7 @@ NeoBili 自身 IDFV 的 Y 分支只对齐生成格式，不能据此取得官方
 | 4) 参数及来源 | refresh：旧 `refresh_token`/`access_key`、`sts`、`local_id`/`buvid`（跟踪 BUVID）、`bili_local_id`（localBUVID）、`device_id`（currentBUVID）、`device_name`/`device_platform`；**该 builder 没有 `device_meta` 或 extendedFields 合并**。时间请求返回 0 时把 sts 改为 -1，否则沿用返回整数。confirm：旧 cookie 对应 mid/session、旧 token、`revoke_api=REFRESH_CONFIRM_REVOKE`、sts 及上述设备字段；缺失字符串退空。 |
 | 5) 签名与编码规则 | 已追到 BFCAccountApi `_request` 0x116046064：sdk_ver=0.1.15、apiKeySecretType=1；BFCApiRequest `_queryString` 0x116097308 在原生通道选 passportKey，业务参数覆盖公共参数后调用 createSign。signType 默认为 0（BFCApiOptions init 未赋值），编码显式转义 `!*'()`；Ktor 运行时分支不由该证据覆盖。 |
 | 6) 响应结构 | refresh 响应 0x1160533dc：transport/非零业务码失败不保存；code=0 解码 SSO 后没有额外模型有效性检查。新 mid 与当前 mid 相同才刷新当前 cookies；cookie 回调忽略其 error，更新 SSO(type=1) 后发 confirm 并返回成功。其他 mid 仅更新对应已保存账号，不刷新当前 cookies。`validateTokenRealWithSSOModel` 回调：transport/API 错误返回 needRefresh=false；业务 61000 只有被校验模型 mid 与当前账号 mid 相同时才调用退出；code=0 仅检验返回 mid/expires_in 非零，未拒绝负值或比较新旧 mid。 |
-| 7) 与 NeoBili 当前实现的差异 | 已接入 `AppLoginRenewal`：启动/前台恢复按需 info，refresh=true 才取时间并 POST refresh，账号一致且新 token/Cookie/refresh token 完整才保存，然后用旧 SSO confirm。SMS 和安全验证兑换解析 refresh_token/expires_in；`DeviceIdentity` 将完整凭据放入单个 Keychain 记录并回读确认，重启优先读该记录。同账号续期不改变播放/行为的登录代际；换号/退出取消并拒绝迟到结果。成功检查间隔 30 分钟、失败冷却 60 秒是本地低资源策略，无定时器；61000 标记 App 授权失效并通知设置页开放短信补授权，不擅自删除 Cookie。旧安装未保存 refresh token，需短信重登或同账号补授权后才能自动续期。 |
+| 7) 与 NeoBili 当前实现的差异 | 已接入 `AppLoginRenewal`：启动/前台恢复按需 info，refresh=true 才取时间并 POST refresh，账号一致且新 token/Cookie/refresh token 完整才保存，然后用旧 SSO confirm。SMS 和安全验证兑换解析 refresh_token/expires_in；`DeviceIdentity` 将完整凭据放入单个 Keychain 记录并回读确认，重启优先读该记录。同账号续期不改变播放/行为的登录代际；换号/退出取消并拒绝迟到结果。普通成功检查间隔 30 分钟、失败冷却 60 秒，显式前台激活绕过成功缓存；无定时器；61000 标记 App 授权失效并通知设置页开放短信补授权，不擅自删除 Cookie。旧安装未保存 refresh token，需短信重登或同账号补授权后才能自动续期。 |
 | 8) 证据等级与版本 | 8.89 静态（builder 0x116047d98、refresh 0x116052f78、callback 0x1160533dc/0x116053734、confirm 0x116051660/0x1160488d4、validate 0x1160521b8）；当前源码（grep 结论）。 |
 | 9) 残余不确定项 | 给定可见链已证validate info响应提供refresh Bool，回调0x116051eb4/eb8据此是否调用refresh；expires_in非零校验/保存不等于本地提前N秒比较。operation.autoRefresh只选validateAndRefresh或validate。撤回“本地阈值在此比较链内”前提（root-static-remaining/findings.md）；三个定位caller已全文核：HD2/PhoneBus无条件validate后update、MineVM avatarUserId0且hasLogined才validate，所选callbacks无expiry/time阈值；不推全应用间接路径，服务器如何给refresh与9.13实效另验。 |
 
@@ -123,7 +122,7 @@ Cookie 交接 0x11604edf4：官方遍历响应 cookie_info 的 domains/cookies�
 | 4) 参数及来源 | 单撤销 12 项：mid/access_key/refresh_token/session/revoke_api/revoke_type/local_id/bili_local_id/device_id/buvid/device_name/device_platform；批量另加 `need_delete_account_info`（保存账号 revokes JSON）、`is_self_revoke`、`device_tourist_id`，共 15 项。 |
 | 5) 签名与编码规则 | 未在主文档记录。 |
 | 6) 响应结构 | 请求回调 0x11604c3b0/3b4 都为空：发起网络后立即 dispatch 本地 cleanup，再 `completion(true,nil)`，**不等待 transport/API 结果、不因失败回滚**。本地成功不能证明服务端撤销成功。logout 的主队列 block（0x11604c3b8）清 SSO/Cookie/用户与快速登录资料并发出账号通知；该函数体没有直接清 guest 或 BUVID。通知分派 0x11605e2d8 把原始值 1/2/4/8 映射到 accountDidLogin/Logout/Update/Change。`AccountNotiInfoModule.logout`（0x104c6b418）调 `cleanAllApiCache`；`update`为RET，`login`经40c thunk→2a0更新服务userID（SSO mid nil→0），非空；`change` 清 cache 并更新 Bugly userID。 |
-| 7) 与 NeoBili 当前实现的差异 | NeoBili 账号退出路径见 `BiliPassport.swift`/`DeviceIdentity`；NeoBili 在换登录时刷新公共 session（[DeviceIdentity.swift](../../../NeoBili/Data/Networking/Identity/DeviceIdentity.swift)），是自身隔离策略，不是官方行为的复刻（review R16）。 |
+| 7) 与 NeoBili 当前实现的差异 | 账号退出由 `AccountStore` 经会话服务调用 `DeviceIdentity.clearLoginCookies`，清理本地凭据并更新登录/行为代际，触发页面及队列失效。当前没有调用官方单条或批量 revoke；旧扫码/密码协议没有生产入口。 |
 | 8) 证据等级与版本 | 8.89 静态（0x11604b964、0x1160481d0、0x11604c3b0/3b4、0x11604c3b8、0x104c6b418）；当前源码。 |
 | 9) 残余不确定项 | AccountNotiInfoModule logout104c6b418及change104c6b4c0调用cleanAllApiCache，update4bc为RET；login40c→bridge6a4→2a0读取SSO mid（nil→0），转String给BFCTrackerService.updateUserIdentifier:，非空实现（typed keypath已核）。静态superclass metadata已解析BFCApiCacheKVDB→FMKVDatabase，clearDB→FMDatabaseQueue dispatch_sync→DELETE FROM T_KVTTable；旧类解析必须运行期说法撤回。仅该API缓存表，不证明清guest/BUVID/Keychain/defaults；SQL实际成功、服务器revoke结果另需运行期（root-static-session/device-boundaries.md）。 |
 
@@ -165,7 +164,7 @@ Cookie 交接 0x11604edf4：官方遍历响应 cookie_info 的 domains/cookies�
 | 4) 参数及来源 | 无业务参数（`params` 为公共层默认）。 |
 | 5) 签名与编码规则 | 公共层签名；响应为 JSON。 |
 | 6) 响应结构 | 回执在 `+[BFCAccountRSA requestRSA:]` 的 block 0x11605b70c：`code != 0` → `NSError`（nonZero 域 + message）；`code == 0` → 取 `data.key`（0x11605b880，非 NSString 门则空串）写入 `rsa + 0x8`、`data.hash`（0x11605b8f4）写 `+0x10`，随后 `completion(nil, rsa)`（0x11605b960）。**本文不记录该接口返回的密钥内容。** |
-| 7) 与 NeoBili 当前实现的差异 | 本轮未做差异判定；NeoBili 访客流程是否走同一公钥接口属 DEV-03 差异面。 |
+| 7) 与 NeoBili 当前实现的差异 | `AppGuestRegistration` 在缺少有效访客编号时先 GET `x/passport-login/web/key`，解析公钥后进行自身 guest_info 加密和登记；成功结果按设备作用域缓存。 |
 | 8) 证据等级与版本 | 8.89 静态（上列全部地址）；`DerivedData/Validation/team-c24/findings.md`（task-28）。 |
 | 9) 残余不确定项 | 返回hash有明确消费者：encrypt:options11605b9c4仅options bit0真时把hash插入明文首部，再CRSA.encrypt；默认encrypt:传0。密码登录及tourist devicePassword所选caller传1；访客dt所选11605b108调用默认encrypt:，不前插hash。不推广所有alias；实际返回key/hash、轮换/文件与加密失败及9.13适用性仍需另验（root-static-session/device-boundaries.md）。 |
 
@@ -207,7 +206,7 @@ Cookie 交接 0x11604edf4：官方遍历响应 cookie_info 的 domains/cookies�
 | 4) 参数及来源 | `Context.generateMutableDictForEvent`（0x114885bcc）输出 session、start_ts、video_duration、total_time、played_time、paused_time、actual_played_time、list_play_time、miniplayer_play_time、last_play_progress_time、max_play_progress_time、quality、is_auto_qn。`MetaInfo.generateDict`（0x114886d4c）再输出 mid/aid/cid/sid/epid/type/play_type/sub_type/play_mode/network_type/auto_play/epid_status/play_status/user_status 以及 from/spmid/from_spmid/track_id/sessionID；字符串 from/spmid/from_spmid 缺失填 `default-value`，track_id/sessionID 缺失填空；`attached_avid` 受 `playerDefaultQueue` 分支控制；`cur_language`/`perfer_type` 有空格串兜底（是原字面拼写）。`generateExtDictForEvent`（0x114886290）生成内部 `isStart`（开始 1、结束 0）与 `hash`（NSUUID.UUIDString，nil 时空字符串），hash 用于缓存匹配、发送前删除。计时：`updatePlayedTime`（0x114885674）`played_time` 加墙钟整数差，`actual_played_time` 用单精度 `delta × playbackRate + previousActual`（fmadd）后向零转整数；`updatePausedTime` 以相同墙钟基点累加 `paused_time`；`calculateTotalTime`（0x1148863a8）令 `total_time = played_time + paused_time`。 |
 | 5) 签名与编码规则 | 同 FEED-01 的公共签名层。会话 ID 生成：`Context.setupSession`（0x1148859c8）优先采用 `metaInfo.sessionID` 非空字符串，否则 `BBPlayerSessionManager.createSessionID`（0x11487f6b8）：`BFCBuvid.buvid` 与 `NSNumber(double(Date.timeIntervalSince1970 ×1000))` 用 `%@%@` 拼接，取 `bfc_md5String` 再 lowercaseString；结果是小写 MD5 形状，不是 UUID，也未看到随机数。`NSNumber` 文本格式已闭合到指令（0x11487f700–0x117409820）。 |
 | 6) 响应结构 | completionHandler 从映射的 `/data` 取 `ts` 并记成功；errorHandler 另有“response 是 HTTP 对象且 statusCode=200”时也记成功的分支，其他情况记录错误 code。因此不能把 `BFCApiRequest` 的 error callback 一律当本队列失败。服务端 ts 反馈：`reportTrigger`（0x114888230）的同步 `postApiWith` 成功后，仅 snapshot index0 且 `apiCallback` 非 nil 时把 serverTs 排到 main（0x11488843c/0x114888484/0x114888494），block 0x114888560 调捕获 callback；`Context.reportEvent`（0x1148866e0）安装的 callback 0x114886910 弱取原 context，非 nil 就写 `start_ts`（实例 +0x50，0x11488692c）——**没有 captured session/hash/current start 比较，也没有 ts>0 门禁**；每次调用 `postApiWith` 前先把 serverTs out 初始化 0（0x11488836c），HTTP200 错误分支也可判成功。发送与缓存：`reportWith`（0x114887940）把非空 item 加入内存，`syncToFileCacheImmediately=true` 时同步文件后退出该入口，false 时仅在 `reachability.currentStatus` 非零时触发发送；`syncFileCache` 用 NSKeyedArchiver 归档到系统目录、文件名 `heartbeat.v2.cache`/`heartbeat.v2.cache.copy`；`reportTrigger` 逐条同步调用 `postApiWith`，失败最多再试两次（先 sleep(5) 再 sleep(10)，即每轮至多三次尝试，发生在串行 API 队列），成功后按 item.hash 匹配移除内存项。`loadCachedReportItems`（0x114888570）检查文件存在/NSData 非空后 unarchive，**未读取当前时间、item 年龄或账号**；`loadFileCache` 的排队 block 0x114887854 直接 `addObjectsFromArray` 到 memCache，没有按 TTL/账号过滤。恢复发起方：`BBPlayerCoreModule.onModuleInitializedConfig`（0x1147ddd4c）取 sharedManager 再 `loadFileCache`，位于后续 `hasLogined` 检查之前。 |
-| 7) 与 NeoBili 当前实现的差异 | NeoBili 在 `reportAppWatch` 用 `postApp(path:"x/report/heartbeat/mobile")`（[BiliAPI+History.swift](../../../NeoBili/Data/Networking/Endpoints/BiliAPI+History.swift)），参数由 `AppWatchProtocol.mobileParameters`（[AppWatchProtocol.swift](../../../NeoBili/Data/Networking/Reporting/AppWatchProtocol.swift)）生成：`played_time` 取真实观看墙钟时长，`actual_played_time` 独立按倍率分段累计；`last_play_progress_time` 与 `max_play_progress_time` 分开；`start_ts` 先取本地秒，起播回执由 sender 按播放 session 校正；历史保留本地起播值。发送层只在内存排队、按账号/视频/分P 串行、失败不恢复队列、无文件缓存与后台 stash（review R17）。 |
+| 7) 与 NeoBili 当前实现的差异 | `BiliAPI.reportAppWatch` 使用 `AppWatchProtocol.mobileParameters`。`played_time` 为真实观看时长，`actual_played_time` 按倍率分段累计，当前位置和最大位置分别保存。开始 `start_ts=0`，发送器按播放 session 采用有效起播响应 `data.ts` 更新后续移动报告；历史保持本地起播时间。观看发送器只在内存排队，失败不恢复；曝光和播放器行为使用另一条持久队列（R12/R17）。 |
 | 8) 证据等级与版本 | 8.89 静态（上列全部地址）；当前源码。9.13 同链未验收。 |
 | 9) 残余不确定项 | metaInfo已有具体UGC/OGV/inline/迁移赋值链复用，不把泛“其余”当天然不可静态判。reportTrigger成功后用captured hash→removeMemCacheWith：锁内选首个hash相等字典，NSMutableArray.removeObject按对象相等移除，无session/视频/account二次区分；不能称正好删除一个重复或证明真实碰撞发生。实际频率/交错、9.13及未识别全业务builder属于有限覆盖之外（root-static-exposure/final-feed-heartbeat-tail.md）。 |
 

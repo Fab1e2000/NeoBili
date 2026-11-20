@@ -8,8 +8,8 @@ enum AppRecommendationProtocol {
     /// 游标和刷新标记属于分页协议；客户端参数与登录、反馈共用 iPhone 身份。
     static func parameters(for request: RecommendationRequest, display: AppRecommendationDisplay? = nil, openEvent: String = "", bannerHash: String = "", network: String = "") -> [String: String] {
         let pull = request.pageIndex == 0
-        // 官方 iPhone 抓包：首次 0、刷新 6、翻页 8；pull 使用数字布尔值。
-        // 固定项采用用户确认的策略；启动、横幅与游标按自身状态生成。
+        // 基础规则为首次 0、刷新 6、翻页 8；下方国际版覆盖将手动刷新改为 14。
+        // 启动、横幅与游标来自自身状态，pull 使用数字布尔值。
         var params = AppClientIdentity.parameters.merging([
             "actionKey": "appkey", "device_name": AppClientIdentity.deviceName, "c_locale": "zh-Hans_CN", "s_locale": "zh-Hans_CN", "column": "4",
             "disable_rcmd": "0", "flush": pull ? (request.isLayoutChange ? "2" : (request.isRefresh ? "6" : "0")) : "8",

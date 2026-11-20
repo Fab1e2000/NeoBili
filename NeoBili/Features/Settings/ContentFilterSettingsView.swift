@@ -17,7 +17,6 @@ struct ContentFilterSettingsView: View {
                 Text("画幅")
             }
             Section {
-                // 原来是 1 分钟一档的步进器，想设到 10 分钟要连点十次；改为常用档位。
                 Picker("最短视频时长", selection: $durationFilter.minimumMinutes) {
                     ForEach(durationOptions, id: \.self) { minutes in
                         Text(minutes == 0 ? String(localized: "不限制") : String(localized: "\(minutes) 分钟")).tag(minutes)

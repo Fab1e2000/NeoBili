@@ -44,12 +44,33 @@ public struct FavFolder: Decodable, Identifiable, Hashable, Sendable {
     /// 查询时带上 `rid`（稿件 avid）才有这个字段：1 表示这个收藏夹里已经有该视频。
     /// 收藏夹选择弹窗据此决定哪几项默认打勾。
     public let favState: Int?
+    /// 收藏夹属性。bit 1（值为 2）未设置时是默认收藏夹，不能删除，也不能改顺序。
+    public let attr: Int?
+    /// 列表接口有时带封面。没有或为空时收藏页改用文件夹图标。
+    public let cover: String?
 
     /// 这个收藏夹当前是否已收藏了所查询的视频。
     public var containsQueriedVideo: Bool { favState == 1 }
 
+    public var secureCoverURL: URL? { cover.flatMap(URL.biliSecure) }
+
+    /// 缺省 `attr` 时不当成默认收藏夹，避免旧响应把可删除的收藏夹藏起来。
+    public var isDefaultFolder: Bool {
+        guard let attr else { return false }
+        return attr & 2 == 0
+    }
+
+    public init(id: Int, title: String, mediaCount: Int, favState: Int? = nil, attr: Int? = nil, cover: String? = nil) {
+        self.id = id
+        self.title = title
+        self.mediaCount = mediaCount
+        self.favState = favState
+        self.attr = attr
+        self.cover = cover
+    }
+
     enum CodingKeys: String, CodingKey {
-        case id, title
+        case id, title, attr, cover
         case mediaCount = "media_count"
         case favState = "fav_state"
     }
@@ -132,8 +153,7 @@ public struct FavMedia: Decodable, Identifiable, Hashable, Sendable, VideoDimens
 // MARK: - 历史（x/web-interface/history/cursor）
 
 public struct HistoryCursorPage: Decodable, Sendable {
-    /// 大坑：文档写的是 `items`，实际接口返回的键名是 `list`
-    /// （PiliPlus 也是按 `list` 解析的）。两个键都解，谁在用谁。
+    /// 历史列表优先读取 list，并兼容 items。
     public let items: [HistoryItem]?
     public let list: [HistoryItem]?
     public let cursor: Cursor?
@@ -197,7 +217,7 @@ public struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDim
 
     public var id: String { "\(history.business ?? "?")-\(history.oid ?? 0)" }
 
-    /// 有的条目 title 是「已清空的稿件」之类的占位文本，真正标题在 long_title。
+    /// title 为空时使用 longTitle。
     public var displayTitle: String {
         let fallback = longTitle ?? ""
         return title.isEmpty ? fallback : title
@@ -206,12 +226,7 @@ public struct HistoryItem: Decodable, Identifiable, Hashable, Sendable, VideoDim
     /// 只展示普通视频稿件（business == "archive"）；直播/专栏等打不开详情页。
     public var isVideo: Bool { history.business == "archive" && history.bvid?.isEmpty == false }
 
-    /// 删除单条历史用的 kid 字符串：优先用接口直接给的值，
-    /// 缺失时按 `<type>_<oid>` 自行拼接（archive 的 type 是 3）。
-    /// 删除历史时要传的 kid。
-    ///
-    /// 格式是「业务名_条目号」，例如 `archive_114514`——普通视频的业务名就是
-    /// `archive`。之前传的是裸数字（或者拿 `type` 当前缀），接口一律回 -400。
+    /// 删除历史的 kid 格式为「业务名_条目号」；条目号优先使用 kid，缺失时使用 history.oid。
     public var kidParam: String {
         let business = history.business ?? "archive"
         return "\(business)_\(kid ?? history.oid ?? 0)"

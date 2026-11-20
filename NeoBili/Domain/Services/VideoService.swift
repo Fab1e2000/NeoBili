@@ -1,7 +1,5 @@
 import Foundation
 
-/// Video operations available to application state and views.
-/// Values can be replaced per model or view hierarchy without changing global state.
 public struct VideoService: Sendable {
     public var storyboardOperation: @Sendable (String, Int) async throws -> VideoStoryboard = { _, _ in throw ServiceError.unconfigured("Video.storyboard") }
     public func storyboard(bvid: String, cid: Int) async throws -> VideoStoryboard { try await storyboardOperation(bvid, cid) }

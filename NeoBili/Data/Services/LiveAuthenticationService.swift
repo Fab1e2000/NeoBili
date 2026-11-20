@@ -7,28 +7,7 @@ extension AuthenticationService {
 
     public static func live(session: URLSession, identity: DeviceIdentity) -> Self {
         let transport = SMSPassport.liveTransport(session: session, identity: identity)
-        return Self(encryptPassword: { try PasswordCipher.encryptedPassword($0, salt: $1, publicKeyPEM: $2) },
-            generateQRCodeOperation: {
-                try await BiliPassport.generateQRCode(session: session)
-            },
-            pollQRCodeOperation: { qrcodeKey in
-                try await BiliPassport.pollQRCode(qrcodeKey, session: session)
-            },
-            generateAppQRCodeOperation: {
-                try await BiliPassport.generateAppQRCode(session: session)
-            },
-            pollAppQRCodeOperation: { authCode, fallbackCookies in
-                try await BiliPassport.pollAppQRCode(authCode, fallbackCookies: fallbackCookies, session: session)
-            },
-            webKeyOperation: {
-                try await BiliPassport.webKey(session: session)
-            },
-            captchaOperation: {
-                try await BiliPassport.captcha(session: session)
-            },
-            passwordLoginOperation: { username, passwordEncrypted, captchaToken, challenge, validate, seccode in
-                try await BiliPassport.passwordLogin(username: username, passwordEncrypted: passwordEncrypted, captchaToken: captchaToken, challenge: challenge, validate: validate, seccode: seccode, session: session)
-            },
+        return Self(
             prepareOperation: {
                 try await SMSPassport.prepare(identity: identity)
             },

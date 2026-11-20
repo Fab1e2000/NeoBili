@@ -20,7 +20,7 @@ final class HomeFeedNavigationBarTests: XCTestCase {
                 HomeFeedCollection(rows: rows, viewModel: viewModel, hidesPortraitVideos: false, isRefreshing: false,
                                    isInteractionEnabled: true, refreshDistance: 100,
                                    controller: controller, onRefresh: {}, onOpenLastSeen: {},
-                                   pinsTitleBar: true, safeInsets: safeInsets)
+                                   safeInsets: safeInsets)
                     .ignoresSafeArea()
                     .onGeometryChange(for: EdgeInsets.self, of: \.safeAreaInsets) { safeInsets = $0 }
                     .rootPageChrome(title: "推荐")
@@ -60,6 +60,9 @@ final class HomeFeedNavigationBarTests: XCTestCase {
             return view.subviews.lazy.compactMap { collection(in: $0) }.first
         }
         let feed = try XCTUnwrap(collection(in: host.view))
+        let source = try XCTUnwrap(feed.dataSource as? UICollectionViewDiffableDataSource<HomeFeedCollection.Section, String>)
+        XCTAssertEqual(source.snapshot().itemIdentifiers.first, HomeFeedItem.video(videos[0]).id)
+        XCTAssertFalse(feed.topEdgeEffect.isHidden)
         let top = -feed.adjustedContentInset.top
         let indicator = try await ScrollIndicatorSnapshot.frame(in: feed, window: window)
         XCTAssertEqual(indicator.minY, feed.verticalScrollIndicatorInsets.top + 3, accuracy: 1,

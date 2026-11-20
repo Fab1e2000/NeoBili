@@ -190,14 +190,6 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
     }
 }
 
-/// Positive travel collapses the header; negative travel expands only at the list top.
-enum VideoScrollHandoff {
-    static func playerDelta(_ delta: CGFloat, offset: CGFloat, minimum: CGFloat) -> CGFloat {
-        guard delta.isFinite, offset.isFinite, minimum.isFinite else { return 0 }
-        return delta < 0 ? min(0, delta + max(0, offset - minimum)) : delta
-    }
-}
-
 /// Fixed list canvas inside a persistent native viewport. UIKit rejects touches
 /// outside the visible bounds even on runtimes where SwiftUI clipping only draws.
 struct VideoScrollCanvas<Content: View>: View {

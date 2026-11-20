@@ -10,12 +10,6 @@ import UIKit
 /// Official 8.89 local branch: prefix plus three characters plus 32 UUID digits.
 /// Existing persisted identities are never regenerated during an upgrade.
 public enum AppBuvid {
-    typealias Mode = DeviceIdentityPreferences.Mode
-    static let modeKey = DeviceIdentityPreferences.modeKey
-    static let launchMode = DeviceIdentityPreferences.launchMode
-    static func selectedMode(defaults: UserDefaults) -> Mode { DeviceIdentityPreferences.selectedMode(defaults: defaults) }
-    static var randomExperimentEnabled: Bool { DeviceIdentityPreferences.randomExperimentEnabled }
-
     static func randomExperimentIdentifier(defaults: UserDefaults, credentials: CredentialStorage) -> String {
         let key = "neobili.experiment.randomBuvid.v1"
         if let value = defaults.string(forKey: key), !value.isEmpty { return value }

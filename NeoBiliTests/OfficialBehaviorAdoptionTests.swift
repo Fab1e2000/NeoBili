@@ -110,36 +110,6 @@ final class OfficialBehaviorAdoptionTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "neobili.appBuvid"), chosen)
     }
 
-    func testDeviceModePreferenceAppliesOnlyToNewIdentity() async throws {
-        let suite = "device-mode.\(UUID())"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        XCTAssertEqual(AppBuvid.selectedMode(defaults: defaults), .system)
-        defaults.set("invalid", forKey: AppBuvid.modeKey)
-        XCTAssertEqual(AppBuvid.selectedMode(defaults: defaults), .system)
-        defaults.set("system", forKey: AppBuvid.modeKey)
-        defaults.set("original", forKey: "neobili.appBuvid")
-        let credentials = CredentialStorage.memory()
-        let active = DeviceIdentity(defaults: defaults,
-            randomBuvidExperiment: AppBuvid.selectedMode(defaults: defaults) == .random,
-            credentials: credentials, allowsNetwork: false)
-        defaults.set("random", forKey: AppBuvid.modeKey)
-        XCTAssertEqual(AppBuvid.selectedMode(defaults: defaults), .random)
-        let unchanged = await active.appBuvid()
-        XCTAssertEqual(unchanged, "original", "Changing settings must not change in-flight identity")
-        let restarted = DeviceIdentity(defaults: defaults,
-            randomBuvidExperiment: AppBuvid.selectedMode(defaults: defaults) == .random,
-            credentials: credentials, allowsNetwork: false)
-        let random = await restarted.appBuvid()
-        XCTAssertNotEqual(random, unchanged)
-        defaults.set("system", forKey: AppBuvid.modeKey)
-        let restored = DeviceIdentity(defaults: defaults,
-            randomBuvidExperiment: AppBuvid.selectedMode(defaults: defaults) == .random,
-            credentials: credentials, allowsNetwork: false)
-        let original = await restored.appBuvid()
-        XCTAssertEqual(original, unchanged)
-    }
-
     func testRandomBuvidExperimentIsStableAndPreservesNormalIdentity() async throws {
         let suite = "random-buvid.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

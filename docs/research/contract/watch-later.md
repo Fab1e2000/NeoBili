@@ -16,7 +16,7 @@
 | 4) 参数及来源 | 未在主文档逐项列出（字段来源与主文档“稍后再看”章节的 builder 一致）。 |
 | 5) 签名与编码规则 | 未在主文档记录。 |
 | 6) 响应结构 | 未在主文档逐项列出。 |
-| 7) 与 NeoBili 当前实现的差异 | NeoBili 用旧网页 `x/v2/history/toview/add`、`x/v2/history/toview`、`x/v2/history/toview/del`（[BiliAPI+WatchLater.swift](../../../NeoBili/Data/Networking/Endpoints/BiliAPI+WatchLater.swift)），当前列表一次读取、无 v2 分页（review“关联业务边界：稍后再看”）。add/remove 先读 csrf，`APIClient` 随后另取 Cookie 快照，未传 `expectedSessionID`；删除在确认后检查账号一次，但成功移除/失败恢复及添加提示没有再次绑定账号代际。 |
+| 7) 与 NeoBili 当前实现的差异 | 添加沿用网页 `x/v2/history/toview/add`，删除沿用 `/del` 并传入 expectedSessionID；旧 list 方法保留。生产列表使用 App v2 分页，`WatchLaterModel` 持有账号/请求代次、去重、撤销及部分删除失败恢复。添加接口仍先读 CSRF 再由 APIClient 获取 Cookie 快照，未显式传入 expectedSessionID。 |
 | 8) 证据等级与版本 | 8.89 静态（0x10f53eb00/0x10f53edcc/0x10f53f190/0x10f53f190、0x10434e60c）；当前源码。 |
 | 9) 残余不确定项 | 10434e60c/ea0c builder及104353ef0/f7c response已raw核：aid/resources caller Int64/字符串逗号，spmid、版本v2，可选from仅非nil才numberFromWithTrace且nil结果省略；Model isEnabled/iconStyle0与既有mapper一致。batch103710ad8→104353994只是转发，实际资源producer上游仍精准追；不从nearest析构标签归业务owner。UI snackbar/账号写入实际交错另验（root-static-remaining/findings.md）。 |
 

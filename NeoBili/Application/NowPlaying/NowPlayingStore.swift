@@ -4,10 +4,14 @@ import NeoBiliDomain
 import Foundation
 import SwiftUI
 
-/// 当前视频及其视频页状态。
-///
-/// 播放器由根视图持有，视频页和底部播放条共享状态；退出视频页持续播放，
-/// 只有显式关闭或打开另一媒体时才释放播放器。
+/// 评论列表滚动偏移的非观察盒子，见 `NowPlayingStore.commentScrollBox`。
+@MainActor
+final class CommentScrollBox {
+    var offset: CGFloat = 0
+}
+
+/// 视频、直播及详情页面的持久状态。
+/// 开启缩略播放器时，退出详情后继续播放；关闭时在退出转场完成后释放。
 @MainActor
 @Observable
 final class NowPlayingStore {
@@ -17,7 +21,7 @@ final class NowPlayingStore {
         VideoPlaybackConfiguration.current
     }
 
-    /// 当前视频。为 nil 表示当前没有打开的视频页。
+    /// 当前点播路由；收起到缩略播放器时仍保留。直播使用 livePlayer。
     private(set) var route: VideoDetailRoute?
     private(set) var detailViewModel: VideoDetailViewModel?
     private(set) var commentsViewModel: CommentsViewModel?
@@ -82,16 +86,16 @@ final class NowPlayingStore {
     private(set) var isVideoPageInteractionInProgress = false
     private(set) var dismissalPlaybackPhase: InlineVideoPlaybackPhase?
 
-    /// 视频下方停在简介还是评论。
     var section: VideoPageSection = .description
-    /// 简介是否已经展开。
     var isDescriptionExpanded = false
-    /// 当前选中的分P。
     private(set) var selectedCid: Int?
 
     /// 两个列表各自的滚动位置，切换视频页内容时回到原处。
     var descriptionScroll = VideoDescriptionScrollState()
     var commentsScroll = ScrollPosition(edge: .top)
+    /// 评论集合视图的实际滚动偏移。逐帧写入，放在不参与观察的盒子里，
+    /// 避免滚动本身触发整页 body 重算。
+    @ObservationIgnored let commentScrollBox = CommentScrollBox()
 
     static let miniPlayerTransitionSourceID = "neobili.mini-player"
 
@@ -224,7 +228,7 @@ final class NowPlayingStore {
         )
     }
 
-    /// 左上角返回：先在历史里逐级回退，退到底了退出视频页并继续在底部播放条播放。
+    /// 沿视频返回栈回退；到达栈底后按缩略播放器设置退出详情。
     func goBack() {
         if let previous = history.pop() {
             start(previous)
@@ -380,6 +384,7 @@ final class NowPlayingStore {
         isDescriptionExpanded = false
         descriptionScroll = VideoDescriptionScrollState()
         commentsScroll = ScrollPosition(edge: .top)
+        commentScrollBox.offset = 0
         commentsViewModel = nil
 
         let viewModel = detailModelFactory(newRoute)

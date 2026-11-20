@@ -1,6 +1,6 @@
 # 架构
 
-NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的服务器。“前后端解耦”在本项目中指：页面和业务状态依赖服务契约，网络、签名及存储实现通过适配器提供。值与服务契约由静态框架 `NeoBiliDomain` 编译，通用缓存、共享请求池与日期格式化由 `NeoBiliCore` 编译；两个模块均没有项目内依赖。网络、身份、签名、上报和媒体缓存由 `NeoBiliData` 编译，依赖 Domain 与 Core。其余层由 `NeoBili` App target 编译；App 组装 Data 适配器，Application / Features 只使用领域契约，其目录边界继续由检查脚本维护。
+NeoBili 是使用 SwiftUI、UIKit 和 MPVKit 的 iOS 客户端，没有单独部署的服务器。“前后端解耦”在本项目中指：页面和业务状态依赖服务契约，网络、签名及存储实现通过适配器提供。值与服务契约由静态框架 `NeoBiliDomain` 编译，通用缓存、共享请求池与日期格式化由 `NeoBiliCore` 编译；两个模块均没有项目内依赖。网络、身份、签名、上报和媒体缓存由 `NeoBiliData` 编译，依赖 Domain 与 Core。其余层由 `NeoBili` App target 编译；App 组装 Data 适配器，Application / Features 只使用领域契约，其目录边界继续由检查脚本维护。
 
 构建、测试和设备使用统一见[开发与测试](DEVELOPMENT.md)。
 
@@ -9,7 +9,7 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 | 目录 | 负责什么 | 不应放入什么 |
 | --- | --- | --- |
 | `App` | 启动、根路由、生产依赖组装 `ApplicationServices+Live` | 接口字段和响应解析 |
-| `Features` | SwiftUI 页面、交互和展示组件 | HTTP 请求、签名、凭据读取 |
+| `Features` | SwiftUI 页面、UIKit 列表、交互和展示组件 | HTTP 请求、签名、凭据读取 |
 | `Application` | 页面状态、加载任务、分页、缓存及播放协调 | URLSession、接口地址和传输协议 |
 | `Domain/Services` | 按业务划分的可注入操作、账号快照、实时通道协议 | 生产客户端单例和网络实现 |
 | `Domain/Models` | 共享值、解码模型、筛选规则和设置值 | 页面类型、播放器实例、网络访问 |
@@ -22,6 +22,8 @@ NeoBili 是使用 SwiftUI 和 MPVKit 的 iOS 客户端，没有单独部署的�
 | `App/Diagnostics`、`Core/Diagnostics` | 显式启用的业务诊断/回放与通用滚动测量 | 默认后台探测 |
 
 通常的请求路径是：`View → Application model → Domain service → Data adapter → APIClient`。简单的一次性操作可以由 View 使用环境中的服务完成；分页、重试和长任务由状态模型持有。
+
+Domain 服务操作全部是 `@Sendable` 闭包（架构检查禁止 `*Operation` 标注 `@MainActor`）。网络会话、签名、JSON/Protobuf 解码，以及直播二进制帧的 zlib 解压、粘包拆分和消息 JSON 解析都在主线程之外执行；Application 只把结果写回页面状态。首页推荐等大列表的过滤与分组结果按列表、设置和元数据修订号记忆化，刷新淡入等无关状态变化不会重复全量扫描。
 
 编译模块依赖如下；Domain 与 Core 没有项目内依赖：
 

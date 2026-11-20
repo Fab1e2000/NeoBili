@@ -494,12 +494,7 @@ public actor DeviceIdentity {
         }
     }
 
-    /// 把系统共享 Cookie 罐里的 B 站 Cookie 也删掉。
-    ///
-    /// 登录接口的响应带着 `Set-Cookie`，URLSession 会顺手把它们存进
-    /// `HTTPCookieStorage.shared`。我们自己只清 Keychain 的话，共享罐里那份
-    /// SESSDATA 还在，退出登录就不彻底：界面已经是未登录，请求却仍可能带着
-    /// 旧会话出去，重新登录时新旧凭据还会撞在一起。
+    /// 清除共享 Cookie 罐里遗留的 B 站 Cookie；正常请求使用显式 Cookie 头。
     public static func purgeSharedCookieJar() {
         let storage = HTTPCookieStorage.shared
         for cookie in storage.cookies ?? [] where cookie.domain.contains("bilibili.com") {
@@ -516,8 +511,7 @@ public actor DeviceIdentity {
 
     private struct SPIResponse: Decodable {
         struct Data: Decodable {
-            /// 接口返回的键名是 `b_3` / `b_4`，不是 `b3` / `b4`。
-            /// 之前写错导致设备标识一直取不到，所有请求都在没有 buvid 的情况下发出。
+            /// SPI 响应的设备字段为 b_3 / b_4。
             let b3: String?
             let b4: String?
 

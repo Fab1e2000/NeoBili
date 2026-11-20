@@ -894,33 +894,12 @@
         }
       }
     },
-    "App 扫码授权" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "App authorization"
-          }
-        }
-      }
-    },
     "App 授权未完成，请到「设置 → 推荐流」使用验证码授权" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "App authorization is incomplete. Verify by SMS in Settings → Recommendations."
-          }
-        }
-      }
-    },
-    "App 授权未完成，请到「设置 → 推荐流」扫码授权" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "App authorization is incomplete. Scan to authorize in Settings → Recommendations."
           }
         }
       }
@@ -1235,17 +1214,6 @@
         }
       }
     },
-    "两种编号均在本机生成并保存。系统派生模式沿用原编号；随机模式首次生成后持续复用，不会每次刷新都更换。" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Both identities are generated and saved locally. System-derived mode keeps the original identity; random mode creates one identity and reuses it across refreshes."
-          }
-        }
-      }
-    },
     "主播" : {
       "localizations" : {
         "en" : {
@@ -1292,26 +1260,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Theme Preview"
-          }
-        }
-      }
-    },
-    "二维码已过期" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "QR code expired"
-          }
-        }
-      }
-    },
-    "二维码有效期约 3 分钟" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The QR code is valid for about 3 minutes"
           }
         }
       }
@@ -1388,16 +1336,6 @@
     },
     "保存" : {
 
-    },
-    "保存二维码" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Save QR Code"
-          }
-        }
-      }
     },
     "全屏" : {
       "localizations" : {
@@ -1810,17 +1748,6 @@
         }
       }
     },
-    "切换会配套切换设备登记与票据，账号登录保持不变。可切回原模式恢复原编号。推荐结果可能变化，此功能用于兼容性测试。" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Switching also switches device registration and tickets while retaining your login. Switch back to restore the original identity. Recommendations may change; this feature is for compatibility testing."
-          }
-        }
-      }
-    },
     "刚刚" : {
       "localizations" : {
         "en" : {
@@ -1863,16 +1790,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delete from History"
-          }
-        }
-      }
-    },
-    "刷新二维码" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Refresh QR Code"
           }
         }
       }
@@ -2542,22 +2459,12 @@
         }
       }
     },
-    "密码" : {
+    "设备登记数据加密失败" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Password"
-          }
-        }
-      }
-    },
-    "密码加密失败" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Couldn't encrypt the password"
+            "value" : "Couldn't encrypt the device registration data"
           }
         }
       }
@@ -2844,26 +2751,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Applied"
-          }
-        }
-      }
-    },
-    "已扫码，请在手机上确认" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scanned. Confirm on your phone"
-          }
-        }
-      }
-    },
-    "已扫码，请在手机上确认登录" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scanned. Confirm the sign-in on your phone"
           }
         }
       }
@@ -3513,16 +3400,6 @@
         }
       }
     },
-    "打开「哔哩哔哩」App 扫一扫" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scan with the Bilibili app"
-          }
-        }
-      }
-    },
     "打开个人页面" : {
       "localizations" : {
         "en" : {
@@ -3539,27 +3416,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open Live Room"
-          }
-        }
-      }
-    },
-    "扫码授权" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scan to authorize"
-          }
-        }
-      }
-    },
-    "扫码登录" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scan to Sign In"
           }
         }
       }
@@ -4445,16 +4301,6 @@
         }
       }
     },
-    "未能获取 App 登录凭据" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Couldn't get the App credential"
-          }
-        }
-      }
-    },
     "本地屏蔽名单" : {
       "localizations" : {
         "en" : {
@@ -5108,32 +4954,12 @@
         }
       }
     },
-    "用「哔哩哔哩」App 扫一扫登录。同一台手机：先保存二维码，再在 B 站 App 扫一扫里从相册选择。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scan with the Bilibili app to sign in. On the same phone, save the QR code first, then choose it from your photos in the Bilibili app scanner."
-          }
-        }
-      }
-    },
     "用于底部标签栏、自定义图标及自定义装饰。系统控件的文字和图标跟随浅色／深色外观。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Used for the tab bar, custom icons and accents. System controls follow the light or dark appearance."
-          }
-        }
-      }
-    },
-    "用户名 / 手机号 / 邮箱" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Username / Phone / Email"
           }
         }
       }
@@ -5188,12 +5014,12 @@
         }
       }
     },
-    "登录公钥格式异常" : {
+    "设备登记公钥格式异常" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Invalid sign-in public key"
+            "value" : "Invalid device registration public key"
           }
         }
       }
@@ -5244,16 +5070,6 @@
     "登录已失效，请重新登录。" : {
 
     },
-    "登录成功" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Signed in"
-          }
-        }
-      }
-    },
     "登录成功但未收到凭据" : {
       "localizations" : {
         "en" : {
@@ -5270,16 +5086,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unexpected response from the sign-in service"
-          }
-        }
-      }
-    },
-    "登录服务异常" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sign-in service error"
           }
         }
       }
@@ -5581,16 +5387,6 @@
         }
       }
     },
-    "确认登录失败" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Couldn't confirm sign-in"
-          }
-        }
-      }
-    },
     "示例视频标题" : {
       "localizations" : {
         "en" : {
@@ -5852,16 +5648,6 @@
         }
       }
     },
-    "第三方客户端无法绕过 B 站的风控，登录时需要完成一次滑块验证；多次失败可能触发账号保护，请稍后再试。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Third-party clients can't bypass Bilibili's risk control, so signing in requires a slider check. Repeated failures may trigger account protection; please try again later."
-          }
-        }
-      }
-    },
     "简介" : {
       "localizations" : {
         "en" : {
@@ -5878,16 +5664,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Followers"
-          }
-        }
-      }
-    },
-    "系统派生编号" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "System-derived Identity"
           }
         }
       }
@@ -6247,17 +6023,6 @@
         }
       }
     },
-    "该操作需要 App 端登录凭据，请退出后用扫码方式重新登录" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This requires app sign-in credentials. Sign out and sign in again by scanning the QR code"
-          }
-        }
-      }
-    },
     "该时间点超出当前视频时长" : {
       "localizations" : {
         "en" : {
@@ -6294,17 +6059,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Language"
-          }
-        }
-      }
-    },
-    "请使用当前账号扫码授权" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scan with your currently signed-in account."
           }
         }
       }
@@ -6421,16 +6175,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account info hasn't synced. Please try again"
-          }
-        }
-      }
-    },
-    "账号密码登录" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sign In with Password"
           }
         }
       }
@@ -7011,16 +6755,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hide Portrait Videos"
-          }
-        }
-      }
-    },
-    "随机编号" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Random Identity"
           }
         }
       }

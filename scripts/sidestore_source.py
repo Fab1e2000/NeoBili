@@ -8,6 +8,7 @@ only works after the GitHub Release is public, so drafts must not be recorded.
 from pathlib import Path
 import argparse
 import json
+import plistlib
 import re
 import subprocess
 import sys
@@ -22,16 +23,21 @@ APP_DESCRIPTION = (
     "为 iPhone 打造的非官方哔哩哔哩客户端。使用 SwiftUI 和 MPVKit，"
     "在本机直接访问哔哩哔哩的公开服务。安装包只有 ad-hoc 签名，由 SideStore 用你自己的 Apple ID 重签。"
 )
-PERMISSIONS = [
-    {
-        "type": "background-audio",
-        "usageDescription": "在后台继续播放视频和直播。",
-    },
-    {
-        "type": "photos",
-        "usageDescription": "保存登录二维码到相册，便于在哔哩哔哩 App 的扫一扫里从相册识别登录。",
-    },
-]
+
+
+def release_permissions(tag):
+    result = subprocess.run(
+        ["git", "show", f"refs/tags/{tag}:NeoBili/Info.plist"], cwd=ROOT, capture_output=True,
+    )
+    if result.returncode:
+        raise ValueError(f"无法读取发布标签 {tag} 的 Info.plist")
+    info = plistlib.loads(result.stdout)
+    permissions = []
+    if "audio" in info.get("UIBackgroundModes", []):
+        permissions.append({"type": "background-audio", "usageDescription": "在后台继续播放视频和直播。"})
+    if photo_usage := info.get("NSPhotoLibraryAddUsageDescription"):
+        permissions.append({"type": "photos", "usageDescription": photo_usage})
+    return permissions
 
 
 def changelog(notes):
@@ -81,7 +87,7 @@ def build_source(tag, size, published_at, notes):
                 "tintColor": "FB7AB3",
                 "size": size,
                 "screenshotURLs": [],
-                "permissions": PERMISSIONS,
+                "permissions": release_permissions(tag),
                 "versions": [
                     {
                         "version": version,

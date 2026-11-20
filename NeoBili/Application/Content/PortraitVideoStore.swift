@@ -7,9 +7,7 @@ import Observation
 /// 全列表共用的画幅判断。详情沿用播放预取的请求合并，过滤本身不请求播放地址。
 @MainActor @Observable
 final class PortraitVideoStore {
-    // 旧值 50：一次滚一页（20 张无缓存画幅卡片）就是 20 路并发详情请求，
-    // 带宽和 CPU 双尖峰，还极易触发接口风控连累正常请求。限制后台补查，
-    // 为用户主动打开的视频留出带宽。
+    // 限制后台详情补查并发，为用户主动打开的视频留出请求资源。
     nonisolated static let defaultMaximumConcurrentRequests = 6
 
     struct Request: Sendable {
@@ -31,6 +29,8 @@ final class PortraitVideoStore {
 
     private static let storageKey = "neobili.portraitVideoCache.v1"
     private var entries: [String: Entry]
+    /// 每解析出一条新结果就加一；列表过滤缓存据此判断是否需要重算。
+    private(set) var metadataRevision = 0
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let loader: @MainActor (String) async throws -> Metadata
@@ -245,6 +245,7 @@ final class PortraitVideoStore {
                               durationChecked: true,
                               expiresAt: now().addingTimeInterval(portrait == nil ? 300 : 7 * 86_400))
         revision += 1
+        metadataRevision += 1
         if entries.count > 2_000 {
             if let oldest = entries.min(by: { $0.value.expiresAt < $1.value.expiresAt })?.key {
                 entries[oldest] = nil

@@ -203,7 +203,7 @@ final class CommentPerformanceTests: XCTestCase {
             var durations: [Double] = []
             for iteration in 0..<45 {
                 let start = CACurrentMediaTime()
-                let renderer = ImageRenderer(content: ExpandableCommentMessage(comment: comment)
+                let renderer = ImageRenderer(content: ExpandableCommentMessage(comment: comment, isExpanded: false) {}
                     .frame(width: 316).environment(\.dynamicTypeSize, size).environment(\.commentEmoteStore, emoteStore))
                 renderer.scale = 3
                 XCTAssertGreaterThan(try XCTUnwrap(renderer.cgImage).height, 0)
@@ -237,7 +237,7 @@ final class CommentPerformanceTests: XCTestCase {
             ])
             let comment = try JSONDecoder().decode(Comment.self, from: data)
             window.overrideUserInterfaceStyle = style
-            host.rootView = AnyView(ExpandableCommentMessage(comment: comment).id(name)
+            host.rootView = AnyView(ExpandableCommentMessage(comment: comment, isExpanded: false) {}.id(name)
                 .environment(\.dynamicTypeSize, size).environment(\.commentEmoteStore, emoteStore)
                 .environment(\.commentTimeJump, EnvironmentAction { _ in })
                 .frame(width: width, alignment: .leading).padding(20)

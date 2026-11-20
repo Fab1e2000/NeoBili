@@ -4,17 +4,13 @@ import NeoBiliDomain
 import Foundation
 
 extension BiliAPI {
-    /// Requests a DASH-first play manifest for `bvid`/`cid`.
-    ///
-    /// mpv 能直接打开 DASH 拆开的视频、音频两条流（靠 `edl://` 伪协议拼成一个
-    /// 输入，见 `PlaybackSourceBuilder.edlURL`），不需要像 AVFoundation 那样
-    /// 先探测再拼 composition，所以 DASH 和 durl 对首帧速度没有区别——直接
-    /// 按编码能力和画质优先选 DASH，durl 只在稿件不提供 DASH 时才用到。
+    /// 优先请求 DASH；无可播放流或服务端返回 -400 时尝试下一组格式参数。
+    /// 双轨由 PlaybackSourceBuilder.edlURL 组合，最终兼容路径请求合并流。
     static func playURL(bvid: String, cid: Int, quality: Int = 127, client: APIClient, identity: DeviceIdentity) async throws -> PlayURLData {
         let quality = String(max(1, quality))
         let formats: [[String: String]] = [
             ["qn": quality, "fnval": "4048", "fnver": "0", "fourk": "1", "otype": "json", "platform": "pc"],
-            // 某些稿件的网页端参数不接受 4048，仍请求完整 DASH 能力集。
+            // 保留基础 DASH 能力，回退到 fnval=16。
             ["qn": quality, "fnval": "16", "fnver": "0", "fourk": "1", "otype": "json", "platform": "pc"],
             // 最后的兼容路径：服务端已经合并好的文件。
             ["qn": "64", "fnval": "1", "fnver": "0", "otype": "json", "platform": "html5", "high_quality": "1"]
@@ -79,8 +75,7 @@ extension BiliAPI {
         ]
     }
 
-    /// 网页播放器上报的是一段 WebGL 采样数据，长度不固定。
-    /// 我们没有那份数据，用等长的随机串代替即可，服务端只看格式。
+    /// 生成旧网页列表请求使用的随机 Base64 字段，去掉末尾填充；不包含实际 WebGL 采样。
     private static func randomFingerprint(minimumBytes: Int, maximumBytes: Int) -> String {
         let count = Int.random(in: minimumBytes...maximumBytes)
         let bytes = (0..<count).map { _ in UInt8.random(in: .min ... .max) }

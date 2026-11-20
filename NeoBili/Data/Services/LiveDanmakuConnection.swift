@@ -21,6 +21,8 @@ public final class LiveDanmakuConnection: LiveDanmakuStreaming {
     private var receiveLoop: Task<Void, Never>?
     private var connectGeneration = 0
     private var onEvent: (@MainActor (LiveDanmakuEvent) -> Void)?
+    /// 帧解压与消息解析在非主线程执行；连接只负责收发与状态。
+    private let frameDecoder = LiveDanmakuFrameDecoder()
     private var connection: LiveDanmakuConnectionState = .idle {
         didSet { onEvent?(.connection(connection)) }
     }
@@ -123,9 +125,9 @@ public final class LiveDanmakuConnection: LiveDanmakuStreaming {
                 guard generation == connectGeneration else { return true }
                 switch message {
                 case .data(let data):
-                    handleFrame(data)
+                    apply(await frameDecoder.decode(data))
                 case .string(let text):
-                    handleText(text)
+                    apply(await frameDecoder.decode(text: text))
                 @unknown default:
                     break
                 }
@@ -155,54 +157,22 @@ public final class LiveDanmakuConnection: LiveDanmakuStreaming {
 
     // MARK: - 帧解析
 
+    /// 同步入口：测试与已经持有整帧的调用方。生产接收循环走解码 actor，
+    /// 同样的纯计算不会占用主线程。
     func handleFrame(_ data: Data) {
-        var offset = 0
-        while data.count - offset >= 16 {
-            guard let header = LivePacketCodec.header(of: data, offset: offset),
-                  header.headerLength >= 16, header.totalLength >= header.headerLength,
-                  header.totalLength <= data.count - offset else { return }
-            let start = data.startIndex + offset
-            let body = data.subdata(in: (start + header.headerLength)..<(start + header.totalLength))
-            switch header.protover {
-            case 0, 1:
-                dispatch(operation: header.operation, body: body)
-            case 2:
-                if let inflated = LivePacketCodec.inflate(body: body) {
-                    for (operation, messageBody) in LivePacketCodec.splitConcatenated(inflated) {
-                        dispatch(operation: operation, body: messageBody)
-                    }
-                }
-            default: break
-            }
-            offset += header.totalLength
-        }
+        apply(LiveDanmakuFrameDecoding.decode(data))
     }
 
-    private func handleText(_ text: String) {
-        guard let data = text.data(using: .utf8) else { return }
-        dispatch(operation: 5, body: data)
-    }
-
-    private func dispatch(operation: UInt32, body: Data) {
-        switch operation {
-        case 3:
-            // 心跳回复：前 4 字节大端人气值。
-            if body.count >= 4 {
-                var value: UInt32 = 0
-                body.withUnsafeBytes { value = $0.loadUnaligned(as: UInt32.self) }
-                onEvent?(.popularity(Int(UInt32(bigEndian: value))))
-            }
-        case 5:
-            onEvent?(.message(body))
-        case 8:
-            guard let reply = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-                  reply["code"] as? Int == 0 else {
+    private func apply(_ frames: [LiveDanmakuDecodedFrame]) {
+        for frame in frames {
+            switch frame {
+            case .event(let event):
+                onEvent?(event)
+            case .authenticated:
+                if connection != .connected { connection = .connected }
+            case .authRejected:
                 socket?.cancel(with: .policyViolation, reason: nil)
-                return
             }
-            if connection != .connected { connection = .connected }
-        default:
-            break
         }
     }
 
