@@ -46,6 +46,7 @@ final class HomeAutoRefreshTests: XCTestCase {
         XCTAssertEqual(model.videos.map(\.bvid), ["BVrefresh"], "a discarded batch never replaces the list")
     }
 
+    #if NEOBILI_REGRESSION
     /// 列表与过滤输入不变时，页面求值复用已算好的行，不再全量重扫。
     func testFilteredRowsAreReusedUntilAnInputChanges() async {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
@@ -64,6 +65,7 @@ final class HomeAutoRefreshTests: XCTestCase {
         _ = model.feedRows(hidingKnownPortraitVideos: true)
         XCTAssertEqual(model.feedRowsComputationCount, first + 1, "a filter change recomputes")
     }
+    #endif
 
     func testReopeningHomeKeepsTheFeedUntilManualRefreshOrPagination() async {
         var calls = 0

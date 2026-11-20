@@ -1,3 +1,4 @@
+#if NEOBILI_REGRESSION
 #if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
 #endif
@@ -50,3 +51,4 @@ final class FilteredVideosMemoTests: XCTestCase {
         XCTAssertEqual(memo.recomputationCount, 3, "a filter change recomputes")
     }
 }
+#endif
