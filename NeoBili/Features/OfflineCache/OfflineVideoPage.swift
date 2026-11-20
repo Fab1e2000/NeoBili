@@ -13,7 +13,7 @@ struct OfflinePartsPlaybackSheet: View {
                       part: $0.video.displayTitle, duration: Int($0.video.duration))
         }
         let covers = Dictionary(uniqueKeysWithValues: entries.compactMap { entry in
-            cache.snapshot.coverURLs[entry.generation].map { (entry.video.cid, $0) }
+            cache.completedCovers[entry.generation].map { (entry.video.cid, $0) }
         })
         VideoPartsSheet(parts: parts, currentCid: store.activeCid, coverURLs: covers,
                         title: entries.first?.video.groupID.hasPrefix("season:") == true

@@ -22,6 +22,8 @@ public actor OfflineCacheRepository {
     private var available = false
     private var cellular = false
     private var active: Set<String> = []
+    private var onlinePlaybackActive = false
+    private var transferLimit: Int { onlinePlaybackActive ? 2 : 8 }
     private var preparations: [String: Task<Void, Never>] = [:]
     private var preparationIDs: [String: UUID] = [:]
     private var operationIDs: [String: UUID] = [:]
@@ -60,7 +62,8 @@ public actor OfflineCacheRepository {
             enqueue: { try await self.enqueue($0, quality: $1, audioQuality: $2, replace: $3) },
             pause: { _ = try await self.pause($0) }, resume: { try await self.resume($0, allowsCellular: $1) },
             cancel: { try await self.cancel($0) }, delete: { try await self.delete($0) },
-            playback: { try await self.playback($0) }, releasePlayback: { await self.release($0) })
+            playback: { try await self.playback($0) }, releasePlayback: { await self.release($0) },
+            setOnlinePlaybackActive: { await self.setOnlinePlaybackActive($0) })
     }
 
     public func start() async {
@@ -295,6 +298,12 @@ public actor OfflineCacheRepository {
         }
     }
 
+    private func setOnlinePlaybackActive(_ active: Bool) {
+        guard !Task.isCancelled, onlinePlaybackActive != active else { return }
+        onlinePlaybackActive = active
+        schedule()
+    }
+
     private func schedule() {
         guard loaded, !starting, storageError == nil else { return }
         for entry in manifest.pending.values.sorted(by: { $0.createdAt < $1.createdAt }) where entry.state.canSchedule {
@@ -304,10 +313,10 @@ public actor OfflineCacheRepository {
             }
             guard preparations[entry.id] == nil else { continue }
             if entry.resources.isEmpty || refreshRequired.contains(entry.id) {
-                guard preparations.count < 3 else { continue }
+                guard preparations.count < (onlinePlaybackActive ? 1 : 3) else { continue }
                 manifest.pending[entry.id]?.state = .preparing
                 let preparationID = UUID(); preparationIDs[entry.id] = preparationID
-                preparations[entry.id] = Task { [weak self, prepare] in
+                preparations[entry.id] = Task(priority: .utility) { [weak self, prepare] in
                     do { let result = try await prepare(entry); try Task.checkCancellation(); await self?.prepared(entry, result, requestID: preparationID) }
                     catch { await self?.preparationFailed(entry, error, requestID: preparationID) }
                 }
@@ -317,15 +326,21 @@ public actor OfflineCacheRepository {
                     catch { storageError = error.localizedDescription }
                     continue
                 }
-                manifest.pending[entry.id]?.state = .downloading
+                var hasActiveTransfer = false
                 for resource in entry.resources where !resource.isComplete {
                     let key = token(entry, resource)
-                    guard !active.contains(key) else { continue }
+                    if active.contains(key) {
+                        hasActiveTransfer = true
+                        continue
+                    }
+                    guard active.count < transferLimit else { continue }
+                    hasActiveTransfer = true
                     active.insert(key)
-                    Task { [weak self, transport] in
+                    Task(priority: .utility) { [weak self, transport] in
                         await self?.beginTransfer(entry, resource, transport: transport)
                     }
                 }
+                manifest.pending[entry.id]?.state = hasActiveTransfer ? .downloading : .queued
             }
         }
         publish()

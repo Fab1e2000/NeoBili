@@ -57,10 +57,8 @@ final class MPVPlayerSession {
     func open(source: PlaybackSource, startTime: TimeInterval = 0) async throws {
         guard !isStopped else { return }
         requestAudioFocus()
-        // mpv 只有在 `viewDidLoad` 跑过之后才存在（`engine.start` 在那里调用）。
-        // SwiftUI 什么时候真正把 viewController 挂进窗口是不确定的——如果
-        // playURL 命中缓存、`load()` 里的 await 几乎立刻返回，这里可能跑在
-        // SwiftUI 挂载之前。主动强制加载一次，不能指望调用方替我们做这件事。
+        // SwiftUI 可能尚未挂载播放器。先创建 UIKit 图层并排入内核初始化，
+        // 再向同一队列提交打开媒体和倍速命令。
         viewController.loadViewIfNeeded()
         viewController.open(source: source, startTime: startTime)
         viewController.setPlaybackRate(playbackRate)

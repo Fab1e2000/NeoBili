@@ -4,6 +4,7 @@
 import XCTest
 import UIKit
 @testable import NeoBili
+@testable import NeoBiliCore
 
 @MainActor
 final class PerformanceRegressionTests: XCTestCase {
@@ -64,6 +65,35 @@ final class PerformanceRegressionTests: XCTestCase {
         _ = try await two.value
         let count = await calls.count
         XCTAssertEqual(count, 1)
+    }
+
+    func testVisibleConsumerPromotesQueuedPrefetchWithoutStartingAnotherDecode() async throws {
+        let pool = ImageRequestPool<String, String>()
+        let gate = ImageDecodeGate(limit: 1)
+        let order = DecodeOrder()
+        let decode: @Sendable (String, ImageWorkPriority) async throws -> String = { key, priority in
+            try await gate.enter(priority: priority)
+            await order.append(key)
+            await gate.leave()
+            return key
+        }
+
+        try await gate.enter()
+        let first = Task { try await pool.value(for: "offscreen", prefetch: true) { try await decode("offscreen", $0) } }
+        try await waitUntil { await gate.queuedCount == 1 }
+        let second = Task { try await pool.value(for: "newly-visible", prefetch: true) { try await decode("newly-visible", $0) } }
+        try await waitUntil { await gate.queuedCount == 2 }
+        let visible = Task {
+            try await pool.value(for: "newly-visible", prefetch: false) { _ in
+                XCTFail("The visible consumer should join the existing decode")
+                return ""
+            }
+        }
+        try await waitUntil { await pool.consumerCount == 3 }
+        await gate.leave()
+        _ = try await (first.value, second.value, visible.value)
+        let decoded = await order.keys
+        XCTAssertEqual(decoded, ["newly-visible", "offscreen"])
     }
 
     func testCancelledQueuedPrefetchExitsAndCancelledDetailSkipsPlaybackRequest() async throws {
@@ -132,6 +162,11 @@ final class PerformanceRegressionTests: XCTestCase {
         }
         throw URLError(.timedOut)
     }
+}
+
+private actor DecodeOrder {
+    private(set) var keys: [String] = []
+    func append(_ key: String) { keys.append(key) }
 }
 
 private actor CancelledRequestProbe {

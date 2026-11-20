@@ -240,11 +240,11 @@ struct VideoDescriptionCollection: UIViewRepresentable {
                 let video = videos[path.item]
                 guard prefetch[video.bvid] == nil else { continue }
                 let scale = view.traitCollection.displayScale
-                prefetch[video.bvid] = Task { [weak self] in
+                prefetch[video.bvid] = Task(priority: .utility) { [weak self] in
                     defer { self?.prefetch[video.bvid] = nil }
                     guard let url = video.secureCoverURL,
                           let pixels = ImagePixelSize(points: CGSize(width: 160, height: 90), scale: scale) else { return }
-                    _ = try? await BiliImageLoader.load(url, pixelSize: pixels)
+                    _ = try? await BiliImageLoader.load(url, pixelSize: pixels, prefetch: true)
                 }
             }
         }

@@ -57,6 +57,11 @@ struct RootView: View {
         self.offlineCache = offlineCache
     }
 
+    private var onlinePlaybackActive: Bool {
+        nowPlaying.offline == nil && (nowPlaying.player != nil || nowPlaying.livePlayer != nil)
+            && (nowPlaying.isLoading || nowPlaying.isPlaying)
+    }
+
     var body: some View {
         TabView(selection: tabSelection) {
             // 顺序和显示与否来自设置；各页以自身为 id，调整顺序不会重建页面和丢失状态。
@@ -123,6 +128,9 @@ struct RootView: View {
         // 冷启动时用 Keychain 里可能存在的登录凭据恢复会话；
         // 「我的」页在恢复完成前不会闪出登录按钮。
         .task { await account.restoreSessionIfNeeded() }
+        .task(id: onlinePlaybackActive) { [active = onlinePlaybackActive] in
+            await offlineCache.service.setOnlinePlaybackActive(active)
+        }
         .task(id: "\(themeID)-\(scenePhase == .active)") {
             guard scenePhase == .active else { return }
             // Coalesce rapid taps before asking the system to change the icon.

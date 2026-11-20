@@ -1,4 +1,5 @@
 import XCTest
+import Observation
 @testable import NeoBili
 @testable import NeoBiliDomain
 @testable import NeoBiliData
@@ -61,6 +62,69 @@ final class OfflineCacheTests: XCTestCase {
         await restored.start()
         let tasks = await restored.snapshot().tasks
         XCTAssertTrue(tasks.isEmpty)
+    }
+
+    func testOnlinePlaybackLimitsNewTransfersWithoutCancellingExistingOnes() async throws {
+        let transfer = CacheTestTransport(), plan = resources(subtitle: false)
+        let repo = OfflineCacheRepository(directory: try directory(), transport: transfer,
+            prepare: { _ in plan }, accountID: { nil })
+        await repo.start()
+        await transfer.network()
+        await repo.service.setOnlinePlaybackActive(true)
+        try await repo.enqueue((1...5).map(video), quality: 80, audioQuality: 0, replace: false)
+        try await waitFor {
+            let tasks = await repo.snapshot().tasks
+            return tasks.count == 5 && tasks.allSatisfy { !$0.resources.isEmpty }
+        }
+        try await waitFor { await transfer.count() >= 2 }
+        let limited = await transfer.existingTokens()
+        XCTAssertEqual(limited.count, 2)
+
+        await repo.service.setOnlinePlaybackActive(false)
+        try await waitFor { await transfer.count() >= 8 }
+        let full = await transfer.existingTokens()
+        XCTAssertEqual(full.count, 8)
+        XCTAssertTrue(limited.isSubset(of: full))
+
+        await repo.service.setOnlinePlaybackActive(true)
+        let stillRunning = await transfer.existingTokens()
+        XCTAssertEqual(stillRunning, full)
+
+        let key = try XCTUnwrap(full.first { $0.hasSuffix("/video-0") })
+        try await transfer.finish(token: key, data: Data("\0\0\0\u{18}ftypisom".utf8))
+        try await waitFor { await repo.snapshot().tasks.flatMap(\.resources).contains(where: \.isComplete) }
+        let starts = await transfer.count()
+        XCTAssertEqual(starts, 8)
+    }
+
+    @MainActor func testDownloadProgressDoesNotInvalidateLibraryOrTaskCount() async {
+        let store = OfflineCacheStore(service: .init())
+        var completed = OfflineCacheEntry(video: video(), quality: 80, accountID: nil)
+        completed.state = .completed
+        var task = OfflineCacheEntry(video: video(2), quality: 80, accountID: nil)
+        task.resources = resources().resources
+        store.snapshot.completed = [completed]
+        store.snapshot.tasks = [task]
+
+        let libraryChanged = expectation(description: "Library should stay stable during progress")
+        libraryChanged.isInverted = true
+        withObservationTracking {
+            _ = store.entries(in: completed.video.groupID)
+            _ = store.completedCovers
+            _ = store.taskCount
+        } onChange: {
+            libraryChanged.fulfill()
+        }
+        let tasksChanged = expectation(description: "Download readers receive the new progress")
+        withObservationTracking {
+            _ = store.tasks
+        } onChange: {
+            tasksChanged.fulfill()
+        }
+        task.resources[0].receivedBytes = 1024
+        store.snapshot.tasks = [task]
+        await fulfillment(of: [tasksChanged, libraryChanged], timeout: 0.05)
+        XCTAssertEqual(store.tasks.first?.receivedBytes, 1024)
     }
 
     func testInvalidBatchLeavesQueueEmpty() async throws {

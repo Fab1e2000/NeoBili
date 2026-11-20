@@ -5,19 +5,22 @@ import Foundation
 import Libmpv
 import UIKit
 
-/// 持有 mpv 内核和事件队列，将事件转发为 PlayerPlaybackEvent。
-/// 普通 Swift 类型不继承 UIKit 的 actor 隔离，裸 C 唤醒回调只投递到 eventQueue。
-/// 公开播放操作由主线程调用，事件读取与异步销毁在串行 eventQueue 执行；
-/// @unchecked Sendable 依赖这些调用约定。UIKit 渲染宿主由 MPVMetalViewController 管理。
+/// UIKit 和播放回调留在 MainActor。句柄、命令、事件读取和销毁都归串行队列。
 final class MPVEngine: @unchecked Sendable {
-    /// 主线程创建并读取播放命令所需的句柄，eventQueue 读取事件并负责最终销毁。
-    /// stop 先在主线程置 isStopped，后续同步播放操作在读取句柄前检查该标记。
-    private var mpv: OpaquePointer?
+    @MainActor private var isStopped = false
+    @MainActor private var sourceRevision = 0
+    @MainActor private var hasReportedFirstFrame = false
+    @MainActor private var lastKnownPosition: TimeInterval = 0
     private let eventQueue = DispatchQueue(label: "com.neobili.mpv.events", qos: .userInitiated)
-    private var isStopped = false
-    private var hasReportedFirstFrame = false
-    private var lastKnownPosition: TimeInterval = 0
-    // Only accessed on eventQueue. Throttle before waking the main thread.
+    private var mpv: OpaquePointer?
+    /// The queue uses only the layer's address and retains it until native shutdown.
+    /// UIKit continues to own layer geometry.
+    private struct RenderTarget: @unchecked Sendable {
+        let layer: MPVMetalLayer
+        var address: UnsafeMutableRawPointer { Unmanaged.passUnretained(layer).toOpaque() }
+    }
+    private var renderTarget: RenderTarget?
+    private var eventRevision = 0
     private var latestEventPosition: TimeInterval = 0
     private var lastPositionDispatch: UInt64 = 0
     private var lastCacheDispatch: UInt64 = 0
@@ -30,7 +33,7 @@ final class MPVEngine: @unchecked Sendable {
         dispatchToMain { [weak self] in self?.handlePosition(position) }
     }
 
-    var onEvent: ((PlayerPlaybackEvent) -> Void)?
+    @MainActor var onEvent: ((PlayerPlaybackEvent) -> Void)?
 
     private let configuration: VideoPlaybackConfiguration
 
@@ -38,14 +41,18 @@ final class MPVEngine: @unchecked Sendable {
         self.configuration = configuration
     }
 
-    /// wid 使用图层地址；宿主持有图层，stop 将它强引用到异步内核销毁结束。
-    func start(renderingInto layer: MPVMetalLayer) {
-        attachedLayer = layer
+    @MainActor func start(renderingInto layer: MPVMetalLayer) {
+        guard !isStopped else { return }
+        let target = RenderTarget(layer: layer)
+        eventQueue.async { [self] in initialize(renderingInto: target) }
+    }
+
+    private func initialize(renderingInto target: RenderTarget) {
         guard let mpv = mpv_create() else {
-            dispatchToMain { [weak self] in self?.onEvent?(.error(String(localized: "mpv 初始化失败"))) }
+            reportInitializationError(String(localized: "mpv 初始化失败"))
             return
         }
-        self.mpv = mpv
+        renderTarget = target
 
 #if DEBUG
         // debug 级日志每个解封装包都有数条，每条都会变成一个事件挤进
@@ -54,7 +61,7 @@ final class MPVEngine: @unchecked Sendable {
 #else
         mpv_request_log_messages(mpv, "no")
 #endif
-        var layerPointer = Unmanaged.passUnretained(layer).toOpaque()
+        var layerPointer = target.address
         mpv_set_option(mpv, "wid", MPV_FORMAT_INT64, &layerPointer)
 
         let referer = "Referer: \(configuration.referer)"
@@ -70,10 +77,11 @@ final class MPVEngine: @unchecked Sendable {
         guard status >= 0 else {
             let message = String(cString: mpv_error_string(status))
             mpv_terminate_destroy(mpv)
-            self.mpv = nil
-            dispatchToMain { [weak self] in self?.onEvent?(.error(message)) }
+            renderTarget = nil
+            reportInitializationError(message)
             return
         }
+        self.mpv = mpv
 
         mpv_observe_property(mpv, 0, "time-pos", MPV_FORMAT_DOUBLE)
         mpv_observe_property(mpv, 0, "duration", MPV_FORMAT_DOUBLE)
@@ -92,103 +100,85 @@ final class MPVEngine: @unchecked Sendable {
         }, Unmanaged.passUnretained(self).toOpaque())
     }
 
-    func open(source: PlaybackSource, startTime: TimeInterval = 0) {
+    @MainActor func open(source: PlaybackSource, startTime: TimeInterval = 0) {
         // Regression exercises playback through injected sessions, never native network I/O.
-        guard !RuntimePolicy.isRegression else { return }
-        guard !isStopped, let mpv else { return }
+        guard !RuntimePolicy.isRegression, !isStopped else { return }
+        sourceRevision += 1
         hasReportedFirstFrame = false
         lastKnownPosition = 0
-        dispatchToMain { [weak self] in self?.onEvent?(.duration(source.duration)) }
-        let url = PlaybackSourceBuilder.edlURL(for: source)
-        let status = sendCommand(mpv, PlaybackLoadCommand.arguments(url: url, startTime: startTime))
-        if status < 0 {
-            let message = String(cString: mpv_error_string(status))
-            dispatchToMain { [weak self] in self?.onEvent?(.error(message)) }
+        let revision = sourceRevision
+        enqueue { engine, mpv in
+            // Events already waiting belong to the previous source.
+            engine.drainEvents()
+            engine.eventRevision = revision
+            engine.latestEventPosition = 0
+            engine.lastPositionDispatch = 0
+            engine.lastCacheDispatch = 0
+            engine.dispatchToMain { [weak engine] in engine?.onEvent?(.duration(source.duration)) }
+            let url = PlaybackSourceBuilder.edlURL(for: source)
+            let status = engine.sendCommand(mpv, PlaybackLoadCommand.arguments(url: url, startTime: startTime))
+            if status < 0 {
+                let message = String(cString: mpv_error_string(status))
+                engine.dispatchToMain { [weak engine] in engine?.onEvent?(.error(message)) }
+            }
         }
     }
 
-    func play() {
-        // 销毁块对 mpv 指针的置空发生在 eventQueue 上；这里的主线程读取
-        // 靠 isStopped 同步挡住，否则就是正式的数据竞争。
-        guard !isStopped, let mpv else { return }
-        setFlag(mpv, name: "pause", value: false)
+    @MainActor func play() {
+        enqueue { $0.setFlag($1, name: "pause", value: false) }
     }
 
-    func pause() {
-        guard !isStopped, let mpv else { return }
-        setFlag(mpv, name: "pause", value: true)
-    }
+    @MainActor func pause() { pauseAsync() }
 
-    /// 把暂停命令排入 eventQueue，与事件读取和销毁串行执行，避免退出转场在主线程等待内核锁。
-    func pauseAsync(afterPaused: (@MainActor @Sendable () -> Void)? = nil) {
+    @MainActor func pauseAsync(afterPaused: (@MainActor @Sendable () -> Void)? = nil) {
         eventQueue.async { [weak self] in
-            if let mpv = self?.mpv {
-                var flag: Int32 = 1
-                mpv_set_property(mpv, "pause", MPV_FORMAT_FLAG, &flag)
-            }
+            if let self, let mpv { setFlag(mpv, name: "pause", value: true) }
             if let afterPaused { DispatchQueue.main.async { afterPaused() } }
         }
     }
 
-    func setPlaybackRate(_ rate: Double) {
-        guard !isStopped, let command = PlaybackSpeed.command(rate) else { return }
-        eventQueue.async { [weak self] in
-            guard let self, let mpv = self.mpv else { return }
-            self.sendCommand(mpv, command)
+    @MainActor func setPlaybackRate(_ rate: Double) {
+        guard let command = PlaybackSpeed.command(rate) else { return }
+        enqueue { $0.sendCommand($1, command) }
+    }
+
+    @MainActor func seek(to seconds: TimeInterval) {
+        enqueue { engine, mpv in
+            let target = String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), seconds)
+            engine.sendCommand(mpv, ["seek", target, "absolute+exact"])
         }
     }
 
-    func seek(to seconds: TimeInterval) {
-        guard !isStopped, let mpv else { return }
-        sendCommand(mpv, ["seek", String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), seconds), "absolute+exact"])
-    }
-
-    func stop(afterStopped: (@MainActor @Sendable () -> Void)? = nil) {
-        guard !isStopped else {
-            if let afterStopped {
-                eventQueue.async { DispatchQueue.main.async { afterStopped() } }
+    @MainActor func stop(afterStopped: (@MainActor @Sendable () -> Void)? = nil) {
+        if !isStopped {
+            isStopped = true
+            eventQueue.async { [self] in
+                if let mpv {
+                    mpv_set_wakeup_callback(mpv, nil, nil)
+                    setFlag(mpv, name: "pause", value: true)
+                    mpv_terminate_destroy(mpv)
+                    self.mpv = nil
+                }
+                renderTarget = nil
             }
-            return
         }
-        isStopped = true
-        guard let mpv else {
-            if let afterStopped { DispatchQueue.main.async { afterStopped() } }
-            return
-        }
-
-        // wakeup 回调是裸 C 函数指针 + `Unmanaged...unretained`，不受 Swift
-        // 的 weak 引用保护——先同步取消注册，保证这个对象接下来无论什么
-        // 时候被释放，mpv 都不会再摸到一块已经释放的内存。
-        mpv_set_wakeup_callback(mpv, nil, nil)
-
-        // 内核销毁排在事件读取之后，避免主线程等待解码管线与 Vulkan 资源释放。
-        // 闭包保留 engine 和渲染图层，直到销毁完成。
-        let layer = attachedLayer
-        eventQueue.async { [self] in
-            var pauseFlag: Int32 = 1
-            mpv_set_property(mpv, "pause", MPV_FORMAT_FLAG, &pauseFlag)
-            mpv_terminate_destroy(mpv)
-            self.mpv = nil
-            _ = layer
-            if let afterStopped { DispatchQueue.main.async { afterStopped() } }
+        if let afterStopped {
+            eventQueue.async { DispatchQueue.main.async { afterStopped() } }
         }
     }
 
-    /// `start(renderingInto:)` 记下的渲染层；stop 的异步销毁要强持有它，
-    /// 保证 mpv 内部线程销毁完成前 wid 指针始终有效。
-    private weak var attachedLayer: MPVMetalLayer?
+    /// Audio-only playback disables decoding as well as the hidden Metal output.
+    @MainActor func setVideoEnabled(_ enabled: Bool) {
+        enqueue { _, mpv in mpv_set_property_string(mpv, "vid", enabled ? "auto" : "no") }
+    }
 
-    /// Audio-only playback must disable decoding as well as the hidden Metal output.
-    /// Serialize with event handling and shutdown without blocking UI gestures.
-    func setVideoEnabled(_ enabled: Bool) {
+    @MainActor private func enqueue(_ command: @escaping @Sendable (MPVEngine, OpaquePointer) -> Void) {
         guard !isStopped else { return }
         eventQueue.async { [weak self] in
-            guard let self, let mpv = self.mpv else { return }
-            mpv_set_property_string(mpv, "vid", enabled ? "auto" : "no")
+            guard let self, let mpv else { return }
+            command(self, mpv)
         }
     }
-
-    // MARK: - mpv command/property helpers（只从调用方所在线程执行，本身线程安全）
 
     @discardableResult
     private func sendCommand(_ mpv: OpaquePointer, _ args: [String]) -> Int32 {
@@ -345,21 +335,31 @@ final class MPVEngine: @unchecked Sendable {
         dispatchToMain { [weak self] in self?.onEvent?(.displayAspectRatio(displayAspect)) }
     }
 
-    /// 按事件队列的投递顺序将状态更新转到主队列，供 MainActor 上的播放模型消费。
-    private func dispatchToMain(_ work: @escaping @Sendable () -> Void) {
-        DispatchQueue.main.async(execute: work)
+    private func dispatchToMain(_ work: @escaping @MainActor @Sendable () -> Void) {
+        let revision = eventRevision
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !isStopped, sourceRevision == revision else { return }
+            work()
+        }
     }
 
-    private func handlePosition(_ value: TimeInterval) {
+    private func reportInitializationError(_ message: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !isStopped else { return }
+            onEvent?(.error(message))
+        }
+    }
+
+    @MainActor private func handlePosition(_ value: TimeInterval) {
         lastKnownPosition = value
         onEvent?(.position(value))
     }
 
-    private func handleCacheTime(_ value: TimeInterval) {
+    @MainActor private func handleCacheTime(_ value: TimeInterval) {
         onEvent?(.buffered(max(value - lastKnownPosition, 0)))
     }
 
-    private func reportFirstFrameIfNeeded() {
+    @MainActor private func reportFirstFrameIfNeeded() {
         guard !hasReportedFirstFrame else { return }
         hasReportedFirstFrame = true
         onEvent?(.firstFrame)
