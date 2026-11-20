@@ -90,11 +90,6 @@ struct MineView: View {
             Text("尚未登录")
                 .font(.app(.title3, weight: .semibold))
 
-            Text(String(localized: "登录后可以使用收藏、历史、稍后再看，\n首页也会变成属于你的个性化推荐。"))
-                .font(.app(.subheadline))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
             Button("短信验证码登录") { loginSheet = .sms }
                 .buttonStyle(.borderedProminent)
             .padding(.top, 4)

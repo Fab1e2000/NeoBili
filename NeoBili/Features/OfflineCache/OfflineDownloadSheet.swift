@@ -20,33 +20,91 @@ struct OfflineDownloadSheet: View {
             || model.duplicateMessage(in: cache.snapshot) != nil
     }
 
+    private var scopeSelection: Binding<Bool> {
+        Binding(
+            get: { model.collectionSelected },
+            set: { value in
+                model.collectionSelected = value
+                model.applyScope()
+                Task { await model.changeScope() }
+            }
+        )
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if let video = model.videos.first { summary(video) }
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
                     qualityPicker
                     if model.hasCollection {
-                        Picker("缓存范围", selection: $model.collectionSelected) {
+                        Picker("缓存范围", selection: scopeSelection) {
                             Text("当前视频").tag(false)
                             Text("UP 主合集").tag(true)
-                        }.pickerStyle(.segmented).disabled(model.isLoading)
+                        }
+                        .pickerStyle(.segmented)
                     }
-                    selection
-                    if model.isLoading { ProgressView("正在准备可缓存内容").frame(maxWidth: .infinity) }
+                    HStack {
+                        Text("选择缓存内容").font(.app(.subheadline, weight: .semibold))
+                        Spacer()
+                        Button(model.selected.count == model.videos.count && !model.videos.isEmpty ? "取消全选" : "全选") {
+                            model.selected = model.selected.count == model.videos.count ? [] : Set(model.videos.map(\.id))
+                        }
+                        .font(.app(.subheadline))
+                        .foregroundStyle(accent)
+                        .disabled(model.videos.isEmpty)
+                    }
                     if let message = model.duplicateMessage(in: cache.snapshot) {
                         Label(message, systemImage: "checkmark.circle").font(.app(.footnote)).foregroundStyle(.secondary)
                     }
                     if let error = model.error {
-                        VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 12) {
                             Text(error).font(.app(.footnote)).foregroundStyle(.secondary)
-                            Button("重新加载") { Task { if model.collectionSelected { await model.changeScope() } else { await model.load() } } }
+                            Spacer()
+                            Button("重新加载") {
+                                Task { if model.collectionSelected { await model.changeScope() } else { await model.load() } }
+                            }
+                            .font(.app(.footnote))
                         }
                     }
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        if model.isLoading && model.videos.isEmpty {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 32)
+                        } else {
+                            ForEach(model.videos) { video in
+                                Button {
+                                    if !model.selected.insert(video.id).inserted { model.selected.remove(video.id) }
+                                } label: {
+                                    VideoListCard(
+                                        coverURL: video.cover,
+                                        title: video.displayTitle,
+                                        author: subtitle(video),
+                                        playCount: -1,
+                                        durationText: OfflineCacheStyle.duration(video.duration)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .videoPickerSelection(model.selected.contains(video.id))
+                                .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
+                                .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
+                                .id(video.id)
+                            }
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .videoPickerInitialPosition(target: model.currentVideoID)
+                .id(model.collectionSelected)
             }
             .background(OfflineCacheStyle.background)
+            .leftEdgeTapDeadZone()
             .navigationTitle("缓存视频").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.foregroundStyle(accent) }
@@ -55,29 +113,16 @@ struct OfflineDownloadSheet: View {
             .confirmationDialog("替换已有缓存画质？", isPresented: $confirmsReplacement, titleVisibility: .visible) {
                 Button("下载并替换") { submit(replace: true) }
                 Button("取消", role: .cancel) {}
-            } message: { Text("新版本完整下载后替换旧版。下载期间仍可观看原有缓存。") }
+            }
         }
         .task { cache.connect(); await model.load() }
-        .onChange(of: model.collectionSelected) { Task { await model.changeScope() } }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-    }
-
-    private func summary(_ video: OfflineVideo) -> some View {
-        HStack(spacing: 12) {
-            OfflineCover(remoteURL: video.cover, width: 96)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(model.collectionSelected ? video.groupTitle : video.title)
-                    .font(.app(.subheadline, weight: .medium)).lineLimit(2)
-                Text("\(video.author) · \(model.videos.count) 项")
-                    .font(.app(.caption)).foregroundStyle(.secondary)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(12).background(OfflineCacheStyle.card, in: RoundedRectangle(cornerRadius: OfflineCacheStyle.radius))
+        .videoCardAnimationSource(.collection)
     }
 
     private var qualityPicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("缓存画质").font(.app(.subheadline, weight: .semibold))
             LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 130 : 85), spacing: 8)], spacing: 8) {
                 ForEach(model.qualities, id: \.self) { quality in
@@ -93,29 +138,6 @@ struct OfflineDownloadSheet: View {
                 }
             }
             if model.quality == nil && !model.isLoading { Text("请选择可用画质").font(.app(.footnote)).foregroundStyle(accent) }
-            Text("同时保存弹幕和全部字幕 · 默认仅 Wi-Fi")
-                .font(.app(.caption)).foregroundStyle(.secondary)
-        }
-    }
-
-    private var selection: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text("选择缓存内容").font(.app(.subheadline, weight: .semibold))
-                Spacer()
-                Button(model.selected.count == model.videos.count ? "取消全选" : "全选") {
-                    model.selected = model.selected.count == model.videos.count ? [] : Set(model.videos.map(\.id))
-                }.font(.app(.subheadline)).foregroundStyle(accent).disabled(model.isLoading || model.videos.isEmpty)
-            }
-            LazyVStack(spacing: 8) {
-                ForEach(model.videos) { video in
-                    OfflineEpisodeRow(number: (model.videos.firstIndex(where: { $0.id == video.id }) ?? 0) + 1,
-                        title: video.displayTitle, subtitle: subtitle(video), selected: model.selected.contains(video.id),
-                        current: video.bvid == model.bvid && video.cid == model.cid) {
-                            if !model.selected.insert(video.id).inserted { model.selected.remove(video.id) }
-                        }.disabled(model.isLoading)
-                }
-            }
         }
     }
 
@@ -148,12 +170,16 @@ struct OfflineDownloadSheet: View {
         Text("总时长 \(OfflineCacheStyle.duration(model.selectedVideos.reduce(0) { $0 + $1.duration }))")
     }
     private func subtitle(_ video: OfflineVideo) -> String {
-        var value = OfflineCacheStyle.duration(video.duration)
-        if video.bvid == model.bvid && video.cid == model.cid { value += " · 当前" }
-        if let entry = (cache.snapshot.completed + cache.snapshot.tasks).first(where: { $0.id == video.id }) {
-            value += " · \(entry.state.title) · \(PlaybackQuality.videoTitle(entry.quality))"
+        var parts: [String] = []
+        if video.id == model.currentVideoID {
+            parts.append(String(localized: "当前视频"))
+        } else if !video.author.isEmpty {
+            parts.append(video.author)
         }
-        return value
+        if let entry = (cache.snapshot.completed + cache.snapshot.tasks).first(where: { $0.id == video.id }) {
+            parts.append("\(entry.state.title) · \(PlaybackQuality.videoTitle(entry.quality))")
+        }
+        return parts.joined(separator: " · ")
     }
     private func submit(replace: Bool) {
         Task {

@@ -386,3 +386,38 @@ final class PlayerPlaybackTests: XCTestCase {
         XCTAssertGreaterThan(surface.width * scale, 402)
     }
 }
+
+@MainActor
+extension PlayerPlaybackTests {
+    func testPlaybackErrorAfterFirstFrameRemainsVisibleAndRetryPreservesPosition() async {
+        let player = PlayerViewModel(bvid: "audit-fake", cid: 1,
+            playbackURLLoader: { _, _ in throw URLError(.notConnectedToInternet) },
+            watchProgressReporter: { _, _, _ in })
+        defer { player.stop() }
+        let oldSession = player.session
+        let oldCallback = oldSession.onEvent
+        oldCallback?(.firstFrame)
+        oldCallback?(.position(23))
+        oldCallback?(.buffering(true))
+        XCTAssertTrue(player.isBuffering)
+        oldCallback?(.error("connection lost"))
+        XCTAssertEqual(player.errorMessage, "connection lost")
+        XCTAssertFalse(player.isBuffering)
+        player.play()
+        XCTAssertFalse(player.isPlaying)
+        await player.retry()
+        XCTAssertFalse(player.session === oldSession)
+        XCTAssertEqual(player.currentTime, 23)
+        XCTAssertNotNil(player.errorMessage, "重试失败仍提供错误与重试入口")
+        oldCallback?(.position(0))
+        oldCallback?(.firstFrame)
+        XCTAssertEqual(player.currentTime, 23)
+        XCTAssertFalse(player.hasRenderedFirstFrame)
+    }
+
+    func testRetryLoadCommandUsesMPVOptionPositionAndFiniteTime() {
+        XCTAssertEqual(PlaybackLoadCommand.arguments(url: "https://example.com/v", startTime: 23.5),
+                       ["loadfile", "https://example.com/v", "replace", "-1", "start=23.500"])
+        XCTAssertEqual(PlaybackLoadCommand.arguments(url: "x", startTime: .nan).last, "start=0.000")
+    }
+}

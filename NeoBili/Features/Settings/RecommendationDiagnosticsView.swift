@@ -21,8 +21,6 @@ struct RecommendationDiagnosticsView: View {
                 if !override.isEmpty {
                     Button("恢复 NeoBili 自身编号") { override = "" }
                 }
-            } footer: {
-                Text("日志保存在手机上，最多约 8 MB。记录请求参数、返回的视频及观看上报结果，隐藏登录凭据和设备编号。")
             }
             Section {
                 Button("准备导出日志") {
@@ -37,8 +35,6 @@ struct RecommendationDiagnosticsView: View {
                 if exporting { ProgressView() }
                 if let exportURL { ShareLink("分享日志文件", item: exportURL) }
                 if failed { Text("日志导出失败，请重试。").foregroundStyle(.red) }
-            } footer: {
-                Text("日志含观看内容和操作时间，仅分享给你信任的人。")
             }
         }
         .settingsPage("推荐实验日志")

@@ -47,7 +47,7 @@ struct SearchResultsView: View {
                                 durationText: item.duration
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(CardPressStyle(cornerRadius: VideoListCardLayout.cardCornerRadius))
                         // 搜索结果没有 avid，稍后再看接口用 bvid 也能加。
                         .contextMenu {
                             WatchLaterMenuButton(bvid: item.bvid)

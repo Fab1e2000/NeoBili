@@ -505,33 +505,10 @@ struct VideoPage: View {
     }
 
     private func offlineInfoComponents(_ descriptor: OfflinePlaybackDescriptor) -> [VideoDescriptionComponent] {
-        let video = descriptor.entry.video
-        let entries = offlineCache.entries(in: video.groupID)
-        var components = [VideoDescriptionComponent("owner", revision: [video.author]) {
-            VideoOwnerRow(owner: VideoOwner(mid: 0, name: video.author, face: ""), avatarURL: nil,
-                          card: nil, isFollowing: false, onToggleFollow: {}, onOpenSpace: {}, isOffline: true)
-                .padding(.horizontal, Self.contentInset).padding(.top, 12).padding(.bottom, 10)
-        }, VideoDescriptionComponent(introduction: VideoIntroductionCard(
-            title: video.title,
-            metadata: String(localized: "本地播放 · \(PlaybackQuality.videoTitle(descriptor.entry.quality))"),
-            isExpanded: Binding(get: { store.isDescriptionExpanded }, set: { store.isDescriptionExpanded = $0 }))) ]
-        if entries.count > 1 || !video.partTitle.isEmpty {
-            let index = entries.firstIndex(where: { $0.id == descriptor.entry.id }).map { $0 + 1 }
-            components.append(VideoDescriptionComponent("parts", revision: [video.id, entries.count]) {
-                Group {
-                    if video.groupID.hasPrefix("season:") {
-                        UgcSeasonRow(title: video.groupTitle, total: entries.count, currentIndex: index) {
-                            offlinePartsPicker = VideoPickerPresentation(content: entries)
-                        }
-                    } else {
-                        VideoPartsRow(currentPartName: video.displayTitle, total: entries.count, currentIndex: index) {
-                            offlinePartsPicker = VideoPickerPresentation(content: entries)
-                        }
-                    }
-                }.padding(.horizontal, Self.contentInset).padding(.bottom, 14)
-            })
-        }
-        return components
+        let entries = offlineCache.entries(in: descriptor.entry.video.groupID)
+        return OfflineDescriptionComponents.make(descriptor, entries: entries, contentInset: Self.contentInset,
+            descriptionExpanded: Binding(get: { store.isDescriptionExpanded }, set: { store.isDescriptionExpanded = $0 }),
+            onShowParts: { offlinePartsPicker = VideoPickerPresentation(content: entries) })
     }
 
     private func infoComponents(_ detail: VideoDetail) -> [VideoDescriptionComponent] {

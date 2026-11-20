@@ -52,9 +52,15 @@ struct VideoDescriptionCollection: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UICollectionView {
         let layout = UICollectionViewCompositionalLayout { [weak coordinator = context.coordinator] section, _ in
-            let rowHeight = NativeRelatedVideoCard.rowHeight(typeSize: coordinator?.typeSize ?? .large)
+            let rowHeight = NativeRelatedVideoCard.cardHeight(typeSize: coordinator?.typeSize ?? .large)
+                + 2 * NativeRelatedVideoCard.verticalInset
             let height: NSCollectionLayoutDimension = section == 1 ? .absolute(rowHeight) : .estimated(100)
             let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: height))
+            if section == 1 {
+                // 留白归列表所有，按在两行之间不会落到相邻视频的按钮上。
+                let inset = NativeRelatedVideoCard.verticalInset
+                item.contentInsets = .init(top: inset, leading: 0, bottom: inset, trailing: 0)
+            }
             let group = NSCollectionLayoutGroup.vertical(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: height), subitems: [item])
             let result = NSCollectionLayoutSection(group: group)
             if section == 1 { result.contentInsets = .init(top: 0, leading: 16, bottom: 16, trailing: 16) }
@@ -187,13 +193,23 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             }
             let video = videos[path.item]
             let cell = view.dequeueReusableCell(withReuseIdentifier: "video", for: path) as! PersistentFeedHostingCell
-            let content = Button { [weak self] in self?.onSelect?(video) } label: {
-                NativeRelatedVideoCard(video: video)
-                    .frame(height: NativeRelatedVideoCard.rowHeight(typeSize: environment.dynamicTypeSize))
-                    .contentShape(Rectangle())
+            let needsElevatedPreview = environment.colorScheme == .dark
+            let content = GeometryReader { [weak self] geometry in
+                let button = Button { [weak self] in self?.onSelect?(video) } label: {
+                    NativeRelatedVideoCard(video: video)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+                .buttonStyle(CardPressStyle(cornerRadius: VideoListCardLayout.cardCornerRadius))
+                let menu = WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
+                if needsElevatedPreview {
+                    button.contextMenu { menu } preview: {
+                        NativeRelatedVideoCard(video: video, isMenuPreview: true)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                    }
+                } else {
+                    button.contextMenu { menu }
+                }
             }
-            .buttonStyle(.plain)
-            .contextMenu { WatchLaterMenuButton(aid: video.aid, bvid: video.bvid) }
             .environment(\.self, environment)
             cell.setContent(AnyView(content))
             return cell
@@ -257,23 +273,28 @@ struct VideoDescriptionCollection: UIViewRepresentable {
 
 struct NativeRelatedVideoCard: UIViewRepresentable {
     let video: VideoSummary
+    var isMenuPreview = false
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.displayScale) private var scale
-    func makeUIView(context: Context) -> CardView { CardView() }
+    func makeUIView(context: Context) -> CardView {
+        let card = CardView()
+        if isMenuPreview { card.traitOverrides.userInterfaceLevel = .elevated }
+        return card
+    }
     func updateUIView(_ view: CardView, context: Context) { view.configure(video, typeSize: typeSize, scale: scale) }
 
-    /// 卡片上下各留 6；卡片之间不画分隔线，相邻两张封面靠这两份留白隔开 12。
+    /// 卡面外的留白，两张相邻卡片之间共 12 点。
     static let verticalInset: CGFloat = 6
+    private static let minimumOwnerY: CGFloat = 54
     /// UP 主与播放数据相对主文字色的强度。
     static let secondaryTextColor = UIColor.label.withAlphaComponent(0.6)
 
-    static func rowHeight(typeSize: DynamicTypeSize) -> CGFloat {
+    static func cardHeight(typeSize: DynamicTypeSize) -> CGFloat {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
         let titleHeight = ceil(AppFont.preferred(.subheadline, traits: traits).lineHeight * 2)
         let ownerHeight = ceil(AppFont.preferred(.caption1, traits: traits).lineHeight)
         let metadataHeight = ceil(AppFont.preferred(.caption1, traits: traits).lineHeight)
-        return max(90 + 2 * verticalInset,
-                   max(60, verticalInset + titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight) + verticalInset)
+        return max(90, max(minimumOwnerY, titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight))
     }
 
     final class CardView: UIView {
@@ -287,6 +308,11 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
         override init(frame: CGRect) {
             super.init(frame: frame)
             isUserInteractionEnabled = false
+            // 长按时系统会单独抬起卡面，标题与封面共用卡片自身的底色。
+            backgroundColor = .systemBackground
+            layer.cornerRadius = VideoListCardLayout.cardCornerRadius
+            layer.cornerCurve = .continuous
+            clipsToBounds = true
             for view in [cover, title, owner, metadata] { addSubview(view) }
             // 与首页卡片封面同一圆角规格。
             cover.layer.cornerRadius = HomeCardLayout.coverCornerRadius
@@ -327,11 +353,10 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
         }
         override func layoutSubviews() {
             super.layoutSubviews()
-            let inset = NativeRelatedVideoCard.verticalInset
-            cover.frame = CGRect(x: 0, y: inset, width: 160, height: 90)
+            cover.frame = CGRect(x: 0, y: 0, width: 160, height: 90)
             let x: CGFloat = 170, width = max(0, bounds.width - 170)
-            title.frame = CGRect(x: x, y: inset, width: width, height: ceil(title.font.lineHeight * 2))
-            owner.frame = CGRect(x: x, y: max(60, title.frame.maxY + 4), width: width,
+            title.frame = CGRect(x: x, y: 0, width: width, height: ceil(title.font.lineHeight * 2))
+            owner.frame = CGRect(x: x, y: max(NativeRelatedVideoCard.minimumOwnerY, title.frame.maxY + 4), width: width,
                                  height: max(18, ceil(owner.font.lineHeight)))
             metadata.frame = CGRect(x: x, y: owner.frame.maxY + 1, width: width,
                                     height: max(17, ceil(metadata.font.lineHeight)))

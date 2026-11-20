@@ -84,3 +84,37 @@ struct VideoDescriptionComponents<ActionBar: View> {
     }
 
 }
+
+@MainActor
+enum OfflineDescriptionComponents {
+    static func make(_ descriptor: OfflinePlaybackDescriptor, entries: [OfflineCacheEntry],
+                     contentInset: CGFloat, descriptionExpanded: Binding<Bool>,
+                     onShowParts: @escaping () -> Void) -> [VideoDescriptionComponent] {
+        let video = descriptor.entry.video
+        var components = [VideoDescriptionComponent("owner", revision: [video.author]) {
+            VideoOwnerRow(owner: VideoOwner(mid: 0, name: video.author, face: ""), avatarURL: nil,
+                          card: nil, isFollowing: false, onToggleFollow: {}, onOpenSpace: {}, isOffline: true)
+                .padding(.horizontal, contentInset).padding(.top, 12).padding(.bottom, 10)
+        }, VideoDescriptionComponent(introduction: VideoIntroductionCard(
+            title: video.title,
+            metadata: String(localized: "本地播放 · \(PlaybackQuality.videoTitle(descriptor.entry.quality))"),
+            isExpanded: descriptionExpanded)) ]
+        if entries.count > 1 || !video.partTitle.isEmpty {
+            let index = entries.firstIndex(where: { $0.id == descriptor.entry.id }).map { $0 + 1 }
+            components.append(VideoDescriptionComponent("parts", revision: [video.id, entries.count]) {
+                Group {
+                    if video.groupID.hasPrefix("season:") {
+                        UgcSeasonRow(title: video.groupTitle, total: entries.count, currentIndex: index) {
+                            onShowParts()
+                        }
+                    } else {
+                        VideoPartsRow(currentPartName: video.displayTitle, total: entries.count, currentIndex: index) {
+                            onShowParts()
+                        }
+                    }
+                }.padding(.horizontal, contentInset).padding(.bottom, 14)
+            })
+        }
+        return components
+    }
+}

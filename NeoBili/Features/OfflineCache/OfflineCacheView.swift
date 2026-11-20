@@ -71,7 +71,7 @@ struct OfflineCacheView: View {
                 Button("允许此任务") { cache.perform { [service = cache.service] in try await service.resume(entry.id, true) } }
             }
             Button("取消", role: .cancel) {}
-        } message: { Text("仅放行所选任务，其他任务继续等待 Wi-Fi。") }
+        }
         .alert("缓存操作失败", isPresented: Binding(get: { cache.errorMessage != nil }, set: { if !$0 { cache.errorMessage = nil } })) {
             Button("好") { cache.errorMessage = nil }
         } message: { Text(cache.errorMessage ?? "") }
@@ -90,14 +90,9 @@ struct OfflineCacheView: View {
 
     @ViewBuilder private var library: some View {
         if completed.isEmpty {
-            ContentUnavailableView("暂无缓存", systemImage: "arrow.down.to.line",
-                                   description: Text("在视频详情或播放器菜单中选择缓存。"))
+            ContentUnavailableView("暂无缓存", systemImage: "arrow.down.to.line")
         } else {
             VStack(spacing: 12) {
-                if groupID != nil {
-                    Text("已缓存选集").font(.app(.subheadline, weight: .semibold))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
                 LazyVStack(spacing: 10) {
                     if groupID != nil {
                         ForEach(completed) { entry in
@@ -134,7 +129,7 @@ struct OfflineCacheView: View {
                     } label: { cachedLabel(entries, isGroup: isGroup) }
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CardPressStyle(cornerRadius: OfflineCacheStyle.radius))
             .accessibilityLabel(isGroup ? entry.video.groupTitle : entry.video.displayTitle)
             .accessibilityValue(isEditing ? (entries.allSatisfy { selected.contains($0.id) } ? "已选择" : "未选择") : "\(entries.count) 项")
             .contextMenu {
@@ -162,16 +157,18 @@ struct OfflineCacheView: View {
                 Text(isGroup ? "\(entries.count) 集 · \(Self.size(entries.reduce(0) { $0 + $1.receivedBytes }))"
                      : "\(PlaybackQuality.videoTitle(entry.quality)) · \(Self.size(entry.receivedBytes))")
                     .font(.app(.caption)).foregroundStyle(.secondary)
-                if isGroup {
-                    Label("合集 · 查看选集", systemImage: "square.3.layers.3d")
-                        .font(.app(.caption2)).foregroundStyle(accent)
-                }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(allSelected && isEditing ? accent.opacity(0.1) : OfflineCacheStyle.card,
-                    in: RoundedRectangle(cornerRadius: OfflineCacheStyle.radius))
-        .contentShape(RoundedRectangle(cornerRadius: OfflineCacheStyle.radius))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: OfflineCacheStyle.radius, style: .continuous)
+            if allSelected && isEditing {
+                shape.fill(OfflineCacheStyle.background)
+                    .overlay { shape.fill(accent.opacity(0.1)) }
+            } else {
+                shape.fill(OfflineCacheStyle.card)
+            }
+        }
     }
 
     @ViewBuilder private var downloads: some View {

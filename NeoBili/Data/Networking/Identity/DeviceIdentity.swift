@@ -463,24 +463,22 @@ public actor DeviceIdentity {
             if let suppliedDevice { device = suppliedDevice }
             else { device = try await renewalDevice(expectedSessionID: snapshot.session) }
             guard isCurrent(snapshot) else { return }
-            let info = try await AppLoginRenewal.info(old: snapshot.credentials, device: device, transport: transport)
+            let outcome = try await AppLoginRenewal.resolve(snapshot, device: device, transport: transport,
+                isCurrent: { await self.isCurrent(snapshot) })
             guard isCurrent(snapshot) else { return }
-            guard info.refresh else { nextRenewalCheck = now + 1800; renewalState = "valid"; return }
-            guard snapshot.credentials.refreshToken?.isEmpty == false else {
-                nextRenewalCheck = now + 1800; renewalState = "needs-login"; return
-            }
-            let sts = await AppLoginRenewal.serverTime(old: snapshot.credentials, device: device, transport: transport)
-            guard isCurrent(snapshot) else { return }
-            let fresh = try await AppLoginRenewal.refresh(old: snapshot.credentials, device: device, sts: sts, transport: transport)
-            guard isCurrent(snapshot) else { return }
-            try accountPersistence.saveVerifiedBundle(fresh, epoch: cachedTelemetryEpoch ?? "")
-            applyLoginBundle(fresh)
-            nextRenewalCheck = now + 1800; renewalState = "renewed"
-            // Preserve login generation so valid playback/queued feedback survives an in-account renewal.
-            // Confirm uses captured OLD credentials. Failure must never roll back the new login.
-            do { try await AppLoginRenewal.confirm(old: snapshot.credentials, device: device, sts: sts, transport: transport) }
-            catch {
-                if loginSessionID == snapshot.session, renewableLogin == fresh { renewalState = "renewed-confirm-failed" }
+            switch outcome {
+            case .valid: nextRenewalCheck = now + 1800; renewalState = "valid"; return
+            case .needsLogin: nextRenewalCheck = now + 1800; renewalState = "needs-login"; return
+            case let .renewed(fresh, sts):
+                try accountPersistence.saveVerifiedBundle(fresh, epoch: cachedTelemetryEpoch ?? "")
+                applyLoginBundle(fresh)
+                nextRenewalCheck = now + 1800; renewalState = "renewed"
+                // Preserve login generation so valid playback/queued feedback survives an in-account renewal.
+                // Confirm uses captured OLD credentials. Failure must never roll back the new login.
+                do { try await AppLoginRenewal.confirm(old: snapshot.credentials, device: device, sts: sts, transport: transport) }
+                catch {
+                    if loginSessionID == snapshot.session, renewableLogin == fresh { renewalState = "renewed-confirm-failed" }
+                }
             }
         } catch {
             guard isCurrent(snapshot) else { return }

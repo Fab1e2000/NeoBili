@@ -98,15 +98,15 @@ struct HomeFeedCellView: View {
                         if let preview { HomeInlinePreviewProgress(videoID: video.bvid, preview: preview) }
                     }
                     .frame(width: size.width, height: size.width / HomeCardLayout.largeCoverAspectRatio)
-                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 7, topTrailingRadius: 7))
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: HomeCardLayout.coverCornerRadius,
+                                                      topTrailingRadius: HomeCardLayout.coverCornerRadius))
                     .allowsHitTesting(false)
                 }
             }
             // Both this source and its native hosting cell contain one card.
             .videoTransitionSource(video.bvid, in: videoTransition)
-            .contentShape(.interaction, Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CardPressStyle(cornerRadius: HomeCardLayout.cardCornerRadius))
         .contextMenu {
             // 和 PiliPlus 一样，只有视频卡有菜单；直播、图文卡没有这些操作。
             // 菜单项顺序照 PiliPlus：BV 号、稍后再看、访问 UP、不感兴趣、拉黑。

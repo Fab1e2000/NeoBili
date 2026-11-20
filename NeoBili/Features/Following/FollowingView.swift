@@ -128,11 +128,7 @@ struct FollowingView: View {
     }
 
     private var loggedOutView: some View {
-        ContentUnavailableView {
-            Label("尚未登录", systemImage: "person.crop.circle.badge.exclamationmark")
-        } description: {
-            Text(String(localized: "登录后这里会显示你关注的 UP 主的最新动态。\n点右上角头像即可登录。"))
-        }
+        ContentUnavailableView("尚未登录", systemImage: "person.crop.circle.badge.exclamationmark")
     }
 
     /// 头像条常驻顶部。

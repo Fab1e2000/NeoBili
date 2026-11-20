@@ -34,10 +34,11 @@ public struct UgcSeasonEpisode: Decodable, Identifiable, Hashable, Sendable {
     public let bvid: String?
     public let title: String?
     public let arc: UgcSeasonArchive?
+    public let pages: [VideoPart]?
 
     enum CodingKeys: String, CodingKey {
         case episodeId = "id"
-        case aid, cid, bvid, title, arc
+        case aid, cid, bvid, title, arc, pages
     }
 
     public var secureCoverURL: URL? { arc?.pic.flatMap { URL.biliSecure($0) } }

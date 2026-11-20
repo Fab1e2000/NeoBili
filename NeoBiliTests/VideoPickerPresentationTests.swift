@@ -23,7 +23,7 @@ final class VideoPickerPresentationTests: XCTestCase {
     func testSeasonPickerRetainsHalfAndFullHeightPresentation() async throws {
         let episodes = (1...60).map { (index: Int) in
             UgcSeasonEpisode(episodeId: index, aid: index, cid: index, bvid: "BVFixture\(index)",
-                title: "本地合集样例 \(index)", arc: nil)
+                title: "本地合集样例 \(index)", arc: nil, pages: nil)
         }
         let season = UgcSeason(id: 1, title: "本地合集", cover: nil, mid: nil,
             sections: [UgcSeasonSection(id: 1, title: nil, episodes: episodes)])
@@ -150,26 +150,6 @@ final class VideoPickerPresentationTests: XCTestCase {
 
     private func currentItem(in root: UIView) -> NSObject? {
         accessibilityItem(in: root) { $0.accessibilityLabel?.contains("正在播放") == true }
-    }
-
-    private func accessibilityItem(in root: UIView, matching: (NSObject) -> Bool) -> NSObject? {
-        var visited = Set<ObjectIdentifier>()
-        var pending: [NSObject] = [root]
-        while let object = pending.popLast() {
-            guard visited.insert(ObjectIdentifier(object)).inserted else { continue }
-            if matching(object) {
-                return object
-            }
-            if let view = object as? UIView { pending.append(contentsOf: view.subviews) }
-            pending.append(contentsOf: (object.accessibilityElements ?? []).compactMap { $0 as? NSObject })
-            let count = object.accessibilityElementCount()
-            if count > 0, count != NSNotFound {
-                for index in 0..<min(count, 1024) {
-                    if let child = object.accessibilityElement(at: index) as? NSObject { pending.append(child) }
-                }
-            }
-        }
-        return nil
     }
 
     private func navigationBars(in view: UIView) -> [UINavigationBar] {

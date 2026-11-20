@@ -33,6 +33,48 @@ final class OfflineCacheTests: XCTestCase {
         XCTFail("Timed out waiting for cache state", file: file, line: line)
     }
 
+    func testFailedCancelCanBeRetriedWithoutLosingTheTransfer() async throws {
+        let root = try directory(), transport = CacheTestTransport(), plan = resources()
+        let repo = OfflineCacheRepository(directory: root, transport: transport, prepare: { _ in plan }, accountID: { nil })
+        await repo.start()
+        await transport.network()
+        try await repo.enqueue([video()], quality: 80, audioQuality: 0, replace: false)
+        try await waitFor { await transport.count() > 0 }
+        let file = root.appendingPathComponent("manifest.json")
+        let backup = root.appendingPathComponent("saved.json")
+        try FileManager.default.moveItem(at: file, to: backup)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
+        do {
+            try await repo.cancel(video().id)
+            XCTFail("Cancellation should report the manifest write failure")
+        } catch { }
+        let pending = await repo.snapshot().tasks
+        XCTAssertEqual(pending.map(\.id), [video().id])
+        let active = await transport.existingTokens()
+        XCTAssertFalse(active.isEmpty)
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.moveItem(at: backup, to: file)
+        try await repo.cancel(video().id)
+        let remaining = await transport.existingTokens()
+        XCTAssertTrue(remaining.isEmpty)
+        let restored = OfflineCacheRepository(directory: root, transport: CacheTestTransport(), prepare: { _ in plan }, accountID: { nil })
+        await restored.start()
+        let tasks = await restored.snapshot().tasks
+        XCTAssertTrue(tasks.isEmpty)
+    }
+
+    func testInvalidBatchLeavesQueueEmpty() async throws {
+        let plan = resources()
+        let repo = OfflineCacheRepository(directory: try directory(), transport: CacheTestTransport(),
+            prepare: { _ in plan }, accountID: { nil })
+        do {
+            try await repo.enqueue([video(), video(0)], quality: 80, audioQuality: 0, replace: false)
+            XCTFail("Invalid part must reject the batch")
+        } catch OfflineCacheError.invalidResource { }
+        let tasks = await repo.snapshot().tasks
+        XCTAssertTrue(tasks.isEmpty)
+    }
+
     func testRequiresAllResourcesAndRestoresCompletedCacheWithoutNetwork() async throws {
         let root = try directory(), transfer = CacheTestTransport()
         var plan = resources()
@@ -129,8 +171,19 @@ final class OfflineCacheTests: XCTestCase {
         try await transfer.finish(kind: "danmaku", data: Data("<i/>".utf8))
         try await waitFor { await repo.snapshot().completed.count == 1 }
         let old = try await repo.service.playback(video().id)
-        try await repo.enqueue([video()], quality: 64, audioQuality: 0, replace: true)
+        try await repo.enqueue([video()], quality: 80, audioQuality: 30280, replace: true)
+        let duplicate = await repo.snapshot()
+        XCTAssertTrue(duplicate.tasks.isEmpty)
+        XCTAssertEqual(duplicate.completed.first?.generation, old.entry.generation)
+        try await repo.enqueue([video()], quality: 120, audioQuality: 0, replace: true)
         try await waitFor { await transfer.count() == 4 }
+        try await transfer.finish(kind: "video-0", data: Data("invalid media".utf8))
+        try await waitFor { await repo.snapshot().tasks.first?.state == .failed }
+        let playable = try await repo.service.playback(video().id)
+        XCTAssertEqual(playable.entry.generation, old.entry.generation)
+        await repo.service.releasePlayback(playable.leaseID)
+        try await repo.enqueue([video()], quality: 64, audioQuality: 0, replace: true)
+        try await waitFor { await transfer.count() == 6 }
         let during = await repo.snapshot(); XCTAssertEqual(during.completed.first?.quality, 80)
         try await transfer.finish(kind: "video-0", data: Data("\0\0\0\u{18}ftypisom-new".utf8))
         try await transfer.finish(kind: "danmaku", data: Data("<i/>".utf8))

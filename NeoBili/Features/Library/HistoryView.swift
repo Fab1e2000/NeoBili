@@ -18,39 +18,13 @@ struct HistoryView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var animations = VideoCardAnimationPreferences(source: .history)
 
-    /// 手动刷新取回但还没换进列表的第一页。
-    private struct StagedPage {
-        let items: [HistoryItem]
-        let hasMore: Bool
-        let cursorMax: Int
-        let cursorViewAt: Int
-        /// 取回时的移除状态；换入前若又发生过移除，这份快照已过期。
-        let revision: UUID
-    }
-
+    @State private var model = HistoryListModel()
     @State private var refresh = ListRefreshController()
-    @State private var stagedPage: StagedPage?
-    @State private var items: [HistoryItem] = []
-    @State private var cursorMax = 0
-    @State private var cursorViewAt = 0
-    @State private var hasMore = true
-    @State private var isLoading = false
-    @State private var isLoadingMore = false
-    @State private var errorMessage: String?
-    /// 正在删除的条目。刷新结果会排除它们，避免把刚删掉的记录带回来。
-    @State private var removals = ListRemovalState<String>()
-    @State private var loadID = UUID()
-    @State private var entranceGeneration = 0
-    @State private var isSelecting = false
-    @State private var selectedIDs: Set<String> = []
-    @State private var isRemovingSelected = false
     @State private var filterMemo = FilteredVideosMemo<HistoryItem>()
     @State private var menuRegistry = ResolvedMenuRegistry<String>()
-    /// 列表内容每变一次加一，过滤缓存据此重算；body 的无关重算仍复用结果。
-    @State private var contentRevision = 0
 
     private var visibleItems: [HistoryItem] {
-        filterMemo.videos(items, revision: contentRevision,
+        filterMemo.videos(model.items, revision: model.contentRevision,
                           hidesPortraitVideos: hidesPortraitVideos, filtering: filtering)
     }
 
@@ -58,20 +32,20 @@ struct HistoryView: View {
         let visibleItems = visibleItems
         let paginationIDs = Set(visibleItems.suffix(5).map(\.id))
         Group {
-            if visibleItems.isEmpty, items.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
+            if visibleItems.isEmpty, model.items.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
                 LoadingTaskAnchor()
-            } else if let errorMessage, items.isEmpty {
+            } else if let errorMessage = model.errorMessage, model.items.isEmpty {
                 ContentUnavailableView {
                     Label("历史加载失败", systemImage: "clock.arrow.circlepath")
                 } description: {
                     Text(errorMessage)
                 } actions: {
-                    Button("重试") { Task { await reload() } }
+                    Button("重试") { Task { await model.reload(services: services) } }
                 }
-            } else if !hasMore, visibleItems.isEmpty {
+            } else if !model.hasMore, visibleItems.isEmpty {
                 ContentUnavailableView(
-                    items.isEmpty ? "还没有观看记录" : "没有可显示的视频",
-                    systemImage: items.isEmpty ? "clock.arrow.circlepath" : "rectangle.slash"
+                    model.items.isEmpty ? "还没有观看记录" : "没有可显示的视频",
+                    systemImage: model.items.isEmpty ? "clock.arrow.circlepath" : "rectangle.slash"
                 )
             } else {
                 ScrollView {
@@ -80,20 +54,20 @@ struct HistoryView: View {
                             row(item, loadsNextPage: paginationIDs.contains(item.id))
                                 .removalFillTransition()
                         }
-                        if hasMore, !isLoadingMore {
-                            Button("继续加载") { Task { await loadNextPage() } }
+                        if model.hasMore, !model.isLoadingMore {
+                            Button("继续加载") { Task { await model.loadNextPage(services: services, refreshing: refresh.isRefreshing) } }
                                 .padding(.vertical, 12)
-                                .disabled(isLoading)
+                                .disabled(model.isLoading)
                         }
-                        if isLoadingMore {
+                        if model.isLoadingMore {
                             LoadingTaskAnchor()
                                 .padding(.vertical, 12)
                         }
-                        if let errorMessage, !items.isEmpty {
+                        if let errorMessage = model.errorMessage, !model.items.isEmpty {
                             VStack(spacing: 8) {
                                 Text(errorMessage).font(.app(.footnote)).foregroundStyle(.secondary)
-                                Button("重试加载") { Task { await loadNextPage() } }
-                                    .disabled(isLoading || isLoadingMore)
+                                Button("重试加载") { Task { await model.loadNextPage(services: services, refreshing: refresh.isRefreshing) } }
+                                    .disabled(model.isLoading || model.isLoadingMore)
                             }
                             .padding()
                         }
@@ -102,7 +76,7 @@ struct HistoryView: View {
                         ResolvedMenuInstaller(registry: menuRegistry, menu: rowMenu)
                     }
                     // 删除看源列表的身份：过滤只改可见行，不触发补位。翻页是末尾追加，同样不动画。
-                    .removalFill(ids: items.map(\.id), enabled: animatesExit, scope: .removalAndInlineRestore)
+                    .removalFill(ids: model.items.map(\.id), enabled: animatesExit, scope: .removalAndInlineRestore)
                     // 与推荐页一致：松手后旧卡片淡出，新内容到了再换入。
                     .opacity(animatesExit ? refresh.contentOpacity : 1)
                     .allowsHitTesting(refresh.contentOpacity == 1)
@@ -130,48 +104,44 @@ struct HistoryView: View {
             }
         }
         .overlay {
-            if isLoading, items.isEmpty { LoadingTaskAnchor() }
+            if model.isLoading, model.items.isEmpty { LoadingTaskAnchor() }
         }
-        .task { await loadIfNeeded() }
-        .listEntrance(ids: visibleItems.map { "history:\($0.id)" }, generation: entranceGeneration, source: .history)
-        .onDisappear { refresh.reset(discard: { stagedPage = nil }) }
-        .resolvePortraitVideos(items, batchID: entranceGeneration) {
-            guard hasMore, errorMessage == nil else { return items }
-            await loadNextPage()
-            return items
+        .task { await model.loadIfNeeded(services: services) }
+        .listEntrance(ids: visibleItems.map { "history:\($0.id)" }, generation: model.entranceGeneration, source: .history)
+        .onDisappear { refresh.reset(discard: model.discardStagedPage) }
+        .resolvePortraitVideos(model.items, batchID: model.entranceGeneration) {
+            guard model.hasMore, model.errorMessage == nil else { return model.items }
+            await model.loadNextPage(services: services, refreshing: refresh.isRefreshing)
+            return model.items
         }
         .videoCardAnimationSource(.history)
         .safeAreaInset(edge: .bottom) {
-            if isSelecting {
-                LibrarySelectionBar(count: selectedIDs.count,
-                    isBusy: isRemovingSelected || isLoading || isLoadingMore || refresh.isRefreshing,
-                    done: { isSelecting = false; selectedIDs = [] }) {
-                    Task { await removeSelected() }
+            if model.isSelecting {
+                LibrarySelectionBar(count: model.selectedIDs.count,
+                    isBusy: model.isRemovingSelected || model.isLoading || model.isLoadingMore || refresh.isRefreshing,
+                    done: { model.isSelecting = false; model.selectedIDs = [] }) {
+                    Task { await model.removeSelected(services: services, account: account, feedback: feedback, refreshing: refresh.isRefreshing) }
                 }
             }
         }
         .onChange(of: account.sessionID) { _, _ in
-            loadID = UUID()
-            items = []; selectedIDs = []; isSelecting = false
-            contentRevision += 1
-            isLoading = false; isLoadingMore = false
-            isRemovingSelected = false
-            removals = ListRemovalState()
-            hasMore = true
-            errorMessage = nil
-            refresh.reset(discard: { stagedPage = nil })
-            Task { await reload() }
+            model.reset()
+            refresh.reset(discard: model.discardStagedPage)
+            Task { await model.reload(services: services) }
         }
     }
 
     private func row(_ item: HistoryItem, loadsNextPage: Bool) -> some View {
         let summary = item.asVideoSummary
 
-        return Button {
-            if isSelecting {
-                guard !isRemovingSelected else { return }
-                if selectedIDs.contains(item.id) { selectedIDs.remove(item.id) }
-                else { selectedIDs.insert(item.id) }
+        return LibraryVideoCardButton(
+            id: item.id, registry: menuRegistry,
+            isSelecting: model.isSelecting, isSelected: model.selectedIDs.contains(item.id)
+        ) {
+            if model.isSelecting {
+                guard !model.isRemovingSelected else { return }
+                if model.selectedIDs.contains(item.id) { model.selectedIDs.remove(item.id) }
+                else { model.selectedIDs.insert(item.id) }
                 return
             }
             guard let summary else { return }
@@ -187,12 +157,6 @@ struct HistoryView: View {
                 from: "history-\(summary.bvid)"
             )
         } label: {
-            HStack(spacing: 8) {
-                if isSelecting {
-                    Image(systemName: selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                        .font(.app(.title2))
-                        .foregroundStyle(selectedIDs.contains(item.id) ? Color.accentColor : .secondary)
-                }
             VideoListCard(
                 coverURL: summary?.secureCoverURL,
                 title: item.displayTitle,
@@ -201,19 +165,13 @@ struct HistoryView: View {
                 durationText: summary?.formattedDuration ?? ""
             )
             .videoEntranceIdentity("history:\(item.id)")
-            }
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selectedIDs.contains(item.id) ? .isSelected : [])
-        .background { ResolvedMenuMarker(id: item.id, registry: menuRegistry) }
-        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { menuRegistry.setLayoutFrame(item.id, $0) }
-        .onDisappear { menuRegistry.clearLayoutFrame(item.id) }
         .videoTransitionSource("history-\(summary?.bvid ?? "")", in: videoTransition)
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
-            if loadsNextPage { await loadMoreIfNeeded() }
-            if !isSelecting, let summary {
+            if loadsNextPage { await model.loadMoreIfNeeded(services: services, refreshing: refresh.isRefreshing) }
+            if !model.isSelecting, let summary {
                 await preparation.prefetchWhenSettled(
                     bvid: summary.bvid,
                     cid: summary.cid > 0 ? summary.cid : nil
@@ -223,215 +181,39 @@ struct HistoryView: View {
     }
 
     private func rowMenu(for id: String) -> UIMenu {
-        let busy = isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing
+        let busy = model.isRemovingSelected || model.isLoading || model.isLoadingMore || model.removals.hasPending || refresh.isRefreshing
         var actions: [UIAction] = []
-        if !isSelecting {
-            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, fallback: id) { target in
-                isSelecting = true
-                selectedIDs = [target]
+        if !model.isSelecting {
+            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, id: id) { target in
+                model.isSelecting = true
+                model.selectedIDs = [target]
             })
         }
-        actions.append(menuRegistry.action("稍后再看", systemImage: "flag", fallback: id) { target in
-            guard let item = items.first(where: { $0.id == target }) else { return }
+        actions.append(menuRegistry.action("稍后再看", systemImage: "flag", id: id) { target in
+            guard let item = model.items.first(where: { $0.id == target }) else { return }
             WatchLaterAction.add(aid: item.asVideoSummary?.aid, bvid: item.asVideoSummary?.bvid,
                                  services: services, account: account, feedback: feedback)
         })
-        actions.append(menuRegistry.action("删除这条历史", systemImage: "trash", destructive: true, enabled: !busy, fallback: id) { target in
-            guard let item = items.first(where: { $0.id == target }) else { return }
-            Task { await delete(item) }
+        actions.append(menuRegistry.action("删除这条历史", systemImage: "trash", destructive: true, enabled: !busy, id: id) { target in
+            guard let item = model.items.first(where: { $0.id == target }) else { return }
+            Task { await model.delete(item, services: services, account: account, feedback: feedback, refreshing: refresh.isRefreshing) }
         })
         return UIMenu(children: actions)
-    }
-
-    private func removeSelected() async {
-        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending, !refresh.isRefreshing else { return }
-        let snapshot = items
-        let targets = snapshot.filter { selectedIDs.contains($0.id) }
-        guard !targets.isEmpty else { return }
-        let owner = account.sessionID
-        let identitySession = services.session.currentID()
-        isRemovingSelected = true
-        loadID = UUID()
-        for target in targets { _ = removals.begin(target.id); removals.hide(target.id) }
-        defer {
-            if account.sessionID == owner {
-                for target in targets { removals.finish(target.id) }
-                isRemovingSelected = false
-            }
-        }
-        let lookup = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let ids = Set(targets.map(\.id))
-        items.removeAll { ids.contains($0.id) }
-        contentRevision += 1
-        let result = await LibraryBatchRemoval.perform(ids: targets.map(\.id),
-            isCurrent: { account.sessionID == owner },
-            confirm: { await feedback.confirmRemoval(String(localized: "已移除历史记录")) },
-            remove: { id in
-                guard let target = lookup[id] else { return }
-                try await services.library.deleteHistory(kid: target.kidParam, expectedSessionID: identitySession)
-            })
-        guard account.sessionID == owner else { return }
-        items = snapshot.filter { !result.succeeded.contains($0.id) }
-        contentRevision += 1
-        selectedIDs.subtract(result.succeeded)
-        if selectedIDs.isEmpty { isSelecting = false }
-        if let error = result.error { feedback.show(error) }
-    }
-
-    private func loadIfNeeded() async {
-        guard items.isEmpty, !isLoading else { return }
-        await reload()
     }
 
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
 
     private var canRefresh: Bool {
-        !refresh.isRefreshing && !isLoading && !isLoadingMore && !removals.hasPending && !isRemovingSelected
+        !refresh.isRefreshing && !model.isLoading && !model.isLoadingMore && !model.removals.hasPending && !model.isRemovingSelected
     }
 
     /// 手动下拉刷新：旧卡片淡出的同时取第一页，两者都结束后一次换入。
     private func startRefresh() {
         guard canRefresh else { return }
-        refresh.start(hasContent: !items.isEmpty, animatesExit: animatesExit, source: .history,
-                      fetch: { await stageReload() },
-                      commit: commitStagedReload,
-                      discard: { stagedPage = nil })
+        refresh.start(hasContent: !model.items.isEmpty, animatesExit: animatesExit, source: .history,
+                      fetch: { await model.stageReload(services: services, feedback: feedback) },
+                      commit: model.commitStagedReload,
+                      discard: model.discardStagedPage)
     }
 
-    private func stageReload() async -> Bool {
-        let requestID = UUID()
-        loadID = requestID
-        let revision = removals.revision
-        stagedPage = nil
-        isLoading = true
-        defer { if loadID == requestID { isLoading = false } }
-        do {
-            let payload = try await services.library.historyPage(max: 0, viewAt: 0)
-            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return false }
-            stagedPage = StagedPage(
-                items: LibraryPageRules.unique(payload.allItems.filter(\.isVideo), excluding: removals.hiddenIDs),
-                hasMore: LibraryPageRules.advancesHistory(max: payload.cursor?.max,
-                    viewAt: payload.cursor?.resolvedViewAt, fromMax: 0, fromViewAt: 0),
-                cursorMax: payload.cursor?.max ?? 0,
-                cursorViewAt: payload.cursor?.resolvedViewAt ?? 0,
-                revision: revision)
-            return true
-        } catch {
-            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return false }
-            feedback.show(error.localizedDescription)
-            return false
-        }
-    }
-
-    private func commitStagedReload() {
-        guard let page = stagedPage else { return }
-        stagedPage = nil
-        guard page.revision == removals.revision, !removals.hasPending else { return }
-        entranceGeneration += 1
-        items = page.items
-        contentRevision += 1
-        selectedIDs.formIntersection(Set(items.map(\.id)))
-        if selectedIDs.isEmpty { isSelecting = false }
-        hasMore = page.hasMore
-        cursorMax = page.cursorMax
-        cursorViewAt = page.cursorViewAt
-        errorMessage = nil
-    }
-
-    /// 首次加载和「重试」走这里；手动下拉刷新走 `startRefresh`。
-    private func reload() async {
-        guard !removals.hasPending, !isRemovingSelected else { return }
-        let requestID = UUID()
-        loadID = requestID
-        let revision = removals.revision
-        isLoading = true
-        isLoadingMore = false
-        defer { if loadID == requestID { isLoading = false } }
-        do {
-            let payload = try await services.library.historyPage(max: 0, viewAt: 0)
-            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
-            let incoming = payload.allItems.filter(\.isVideo)
-            entranceGeneration += 1
-            items = LibraryPageRules.unique(incoming, excluding: removals.hiddenIDs)
-            contentRevision += 1
-            selectedIDs.formIntersection(Set(items.map(\.id)))
-
-            hasMore = LibraryPageRules.advancesHistory(max: payload.cursor?.max,
-                viewAt: payload.cursor?.resolvedViewAt, fromMax: 0, fromViewAt: 0)
-            cursorMax = payload.cursor?.max ?? 0
-            cursorViewAt = payload.cursor?.resolvedViewAt ?? 0
-            errorMessage = nil
-        } catch {
-            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
-            if items.isEmpty { errorMessage = error.localizedDescription }
-        }
-    }
-
-    private func loadMoreIfNeeded() async {
-        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, !refresh.isRefreshing, errorMessage == nil else { return }
-        await loadNextPage()
-    }
-
-    private func loadNextPage() async {
-        guard !removals.hasPending, !isRemovingSelected, !refresh.isRefreshing else { return }
-        guard hasMore, !isLoadingMore, !isLoading else { return }
-        let requestID = UUID()
-        loadID = requestID
-        let revision = removals.revision
-        errorMessage = nil
-        isLoading = items.isEmpty
-        isLoadingMore = !items.isEmpty
-        defer {
-            if loadID == requestID {
-                isLoading = false
-                isLoadingMore = false
-            }
-        }
-        do {
-            let payload = try await services.library.historyPage(max: cursorMax, viewAt: cursorViewAt)
-            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
-            let incoming = payload.allItems.filter(\.isVideo)
-            let existing = Set(items.map(\.id))
-            items.append(contentsOf: LibraryPageRules.unique(incoming, excluding: existing.union(removals.hiddenIDs)))
-            contentRevision += 1
-
-            hasMore = LibraryPageRules.advancesHistory(max: payload.cursor?.max,
-                viewAt: payload.cursor?.resolvedViewAt, fromMax: cursorMax, fromViewAt: cursorViewAt)
-            cursorMax = payload.cursor?.max ?? 0
-            cursorViewAt = payload.cursor?.resolvedViewAt ?? 0
-            errorMessage = nil
-        } catch {
-            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    /// 先移除卡片并提供撤销窗口，确认后提交删除；失败时恢复尚未删除的条目。
-    private func delete(_ item: HistoryItem) async {
-        guard !isRemovingSelected, !refresh.isRefreshing, items.contains(where: { $0.id == item.id }), removals.begin(item.id) else { return }
-        let sessionID = account.sessionID
-        defer { if account.sessionID == sessionID { removals.finish(item.id) } }
-        let identitySession = services.session.currentID()
-        var removedIndex: Int?
-        do {
-            removals.hide(item.id)
-            removedIndex = removals.remove(item.id, from: &items)
-            contentRevision += 1
-            guard await feedback.confirmRemoval(String(localized: "已移除历史记录")),
-                  account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
-            try await services.library.deleteHistory(kid: item.kidParam, expectedSessionID: identitySession)
-            guard account.sessionID == sessionID else { return }
-            // 同时完成的刷新也不能留下同 ID 的旧条目。
-            items.removeAll { $0.id == item.id }
-            contentRevision += 1
-            selectedIDs.remove(item.id)
-            if selectedIDs.isEmpty { isSelecting = false }
-        } catch {
-            if account.sessionID == sessionID, let removedIndex {
-                removals.restore(item, at: removedIndex, in: &items)
-                contentRevision += 1
-            }
-            if account.sessionID == sessionID, !error.isCancellation { feedback.show(error.localizedDescription) }
-        }
-    }
 }

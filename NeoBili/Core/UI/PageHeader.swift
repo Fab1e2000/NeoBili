@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 extension EnvironmentValues {
     /// 打开「我的」页面。由根视图的 `mineSheetHost()` 提供。
@@ -99,5 +100,86 @@ private struct MinimizingNavigationBar: ViewModifier {
 extension View {
     func rootPageChrome(title: String, barFollowsCollapse: Bool = false) -> some View {
         modifier(RootPageChrome(title: title, barFollowsCollapse: barFollowsCollapse))
+    }
+
+    /// iOS 26 的导航栏默认是玻璃材质，SwiftUI 的 toolbarBackground 会被它盖住。
+    /// 页面需要和吸顶分组标题拼成一整条时，用 UIKit 的不透明外观固定柱底色。
+    func opaqueNavigationBarBackground(_ color: UIColor = .systemGroupedBackground) -> some View {
+        background {
+            OpaqueNavigationBarBackground(color: color)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// 配置所在导航栏的外观为不透明底色；SwiftUI 每次重算工具栏后这里会再应用一遍。
+private struct OpaqueNavigationBarBackground: UIViewRepresentable {
+    let color: UIColor
+
+    func makeUIView(context: Context) -> ObserverView { ObserverView(color: color) }
+    func updateUIView(_ view: ObserverView, context: Context) {
+        view.color = color
+        view.apply()
+    }
+
+    final class ObserverView: UIView {
+        var color: UIColor
+        private var applied: UINavigationBarAppearance?
+
+        init(color: UIColor) {
+            self.color = color
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            apply()
+        }
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            apply()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            apply()
+        }
+
+        func apply() {
+            guard let bar = enclosingNavigationBar() else { return }
+            // 外观没被系统重新覆盖时不做无谓的写入。
+            if let applied, bar.standardAppearance === applied, bar.scrollEdgeAppearance === applied { return }
+            let appearance = UINavigationBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = color
+            appearance.shadowColor = .clear
+            bar.standardAppearance = appearance
+            bar.compactAppearance = appearance
+            bar.scrollEdgeAppearance = appearance
+            bar.compactScrollEdgeAppearance = appearance
+            applied = appearance
+        }
+
+        private func enclosingNavigationBar() -> UINavigationBar? {
+            var ancestor = superview
+            while let view = ancestor {
+                if let bar = view.subviews.first(where: { $0 is UINavigationBar }) as? UINavigationBar {
+                    return bar
+                }
+                ancestor = view.superview
+            }
+            var responder: UIResponder? = self
+            while let current = responder {
+                if let navigation = current as? UINavigationController { return navigation.navigationBar }
+                responder = current.next
+            }
+            return nil
+        }
     }
 }

@@ -49,6 +49,8 @@ struct FavoritesView: View {
                     contentOpacity: animatesExit ? refresh.contentOpacity : 1,
                     animatesRemoval: animatesExit,
                     safeInsets: safeInsets,
+                    refreshDistance: CGFloat(refreshDistance),
+                    onRefresh: startRefresh,
                     onOpen: { openedFolder = $0 },
                     onDelete: { folderPendingDeletion = $0 }
                 )
@@ -69,7 +71,7 @@ struct FavoritesView: View {
                     createFolderButton
                 }
             }
-            // 从「我的服务」进入时右上角提供刷新。收藏页没有下拉刷新。
+            // 从「我的服务」进入时右上角提供刷新。
             if !isTabRoot {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("刷新", systemImage: "arrow.clockwise", action: startRefresh)
@@ -121,7 +123,7 @@ struct FavoritesView: View {
             }
             Button("取消", role: .cancel) { folderPendingDeletion = nil }
         } message: { folder in
-            Text(String(localized: "删除「\(folder.title)」后，里面的 \(folder.mediaCount) 个内容也会一并消失。可在提示中撤销，提交后无法恢复。"))
+            Text(String(localized: "删除「\(folder.title)」？"))
         }
     }
 
@@ -180,6 +182,8 @@ struct FavoritesView: View {
     }
 
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
+
+    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
 
     private var canRefresh: Bool { !refresh.isRefreshing && !isLoading && !folderRemovals.hasPending }
 
@@ -329,36 +333,13 @@ struct FavoriteFolderView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var animations = VideoCardAnimationPreferences(source: .favorites)
 
-    /// 手动刷新取回但还没换进列表的第一页。
-    private struct StagedPage {
-        let videos: [FavMedia]
-        let hasMore: Bool
-        /// 取回时的移除状态；换入前若又发生过移除，这份快照已过期。
-        let revision: UUID
-    }
-
+    @State private var model = FavoriteFolderListModel()
     @State private var refresh = ListRefreshController()
-    @State private var stagedPage: StagedPage?
-    @State private var videos: [FavMedia] = []
-    @State private var page = 1
-    @State private var hasMore = true
-    @State private var isLoading = false
-    @State private var isLoadingMore = false
-    @State private var errorMessage: String?
-    /// 正在删除的条目。刷新结果会排除它们，避免把刚移出的视频带回来。
-    @State private var removals = ListRemovalState<Int>()
-    @State private var loadID = UUID()
-    @State private var entranceGeneration = 0
-    @State private var isSelecting = false
-    @State private var selectedIDs: Set<Int> = []
-    @State private var isRemovingSelected = false
     @State private var filterMemo = FilteredVideosMemo<FavMedia>()
     @State private var menuRegistry = ResolvedMenuRegistry<Int>()
-    /// 列表内容每变一次加一，过滤缓存据此重算；body 的无关重算仍复用结果。
-    @State private var contentRevision = 0
 
     private var visibleVideos: [FavMedia] {
-        filterMemo.videos(videos, revision: contentRevision,
+        filterMemo.videos(model.videos, revision: model.contentRevision,
                           hidesPortraitVideos: hidesPortraitVideos, filtering: filtering)
     }
 
@@ -366,20 +347,20 @@ struct FavoriteFolderView: View {
         let visibleVideos = visibleVideos
         let paginationIDs = Set(visibleVideos.suffix(5).map(\.id))
         Group {
-            if visibleVideos.isEmpty, videos.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
+            if visibleVideos.isEmpty, model.videos.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
                 LoadingTaskAnchor()
-            } else if let errorMessage, videos.isEmpty {
+            } else if let errorMessage = model.errorMessage, model.videos.isEmpty {
                 ContentUnavailableView {
                     Label("内容加载失败", systemImage: "star.slash")
                 } description: {
                     Text(errorMessage)
                 } actions: {
-                    Button("重试") { Task { await reload() } }
+                    Button("重试") { Task { await model.reload(services: services, folder: folder) } }
                 }
-            } else if !isLoading, !hasMore, visibleVideos.isEmpty {
+            } else if !model.isLoading, !model.hasMore, visibleVideos.isEmpty {
                 ContentUnavailableView(
-                    videos.isEmpty ? "收藏夹是空的" : "没有可显示的视频",
-                    systemImage: videos.isEmpty ? "star" : "rectangle.slash"
+                    model.videos.isEmpty ? "收藏夹是空的" : "没有可显示的视频",
+                    systemImage: model.videos.isEmpty ? "star" : "rectangle.slash"
                 )
             } else {
                 ScrollView {
@@ -388,20 +369,20 @@ struct FavoriteFolderView: View {
                             row(media, loadsNextPage: paginationIDs.contains(media.id))
                                 .removalFillTransition()
                         }
-                        if hasMore, !isLoadingMore {
-                            Button("继续加载") { Task { await loadNextPage() } }
+                        if model.hasMore, !model.isLoadingMore {
+                            Button("继续加载") { Task { await model.loadNextPage(services: services, folder: folder, refreshing: refresh.isRefreshing) } }
                                 .padding(.vertical, 12)
-                                .disabled(isLoading)
+                                .disabled(model.isLoading)
                         }
-                        if isLoadingMore {
+                        if model.isLoadingMore {
                             LoadingTaskAnchor()
                                 .padding(.vertical, 12)
                         }
-                        if let errorMessage, !videos.isEmpty {
+                        if let errorMessage = model.errorMessage, !model.videos.isEmpty {
                             VStack(spacing: 8) {
                                 Text(errorMessage).font(.app(.footnote)).foregroundStyle(.secondary)
-                                Button("重试加载") { Task { await loadNextPage() } }
-                                    .disabled(isLoading || isLoadingMore)
+                                Button("重试加载") { Task { await model.loadNextPage(services: services, folder: folder, refreshing: refresh.isRefreshing) } }
+                                    .disabled(model.isLoading || model.isLoadingMore)
                             }
                             .padding()
                         }
@@ -410,7 +391,7 @@ struct FavoriteFolderView: View {
                         ResolvedMenuInstaller(registry: menuRegistry, menu: rowMenu)
                     }
                     // 删除看源列表的身份：过滤只改可见行，不触发补位。翻页是末尾追加，同样不动画。
-                    .removalFill(ids: videos.map(\.id), enabled: animatesExit, scope: .removalAndInlineRestore)
+                    .removalFill(ids: model.videos.map(\.id), enabled: animatesExit, scope: .removalAndInlineRestore)
                     // 与推荐页一致：松手后旧卡片淡出，新内容到了再换入。
                     .opacity(animatesExit ? refresh.contentOpacity : 1)
                     .allowsHitTesting(refresh.contentOpacity == 1)
@@ -428,48 +409,44 @@ struct FavoriteFolderView: View {
         .navigationTitle(folder.title)
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
-            if isLoading, videos.isEmpty { LoadingTaskAnchor() }
+            if model.isLoading, model.videos.isEmpty { LoadingTaskAnchor() }
         }
-        .task { await loadIfNeeded() }
-        .listEntrance(ids: visibleVideos.map { "favorite:\($0.id)" }, generation: entranceGeneration, source: .favorites)
-        .onDisappear { refresh.reset(discard: { stagedPage = nil }) }
-        .resolvePortraitVideos(videos, batchID: entranceGeneration) {
-            guard hasMore, errorMessage == nil else { return videos }
-            await loadNextPage()
-            return videos
+        .task { await model.loadIfNeeded(services: services, folder: folder) }
+        .listEntrance(ids: visibleVideos.map { "favorite:\($0.id)" }, generation: model.entranceGeneration, source: .favorites)
+        .onDisappear { refresh.reset(discard: model.discardStagedPage) }
+        .resolvePortraitVideos(model.videos, batchID: model.entranceGeneration) {
+            guard model.hasMore, model.errorMessage == nil else { return model.videos }
+            await model.loadNextPage(services: services, folder: folder, refreshing: refresh.isRefreshing)
+            return model.videos
         }
         .videoCardAnimationSource(.favorites)
         .safeAreaInset(edge: .bottom) {
-            if isSelecting {
-                LibrarySelectionBar(count: selectedIDs.count,
-                    isBusy: isRemovingSelected || isLoading || isLoadingMore || refresh.isRefreshing,
-                    done: { isSelecting = false; selectedIDs = [] }) {
-                    Task { await removeSelected() }
+            if model.isSelecting {
+                LibrarySelectionBar(count: model.selectedIDs.count,
+                    isBusy: model.isRemovingSelected || model.isLoading || model.isLoadingMore || refresh.isRefreshing,
+                    done: { model.isSelecting = false; model.selectedIDs = [] }) {
+                    Task { await model.removeSelected(services: services, account: account, feedback: feedback, folder: folder, refreshing: refresh.isRefreshing) }
                 }
             }
         }
         .onChange(of: account.sessionID) { _, _ in
-            loadID = UUID()
-            videos = []; selectedIDs = []; isSelecting = false
-            contentRevision += 1
-            isLoading = false; isLoadingMore = false
-            isRemovingSelected = false
-            removals = ListRemovalState()
-            hasMore = true
-            errorMessage = nil
-            refresh.reset(discard: { stagedPage = nil })
-            Task { await reload() }
+            model.reset()
+            refresh.reset(discard: model.discardStagedPage)
+            Task { await model.reload(services: services, folder: folder) }
         }
     }
 
     private func row(_ media: FavMedia, loadsNextPage: Bool) -> some View {
         let summary = media.asVideoSummary
 
-        return Button {
-            if isSelecting {
-                guard !isRemovingSelected else { return }
-                if selectedIDs.contains(media.id) { selectedIDs.remove(media.id) }
-                else { selectedIDs.insert(media.id) }
+        return LibraryVideoCardButton(
+            id: media.id, registry: menuRegistry,
+            isSelecting: model.isSelecting, isSelected: model.selectedIDs.contains(media.id)
+        ) {
+            if model.isSelecting {
+                guard !model.isRemovingSelected else { return }
+                if model.selectedIDs.contains(media.id) { model.selectedIDs.remove(media.id) }
+                else { model.selectedIDs.insert(media.id) }
                 return
             }
             guard let summary else { return }
@@ -485,12 +462,6 @@ struct FavoriteFolderView: View {
                 from: "fav-\(summary.bvid)"
             )
         } label: {
-            HStack(spacing: 8) {
-                if isSelecting {
-                    Image(systemName: selectedIDs.contains(media.id) ? "checkmark.circle.fill" : "circle")
-                        .font(.app(.title2))
-                        .foregroundStyle(selectedIDs.contains(media.id) ? Color.accentColor : .secondary)
-                }
             VideoListCard(
                 coverURL: summary?.secureCoverURL,
                 title: media.title,
@@ -499,19 +470,13 @@ struct FavoriteFolderView: View {
                 durationText: summary?.formattedDuration ?? ""
             )
             .videoEntranceIdentity("favorite:\(media.id)")
-            }
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selectedIDs.contains(media.id) ? .isSelected : [])
-        .background { ResolvedMenuMarker(id: media.id, registry: menuRegistry) }
-        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { menuRegistry.setLayoutFrame(media.id, $0) }
-        .onDisappear { menuRegistry.clearLayoutFrame(media.id) }
         .videoTransitionSource("fav-\(summary?.bvid ?? "")", in: videoTransition)
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
         .task {
-            if loadsNextPage { await loadMoreIfNeeded() }
-            if !isSelecting, let summary {
+            if loadsNextPage { await model.loadMoreIfNeeded(services: services, folder: folder, refreshing: refresh.isRefreshing) }
+            if !model.isSelecting, let summary {
                 // 收藏没有 cid，预取会先取一次详情再取播放地址。
                 await preparation.prefetchWhenSettled(bvid: summary.bvid)
             }
@@ -519,209 +484,40 @@ struct FavoriteFolderView: View {
     }
 
     private func rowMenu(for id: Int) -> UIMenu {
-        let busy = isRemovingSelected || isLoading || isLoadingMore || removals.hasPending || refresh.isRefreshing
+        let busy = model.isRemovingSelected || model.isLoading || model.isLoadingMore || model.removals.hasPending || refresh.isRefreshing
         var actions: [UIAction] = []
-        if !isSelecting {
-            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, fallback: id) { target in
-                isSelecting = true
-                selectedIDs = [target]
+        if !model.isSelecting {
+            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, id: id) { target in
+                model.isSelecting = true
+                model.selectedIDs = [target]
             })
         }
-        actions.append(menuRegistry.action("稍后再看", systemImage: "flag", fallback: id) { target in
-            guard let media = videos.first(where: { $0.id == target }) else { return }
+        actions.append(menuRegistry.action("稍后再看", systemImage: "flag", id: id) { target in
+            guard let media = model.videos.first(where: { $0.id == target }) else { return }
             WatchLaterAction.add(aid: media.id, bvid: media.bvid, services: services, account: account, feedback: feedback)
         })
-        actions.append(menuRegistry.action("取消收藏", systemImage: "star.slash", destructive: true, enabled: !busy, fallback: id) { target in
-            guard let media = videos.first(where: { $0.id == target }) else { return }
-            Task { await remove(media) }
+        actions.append(menuRegistry.action("取消收藏", systemImage: "star.slash", destructive: true, enabled: !busy, id: id) { target in
+            guard let media = model.videos.first(where: { $0.id == target }) else { return }
+            Task { await model.remove(media, services: services, account: account, feedback: feedback, folder: folder, refreshing: refresh.isRefreshing) }
         })
         return UIMenu(children: actions)
     }
 
-    private func removeSelected() async {
-        guard !isRemovingSelected, !isLoading, !isLoadingMore, !removals.hasPending, !refresh.isRefreshing else { return }
-        let snapshot = videos
-        let targets = snapshot.filter { selectedIDs.contains($0.id) }
-        guard !targets.isEmpty else { return }
-        let owner = account.sessionID
-        let identitySession = services.session.currentID()
-        isRemovingSelected = true
-        loadID = UUID()
-        for target in targets { _ = removals.begin(target.id); removals.hide(target.id) }
-        defer {
-            if account.sessionID == owner {
-                for target in targets { removals.finish(target.id) }
-                isRemovingSelected = false
-            }
-        }
-        let lookup = Dictionary(targets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let ids = Set(targets.map(\.id))
-        videos.removeAll { ids.contains($0.id) }
-        contentRevision += 1
-        let result = await LibraryBatchRemoval.perform(ids: targets.map(\.id),
-            isCurrent: { account.sessionID == owner },
-            confirm: { await feedback.confirmRemoval(String(localized: "已移出收藏夹")) },
-            remove: { id in
-                guard let target = lookup[id] else { return }
-                try await services.library.removeFavorite(folderID: folder.id, aid: target.id, expectedSessionID: identitySession)
-            })
-        guard account.sessionID == owner else { return }
-        videos = snapshot.filter { !result.succeeded.contains($0.id) }
-        contentRevision += 1
-        selectedIDs.subtract(result.succeeded)
-        if selectedIDs.isEmpty { isSelecting = false }
-        if let error = result.error { feedback.show(error) }
-    }
-
-    private func loadIfNeeded() async {
-        guard videos.isEmpty, !isLoading else { return }
-        await reload()
-    }
-
-
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
 
+    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
+
     private var canRefresh: Bool {
-        !refresh.isRefreshing && !isLoading && !isLoadingMore && !removals.hasPending && !isRemovingSelected
+        !refresh.isRefreshing && !model.isLoading && !model.isLoadingMore && !model.removals.hasPending && !model.isRemovingSelected
     }
 
     /// 手动下拉刷新：旧卡片淡出的同时取第一页，两者都结束后一次换入。
     private func startRefresh() {
         guard canRefresh else { return }
-        refresh.start(hasContent: !videos.isEmpty, animatesExit: animatesExit, source: .favorites,
-                      fetch: { await stageReload() },
-                      commit: commitStagedReload,
-                      discard: { stagedPage = nil })
+        refresh.start(hasContent: !model.videos.isEmpty, animatesExit: animatesExit, source: .favorites,
+                      fetch: { await model.stageReload(services: services, feedback: feedback, folder: folder) },
+                      commit: model.commitStagedReload,
+                      discard: model.discardStagedPage)
     }
 
-    private func stageReload() async -> Bool {
-        let requestID = UUID()
-        loadID = requestID
-        let revision = removals.revision
-        stagedPage = nil
-        isLoading = true
-        defer { if loadID == requestID { isLoading = false } }
-        do {
-            let payload = try await services.library.favoriteVideos(folderID: folder.id, page: 1)
-            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return false }
-            stagedPage = StagedPage(
-                videos: LibraryPageRules.unique((payload.medias ?? []).filter(\.isVideo), excluding: removals.hiddenIDs),
-                hasMore: LibraryPageRules.hasMoreFavorites(rawCount: payload.medias?.count ?? 0),
-                revision: revision)
-            return true
-        } catch {
-            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return false }
-            feedback.show(error.localizedDescription)
-            return false
-        }
-    }
-
-    private func commitStagedReload() {
-        guard let staged = stagedPage else { return }
-        stagedPage = nil
-        guard staged.revision == removals.revision, !removals.hasPending else { return }
-        entranceGeneration += 1
-        videos = staged.videos
-        contentRevision += 1
-        selectedIDs.formIntersection(Set(videos.map(\.id)))
-        if selectedIDs.isEmpty { isSelecting = false }
-        page = 2
-        hasMore = staged.hasMore
-        errorMessage = nil
-    }
-
-    /// 首次加载和「重试」走这里；手动下拉刷新走 `startRefresh`。
-    private func reload() async {
-        guard !removals.hasPending, !isRemovingSelected else { return }
-        let requestID = UUID()
-        loadID = requestID
-        let revision = removals.revision
-        isLoading = true
-        isLoadingMore = false
-        defer { if loadID == requestID { isLoading = false } }
-        do {
-            let payload = try await services.library.favoriteVideos(folderID: folder.id, page: 1)
-            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
-            let incoming = (payload.medias ?? []).filter(\.isVideo)
-            entranceGeneration += 1
-            videos = LibraryPageRules.unique(incoming, excluding: removals.hiddenIDs)
-            contentRevision += 1
-            selectedIDs.formIntersection(Set(videos.map(\.id)))
-            page = 2
-            hasMore = LibraryPageRules.hasMoreFavorites(rawCount: payload.medias?.count ?? 0)
-            errorMessage = nil
-        } catch {
-            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
-            if videos.isEmpty { errorMessage = error.localizedDescription }
-        }
-    }
-
-    private func loadMoreIfNeeded() async {
-        guard !isSelecting, hasMore, !isLoadingMore, !isLoading, !refresh.isRefreshing, errorMessage == nil else { return }
-        await loadNextPage()
-    }
-
-    private func loadNextPage() async {
-        guard !removals.hasPending, !isRemovingSelected, !refresh.isRefreshing else { return }
-        guard hasMore, !isLoadingMore, !isLoading else { return }
-        let requestID = UUID()
-        loadID = requestID
-        let revision = removals.revision
-        errorMessage = nil
-        isLoading = videos.isEmpty
-        isLoadingMore = !videos.isEmpty
-        defer {
-            if loadID == requestID {
-                isLoading = false
-                isLoadingMore = false
-            }
-        }
-        do {
-            let payload = try await services.library.favoriteVideos(folderID: folder.id, page: page)
-            guard loadID == requestID, removals.revision == revision, !Task.isCancelled else { return }
-            let incoming = (payload.medias ?? []).filter(\.isVideo)
-            let existing = Set(videos.map(\.id))
-            videos.append(contentsOf: LibraryPageRules.unique(incoming, excluding: existing.union(removals.hiddenIDs)))
-            contentRevision += 1
-            // 不足一页说明到底了。
-            hasMore = LibraryPageRules.hasMoreFavorites(rawCount: payload.medias?.count ?? 0)
-            page += 1
-            errorMessage = nil
-        } catch {
-            guard loadID == requestID, removals.revision == revision, !error.isCancellation else { return }
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    /// 同 `HistoryView.delete`：先移走卡片再发请求，失败了放回原位。
-    /// 移除后提供短暂撤销入口，超时再提交请求。
-    ///
-    /// 直接更新列表，保留撤销确认、账号校验和失败回滚。
-    private func remove(_ media: FavMedia) async {
-        guard !isRemovingSelected, !refresh.isRefreshing, videos.contains(where: { $0.id == media.id }), removals.begin(media.id) else { return }
-        let sessionID = account.sessionID
-        defer { if account.sessionID == sessionID { removals.finish(media.id) } }
-        let identitySession = services.session.currentID()
-        var removedIndex: Int?
-        do {
-            removals.hide(media.id)
-            removedIndex = removals.remove(media.id, from: &videos)
-            contentRevision += 1
-            guard await feedback.confirmRemoval(String(localized: "已移出收藏夹")),
-                  account.sessionID == sessionID, !Task.isCancelled else { throw CancellationError() }
-            try await services.library.removeFavorite(folderID: folder.id, aid: media.id, expectedSessionID: identitySession)
-            guard account.sessionID == sessionID else { return }
-            // 同时完成的刷新也不能留下同 ID 的旧条目。
-            videos.removeAll { $0.id == media.id }
-            contentRevision += 1
-            selectedIDs.remove(media.id)
-            if selectedIDs.isEmpty { isSelecting = false }
-        } catch {
-            if account.sessionID == sessionID, let removedIndex {
-                removals.restore(media, at: removedIndex, in: &videos)
-                contentRevision += 1
-            }
-            if account.sessionID == sessionID, !error.isCancellation { feedback.show(error.localizedDescription) }
-        }
-    }
 }

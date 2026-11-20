@@ -237,6 +237,7 @@ struct SuperChatCard: View {
     let now: TimeInterval
     var isCompact = false
     var onClose: (() -> Void)?
+    private static let closeTarget: CGFloat = 44
 
     var body: some View {
         VStack(spacing: 0) {
@@ -255,20 +256,11 @@ struct SuperChatCard: View {
                 }
                 Spacer(minLength: 0)
                 countdown
-                if let onClose {
-                    Button(action: onClose) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 18, height: 18)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("关闭这条醒目留言")
-                }
             }
-            .padding(.horizontal, 10)
+            .padding(.leading, 10)
+            .padding(.trailing, onClose == nil ? 10 : Self.closeTarget)
             .padding(.vertical, 6)
+            .frame(minHeight: onClose == nil ? nil : Self.closeTarget)
             .background(item.backgroundColor)
             Text(item.message)
                 .font(.app(isCompact ? .caption : .callout))
@@ -282,6 +274,19 @@ struct SuperChatCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(String(localized: "\(item.userName)的\(item.price)元醒目留言：\(item.message)"))
+        .overlay(alignment: .topTrailing) {
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: Self.closeTarget, height: Self.closeTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("关闭这条醒目留言")
+            }
+        }
     }
 
     private var avatarSize: CGFloat { isCompact ? 26 : 34 }

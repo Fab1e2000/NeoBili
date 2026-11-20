@@ -35,8 +35,6 @@ struct DeviceIdentitySettingsView: View {
                     Text("BUVID 需为 16–128 位字母、数字或连字符")
                         .foregroundStyle(.red)
                 }
-            } footer: {
-                Text("留空使用默认编号，保存后重新打开应用生效。")
             }
             Section("当前使用的 BUVID") {
                 Text(currentBuvid.isEmpty ? "—" : currentBuvid)

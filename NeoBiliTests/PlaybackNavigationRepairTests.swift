@@ -11,7 +11,7 @@ final class PlaybackNavigationRepairTests: XCTestCase {
         defer { store.close() }
         store.open(VideoDetailRoute(bvid: "BVFirst", cid: 11), from: "card")
         store.selectPart(cid: 13)
-        store.openEpisode(.init(episodeId: 2, aid: 2, cid: 21, bvid: "BVSecond", title: "Second", arc: nil))
+        store.openEpisode(.init(episodeId: 2, aid: 2, cid: 21, bvid: "BVSecond", title: "Second", arc: nil, pages: nil))
         store.selectPart(cid: 23)
         store.isExpanded = true
         store.openCommentVideo(VideoDetailRoute(bvid: "BVThird", cid: 31))
@@ -110,7 +110,7 @@ final class PlaybackNavigationRepairTests: XCTestCase {
         weak var releasedStore = store
         store?.open(VideoDetailRoute(bvid: "BVFirst"), from: "card")
         weak var first = store?.detailViewModel
-        store?.openEpisode(.init(episodeId: 2, aid: 2, cid: 21, bvid: "BVSecond", title: "Second", arc: nil))
+        store?.openEpisode(.init(episodeId: 2, aid: 2, cid: 21, bvid: "BVSecond", title: "Second", arc: nil, pages: nil))
         weak var second = store?.detailViewModel
         store?.isExpanded = true
         store?.openCommentVideo(VideoDetailRoute(bvid: "BVThird"))

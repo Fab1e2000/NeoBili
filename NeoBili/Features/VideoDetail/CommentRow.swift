@@ -49,10 +49,9 @@ struct CommentRow: View, Equatable {
                 ExpandableCommentMessage(comment: comment, isExpanded: model.isExpanded) {
                     actions.toggleExpansion(comment)
                 }
-                    .padding(.top, CommentLayout.nameMessageSpacing)
-                    .contentShape(Rectangle())
-                    .commentActions(comment: comment, root: model.root,
+                    .commentActions(comment: comment, root: model.root, surface: .systemBackground,
                                     isDeleting: model.isDeleting, actions: actions)
+                    .padding(.top, CommentLayout.nameMessageSpacing)
 
                 if !comment.pictures.isEmpty {
                     // 配图不占满整行：评论正文本来就有头像的缩进，
@@ -316,7 +315,6 @@ private struct CommentReplyPreview: View {
                     // 楼中楼只折叠回复数量，不截断单条正文，也不预留隐藏行高度。
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if model.isLoadingReplies {
@@ -365,7 +363,7 @@ private struct CommentReplyPreview: View {
     }
 }
 
-private struct CommentPreviewMessage: View {
+struct CommentPreviewMessage: View {
     let reply: CommentRowModel.Reply
     let root: Comment
     let actions: CommentRowActions
@@ -390,8 +388,8 @@ private struct CommentPreviewMessage: View {
                 else { openURL(url) }
                 return .handled
             })
-            .contentShape(Rectangle())
-            .commentActions(comment: comment, root: root,
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .commentActions(comment: comment, root: root, surface: .secondarySystemBackground,
                             isDeleting: reply.isDeleting, actions: actions)
             .disabled(reply.isDeleting)
             .opacity(reply.isDeleting ? 0.5 : 1)

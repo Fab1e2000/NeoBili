@@ -36,17 +36,9 @@ struct FollowingFeedContent: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: 300)
         } else if !feed.isLoading, feed.entries.isEmpty {
-            ContentUnavailableView(
-                "还没有新动态",
-                systemImage: "bell.slash",
-                description: Text(
-                    showsAuthor
-                        ? "你关注的 UP 主最近没有更新。"
-                        : "这位 UP 主最近没有更新。"
-                )
-            )
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 300)
+            ContentUnavailableView("还没有新动态", systemImage: "bell.slash")
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 300)
         } else {
             let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) ?? true }
             if visibleEntries.isEmpty {
@@ -88,11 +80,5 @@ struct FollowingFeedContent: View {
             showsAuthor: showsAuthor
         )
         .videoTransitionSource("following-dynamic-\(entry.id)", in: dynamicTransition)
-        .contextMenu {
-            if let video = entry.video,
-               video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) {
-                WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
-            }
-        }
     }
 }

@@ -76,7 +76,7 @@ struct HomeView: View {
                 }
                 Button("点错了", role: .cancel) {}
             } message: { owner in
-                Text("确定拉黑 \(owner.name)（\(String(owner.mid))）？\n拉黑后不会再收到他的推荐。在 B 站 App 或网页解除后，还需到本应用的推荐内容过滤中解除本地屏蔽。")
+                Text("确定拉黑 \(owner.name)（\(String(owner.mid))）？")
             }
             .resolvePortraitVideos(viewModel.videos, batchID: landingGeneration) {
                 await viewModel.loadReplacementPage()
@@ -189,8 +189,6 @@ private struct HomeFeedStatusOverlay: View {
                   !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
             ContentUnavailableView {
                 Label("没有可显示的视频", systemImage: "rectangle.slash")
-            } description: {
-                Text("当前推荐中的视频都被内容过滤设置隐藏了。")
             } actions: {
                 Button("刷新推荐", action: onRefresh)
             }
@@ -205,7 +203,8 @@ enum HomeCardLayout {
     static let verticalInset: CGFloat = 10
     /// 推荐封面保持 4:3。
     static let coverAspectRatio: CGFloat = 4.0 / 3.0
-    static let coverCornerRadius: CGFloat = 7
+    static let cardCornerRadius: CGFloat = 7
+    static let coverCornerRadius = cardCornerRadius
     /// 标题和 UP 主所在白色区域的固定高度。
     static let detailsHeight: CGFloat = 81
     static let avatarSize = CGSize(width: 16, height: 16)
@@ -269,12 +268,12 @@ struct LastSeenCard: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous)
                 .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous))
         .accessibilityLabel("上次看到这里，点击刷新")
     }
 }
@@ -323,13 +322,13 @@ struct HomeVideoCard: View {
         // 离屏渲染。封面上面两个角由封面自己的圆角负责。
         .background(
             Color(uiColor: .secondarySystemGroupedBackground),
-            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+            in: RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous)
                 .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous))
     }
 }
 

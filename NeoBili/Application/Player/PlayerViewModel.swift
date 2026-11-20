@@ -127,12 +127,13 @@ final class PlayerViewModel {
                 guard !isStopped, qualityRequestID == requestID, engineID == initialEngineID else { return nil }
                 isFetchingQuality = false
                 if !payload.hasVideoStream(quality: video) {
-                    return unavailableQualityMessage(video, response: payload, previous: originalPayload)
+                    return PlaybackTrackSelection.unavailableQualityMessage(video, response: payload, previous: originalPayload)
                 }
             }
-            let source = try PlaybackSourceBuilder.makeSource(from: payload, configuration: next)
-            if let video, actualVideoQuality(in: payload, source: source, configuration: next) != video {
-                return unavailableQualityMessage(video, response: payload, previous: originalPayload)
+            let selection = try PlaybackTrackSelection(payload: payload, configuration: next)
+            let source = selection.source
+            if let video, selection.videoQuality != video {
+                return PlaybackTrackSelection.unavailableQualityMessage(video, response: payload, previous: originalPayload)
             }
             guard !isStopped, qualityRequestID == requestID, engineID == initialEngineID else { return nil }
             let position = currentTime
@@ -141,11 +142,7 @@ final class PlayerViewModel {
             resumeState.prepareForOpen(at: position)
             configuration = next
             playbackPayload = payload.preservingDeclaredQualities(from: originalPayload)
-            selectedVideoQuality = actualVideoQuality(in: payload, source: source, configuration: next)
-            updateSelectedVideoSize(in: payload, source: source, configuration: next)
-            selectedAudioQuality = source.audio == nil ? nil : payload.dash.flatMap {
-                PlaybackSourceBuilder.bestAudioStream($0.allAudio, preferredQuality: next.audioQuality)?.id
-            }
+            apply(selection)
             sourceCandidates = source.candidates
             candidateIndex = 0
             recoveryTask?.cancel()
@@ -177,29 +174,11 @@ final class PlayerViewModel {
         }
     }
 
-    private func actualVideoQuality(in payload: PlayURLData, source: PlaybackSource,
-                                    configuration: VideoPlaybackConfiguration) -> Int? {
-        !source.isDASH ? payload.quality : payload.dash.flatMap {
-            PlaybackSourceBuilder.bestVideoStream($0.video, preferredQuality: configuration.quality)?.id
-        }
-    }
-
-    private func updateSelectedVideoSize(in payload: PlayURLData, source: PlaybackSource,
-                                         configuration: VideoPlaybackConfiguration) {
-        let stream = !source.isDASH ? nil : payload.dash.flatMap {
-            PlaybackSourceBuilder.bestVideoStream($0.video, preferredQuality: configuration.quality)
-        }
-        selectedVideoWidth = stream?.width
-        selectedVideoHeight = stream?.height
-    }
-
-    private func unavailableQualityMessage(_ quality: Int, response: PlayURLData, previous: PlayURLData) -> String {
-        let format = response.supportFormats?.first { $0.quality == quality }
-            ?? previous.supportFormats?.first { $0.quality == quality }
-        let title = PlaybackQuality.videoTitle(quality)
-        if format?.needsVIP == true { return String(localized: "未取得\(title)播放地址，该档位需要大会员权限；已保留当前画质") }
-        if format?.needsLogin == true { return String(localized: "未取得\(title)播放地址，请确认登录状态；已保留当前画质") }
-        return String(localized: "服务器未提供\(title)播放地址，已保留当前画质")
+    private func apply(_ selection: PlaybackTrackSelection) {
+        selectedVideoQuality = selection.videoQuality
+        selectedVideoWidth = selection.video?.width
+        selectedVideoHeight = selection.video?.height
+        selectedAudioQuality = selection.audioQuality
     }
 
     private var isStopped = false
@@ -408,14 +387,11 @@ final class PlayerViewModel {
             guard !isStopped else { return }
             playbackPayload = payload
             seedDisplayAspectRatio(from: payload)
-            let source = try PlaybackSourceBuilder.makeSource(from: payload, configuration: configuration)
+            let selection = try PlaybackTrackSelection(payload: payload, configuration: configuration)
+            let source = selection.source
             sourceCandidates = source.candidates
             candidateIndex = 0
-            selectedVideoQuality = actualVideoQuality(in: payload, source: source, configuration: configuration)
-            updateSelectedVideoSize(in: payload, source: source, configuration: configuration)
-            selectedAudioQuality = source.audio == nil ? nil : payload.dash.flatMap {
-                PlaybackSourceBuilder.bestAudioStream($0.allAudio, preferredQuality: configuration.audioQuality)?.id
-            }
+            apply(selection)
             duration = source.duration
             if !hasPreparedInitialSource {
                 if !resumeState.hasUpdatedPosition {

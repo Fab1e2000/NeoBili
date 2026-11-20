@@ -353,12 +353,7 @@ struct SpaceView: View {
         } else if visibleVideos.isEmpty {
             ContentUnavailableView(
                 viewModel.videos.isEmpty ? "没有投稿" : "没有可显示的视频",
-                systemImage: "video.slash",
-                description: Text(
-                    viewModel.videos.isEmpty
-                        ? "这位 UP 主还没有公开的视频稿件。"
-                        : "当前加载的投稿都被内容过滤设置隐藏了。"
-                )
+                systemImage: "video.slash"
             )
                 .padding(.vertical, 20)
         } else {
@@ -383,7 +378,7 @@ struct SpaceView: View {
                         durationText: video.length
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(CardPressStyle(cornerRadius: VideoListCardLayout.cardCornerRadius))
                 .contextMenu {
                     WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
                 }
@@ -425,7 +420,7 @@ struct SpaceView: View {
             }
             .padding(.vertical, 20)
         } else if feed.entries.isEmpty {
-            ContentUnavailableView("还没有动态", systemImage: "bell.slash", description: Text("这位 UP 主还没有发过动态。"))
+            ContentUnavailableView("还没有动态", systemImage: "bell.slash")
                 .padding(.vertical, 20)
         } else {
             let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: viewModel.filtering) ?? true }
@@ -450,12 +445,6 @@ struct SpaceView: View {
                 )
                 .videoEntranceIdentity(entry.video?.bvid)
                 .videoTransitionSource("space-dynamic-\(entry.id)", in: dynamicTransition)
-                .contextMenu {
-                    if let video = entry.video,
-                       video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: viewModel.filtering) {
-                        WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
-                    }
-                }
                 .padding(.horizontal, DynamicCardLayout.pageHorizontalInset)
                 .padding(.vertical, DynamicCardLayout.cardVerticalSpacing)
             }

@@ -19,7 +19,7 @@ APP="$ROOT/NeoBili"
 source "$HARNESS/sources.sh"
 cp "$HARNESS/src/Tests.swift" "$BUILD_DIR/"
 
-swiftc -D NEOBILI_REGRESSION -parse-as-library -o "$BUILD_DIR/harness" "$BUILD_DIR"/*.swift
+swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library -o "$BUILD_DIR/harness" "$BUILD_DIR"/*.swift
 "$BUILD_DIR/harness"
 
 # 单独验证 SwiftUI Binding 捕获的所有权，不启动任何界面或设备。
@@ -120,7 +120,7 @@ swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library \
 # HTTP 身份隔离、WBI 并发和首页过期加载：同一批生产源码，独立入口。
 network_sources=("$BUILD_DIR"/*.swift)
 network_sources=("${(@)network_sources:#*/Tests.swift}")
-swiftc -D NEOBILI_REGRESSION -parse-as-library "${network_sources[@]}" \
+swiftc -D NEOBILI_REGRESSION -swift-version 6 -parse-as-library "${network_sources[@]}" \
     "$HARNESS/src/NetworkLoadingRegression.swift" \
     -o "$BUILD_DIR/network-loading"
 "$BUILD_DIR/network-loading"

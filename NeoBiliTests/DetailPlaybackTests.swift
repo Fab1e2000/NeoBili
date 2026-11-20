@@ -71,7 +71,7 @@ final class DetailPlaybackTests: XCTestCase {
         store.requestPlayback()
 
         let episode = UgcSeasonEpisode(episodeId: 2, aid: 2, cid: 2,
-                                      bvid: "BVEpisode", title: "Episode", arc: nil)
+                                      bvid: "BVEpisode", title: "Episode", arc: nil, pages: nil)
         store.openEpisode(episode)
         XCTAssertTrue(store.isWaitingForPlayback)
         XCTAssertNil(store.player)

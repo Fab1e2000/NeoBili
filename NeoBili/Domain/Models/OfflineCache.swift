@@ -81,6 +81,10 @@ public struct OfflineCacheEntry: Codable, Hashable, Sendable, Identifiable {
         self.video = video; self.quality = quality; self.accountID = accountID; self.generation = generation
         state = .queued; resources = []; createdAt = Date()
     }
+    public func matches(videoID: String, quality: Int) -> Bool {
+        id == videoID && self.quality == quality
+    }
+
     public var receivedBytes: Int64 { resources.reduce(0) { $0 + $1.receivedBytes } }
     public var expectedBytes: Int64 { resources.reduce(0) { $0 + max($1.expectedBytes, $1.receivedBytes) } }
     public var progress: Double? {

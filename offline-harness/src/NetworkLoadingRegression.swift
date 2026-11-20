@@ -33,7 +33,7 @@ private final class NetworkFixture: URLProtocol, @unchecked Sendable {
 }
 
 @MainActor
-private final class Gate<Value> {
+private final class Gate<Value: Sendable> {
     var pending: CheckedContinuation<Value, Never>?
     func value() async -> Value { await withCheckedContinuation { pending = $0 } }
     func resolve(_ value: Value) { pending?.resume(returning: value); pending = nil }
@@ -55,7 +55,7 @@ struct NetworkLoadingRegression {
         }
         preconditionFailure("Timed out waiting for fixture")
     }
-    private static func defaults() -> UserDefaults { UserDefaults(suiteName: "NetworkLoadingRegression.\(UUID())")! }
+    nonisolated private static func defaults() -> UserDefaults { UserDefaults(suiteName: "NetworkLoadingRegression.\(UUID())")! }
     private static func session() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [NetworkFixture.self]

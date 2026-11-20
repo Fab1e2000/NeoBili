@@ -61,7 +61,8 @@ extension VideoFilterDependencies {
 }
 
 private enum HostNetworking {
-    static let defaults = UserDefaults(suiteName: "neobili.offline.networking.\(UUID().uuidString)")!
+    static let suite = "neobili.offline.networking.\(UUID().uuidString)"
+    static var defaults: UserDefaults { UserDefaults(suiteName: suite)! }
 }
 extension DeviceIdentity {
     static let shared = DeviceIdentity(defaults: HostNetworking.defaults, credentials: .memory(),

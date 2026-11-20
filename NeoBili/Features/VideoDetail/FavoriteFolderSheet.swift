@@ -38,11 +38,7 @@ struct FavoriteFolderSheet: View {
                         description: Text(errorMessage)
                     )
                 } else if folders.isEmpty {
-                    ContentUnavailableView(
-                        "没有收藏夹",
-                        systemImage: "star",
-                        description: Text("请先在哔哩哔哩 App 里创建一个收藏夹")
-                    )
+                    ContentUnavailableView("没有收藏夹", systemImage: "star")
                 } else {
                     folderList
                 }

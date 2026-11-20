@@ -22,8 +22,6 @@ struct ThemeSettingsView: View {
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(themeColor.opacity(0.14), in: Capsule())
                     }
-                    Text("用于底部标签栏、自定义图标及自定义装饰。系统控件的文字和图标跟随浅色／深色外观。")
-                        .font(.app(.footnote)).foregroundStyle(.secondary)
                 }
                 .padding(18)
                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
