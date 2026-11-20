@@ -492,16 +492,26 @@ struct VideoPage: View {
                          canCollapse: canConsumeVideoScroll, collapseCanContinue: canContinueCollapseMomentum)
                 .environment(\.commentTimeJump, commentTimeJump)
         } else {
-            VideoCommentsLoadingView(consume: consumeVideoScroll, canConsume: canConsumeVideoScroll)
+            VideoCommentsLoadingView(consume: consumeVideoScroll, canConsume: canConsumeVideoScroll,
+                                     showsSkeleton: viewModel?.errorMessage == nil)
         }
     }
 
     private var descriptionSection: some View {
         VideoDescriptionContent(store: store, viewModel: viewModel,
-                                components: store.offline.map(offlineInfoComponents) ?? viewModel?.detail.map(infoComponents) ?? [],
+                                components: store.offline.map(offlineInfoComponents)
+                                    ?? viewModel?.detail.map(infoComponents)
+                                    ?? loadingDescriptionComponents,
                                 showsRelated: store.offline == nil,
                                 consume: consumeVideoScroll, end: finishVideoCollapse,
                                 canConsume: canConsumeVideoScroll, canContinue: canContinueCollapseMomentum)
+    }
+
+    private var loadingDescriptionComponents: [VideoDescriptionComponent] {
+        guard viewModel != nil, viewModel?.errorMessage == nil else { return [] }
+        return [VideoDescriptionComponent("introduction-loading", revision: []) {
+            VideoIntroductionSkeleton()
+        }]
     }
 
     private func offlineInfoComponents(_ descriptor: OfflinePlaybackDescriptor) -> [VideoDescriptionComponent] {

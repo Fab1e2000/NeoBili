@@ -11,6 +11,36 @@ import XCTest
 
 @MainActor
 final class RelatedCollectionTests: XCTestCase {
+    func testVideoDetailSkeletonsFitInLightDarkAndLargeText() throws {
+        var regularHeight: CGFloat = 0
+        for (scheme, typeSize) in [(ColorScheme.light, DynamicTypeSize.large), (.dark, .accessibility3)] {
+            let related = RelatedVideosSkeleton()
+                .frame(width: 320)
+                .environment(\.dynamicTypeSize, typeSize)
+            let relatedHeight = try XCTUnwrap(ImageRenderer(content: related).uiImage).size.height
+            XCTAssertEqual(relatedHeight, 2 * (NativeRelatedVideoCard.cardHeight(typeSize: typeSize)
+                + 2 * NativeRelatedVideoCard.verticalInset) + 16, accuracy: 1)
+
+            let content = VStack(spacing: 0) {
+                VideoIntroductionSkeleton()
+                RelatedVideosSkeleton()
+                VideoCommentSkeleton(rowCount: 3, label: "正在加载评论")
+            }
+            .frame(width: 320)
+            .background(Color(uiColor: .systemBackground))
+            .environment(\.colorScheme, scheme)
+            .environment(\.dynamicTypeSize, typeSize)
+            let image = try XCTUnwrap(ImageRenderer(content: content).uiImage)
+            XCTAssertEqual(image.size.width, 320)
+            if typeSize == .large { regularHeight = image.size.height }
+            else { XCTAssertGreaterThan(image.size.height, regularHeight) }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "video-loading-skeletons-\(scheme)-\(typeSize)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+
     func testPickerEntryUpdatesOnlyForVisibleSummaryChanges() throws {
         func entries(_ detail: VideoDetail, index: Int?) -> [VideoDescriptionComponent] {
             VideoDescriptionComponents(viewModel: nil, contentInset: 16, descriptionExpanded: .constant(false),
@@ -75,7 +105,9 @@ final class RelatedCollectionTests: XCTestCase {
             if shouldFail { throw URLError(.notConnectedToInternet) }
             return page
         })
+        XCTAssertTrue(model.isWaitingForFirstRelated)
         await model.loadRelated()
+        XCTAssertFalse(model.isWaitingForFirstRelated)
         let store = NowPlayingStore()
         let content = VideoDescriptionContent(store: store, viewModel: model, components: [],
             consume: { _ in 0 }, end: {}, canConsume: { _ in false }, canContinue: { false })
@@ -109,6 +141,7 @@ final class RelatedCollectionTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertNil(model.relatedErrorMessage)
         XCTAssertFalse(model.isLoadingRelated)
+        XCTAssertFalse(model.isWaitingForFirstRelated)
     }
 
     func testPaginationRetryIsAfterRetainedRowsAndCanBeRemoved() async throws {
@@ -343,9 +376,11 @@ final class RelatedCollectionTests: XCTestCase {
                 for id in ["owner", "introduction", "actions"] {
                     components.append(VideoDescriptionComponent(id, revision: [1]) { Color.clear.frame(height: 70) })
                 }
+            } else {
+                components.append(VideoDescriptionComponent("introduction-loading", revision: []) { VideoIntroductionSkeleton() })
             }
             if !recommendations {
-                components.append(VideoDescriptionComponent("loading", revision: [1]) { ProgressView().frame(height: 50) })
+                components.append(VideoDescriptionComponent("loading", revision: []) { RelatedVideosSkeleton() })
             }
             return VideoDescriptionCollection(videos: recommendations ? (1...8).map(video) : [], components: components,
                                               scrollState: scroll, onSelect: { _ in }, consume: { _ in 0 }, end: {},
@@ -368,7 +403,7 @@ final class RelatedCollectionTests: XCTestCase {
             host.rootView = content(detail: detail, recommendations: recommendations)
             try await Task.sleep(for: .milliseconds(100))
             list.layoutIfNeeded()
-            XCTAssertEqual(list.numberOfItems(inSection: 0), (detail ? 3 : 0) + (recommendations ? 0 : 1))
+            XCTAssertEqual(list.numberOfItems(inSection: 0), (detail ? 3 : 1) + (recommendations ? 0 : 1))
             XCTAssertEqual(list.numberOfItems(inSection: 1), recommendations ? 8 : 0)
         }
     }

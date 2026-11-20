@@ -19,13 +19,14 @@ extension View {
     /// `@Environment(\.openCommentThread)` 把它推出来。
     ///
     /// 回复单独呈现；它自己的导航栈用于打开评论者主页。
-    func commentThreadHost(viewModel: CommentsViewModel) -> some View {
-        modifier(CommentThreadHost(viewModel: viewModel))
+    func commentThreadHost(viewModel: CommentsViewModel, showsLoadingSkeleton: Bool = false) -> some View {
+        modifier(CommentThreadHost(viewModel: viewModel, showsLoadingSkeleton: showsLoadingSkeleton))
     }
 }
 
 private struct CommentThreadHost: ViewModifier {
     let viewModel: CommentsViewModel
+    let showsLoadingSkeleton: Bool
     @State private var root: Comment?
     @State private var openAction = EnvironmentAction<Comment> { _ in }
 
@@ -36,7 +37,7 @@ private struct CommentThreadHost: ViewModifier {
                 openAction.setHandler { [root = $root] in root.wrappedValue = $0 }
             }
             .sheet(item: $root) { comment in
-                CommentThreadView(root: comment, viewModel: viewModel)
+                CommentThreadView(root: comment, viewModel: viewModel, showsLoadingSkeleton: showsLoadingSkeleton)
                     .environment(\.commentBottomInset, 0)
             }
     }
@@ -50,6 +51,7 @@ private struct CommentThreadHost: ViewModifier {
 struct CommentThreadView: View {
     let root: Comment
     let viewModel: CommentsViewModel
+    private let showsLoadingSkeleton: Bool
     private let actions: CommentRowActions
 
     @Environment(\.dismiss) private var dismiss
@@ -57,9 +59,10 @@ struct CommentThreadView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
 
-    init(root: Comment, viewModel: CommentsViewModel) {
+    init(root: Comment, viewModel: CommentsViewModel, showsLoadingSkeleton: Bool = false) {
         self.root = root
         self.viewModel = viewModel
+        self.showsLoadingSkeleton = showsLoadingSkeleton
         self.actions = CommentRowActions(viewModel: viewModel)
     }
 
@@ -145,7 +148,9 @@ struct CommentThreadView: View {
 
     @ViewBuilder
     private var footer: some View {
-        if viewModel.isLoadingReplies(root) {
+        if showsLoadingSkeleton, viewModel.isWaitingForFirstReplies(root) {
+            VideoCommentSkeleton(rowCount: 2, label: "正在加载回复")
+        } else if viewModel.isLoadingReplies(root) {
             LoadingTaskAnchor()
                 .frame(maxWidth: .infinity)
                 .padding()

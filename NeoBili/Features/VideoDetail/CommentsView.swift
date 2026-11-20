@@ -108,14 +108,16 @@ struct CommentsView: View {
         .overlay {
             GeometryReader { proxy in
                 let hiddenTop = max(0, (geometry?.reservation ?? 0) - (geometry?.distance() ?? 0))
-                CommentsPlaceholder(viewModel: viewModel)
-                    .frame(width: proxy.size.width, height: max(0, proxy.size.height - hiddenTop))
-                    .offset(y: hiddenTop)
+                if viewModel.comments.isEmpty, !viewModel.isWaitingForFirstComments {
+                    CommentsPlaceholder(viewModel: viewModel)
+                        .frame(width: proxy.size.width, height: max(0, proxy.size.height - hiddenTop))
+                        .offset(y: hiddenTop)
+                }
             }
-            .allowsHitTesting(viewModel.comments.isEmpty)
+            .allowsHitTesting(viewModel.comments.isEmpty && !viewModel.isWaitingForFirstComments)
         }
         .task { await viewModel.loadInitial() }
-        .commentThreadHost(viewModel: viewModel)
+        .commentThreadHost(viewModel: viewModel, showsLoadingSkeleton: true)
         .commentLinkHost()
         // 和视频页一样走非模态浮层，别用 alert 去和 fullScreenCover 抢 present。
         .onChange(of: viewModel.actionMessage) { _, message in
@@ -133,7 +135,9 @@ struct CommentListFooter: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if viewModel.isLoadingMore {
+            if viewModel.isWaitingForFirstComments {
+                VideoCommentSkeleton(rowCount: 3, label: "正在加载评论")
+            } else if viewModel.isLoadingMore {
                 LoadingTaskAnchor()
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -155,29 +159,27 @@ struct CommentListFooter: View {
 struct VideoCommentsLoadingView: View {
     let consume: (CGFloat) -> CGFloat
     let canConsume: (CGFloat) -> Bool
+    var showsSkeleton = true
     @Environment(\.videoScrollContext) private var geometry
 
     var body: some View {
         ScrollView {
-            Color.clear
-                .frame(minHeight: geometry?.minimumContentHeight ?? 0)
-                .background {
-                    PausedVideoCollapseScroll(consume: consume, end: {}, canConsume: canConsume)
-                        .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                if showsSkeleton {
+                    VideoCommentSkeleton(rowCount: 3, label: "正在加载评论")
+                        .padding(.top, CommentSortHeader.minimumHeight)
                 }
-                // Keep the reservation inside the content: a scroll margin also
-                // clips the list independently of the moving native viewport.
-                .padding(.top, geometry?.reservation ?? 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: geometry?.minimumContentHeight ?? 0, alignment: .top)
+            .background {
+                PausedVideoCollapseScroll(consume: consume, end: {}, canConsume: canConsume)
+                    .allowsHitTesting(false)
+            }
+            // Keep the reservation inside the content: a scroll margin also
+            // clips the list independently of the moving native viewport.
+            .padding(.top, geometry?.reservation ?? 0)
         }
         .scrollBounceBehavior(.always, axes: .vertical)
-        .overlay {
-            GeometryReader { proxy in
-                let hiddenTop = max(0, (geometry?.reservation ?? 0) - (geometry?.distance() ?? 0))
-                ProgressView()
-                    .frame(width: proxy.size.width, height: max(0, proxy.size.height - hiddenTop))
-                    .offset(y: hiddenTop)
-            }.allowsHitTesting(false)
-        }
     }
 }
 

@@ -6,6 +6,40 @@ import XCTest
 
 @MainActor
 final class CommentPaginationRepairTests: XCTestCase {
+    func testCommentSkeletonYieldsToFailureAndToSuccessfulEmptyRetry() async throws {
+        @MainActor final class Fixture {
+            var fails = true
+        }
+        let root = try comment(100, count: 1)
+        let fixture = Fixture()
+        let model = CommentsViewModel(oid: 1, type: 1, fetchReplies: { _, _, _, _ in
+            if fixture.fails { throw URLError(.timedOut) }
+            return CommentReplyPage(page: .init(num: 1, size: 20, count: 0), replies: [])
+        }, fetchComments: { _, _, _, _ in
+            if fixture.fails { throw URLError(.timedOut) }
+            return CommentPage(page: .init(num: 1, size: 20, count: 0), replies: [])
+        })
+
+        XCTAssertTrue(model.isWaitingForFirstComments)
+        XCTAssertTrue(model.isWaitingForFirstReplies(root))
+        await model.loadInitial()
+        await model.loadRepliesIfNeeded(for: root)
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertNotNil(model.replyErrors[root.id])
+        XCTAssertFalse(model.isWaitingForFirstComments)
+        XCTAssertFalse(model.isWaitingForFirstReplies(root))
+
+        fixture.fails = false
+        await model.retry()
+        await model.retryReplies(for: root)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.replyErrors[root.id])
+        XCTAssertTrue(model.comments.isEmpty)
+        XCTAssertTrue(model.allReplies(for: root).isEmpty)
+        XCTAssertFalse(model.isWaitingForFirstComments)
+        XCTAssertFalse(model.isWaitingForFirstReplies(root))
+    }
+
     func testSubmissionDuringFirstReplyPageDoesNotHideOlderLastReply() async throws {
         let root = try comment(100, count: 21)
         let first = try (1...20).map { try comment($0) }
@@ -19,7 +53,9 @@ final class CommentPaginationRepairTests: XCTestCase {
         })
         let request = Task { await model.loadRepliesIfNeeded(for: root) }
         await waitUntil { pending != nil }
+        XCTAssertTrue(model.isWaitingForFirstReplies(root))
         model.acceptSubmission(submitted, root: root.id)
+        XCTAssertFalse(model.isWaitingForFirstReplies(root))
         pending?.resume(returning: CommentReplyPage(page: .init(num: 1, size: 20, count: 21), replies: first))
         await request.value
         XCTAssertTrue(model.hasMoreReplies(root))
@@ -42,7 +78,9 @@ final class CommentPaginationRepairTests: XCTestCase {
         })
         let request = Task { await model.loadInitial() }
         await waitUntil { pending != nil }
+        XCTAssertTrue(model.isWaitingForFirstComments)
         model.acceptSubmission(submitted, root: nil)
+        XCTAssertFalse(model.isWaitingForFirstComments)
         pending?.resume(returning: CommentPage(page: .init(num: 1, size: 20, count: 21), replies: first))
         await request.value
         XCTAssertTrue(model.hasMore)

@@ -13,6 +13,7 @@ final class CommentFeatureLayoutTests: XCTestCase {
             .init(page: .init(num: 1, size: 20, count: 1), replies: [root], pinnedReplies: [root])
         })
         await model.loadInitial()
+        XCTAssertFalse(model.isWaitingForFirstReplies(root), "Existing preview replies must remain visible")
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.keyWindow
         defer { previous?.makeKey() }

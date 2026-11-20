@@ -149,6 +149,10 @@ extension CommentSort {
 struct CommentSortHeader: View {
     let viewModel: CommentsViewModel
     static let scrollID = "comment-list-top"
+    private static let topInset: CGFloat = 8
+    private static let bottomInset: CGFloat = 2
+    private static let menuHeight: CGFloat = 44
+    static let minimumHeight = topInset + menuHeight + bottomInset
     var body: some View {
         HStack(spacing: 10) {
             Text(viewModel.displayCount > 0 ? String(localized: "评论 \(viewModel.displayCount)") : String(localized: "评论"))
@@ -166,13 +170,13 @@ struct CommentSortHeader: View {
                     Text(viewModel.sort.title)
                     Image(systemName: "chevron.down").font(.app(.caption2, weight: .semibold))
                 }
-                .font(.app(.subheadline)).foregroundStyle(Color.secondary).frame(minHeight: 44)
+                .font(.app(.subheadline)).foregroundStyle(Color.secondary).frame(minHeight: Self.menuHeight)
             }
             .accessibilityLabel(String(localized: "评论排序，\(viewModel.sort.title)"))
             .accessibilityIdentifier("comment.sort")
         }
         .padding(.horizontal, CommentLayout.pageHorizontalInset)
-        .padding(.top, 8).padding(.bottom, 2)
+        .padding(.top, Self.topInset).padding(.bottom, Self.bottomInset)
         .id(Self.scrollID)
     }
 }

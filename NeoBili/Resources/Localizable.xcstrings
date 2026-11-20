@@ -4513,6 +4513,46 @@
         }
       }
     },
+    "正在加载回复" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading replies"
+          }
+        }
+      }
+    },
+    "正在加载相关视频" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading related videos"
+          }
+        }
+      }
+    },
+    "正在加载视频简介" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading video details"
+          }
+        }
+      }
+    },
+    "正在加载评论" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading comments"
+          }
+        }
+      }
+    },
     "正在加载直播" : {
       "localizations" : {
         "en" : {

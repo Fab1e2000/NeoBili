@@ -285,6 +285,8 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
 
     /// 卡面外的留白，两张相邻卡片之间共 12 点。
     static let verticalInset: CGFloat = 6
+    static let coverSize = CGSize(width: 160, height: 90)
+    static let coverTextSpacing: CGFloat = 10
     private static let minimumOwnerY: CGFloat = 54
     /// UP 主与播放数据相对主文字色的强度。
     static let secondaryTextColor = UIColor.label.withAlphaComponent(0.6)
@@ -294,7 +296,7 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
         let titleHeight = ceil(AppFont.preferred(.subheadline, traits: traits).lineHeight * 2)
         let ownerHeight = ceil(AppFont.preferred(.caption1, traits: traits).lineHeight)
         let metadataHeight = ceil(AppFont.preferred(.caption1, traits: traits).lineHeight)
-        return max(90, max(minimumOwnerY, titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight))
+        return max(coverSize.height, max(minimumOwnerY, titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight))
     }
 
     final class CardView: UIView {
@@ -347,14 +349,15 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
                 text.append(NSAttributedString(string: " \(value)   "))
             }
             metadata.attributedText = text
-            cover.load(video.secureCoverURL, size: CGSize(width: 160, height: 90), scale: scale)
+            cover.load(video.secureCoverURL, size: NativeRelatedVideoCard.coverSize, scale: scale)
             accessibilityLabel = String(localized: "\(video.title)，\(video.owner.name)，\(video.stat.view.biliCountText)次播放，\(video.formattedDuration)")
             setNeedsLayout()
         }
         override func layoutSubviews() {
             super.layoutSubviews()
-            cover.frame = CGRect(x: 0, y: 0, width: 160, height: 90)
-            let x: CGFloat = 170, width = max(0, bounds.width - 170)
+            cover.frame = CGRect(origin: .zero, size: NativeRelatedVideoCard.coverSize)
+            let x = cover.frame.maxX + NativeRelatedVideoCard.coverTextSpacing
+            let width = max(0, bounds.width - x)
             title.frame = CGRect(x: x, y: 0, width: width, height: ceil(title.font.lineHeight * 2))
             owner.frame = CGRect(x: x, y: max(NativeRelatedVideoCard.minimumOwnerY, title.frame.maxY + 4), width: width,
                                  height: max(18, ceil(owner.font.lineHeight)))
@@ -440,10 +443,12 @@ struct VideoDescriptionContent: View {
         let all = viewModel?.related ?? []
         let videos = all.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
         let relatedError = viewModel?.relatedErrorMessage
+        let showsSkeleton = all.isEmpty && viewModel?.isWaitingForFirstRelated == true
         let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering)
         // 相关视频不加分区标题，直接接在操作栏（或合集、分P 入口）下面，间距由上方组件自带。
-        let status = (showsRelated && (videos.isEmpty || relatedError != nil) ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty, relatedError]) {
-            if loading { ProgressView().padding(24) }
+        let status = (showsRelated && (videos.isEmpty || relatedError != nil) ? [VideoDescriptionComponent("status", revision: [showsSkeleton, loading, all.isEmpty, relatedError]) {
+            if showsSkeleton { RelatedVideosSkeleton() }
+            else if loading { ProgressView().padding(24) }
             else if let relatedError {
                 VStack(spacing: 12) {
                     Text(relatedError).font(.app(.subheadline)).foregroundStyle(.secondary)

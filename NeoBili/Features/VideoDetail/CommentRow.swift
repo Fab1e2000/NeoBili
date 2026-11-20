@@ -317,18 +317,6 @@ private struct CommentReplyPreview: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if model.isLoadingReplies {
-                LoadingTaskAnchor()
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if let error = model.replyError {
-                Text(error)
-                    .font(.app(.caption))
-                    .foregroundStyle(.secondary)
-            }
-
             if model.showsAllReplies {
                 Button { openCommentThread(comment) } label: {
                     HStack(spacing: 2) {

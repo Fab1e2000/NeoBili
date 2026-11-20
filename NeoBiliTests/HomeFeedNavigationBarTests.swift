@@ -8,6 +8,58 @@ import XCTest
 /// 推荐页放进原生导航栏（大标题 + 下滑收起）后，列表的布局不能陷入自我失效的递归。
 @MainActor
 final class HomeFeedNavigationBarTests: XCTestCase {
+    func testLoadingSkeletonUsesTheFeedCardDimensions() throws {
+        for (width, height, scheme, textSize, leadingLargeCard) in [
+            (CGFloat(408), CGFloat(650), ColorScheme.light, DynamicTypeSize.large, false),
+            (CGFloat(800), CGFloat(430), ColorScheme.dark, DynamicTypeSize.accessibility3, false),
+            (CGFloat(408), CGFloat(780), ColorScheme.dark, DynamicTypeSize.large, true)
+        ] {
+            let renderer = ImageRenderer(content: HomeFeedSkeleton(leadingLargeCard: leadingLargeCard)
+                .frame(width: width, height: height)
+                .background(Color(uiColor: .systemGroupedBackground))
+                .environment(\.colorScheme, scheme)
+                .environment(\.dynamicTypeSize, textSize))
+            let image = try XCTUnwrap(renderer.cgImage)
+            func pixel(_ x: CGFloat, _ y: CGFloat) throws -> Data {
+                let crop = try XCTUnwrap(image.cropping(to: CGRect(x: floor(x), y: floor(y), width: 1, height: 1)))
+                return try XCTUnwrap(UIImage(cgImage: crop).pngData())
+            }
+
+            let cover = HomeCardLayout.coverSize(for: width)
+            let left = HomeCardLayout.horizontalInset
+            let right = width - left
+            let firstRowTop = HomeCardLayout.verticalInset
+            let largeCardBottom = firstRowTop + HomeCardLayout.largeCardHeight(for: width)
+            let top = leadingLargeCard ? largeCardBottom + HomeCardLayout.rowSpacing : firstRowTop
+            let coverBottom = top + cover.height
+            let cardBottom = top + HomeCardLayout.cardHeight(for: width)
+            let background = try pixel(width / 2, top + 16)
+            let coverFill = try pixel(left + 16, top + 16)
+            XCTAssertNotEqual(coverFill, background)
+            XCTAssertEqual(try pixel(left + 1, top + 16), coverFill)
+            XCTAssertEqual(try pixel(right - 2, top + 16), coverFill)
+            XCTAssertEqual(try pixel(left - 1, top + 16), background)
+            XCTAssertEqual(try pixel(right, top + 16), background)
+            XCTAssertEqual(try pixel(left + 16, top - 1), background)
+            XCTAssertEqual(try pixel(left + 16, coverBottom - 1), coverFill)
+            XCTAssertNotEqual(try pixel(left + 16, coverBottom + 1), coverFill)
+            XCTAssertNotEqual(try pixel(left + 16, cardBottom - 2), background)
+            XCTAssertEqual(try pixel(left + 16, cardBottom + 2), background)
+            XCTAssertEqual(try pixel(left + 16, cardBottom + HomeCardLayout.rowSpacing + 12), coverFill)
+
+            if leadingLargeCard {
+                let largeCoverBottom = firstRowTop + HomeCardLayout.largeCoverSize(for: width).height
+                XCTAssertEqual(try pixel(width / 2, firstRowTop + 16), coverFill)
+                XCTAssertEqual(try pixel(right - 2, firstRowTop + 16), coverFill)
+                XCTAssertEqual(try pixel(left - 1, firstRowTop + 16), background)
+                XCTAssertEqual(try pixel(width / 2, largeCoverBottom - 1), coverFill)
+                XCTAssertNotEqual(try pixel(width / 2, largeCoverBottom + 1), coverFill)
+                XCTAssertNotEqual(try pixel(width / 2, largeCardBottom - 2), background)
+                XCTAssertEqual(try pixel(width / 2, largeCardBottom + 2), background)
+            }
+        }
+    }
+
     /// 与 `HomeView.feed` 相同的接法：列表忽略安全区，外层量出安全区再交给列表。
     private struct Host: View {
         let rows: [HomeFeedRow]

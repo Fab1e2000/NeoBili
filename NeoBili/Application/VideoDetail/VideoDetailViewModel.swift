@@ -32,6 +32,7 @@ final class VideoDetailViewModel {
     private(set) var related: [VideoSummary] = []
     private(set) var isLoadingRelated = false
     private(set) var relatedErrorMessage: String?
+    var isWaitingForFirstRelated: Bool { !relatedLoaded && relatedErrorMessage == nil }
 
     /// 稿件标签。加载失败只是少一行 chip，不影响页面其它部分。
     private(set) var tags: [VideoTag] = []

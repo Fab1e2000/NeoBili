@@ -119,7 +119,8 @@ struct HomeView: View {
             .onGeometryChange(for: EdgeInsets.self, of: \.safeAreaInsets) { safeInsets = $0 }
 
             // 加载、出错、全被过滤这些状态单独观察，isLoading 翻转时不重算整个列表。
-            HomeFeedStatusOverlay(viewModel: viewModel, hidesPortraitVideos: hidesPortraitVideos) {
+            HomeFeedStatusOverlay(viewModel: viewModel, hidesPortraitVideos: hidesPortraitVideos,
+                                  contentOpacity: tabContentOpacity) {
                 startRefresh()
             }
         }
@@ -171,6 +172,7 @@ struct HomeView: View {
 private struct HomeFeedStatusOverlay: View {
     let viewModel: HomeViewModel
     let hidesPortraitVideos: Bool
+    let contentOpacity: Double
     let onRefresh: () -> Void
 
     var body: some View {
@@ -178,13 +180,16 @@ private struct HomeFeedStatusOverlay: View {
            !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
             LoadingTaskAnchor()
         } else if viewModel.isLoading, viewModel.videos.isEmpty {
-            LoadingTaskAnchor()
+            HomeFeedSkeleton(leadingLargeCard: RecommendationSourcePreference.launched != .web)
+                .opacity(contentOpacity)
         } else if let message = viewModel.errorMessage, viewModel.videos.isEmpty {
-            ContentUnavailableView(
-                "加载失败",
-                systemImage: "wifi.slash",
-                description: Text(message)
-            )
+            ContentUnavailableView {
+                Label("加载失败", systemImage: "wifi.slash")
+            } description: {
+                Text(message)
+            } actions: {
+                Button("重试", action: onRefresh)
+            }
         } else if !viewModel.videos.isEmpty,
                   !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
             ContentUnavailableView {
@@ -193,6 +198,90 @@ private struct HomeFeedStatusOverlay: View {
                 Button("刷新推荐", action: onRefresh)
             }
         }
+    }
+}
+
+struct HomeFeedSkeleton: View {
+    let leadingLargeCard: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let coverSize = HomeCardLayout.coverSize(for: width)
+            let rowStride = HomeCardLayout.cardHeight(for: width) + HomeCardLayout.rowSpacing
+            let leadingRowHeight = leadingLargeCard
+                ? HomeCardLayout.largeCardHeight(for: width) + HomeCardLayout.rowSpacing : 0
+            let remainingHeight = max(0, geometry.size.height - HomeCardLayout.verticalInset - leadingRowHeight)
+            let rowCount = Int(ceil(remainingHeight / rowStride))
+
+            VStack(spacing: HomeCardLayout.rowSpacing) {
+                if leadingLargeCard {
+                    HomeFeedSkeletonCard(coverSize: HomeCardLayout.largeCoverSize(for: width), isLarge: true)
+                }
+                ForEach(0..<rowCount, id: \.self) { _ in
+                    HStack(spacing: HomeCardLayout.columnSpacing) {
+                        HomeFeedSkeletonCard(coverSize: coverSize)
+                        HomeFeedSkeletonCard(coverSize: coverSize)
+                    }
+                }
+            }
+            .padding(.top, HomeCardLayout.verticalInset)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+            .clipped()
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("正在加载推荐")
+    }
+}
+
+private struct HomeFeedSkeletonCard: View {
+    let coverSize: CGSize
+    var isLarge = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let fill = Color(uiColor: .tertiarySystemFill)
+        let detailsWidth = max(0, coverSize.width - 2 * HomeCardLayout.detailsHorizontalPadding)
+        let fontSize = PreparedTitle.fontSize(for: dynamicTypeSize)
+        let titleMetrics = PreparedTitle.metrics(fontSize: fontSize)
+        let lineHeight = isLarge
+            ? min(ceil(AppFont.uiFont(ofSize: fontSize, weight: .semibold).lineHeight), 28)
+            : min(titleMetrics?.boxHeight ?? 40, 48) / 2
+        let avatarSize = HomeCardLayout.avatarSize
+
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(fill)
+                .frame(width: coverSize.width, height: coverSize.height)
+
+            VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Capsule().fill(fill)
+                        .frame(width: detailsWidth * (isLarge ? 0.72 : 0.92), height: 8)
+                        .frame(height: lineHeight)
+                    if !isLarge {
+                        Capsule().fill(fill)
+                            .frame(width: detailsWidth * 0.62, height: 8)
+                            .frame(height: lineHeight)
+                    }
+                }
+
+                HStack(spacing: 4) {
+                    Circle().fill(fill)
+                        .frame(width: avatarSize.width, height: avatarSize.height)
+                    Capsule().fill(fill)
+                        .frame(width: max(0, detailsWidth - avatarSize.width - 4) * 0.42, height: 6)
+                }
+            }
+            .padding(.leading, HomeCardLayout.detailsHorizontalPadding)
+            .padding(.top, 8)
+            .frame(width: coverSize.width,
+                   height: isLarge ? HomeCardLayout.largeDetailsHeight : HomeCardLayout.detailsHeight,
+                   alignment: .topLeading)
+        }
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(.rect(cornerRadius: HomeCardLayout.cardCornerRadius))
     }
 }
 
@@ -248,8 +337,13 @@ enum HomeCardLayout {
 
     static let largeDetailsHeight: CGFloat = 60
     static let largeCoverAspectRatio: CGFloat = 16 / 9
+    static func largeCoverSize(for pageWidth: CGFloat) -> CGSize {
+        let width = max(0, pageWidth - horizontalInset * 2)
+        return CGSize(width: width, height: width / largeCoverAspectRatio)
+    }
+
     static func largeCardHeight(for pageWidth: CGFloat) -> CGFloat {
-        max(0, pageWidth - horizontalInset * 2) / largeCoverAspectRatio + largeDetailsHeight
+        largeCoverSize(for: pageWidth).height + largeDetailsHeight
     }
 }
 

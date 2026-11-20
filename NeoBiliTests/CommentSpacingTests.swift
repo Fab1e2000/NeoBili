@@ -180,6 +180,31 @@ final class CommentSpacingTests: XCTestCase {
         XCTAssertTrue(model.shouldShowAllReplies(comment))
     }
 
+    func testOpeningRepliesKeepsPreviewLayoutDuringLoadingAndFailure() async throws {
+        let comment = try makeComment(rpid: 1, message: "正文", rcount: 5, replies: ["预览回复"])
+        let (finish, continuation) = AsyncStream<Void>.makeStream()
+        let model = CommentsViewModel(oid: 1, type: 1, fetchReplies: { _, _, _, _ in
+            for await _ in finish {}
+            throw URLError(.timedOut)
+        })
+        let before = try render(comment, viewModel: model).height
+        let row = model.rowModel(for: comment)
+        let request = Task { await model.loadRepliesIfNeeded(for: comment) }
+        defer { continuation.finish() }
+        for _ in 0..<1_000 {
+            if model.isLoadingReplies(comment) { break }
+            await Task.yield()
+        }
+        XCTAssertTrue(model.isLoadingReplies(comment))
+        XCTAssertEqual(model.rowModel(for: comment), row)
+        XCTAssertEqual(try render(comment, viewModel: model).height, before)
+        continuation.finish()
+        await request.value
+        XCTAssertNotNil(model.replyErrors[comment.id])
+        XCTAssertEqual(model.rowModel(for: comment), row)
+        XCTAssertEqual(try render(comment, viewModel: model).height, before)
+    }
+
     // MARK: - 渲染与取样
 
     /// 按 `CommentsView` 里那一段的结构渲染：评论行 + 上下留白。列表里评论之间没有分隔线，
