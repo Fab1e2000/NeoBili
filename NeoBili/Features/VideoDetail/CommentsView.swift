@@ -1,3 +1,6 @@
+#if canImport(NeoBiliDomain)
+import NeoBiliDomain
+#endif
 import SwiftUI
 
 /// 评论列表本体（没有自己的 ScrollView）。
@@ -7,11 +10,19 @@ import SwiftUI
 /// 套在一起没法正常滚动。
 struct CommentsList: View {
     let viewModel: CommentsViewModel
+    private let actions: CommentRowActions
     @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
+
+    init(viewModel: CommentsViewModel) {
+        self.viewModel = viewModel
+        self.actions = CommentRowActions(viewModel: viewModel)
+    }
 
     var body: some View {
         let comments = viewModel.comments
-        let lastCommentID = comments.last?.id
+        let paginationIDs = Set(comments.suffix(5).map(\.id))
         LazyVStack(alignment: .leading, spacing: 0) {
             CommentSortHeader(viewModel: viewModel)
             if let message = viewModel.errorMessage, !comments.isEmpty, viewModel.didFailReload {
@@ -19,11 +30,15 @@ struct CommentsList: View {
             }
             ForEach(comments) { comment in
                 // 评论之间不画分隔线，只靠上下留白分开。
-                CommentRow(comment: comment, viewModel: viewModel)
+                // 分页触发由父级一次算好；行任务只在进入/离开末尾窗口时重启，
+                // 追加一页不会让所有行重新挂任务。
+                CommentRow(model: viewModel.rowModel(for: comment), actions: actions)
+                    .equatable()
+                    .removalFillTransition()
                     .padding(.horizontal, CommentLayout.pageHorizontalInset)
                     .padding(.vertical, CommentLayout.rowVerticalPadding)
-                    .task(id: comments.suffix(5).contains(where: { $0.id == comment.id }) ? lastCommentID : nil) {
-                        guard comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
+                    .task(id: paginationIDs.contains(comment.id)) {
+                        guard paginationIDs.contains(comment.id) else { return }
                         await viewModel.loadMoreIfNeeded(current: comment)
                     }
             }
@@ -37,6 +52,7 @@ struct CommentsList: View {
                 loadError(message)
             }
         }
+        .removalFill(ids: comments.map(\.id), enabled: cardAnimations && !reduceMotion)
         .commentThreadHost(viewModel: viewModel)
         .commentLinkHost()
         // 和视频页一样走非模态浮层，别用 alert 去和 fullScreenCover 抢 present。
@@ -59,39 +75,36 @@ struct CommentsList: View {
 }
 
 /// 视频页的评论列表。视图模型由视频页持有，所以在简介和评论之间切换时
-/// 已经加载的内容和展开状态都不会丢失。
+/// 已经加载的内容和展开状态都不会丢失。列表容器是复用宿主的集合视图，
+/// 行只在值快照变化时重新配置。
 struct CommentsView: View {
     let viewModel: CommentsViewModel
-    /// 切换简介和评论时保留评论列表的滚动位置。
+    /// 保留给页面级滚动状态的调用方；集合视图自己持有实际滚动位置。
     @Binding var scrollPosition: ScrollPosition
+    var initialOffset: CGFloat = 0
+    var onOffsetChanged: ((CGFloat) -> Void)? = nil
     @Environment(\.videoScrollContext) private var geometry
+    @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
     var collapseConsume: ((CGFloat) -> CGFloat)? = nil
     var collapseEnd: (() -> Void)? = nil
     var canCollapse: ((CGFloat) -> Bool)? = nil
     var collapseCanContinue: (() -> Bool)? = nil
 
     var body: some View {
-        ScrollView {
-            CommentsList(viewModel: viewModel)
-                .frame(minHeight: geometry?.minimumContentHeight ?? 0, alignment: .top)
-                .background {
-                    if let collapseConsume {
-                        PausedVideoCollapseScroll(consume: collapseConsume, end: { collapseEnd?() },
-                                                  canConsume: { canCollapse?($0) ?? false },
-                                                  canContinue: { collapseCanContinue?() ?? false })
-                            .allowsHitTesting(false)
-                    }
-                }
-                // Keep the reservation inside the content: a scroll margin also
-                // clips the list independently of the moving native viewport.
-                .padding(.top, geometry?.reservation ?? 0)
-        }
-        .scrollBounceBehavior(.always, axes: .vertical)
-        .scrollPosition($scrollPosition)
-        .refreshable { await viewModel.refresh() }
-        .onChange(of: viewModel.scrollRevision) {
-            scrollPosition.scrollTo(y: geometry?.distance() ?? 0)
-        }
+        let rows = viewModel.comments.map { viewModel.rowModel(for: $0) }
+        CommentCollectionView(
+            viewModel: viewModel,
+            rows: rows,
+            scrollRevision: viewModel.scrollRevision,
+            initialOffset: initialOffset,
+            onOffsetChanged: onOffsetChanged,
+            collapseConsume: collapseConsume,
+            collapseEnd: collapseEnd,
+            canCollapse: canCollapse,
+            animatesRemoval: cardAnimations && !reduceMotion
+        )
         .overlay {
             GeometryReader { proxy in
                 let hiddenTop = max(0, (geometry?.reservation ?? 0) - (geometry?.distance() ?? 0))
@@ -102,7 +115,39 @@ struct CommentsView: View {
             .allowsHitTesting(viewModel.comments.isEmpty)
         }
         .task { await viewModel.loadInitial() }
+        .commentThreadHost(viewModel: viewModel)
+        .commentLinkHost()
+        // 和视频页一样走非模态浮层，别用 alert 去和 fullScreenCover 抢 present。
+        .onChange(of: viewModel.actionMessage) { _, message in
+            guard let message else { return }
+            feedback.show(message)
+            viewModel.actionMessage = nil
+        }
         .commentComposer(viewModel: viewModel)
+    }
+}
+
+/// 集合视图末尾的加载与错误行；只观察模型，不参与行快照比较。
+struct CommentListFooter: View {
+    let viewModel: CommentsViewModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if viewModel.isLoadingMore {
+                LoadingTaskAnchor()
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            }
+            if let message = viewModel.errorMessage, !viewModel.comments.isEmpty, !viewModel.didFailReload {
+                VStack(spacing: 8) {
+                    Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
+                    Button("重试加载评论") { Task { await viewModel.retry() } }
+                        .disabled(viewModel.isLoading || viewModel.isRefreshing || viewModel.isLoadingMore)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+            }
+        }
     }
 }
 

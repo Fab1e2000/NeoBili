@@ -20,7 +20,7 @@ public enum LoginModels {
     public enum PassportError: LocalizedError, Equatable {
         case invalidResponse
         case missingCookies
-        /// 服务端业务错误（密码错误、验证码失败等），带上接口原话。
+        /// 服务端业务错误（验证码无效等），带上接口原话。
         case rejected(String)
 
         public var errorDescription: String? {
@@ -32,69 +32,7 @@ public enum LoginModels {
         }
     }
 
-    public struct QRCodeInfo: Decodable, Sendable {
-        /// 二维码内容本身，渲染成二维码图片给 B 站 App 扫。
-        public let url: String
-        public let qrcodeKey: String
-
-        enum CodingKeys: String, CodingKey {
-            case url
-            case qrcodeKey = "qrcode_key"
-        }
-    }
-
-    public enum QRCodePollOutcome: Sendable {
-        /// 二维码还在等待被扫。
-        case waiting
-        /// 已扫码，等待手机上确认。
-        case scanned
-        /// 二维码过期，需要重新生成。
-        case expired
-        /// 确认完成，拿到登录凭据。
-        ///
-        /// `accessKey` 只有 App 端扫码（`pollAppQRCode`）才会带回来；网页扫码
-        /// 拿到的只有 Cookie，这里为 nil。见 `APIClient.postApp`。
-        case confirmed(LoginCookies, accessKey: String?)
-    }
-
-    public struct AppQRCodeInfo: Decodable, Sendable {
-        public let url: String
-        public let authCode: String
-
-        enum CodingKeys: String, CodingKey {
-            case url
-            case authCode = "auth_code"
-        }
-    }
-
-    public struct WebKey: Decodable, Sendable {
-        /// 本次加密用的盐。
-        public let hash: String
-        /// PEM 格式的 RSA 公钥。
-        public let key: String
-    }
-
-    public struct CaptchaInfo: Decodable, Sendable {
-        public let token: String
-        public let gt: String
-        public let challenge: String
-
-        enum CodingKeys: String, CodingKey {
-            case token
-            case gt
-            case challenge
-        }
-
-        public init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            token = try container.decode(String.self, forKey: .token)
-            let geetest = try container.nestedContainer(keyedBy: CodingKeys.self, forKey: .gt)
-            gt = try geetest.decode(String.self, forKey: .gt)
-            challenge = try geetest.decode(String.self, forKey: .challenge)
-        }
-    }
-
-    public static func isTransient(_ error: Error) -> Bool {
+    private static func isTransient(_ error: Error) -> Bool {
         guard let error = error as? URLError else { return false }
         switch error.code {
         case .networkConnectionLost, .timedOut, .cannotConnectToHost,

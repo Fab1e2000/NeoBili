@@ -44,7 +44,7 @@ struct AppRecommendationDisplay: Sendable {
     }
 }
 
-/// 推荐卡片取流与实际播放器共有的保守能力声明。
+/// 直播推荐列表使用的播放能力声明。
 /// 不声明未验证的 HDR Vivid、官方私有能力位或内联自动播放功能。
 enum AppRecommendationPlaybackCapabilities {
     static let fnval = 16 | 128 | 256 | 2048 // DASH、4K、杜比音轨、AV1；已有取流/解码路径。

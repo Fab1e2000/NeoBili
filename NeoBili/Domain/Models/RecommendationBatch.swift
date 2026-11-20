@@ -47,18 +47,16 @@ public struct RecommendationBatch: Sendable {
     public let videos: [VideoSummary]
     /// 缺失、重复游标或空页停止翻页，用户仍可刷新。不能回退到本地页码充当 App 游标。
     public let nextRequest: RecommendationRequest?
-    public let refreshConfig: AppRecommendationRefreshConfig?
     public let appCursor: Int?
     public let refreshCursor: Int?
     public let exposurePolicy: RecommendationExposurePolicy?
 
     public init(videos: [VideoSummary], nextRequest: RecommendationRequest?,
-         refreshConfig: AppRecommendationRefreshConfig? = nil, appCursor: Int? = nil,
+         appCursor: Int? = nil,
          refreshCursor: Int? = nil,
          exposurePolicy: RecommendationExposurePolicy? = nil) {
         self.videos = videos
         self.nextRequest = nextRequest
-        self.refreshConfig = refreshConfig
         self.appCursor = appCursor ?? nextRequest?.appCursor
         self.refreshCursor = refreshCursor
         self.exposurePolicy = exposurePolicy

@@ -63,7 +63,7 @@ final class ServiceGraphTransportTests: XCTestCase {
         XCTAssertNil(result.nextRequest)
     }
 
-    func testAuthenticationAdapterUsesOneSessionForWebAndSMSRequests() async throws {
+    func testSMSCountryListUsesTheInjectedSession() async throws {
         let suite = "neobili.service-authentication.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -73,10 +73,8 @@ final class ServiceGraphTransportTests: XCTestCase {
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel() }
         let service = AuthenticationService.live(session: session, identity: identity)
-        let key = try await service.webKey()
-        XCTAssertEqual(key.hash, "fixture-hash")
         let countries = try await service.countries()
-        XCTAssertTrue(countries.isEmpty)
+        XCTAssertEqual(countries.map(\.countryId), ["86"])
     }
 
     func testApplicationAssemblyKeepsReadWriteAuthenticationAndLiveInOneGraph() async throws {
@@ -101,8 +99,8 @@ final class ServiceGraphTransportTests: XCTestCase {
         XCTAssertEqual(profile.mid, 42)
         XCTAssertEqual(services.session.currentID(), identity.loginSessionID)
         try await services.library.deleteHistory(kid: "archive_1", expectedSessionID: services.session.currentID())
-        let key = try await services.authentication.webKey()
-        XCTAssertEqual(key.hash, "fixture-hash")
+        let countries = try await services.authentication.countries()
+        XCTAssertEqual(countries.map(\.cname), ["测试地区"])
         let followed = try await services.streaming.followedUsers()
         XCTAssertTrue(followed.rooms.isEmpty)
         let recommendations = try await services.recommendation.recommendFeed(request: .init(source: .web))
@@ -165,10 +163,8 @@ private final class ServiceGraphProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200,
             httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         let body: String
-        if request.url?.path.contains("/web/key") == true {
-            body = #"{"code":0,"data":{"hash":"fixture-hash","key":"fixture-key"}}"#
-        } else if request.url?.path.contains("/country/list") == true {
-            body = #"{"code":0,"data":{"common":[],"others":[]}}"#
+        if request.url?.path.contains("/country/list") == true {
+            body = #"{"code":0,"data":{"common":[{"id":1,"cname":"测试地区","country_id":"86"}],"others":[]}}"#
         } else if request.url?.path.contains("/feed/rcmd") == true {
             body = #"{"code":0,"data":{"item":[]}}"#
         } else if request.url?.path.contains("/search/type") == true {

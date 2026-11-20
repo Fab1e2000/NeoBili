@@ -1,8 +1,8 @@
 import Foundation
 import Darwin
 
-/// 与实测官方 iPhone 9.13.0 请求配套的身份；所有 App 通道共用。
-/// build 是协议兼容版本，不是 NeoBili 自己的发布版本。
+/// App 通道共用的 iPhone 国际版 9.13.0 协议身份。
+/// build 为接口兼容版本，应用发布版本另由工程配置维护。
 enum AppClientIdentity {
     // Shared production profile, matching the device-validated international build.
     static let isInternationalProfile = true

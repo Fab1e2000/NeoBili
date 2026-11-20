@@ -57,7 +57,6 @@ struct VideoOwnerRow: View {
     }
 
     /// 系统液态玻璃胶囊按钮，和 UP 主空间页一致：未关注是主题色实底玻璃，已关注退成普通玻璃配灰字。
-    /// 玻璃样式与原来的 bordered 样式尺寸相同（真机实测 62×32 / 77×32），整行排版不变。
     @ViewBuilder
     private var followButton: some View {
         let button = Button(action: onToggleFollow) {

@@ -50,19 +50,18 @@ final class LivePageLayoutTests: XCTestCase {
         }
     }
 
-    func testLivePageRecommendationFollowingEmptyAndFailureLayoutsInForegroundWindow() async throws {
+    func testLivePageFollowedAvatarStripAndRecommendationLayoutsInForegroundWindow() async throws {
         let host = try LivePageSnapshotHost()
         defer { host.close() }
         let rooms = await makeRooms()
-        let cases: [(String, Bool, LiveFeedModel.Source, [LiveRoom], Bool)] = [
-            ("signed-out-recommendations", false, .recommended, rooms, false),
-            ("signed-in-recommendations", true, .recommended, rooms, false),
-            ("following-rooms", true, .following, rooms, false),
-            ("following-empty", true, .following, [], false),
-            ("feed-failure", false, .recommended, [], true)
+        let cases: [(String, Bool, [LiveRoom], Bool)] = [
+            ("signed-out-recommendations", false, [], false),
+            ("signed-in-followed-live", true, rooms, false),
+            ("signed-in-nobody-live", true, [], false),
+            ("feed-failure", false, [], true)
         ]
 
-        for (name, loggedIn, source, fixtureRooms, fails) in cases {
+        for (name, loggedIn, followedRooms, fails) in cases {
             let suiteName = "NeoBili.LivePageLayoutTests.\(UUID().uuidString)"
             let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
             defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -70,14 +69,17 @@ final class LivePageLayoutTests: XCTestCase {
             let account = try await makeAccount(loggedIn: loggedIn, defaults: defaults)
             let model = LiveFeedModel { _, page in
                 if fails { throw LivePageFixtureError.unavailable }
-                return LiveRoomPage(rooms: fixtureRooms, page: page, hasMore: false)
+                return LiveRoomPage(rooms: rooms, page: page, hasMore: false)
             }
             model.synchronizeAccount(sessionID: account.sessionID, isLoggedIn: account.isLoggedIn)
-            model.select(source)
             await model.loadInitial()
+            let directory = FollowedLiveDirectory { _ in
+                LiveRoomPage(rooms: followedRooms, page: 1, hasMore: false)
+            }
+            await directory.refresh(force: true)
 
             try await host.show(
-                LivePageFixtureTabs(model: model)
+                LivePageFixtureTabs(model: model, directory: directory)
                     .environment(account)
                     .defaultAppStorage(defaults)
                     .dynamicTypeSize(.large)
@@ -86,31 +88,33 @@ final class LivePageLayoutTests: XCTestCase {
             )
 
             XCTAssertEqual(account.isLoggedIn, loggedIn, name)
-            XCTAssertEqual(model.source, source, name)
-            XCTAssertEqual(model.rooms.map(\.roomID), fixtureRooms.map(\.roomID), name)
+            XCTAssertEqual(model.rooms.map(\.roomID), fails ? [] : rooms.map(\.roomID), name)
             XCTAssertEqual(model.errorMessage != nil, fails, name)
+            XCTAssertEqual(directory.rooms.map(\.roomID), followedRooms.map(\.roomID), name)
             XCTAssertEqual(host.controller.view.convert(host.controller.view.bounds, to: host.window),
                            host.window.bounds, "The fixture must use the real full window: \(name)")
             XCTAssertLessThan(host.window.bounds.width, host.window.bounds.height, name)
 
-            let lists = descendants(of: host.controller.view).compactMap { $0 as? UIScrollView }
-                .filter(\.alwaysBounceVertical)
+            let scrollViews = descendants(of: host.controller.view).compactMap { $0 as? UIScrollView }
+            let lists = scrollViews.filter(\.alwaysBounceVertical)
             XCTAssertFalse(lists.isEmpty, name)
             XCTAssertTrue(lists.allSatisfy(\.showsVerticalScrollIndicator),
-                          "Horizontal paging must preserve the live lists' vertical indicators: \(name)")
+                          "The page keeps a single vertical list with its indicator: \(name)")
             for list in lists {
                 XCTAssertEqual(list.bounds.width, host.window.bounds.width, accuracy: 1, name)
             }
+            // 关注直播只以导航栏下方的横向头像条出现，不是第二个纵向列表。
+            let strips = scrollViews.filter { !$0.alwaysBounceVertical && $0.bounds.width > $0.bounds.height }
+            XCTAssertEqual(strips.count, loggedIn && !followedRooms.isEmpty ? 1 : 0, name)
+            XCTAssertTrue(descendants(of: host.controller.view).compactMap { $0 as? UISegmentedControl }.isEmpty,
+                          "The page no longer switches sources with a segmented control: \(name)")
 
-            let controls = descendants(of: host.controller.view).compactMap { $0 as? UISegmentedControl }
-            XCTAssertTrue(controls.contains { $0.numberOfSegments == (loggedIn ? 2 : 1) },
-                          "The native source selector must reflect the fixture's account: \(name)")
             let tabBar = try XCTUnwrap(descendants(of: host.controller.view).compactMap { $0 as? UITabBar }.first)
             XCTAssertEqual(tabBar.selectedItem?.title, "直播", name)
             let tabFrame = tabBar.convert(tabBar.bounds, to: host.window)
             XCTAssertTrue(host.window.bounds.insetBy(dx: -0.5, dy: -0.5).contains(tabFrame), name)
 
-            let coordinates = XCTAttachment(string: "window=\(host.window.bounds)\nsafeArea=\(host.window.safeAreaInsets)\nhost=\(host.controller.view.frame)\ntabBar.windowFrame=\(tabFrame)\nsource=\(source)\nroomCount=\(model.rooms.count)\nloggedIn=\(account.isLoggedIn)")
+            let coordinates = XCTAttachment(string: "window=\(host.window.bounds)\nsafeArea=\(host.window.safeAreaInsets)\nhost=\(host.controller.view.frame)\ntabBar.windowFrame=\(tabFrame)\nroomCount=\(model.rooms.count)\nfollowedLive=\(directory.rooms.count)\nloggedIn=\(account.isLoggedIn)")
             coordinates.name = "live-page-\(name)-geometry"
             coordinates.lifetime = .keepAlways
             add(coordinates)
@@ -172,8 +176,8 @@ final class LivePageLayoutTests: XCTestCase {
             await imagePipeline.cache.insert(cover, for: coverURL)
             await imagePipeline.cache.insert(face, for: faceURL)
             rooms.append(LiveRoom(roomID: 9_000_001 + index, title: names[index], username: streamers[index],
-                                  coverURL: coverURL, faceURL: faceURL, online: 21_680 + index * 1729,
-                                  areaName: areas[index]))
+                                  uid: 5_000_001 + index, coverURL: coverURL, faceURL: faceURL,
+                                  online: 21_680 + index * 1729, areaName: areas[index]))
         }
         return rooms
     }
@@ -195,13 +199,14 @@ private enum LivePageFixtureError: LocalizedError {
 
 private struct LivePageFixtureTabs: View {
     let model: LiveFeedModel
+    let directory: FollowedLiveDirectory
 
     var body: some View {
         TabView(selection: .constant(2)) {
             Tab("推荐", systemImage: "house.fill", value: 0) { Color.clear }
             Tab("关注", systemImage: "person.2.fill", value: 1) { Color.clear }
             Tab("直播", systemImage: "dot.radiowaves.left.and.right", value: 2) {
-                LiveView(model: model) { _, _ in }
+                LiveView(model: model, liveDirectory: directory) { _, _ in }
             }
             Tab("我的", systemImage: "person.crop.circle", value: 3) { Color.clear }
         }

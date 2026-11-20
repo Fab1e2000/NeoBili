@@ -1,46 +1,33 @@
 import SwiftUI
 
-/// 单列横向视频卡片的排版参数都集中在这里。
-/// 搜索页和视频页的「相关视频」共用这一份，改一次两边一起变。
-/// 如果只想微调界面，修改下面的数字即可，不需要改程序逻辑。
 enum VideoListCardLayout {
-    /// 卡片与屏幕左右边缘的距离。数字越小，卡片占用的屏幕宽度越大。
     static let pageHorizontalInset: CGFloat = 8
 
     /// 上下两张卡片之间的半间距。实际卡片间距约为这个数字的两倍。
     static let cardVerticalSpacing: CGFloat = 3
 
-    /// 卡片内容与白色卡片边缘的距离。数字越大，内容周围的留白越多。
     static let contentPadding: CGFloat = 6
 
-    /// 整张白色卡片的圆角大小。0 表示直角，数字越大就越圆。
     static let cardCornerRadius: CGFloat = 7
 
-    /// 封面图和右侧文字之间的距离。
     static let imageTextSpacing: CGFloat = 10
 
     /// 封面图的宽度。高度会按 16:9 比例自动计算；数字越大，图片越大。
     static let imageWidth: CGFloat = 160
 
-    /// 封面图的圆角大小。0 表示直角，数字越大就越圆。
     static let imageCornerRadius: CGFloat = 3
 
-    /// 标题、作者、播放量等文字行之间的竖向距离。
     static let textVerticalSpacing: CGFloat = 4
 
-    /// 播放量和视频时长之间的水平距离。
     static let metadataSpacing: CGFloat = 10
 
-    /// 小图标和它后面数字的距离。这个值保持较小，图标和数字就会看起来是一组。
     static let metadataIconTextSpacing: CGFloat = 2
 
     /// 右侧文字区域的高度。它最好和 16:9 封面高度保持一致。
     static let textAreaHeight: CGFloat = 90
 
-    /// 卡片边线的透明度。0 表示完全看不见，1 表示完全不透明。
     static let borderOpacity = 0.18
 
-    /// 卡片边线的粗细。数字越大，边线越粗。
     static let borderWidth: CGFloat = 0.5
 }
 

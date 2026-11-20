@@ -5,8 +5,8 @@ import SwiftUI
 
 /// 全屏的视频页。
 ///
-/// 它本身不持有播放器；视频、详情、评论和滚动状态由 `NowPlayingStore` 管理。
-/// 页面退出时根据小窗设置继续播放，播放器不会随页面销毁。
+/// 视频、详情、评论和滚动状态由 NowPlayingStore 管理。
+/// 退出转场结束后，按缩略播放器设置继续或结束播放。
 struct VideoPage: View {
     @Environment(\.appThemeColor) private var themeColor
     @Environment(NowPlayingStore.self) private var store
@@ -44,11 +44,7 @@ struct VideoPage: View {
         )
     }
 
-    /// 全屏按钮切换后，方向请求和旋转动画本身要花几百毫秒才能完成，这期间
-    /// 按钮还停在原处。如果这时候又收到一次点击（不管是手误，还是屏幕边缘
-    /// 的系统手势识别把同一次触摸判成了两次），会在动画走到一半时把方向
-    /// 请求整个反过来——表现就是刚进全屏又立刻退出，画面停在切换中间的
-    /// 尺寸上。这个时间窗内忽略掉多余的点击。
+    /// 方向请求完成前忽略重复全屏点击，避免旋转中途反向切换。
     @State private var lastFullScreenToggle = Date.distantPast
     private static let fullScreenToggleCooldown: TimeInterval = 0.6
 
@@ -57,7 +53,8 @@ struct VideoPage: View {
 
     @State private var collapseLayout = InlineVideoCollapseLayout(expandedHeight: 0, standardHeight: 0, allowsCompact: false)
     /// 同一段滚动距离先缩小竖屏画面，暂停后才继续将画面收进 56pt 标题栏。
-    @State private var videoCollapseDistance: CGFloat = 0
+    /// 放在独立观察盒子里：滚动逐帧只失效依赖它的子视图，不重建整页。
+    @State private var collapseMotion = VideoCollapseMotion()
     @State private var sectionBarHeight: CGFloat = 44
     @State private var detailErrorHeight: CGFloat = 0
     /// 内容区顶部的圆角半径（连续曲率），在预览页里调定。
@@ -194,27 +191,17 @@ struct VideoPage: View {
                 standardHeight: Self.inlineVideoHeight(for: layoutSize),
                 allowsCompact: isPortraitVideo
             )
-            // 在渲染这一帧就重算画幅并限位，避免异步元数据／首帧与 onChange 不同拍时跳高或闪出隐藏画面。
-            let inlineDistance = layout == collapseLayout
-                ? layout.constrainedDistance(videoCollapseDistance, for: collapsePhase)
-                : layout.rebasedDistance(videoCollapseDistance, from: collapseLayout, for: collapsePhase)
-            let distance = isFullScreen ? 0 : inlineDistance
-            let hidesVideo = !isFullScreen && layout.hidesVideo(for: distance)
-            let videoHeight = isFullScreen ? geometry.size.height : layout.containerHeight(for: distance)
-            let collapseProgress = isFullScreen ? 0 : layout.visualProgress(for: distance, phase: collapsePhase)
             VStack(spacing: 0) {
-                ZStack {
-                    videoArea(isVideoHidden: hidesVideo)
-                        .frame(width: geometry.size.width,
-                               height: videoHeight)
-                        .allowsHitTesting(collapseProgress == 0)
-                        .accessibilityHidden(collapseProgress > 0)
-
+                CollapsibleVideoSlot(
+                    motion: collapseMotion,
+                    layout: layout,
+                    previousLayout: collapseLayout,
+                    phase: collapsePhase,
+                    isFullScreen: isFullScreen,
+                    size: CGSize(width: geometry.size.width, height: geometry.size.height)
+                ) { isVideoHidden in
+                    videoArea(isVideoHidden: isVideoHidden)
                 }
-                .frame(width: geometry.size.width,
-                       height: videoHeight)
-                .clipped()
-                .contentShape(Rectangle())
                 .background {
                     PlayerReturnGestureGuard(enabled: spacePath.isEmpty)
                         .allowsHitTesting(false)
@@ -247,7 +234,7 @@ struct VideoPage: View {
                                 minimumContentHeight: max(0, canvasHeight - (layout.expandedHeight - layout.minimumHeight)
                                                           + layout.maximumDistance(for: collapsePhase)),
                                 reservation: layout.expandedHeight - layout.minimumHeight,
-                                distance: { videoCollapseDistance },
+                                distance: { collapseMotion.distance },
                                 isActive: { store.section == $0 && canInteractWithVideoCollapse })))
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -261,9 +248,9 @@ struct VideoPage: View {
                             .fill(Color(uiColor: .systemBackground))
                     }
                     .background(alignment: .top) {
-                        themeColor.opacity(collapseProgress)
-                            .frame(height: contentCornerRadius)
-                            .allowsHitTesting(false)
+                        CollapsedThemeStrip(motion: collapseMotion, layout: layout,
+                                            previousLayout: collapseLayout, phase: collapsePhase,
+                                            color: themeColor, height: contentCornerRadius)
                     }
                     .background {
                         PlayerReturnGestureGuard(enabled: spacePath.isEmpty,
@@ -281,18 +268,19 @@ struct VideoPage: View {
                    alignment: .top)
             .overlay(alignment: .top) {
                 if !isFullScreen {
-                    InlineVideoCollapseOverlay(progress: collapseProgress, videoHeight: videoHeight,
-                                               topInset: geometry.safeAreaInsets.top,
-                                               player: store.player, onBack: store.goBack) {
+                    CollapseChromeSlot(motion: collapseMotion, layout: layout,
+                                       previousLayout: collapseLayout, phase: collapsePhase,
+                                       topInset: geometry.safeAreaInsets.top,
+                                       player: store.player, onBack: store.goBack) {
                         withAnimation(.easeInOut(duration: 0.25)) {
-                            videoCollapseDistance = 0
+                            collapseMotion.distance = 0
                             store.player?.play()
                         }
                     }
                 }
             }
             .onChange(of: layout, initial: true) { _, layout in
-                videoCollapseDistance = layout.rebasedDistance(videoCollapseDistance, from: collapseLayout, for: collapsePhase)
+                collapseMotion.distance = layout.rebasedDistance(collapseMotion.distance, from: collapseLayout, for: collapsePhase)
                 collapseLayout = layout
             }
         }
@@ -306,12 +294,12 @@ struct VideoPage: View {
                 .allowsHitTesting(false)
         }
         .onChange(of: store.route?.id) {
-            videoCollapseDistance = 0
+            collapseMotion.distance = 0
             playerControlsVisible = false
             spacePath = NavigationPath()
         }
         .onChange(of: store.activeCid) { old, _ in
-            if old != nil { videoCollapseDistance = 0; playerControlsVisible = false }
+            if old != nil { collapseMotion.distance = 0; playerControlsVisible = false }
         }
         .onChange(of: collapsePhase) { _, phase in
             if phase == .loading {
@@ -319,7 +307,7 @@ struct VideoPage: View {
                 clampVideoCollapse()
             } else {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    videoCollapseDistance = collapseLayout.distanceAfterPlaybackChange(videoCollapseDistance, to: phase)
+                    collapseMotion.distance = collapseLayout.distanceAfterPlaybackChange(collapseMotion.distance, to: phase)
                 }
             }
         }
@@ -352,7 +340,7 @@ struct VideoPage: View {
                 onToggleFullScreen: toggleFullScreen,
                 onSendDanmaku: sendDanmakuAction,
                 onToggleCompact: compactVideoAction,
-                isCompact: videoCollapseDistance > 0,
+                isCompact: collapseMotion.distance > 0,
                 isDanmakuSuppressed: isVideoHidden,
                 controlsSafeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
                 onDismiss: store.goBack,
@@ -399,7 +387,7 @@ struct VideoPage: View {
                                                                  selectedID: 0, isEnabled: false, onSelect: { _ in }),
                         canControlPlayback: store.isWaitingForPlayback && viewModel?.errorMessage == nil,
                         isWaiting: !store.isWaitingForPlayback && viewModel?.errorMessage == nil,
-                        isFullScreen: isFullScreen, isCompact: videoCollapseDistance > 0,
+                        isFullScreen: isFullScreen, isCompact: collapseMotion.distance > 0,
                         hasError: viewModel?.errorMessage != nil,
                         safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
                         onBack: { if isFullScreen { toggleFullScreen() } else { store.goBack() } },
@@ -415,13 +403,13 @@ struct VideoPage: View {
 
     private func canConsumeVideoScroll(_ distance: CGFloat) -> Bool {
         guard canInteractWithVideoCollapse else { return false }
-        return distance < 0 ? videoCollapseDistance > 0
-            : videoCollapseDistance < collapseLayout.maximumDistance(for: collapsePhase)
+        return distance < 0 ? collapseMotion.distance > 0
+            : collapseMotion.distance < collapseLayout.maximumDistance(for: collapsePhase)
     }
 
     private func canContinueCollapseMomentum() -> Bool {
         guard canInteractWithVideoCollapse else { return false }
-        return collapseLayout.maximumDistance(for: collapsePhase) > 0 && videoCollapseDistance > 0
+        return collapseLayout.maximumDistance(for: collapsePhase) > 0 && collapseMotion.distance > 0
     }
 
     private var canInteractWithVideoCollapse: Bool {
@@ -432,23 +420,23 @@ struct VideoPage: View {
 
     private func consumeVideoScroll(_ distance: CGFloat) -> CGFloat {
         guard canConsumeVideoScroll(distance) else { return 0 }
-        let old = videoCollapseDistance
+        let old = collapseMotion.distance
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            videoCollapseDistance = collapseLayout.constrainedDistance(old + distance, for: collapsePhase)
+            collapseMotion.distance = collapseLayout.constrainedDistance(old + distance, for: collapsePhase)
         }
-        return videoCollapseDistance - old
+        return collapseMotion.distance - old
     }
 
     private func clampVideoCollapse() {
-        videoCollapseDistance = collapseLayout.constrainedDistance(videoCollapseDistance, for: collapsePhase)
+        collapseMotion.distance = collapseLayout.constrainedDistance(collapseMotion.distance, for: collapsePhase)
     }
 
     private func toggleCompactVideo() {
         guard canInteractWithVideoCollapse else { return }
         withAnimation(.easeInOut(duration: 0.25)) {
-            videoCollapseDistance = videoCollapseDistance > 0 ? 0 : collapseLayout.compactTravel
+            collapseMotion.distance = collapseMotion.distance > 0 ? 0 : collapseLayout.compactTravel
         }
     }
 
@@ -458,17 +446,11 @@ struct VideoPage: View {
     }
 
     private func finishVideoCollapse() {
-        // 松手后的距离由滚动桥接器按列表减速率继续消费，不做端点吸附。
+        // 松手后继续读取原生列表的减速偏移，不额外驱动减速或端点吸附。
     }
 
-    /// 简介和评论并排放在一个横向分页容器里。
-    ///
-    /// 这里特意不用 `.page` 样式的 TabView：`indexDisplayMode` 设成 `.never`
-    /// 只是隐藏圆点，系统仍然在底部保留着它们原来占的那份空间，视频页最下面
-    /// 因此始终留着一条空白。改成手动分页的 ScrollView 就没有这份保留区域。
-    /// 上面那条选项栏和它共用同一个选中状态，所以滑动内容时指示条跟着滑，
-    /// 点选项栏时内容也滑过去；`.scrollTargetBehavior(.paging)` 负责手指按住
-    /// 时内容跟走、松手回弹或翻页、边界阻尼这些原来 `.page` 样式自带的手感。
+    /// 简介和评论使用原生横向 ScrollView 分页，与选项栏共享选中状态。
+    /// 容器不预留页码指示器区域，纵向滚动仍由各自列表持有。
     private var sectionPages: some View {
         @Bindable var store = store
 
@@ -504,6 +486,8 @@ struct VideoPage: View {
 
         if let commentsViewModel = store.commentsViewModel {
             CommentsView(viewModel: commentsViewModel, scrollPosition: $store.commentsScroll,
+                         initialOffset: store.commentScrollBox.offset,
+                         onOffsetChanged: { store.commentScrollBox.offset = $0 },
                          collapseConsume: consumeVideoScroll, collapseEnd: finishVideoCollapse,
                          canCollapse: canConsumeVideoScroll, collapseCanContinue: canContinueCollapseMomentum)
                 .environment(\.commentTimeJump, commentTimeJump)

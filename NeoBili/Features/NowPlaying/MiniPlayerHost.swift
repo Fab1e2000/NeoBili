@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension View {
-    /// 主 TabView 使用原生底部附件，随导航栏在展开和紧凑布局之间切换。
+    /// 主 TabView 使用原生底部附件，随标签栏在展开和紧凑布局之间切换。
     func tabMiniPlayerHost(isActive: @escaping () -> Bool = { true }, transitionNamespace: Namespace.ID? = nil) -> some View {
         modifier(TabMiniPlayerHost(isActive: isActive, transitionNamespace: transitionNamespace))
     }

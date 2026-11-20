@@ -11,7 +11,6 @@ struct AppRecommendationPage: Decodable {
     let nextCursor: Int?
     /// Only the original first item supplies the refresh head; never scan past it.
     let refreshCursor: Int?
-    let refreshConfig: AppRecommendationRefreshConfig?
     let bannerHash: String?
     let exposurePolicy: RecommendationExposurePolicy
     private enum Keys: String, CodingKey { case items, idx, config }
@@ -21,7 +20,6 @@ struct AppRecommendationPage: Decodable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: Keys.self)
         exposurePolicy = (try? container.decode(RecommendationExposurePolicy.self, forKey: .config)) ?? .init()
-        refreshConfig = try? container.decodeIfPresent(AppRecommendationRefreshConfig.self, forKey: .config)
         var items = try container.nestedUnkeyedContainer(forKey: .items)
         var result: [AppRecommendationCard] = []
         var cursor: Int?
@@ -53,7 +51,7 @@ struct AppRecommendationPage: Decodable {
         let next = nextCursor.flatMap { cursor in
             cursor != request.appCursor ? request.next(appCursor: cursor) : nil
         }
-        return RecommendationBatch(videos: videos(filter: filter), nextRequest: next, refreshConfig: refreshConfig, appCursor: nextCursor, refreshCursor: refreshCursor, exposurePolicy: exposurePolicy)
+        return RecommendationBatch(videos: videos(filter: filter), nextRequest: next, appCursor: nextCursor, refreshCursor: refreshCursor, exposurePolicy: exposurePolicy)
     }
 
     var videos: [VideoSummary] { videos(filter: .none) }
@@ -272,5 +270,3 @@ private extension KeyedDecodingContainer {
     }
     func text(_ key: Key) -> String? { try? decode(String.self, forKey: key) }
 }
-
-/// 服务端秒数；缺失事件字段才回退到旧版 auto_refresh_time，0/负数/坏值明确关闭该事件。

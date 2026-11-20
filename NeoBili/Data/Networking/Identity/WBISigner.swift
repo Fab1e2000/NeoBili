@@ -214,14 +214,7 @@ public actor WBISigner {
 }
 
 extension CharacterSet {
-    /// 网页端给查询值转义时用的是 `encodeURIComponent`：除了字母数字和
-    /// `-_.~`，其余一律转成 %XX。服务端校验 w_rid 时也按这套规则重新拼一遍
-    /// 查询串，所以**签名和真正发出去的 URL 必须都用它**。
-    ///
-    /// 之前这里是 `urlQueryAllowed` 去掉 `&=+`，会把 `, : / ; @ $ ?` 原样留下。
-    /// 于是像 `dm_img_inter={"ds":[],"wh":[0,0,0]…}` 这种带逗号冒号的参数，
-    /// 我们算出的摘要和服务端算的对不上——宽松的接口（取流）照给数据，严格的
-    /// 接口（UP 主投稿列表）直接回 -403。
+    /// WBI 查询值仅保留字母、数字与 -_.~，签名与传输必须使用同一份转义规则。
     static let wbiQueryValueAllowed: CharacterSet = {
         var set = CharacterSet.alphanumerics
         set.insert(charactersIn: "-_.~")

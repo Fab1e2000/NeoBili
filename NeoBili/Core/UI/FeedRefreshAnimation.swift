@@ -7,11 +7,7 @@ import UIKit
 enum FeedRefreshTuning {
     // MARK: 淡出（旧内容退出）
 
-    /// 旧卡片淡尽所需的时间，与网络无关：松手就开始，跑完就是跑完。
-    ///
-    /// 早先的版本会在中途停在一个很淡的浓度上等数据，好处是慢网络下画面不全空，
-    /// 代价是那个停顿看起来像卡死——尤其把速度调快之后，停顿来得更早也更明显。
-    /// 现在不再等：淡出自己走完，数据没到就是空屏，到了再让新卡片淡入。
+    /// 旧内容淡出与网络请求并行；淡出结束后等待新内容，失败时由调用方恢复旧内容。
     static let fadeExitDuration: Double = 0.9
 
     static let fadeExit = fadeExitDuration / AnimationSpeedSettings.exitSpeed
@@ -27,12 +23,7 @@ struct FeedFadeInEffect: ViewModifier {
     func body(content: Content) -> some View { content.opacity(progress) }
 }
 
-/// 包住首页的一行卡片，负责刷新完成后的淡入动画。
-///
-/// 刷新会把新视频插到列表最前面，行的 id 跟着变，所以首屏这几行在刷新后是
-/// **全新的视图**而不是沿用下来的——淡入动画因此必须在创建时就能自己跑起来，
-/// 光靠 `onChange(of: generation)` 是等不到的。行一出生就是全透明的起始态，
-/// 不会先闪一下已经淡入的样子。
+/// 列表卡片按保存的起点淡入；新建视图从相应进度开始，复用视图沿用原起点。
 struct FeedFadeInRow<Content: View>: View {
     let reduceMotion: Bool
     let category: CardAnimationCategory

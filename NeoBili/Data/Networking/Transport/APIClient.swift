@@ -20,8 +20,7 @@ struct BiliResponse<T: Decodable>: Decodable {
     }
 }
 
-/// Thin async wrapper around URLSession for talking to Bilibili's public web
-/// endpoints as an anonymous (logged-out) client.
+/// 校验调用方账号会话并调度网页、App HTTP 和只读 gRPC 请求，统一处理业务响应与重试策略。
 public struct APIClient: Sendable {
 
     private static let baseURL = URL(string: "https://api.bilibili.com")!
@@ -72,12 +71,7 @@ public struct APIClient: Sendable {
         guard var components = URLComponents(url: Self.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
             throw BiliAPIError.invalidURL
         }
-        // 自己转义，不交给 URLComponents。
-        //
-        // URLComponents 生成查询串时会把 `+ , : / @` 这些字符原样留下，而 WBI
-        // 摘要是按 `encodeURIComponent` 的规则算的（全部转义）。两边一旦不一致，
-        // 服务端重算出来的签名就对不上：随机指纹里只要出现一个 `+`，UP 主投稿
-        // 列表这种严格接口就回 -403。用同一套字符集编码，字节层面保持一致。
+        // 签名与 URL 使用同一套 WBI 转义，避免 URLComponents 改变参与签名的字节。
         components.percentEncodedQueryItems = finalParams
             .sorted { $0.key < $1.key }
             .map { key, value in

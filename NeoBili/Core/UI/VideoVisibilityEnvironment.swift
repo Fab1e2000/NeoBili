@@ -17,8 +17,7 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
     @Environment(\.videoFiltering) private var filtering
     @Environment(\.hidesPortraitVideos) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    // 不能标 private：Xcode 26 会因此把合成的成员初始化器也变成 private，
-    // 下面的 resolvePortraitVideos 就调用不了。
+    // 保留内部可见性，让同文件的 resolvePortraitVideos 使用合成成员初始化器。
     var animations = CardAnimationPreferences()
     let videos: [Video]
     let batchID: Int

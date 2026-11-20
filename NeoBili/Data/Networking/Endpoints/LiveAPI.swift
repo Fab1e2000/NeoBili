@@ -305,7 +305,7 @@ struct LivePlaybackPayload: Decodable {
                 }
             }
         }
-        // 优先兼容性最好的HLS/AVC，保留HEVC/AV1和FLV备用，不修改服务端分配的质量。
+        // 解码层按 HLS/AVC 排序并保留全部候选；实际开流顺序由 LiveStreamStartupPolicy 调整为 FLV 优先。
         func priority(_ candidate: LiveStreamCandidate) -> Int {
             (candidate.isHLS ? 0 : 100) + (candidate.codecName == "avc" ? 0 : candidate.codecName == "hevc" ? 10 : 20)
                 + (candidate.formatName == "ts" ? 0 : 1)

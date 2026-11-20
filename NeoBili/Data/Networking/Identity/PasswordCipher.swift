@@ -1,10 +1,7 @@
-import CryptoKit
 import Foundation
 import Security
 
-/// B 站网页端密码登录的加密环节：用 `passport/x/passport-login/web/key` 返回的
-/// PEM 公钥，对 `hash + md5(密码)`（hash 是同一次响应里的 16 位盐）做
-/// PKCS#1 v1.5 加密后转 base64，与网页端行为一致。
+/// 使用登记服务的公钥加密设备及访客登记数据。
 enum PasswordCipher {
     enum CipherError: LocalizedError, Equatable {
         case malformedPublicKey
@@ -12,19 +9,14 @@ enum PasswordCipher {
 
         var errorDescription: String? {
             switch self {
-            case .malformedPublicKey: return String(localized: "登录公钥格式异常")
-            case .encryptionFailed: return String(localized: "密码加密失败")
+            case .malformedPublicKey: return String(localized: "设备登记公钥格式异常")
+            case .encryptionFailed: return String(localized: "设备登记数据加密失败")
             }
         }
     }
 
-    static func encryptedPassword(_ password: String, salt hash: String, publicKeyPEM: String) throws -> String {
-        try encryptRSA(Data((hash + md5Hex(password)).utf8), publicKeyPEM: publicKeyPEM).base64EncodedString()
-    }
-
     static func encryptRSA(_ message: Data, publicKeyPEM: String) throws -> Data {
         let key = try secKey(fromPEM: publicKeyPEM)
-        // 网页端先取密码的 md5 十六进制串，再拼上本次的 hash 一起加密。
         var error: Unmanaged<CFError>?
         guard let encrypted = SecKeyCreateEncryptedData(
             key,
@@ -103,10 +95,5 @@ enum PasswordCipher {
             defer { offset += length }
             return Array(bytes[offset..<(offset + length)])
         }
-    }
-
-    private static func md5Hex(_ string: String) -> String {
-        let digest = Insecure.MD5.hash(data: Data(string.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }

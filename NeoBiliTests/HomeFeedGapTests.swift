@@ -72,7 +72,6 @@ final class HomeFeedGapTests: XCTestCase {
     func testCollectionDeduplicatesBeforeFillingRows() throws {
         let collection = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
         let coordinator = HomeFeedCollection.Coordinator()
-        coordinator.showsHeaderRow = false
         coordinator.attach(collection)
         coordinator.apply([.videos([video(1), video(1), video(2, large: true), video(3)])])
         let source = try XCTUnwrap(collection.dataSource as? UICollectionViewDiffableDataSource<HomeFeedCollection.Section, String>)
@@ -213,7 +212,7 @@ private struct GapHarness: View {
             HomeFeedCollection(rows: model.feedRows, viewModel: model, hidesPortraitVideos: false,
                 isRefreshing: false, isInteractionEnabled: true, refreshDistance: 100,
                 controller: controller, onRefresh: {}, onOpenLastSeen: {},
-                pinsTitleBar: true, safeInsets: safeInsets)
+                safeInsets: safeInsets)
                 .ignoresSafeArea()
                 .onGeometryChange(for: EdgeInsets.self, of: \.safeAreaInsets) { safeInsets = $0 }
                 .rootPageChrome(title: "推荐")

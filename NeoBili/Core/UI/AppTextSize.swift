@@ -1,13 +1,7 @@
 import SwiftUI
 
-/// 全 App 的文字大小。
-///
-/// 这里刻意**不跟随**系统的动态字体：两套机制同时生效时，同一个界面在不同
-/// 设备上会得到互相叠加的两次缩放，排版没法预期。改成由根视图统一注入一个
-/// 固定档位后，系统设置不再参与，App 内这一个滑杆就是唯一的来源。
-///
-/// 档位本身仍用系统的 `DynamicTypeSize`，所以 `.font(.app(.subheadline))` 这类语义
-/// 字号会照常按 Apple 的比例缩放，不需要给每处文字手写字号。
+/// 根视图统一注入应用选定的 DynamicTypeSize，系统字号不再叠加缩放。
+/// 各处语义字体仍按该档位使用系统缩放比例。
 enum AppTextSize {
     /// 与设置页共用的存储键。
     static let storageKey = "neobili.textSize"
@@ -25,14 +19,7 @@ enum AppTextSize {
     }
 }
 
-/// 把当前档位重新注入到模态呈现（sheet / fullScreenCover）内容的根部。
-///
-/// 根视图虽然已经给整棵树注入了 `dynamicTypeSize`，但每个 sheet/fullScreenCover
-/// 都由独立的 UIHostingController 呈现，它会按自身的 trait 重建这份环境值——
-/// 也就是退回跟随系统设置——根上的注入到不了那里（自定义的 `.environment`
-/// 不受影响，所以账号这些 store 一直好好的）。视频页和它的评论区正是
-/// fullScreenCover 里的内容，之前调滑杆没反应就是这个原因。每个模态的
-/// 内容根部补一次这个修饰符即可。
+/// 每个 sheet/fullScreenCover 的独立宿主都需重新注入应用字号，避免使用系统 trait 的档位。
 private struct AppTextSizeModifier: ViewModifier {
     @AppStorage(AppTextSize.storageKey) private var index = AppTextSize.defaultIndex
 

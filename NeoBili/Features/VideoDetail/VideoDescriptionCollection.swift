@@ -437,9 +437,7 @@ struct VideoDescriptionContent: View {
                                    scrollState: store.descriptionScroll, onSelect: store.openRelated,
                                    onReachEnd: { Task { await store.detailViewModel?.loadMoreRelated() } },
                                    consume: consume, end: end, canConsume: canConsume, canContinue: canContinue)
-            // SwiftUI 会把 UIKit 列表摆在安全区内，顶部栏下面就只剩页面底色；铺进去之后内容才能
-            // 从选择器下滑过，由系统给出与评论页一致的顶部模糊。被覆盖的高度由 UIKit 按安全区
-            // 自动计入顶部边距，不用另外补。
+            // 列表延伸到顶部栏下方；固定顶部预留与可见裁切窗口由页面滚动协调器同步。
             .ignoresSafeArea(.container, edges: .top)
             .resolvePortraitVideos(all)
             .environment(\.videoPreparation, store.preparationCache)

@@ -1,7 +1,7 @@
 import Foundation
 import Compression
 
-/// Wire encoding is independent of the durable click queue and its delivery policy.
+/// Shared wire encoding for click, exposure and player events; queues own delivery policy.
 enum AppBehaviorEncoder {
     static func clickPayload(_ event: RecommendationClick, uploadTime: Int) -> Data {
         payload(context: event.context, timestamp: event.timestamp, fields: event.fields,

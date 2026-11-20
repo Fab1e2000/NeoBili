@@ -35,11 +35,7 @@ extension BiliAPI {
         )
     }
 
-    /// 从某个收藏夹里取消收藏。
-    ///
-    /// 走的就是下面那个 `updateFavorites`——`deal` 接口只认 `add_media_ids` 和
-    /// `del_media_ids` 两个字段。这里以前写的是 `remove_media_ids`，服务端认不出
-    /// 来，于是每次都返回成功却什么也没删，表现就是「取消收藏没反应」。
+    /// 从指定收藏夹移除视频，复用 updateFavorites 的 del_media_ids 字段。
     static func removeFavorite(folderID: Int, aid: Int, expectedSessionID: UUID? = nil, client: APIClient, identity: DeviceIdentity) async throws {
         try await updateFavorites(aid: aid, addFolderIDs: [], removeFolderIDs: [folderID], expectedSessionID: expectedSessionID, client: client, identity: identity)
     }
@@ -50,6 +46,25 @@ extension BiliAPI {
         try await client.post(
             path: "x/v3/fav/resource/unfav-all",
             form: ["rid": String(aid), "type": "2", "csrf": csrf]
+        )
+    }
+
+    /// 新建收藏夹。`privacy` 0 为公开，1 为私密；封面留空，不上传图片。
+    static func addFavoriteFolder(title: String, intro: String, isPublic: Bool,
+                                  expectedSessionID: UUID? = nil,
+                                  client: APIClient, identity: DeviceIdentity) async throws -> FavFolder {
+        let sessionID = expectedSessionID ?? identity.loginSessionID
+        let csrf = await identity.csrfToken ?? ""
+        return try await client.post(
+            path: "x/v3/fav/folder/add",
+            form: [
+                "title": title,
+                "intro": intro,
+                "privacy": isPublic ? "0" : "1",
+                "cover": "",
+                "csrf": csrf
+            ],
+            expectedSessionID: sessionID
         )
     }
 

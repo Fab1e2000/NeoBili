@@ -516,16 +516,13 @@ private struct SpaceCollapsingHeader<Content: View>: View {
     }
 }
 
-/// UP 主页头部的尺寸。
 enum SpaceHeaderLayout {
     static func synchronizedOffset(pageOffset: CGFloat, collapse: CGFloat, headerHeight: CGFloat) -> CGFloat {
         let collapse = min(max(collapse, 0), max(headerHeight, 0))
         return collapse < headerHeight ? collapse : max(pageOffset, collapse)
     }
 
-    /// 头部内容与屏幕左右边缘的距离。
     static let horizontalInset: CGFloat = 16
-    /// 头像直径。
     static let avatarSize: CGFloat = 72
     /// 头图的宽高比。B 站的空间头图本身就是这个比例。
     static let bannerAspectRatio: CGFloat = 3.0

@@ -344,7 +344,7 @@ final class AppRecommendationTests: XCTestCase {
                 session: .shared, network: .shared, clickReporter: .shared, filter: { .current() })
             let videos = batch.videos
             let duplicates = videos.filter { seen.contains($0.bvid) }.count
-            print("AppRecommendationSmoke: page=\(page), cards=\(videos.count), duplicates=\(duplicates), appCredential=\(hasAppCredential), hasNext=\(batch.nextRequest != nil), refreshActive=\(batch.refreshConfig?.active ?? -1), refreshAppear=\(batch.refreshConfig?.appear ?? -1), refreshBehavior=\(batch.refreshConfig?.behavior ?? -1)")
+            print("AppRecommendationSmoke: page=\(page), cards=\(videos.count), duplicates=\(duplicates), appCredential=\(hasAppCredential), hasNext=\(batch.nextRequest != nil)")
             XCTAssertFalse(videos.isEmpty)
             XCTAssertTrue(videos.filter { $0.recommendationTarget == nil }.allSatisfy { $0.aid > 0 && $0.bvid.hasPrefix("BV") })
             seen.formUnion(videos.map(\.bvid))

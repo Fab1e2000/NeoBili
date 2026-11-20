@@ -5,29 +5,13 @@ import Foundation
 import Libmpv
 import UIKit
 
-/// Owns the mpv core and the C-API event loop that turns mpv events into
-/// `PlayerPlaybackEvent`s.
-///
-/// 故意不继承 `UIViewController`/`NSObject`：那两个在这个 SDK 里默认是
-/// `@MainActor` 隔离的，哪怕方法自己标了 `nonisolated`，Swift 6 运行时还是
-/// 会在通过裸 C 回调（`mpv_set_wakeup_callback`）调用这类对象的方法时插入
-/// 一次"是否在正确的执行体上"的动态检查——而 mpv 自己的线程显然不是主线程，
-/// 检查必然失败，直接触发 `_dispatch_assert_queue_fail` 崩溃。这是一个普通
-/// 的 Swift 类，没有任何父类强加的 actor 隔离，回调线程调用它的方法不会
-/// 触发这种检查。真正需要碰 UIKit（渲染层、通知）的部分留在
-/// `MPVMetalViewController` 里，那边所有入口本来就只会从 MainActor 调用。
-///
-/// 地址失败后的候选切换由 PlayerViewModel 管理，每次尝试使用独立内核，
-/// 旧内核的迟到事件不会混入下一次播放。
-/// `@unchecked`：这个类的可变状态确实会被多个线程碰到（mpv 的回调线程、
-/// eventQueue、主线程），但访问路径靠的是人工约束好的顺序（各处注释已经
-/// 说明），不是 Swift 的 actor/Sendable 机制——安全性是手动保证的。
+/// 持有 mpv 内核和事件队列，将事件转发为 PlayerPlaybackEvent。
+/// 普通 Swift 类型不继承 UIKit 的 actor 隔离，裸 C 唤醒回调只投递到 eventQueue。
+/// 公开播放操作由主线程调用，事件读取与异步销毁在串行 eventQueue 执行；
+/// @unchecked Sendable 依赖这些调用约定。UIKit 渲染宿主由 MPVMetalViewController 管理。
 final class MPVEngine: @unchecked Sendable {
-    /// mpv 的客户端 API（命令、属性读写）本身是线程安全的，可以从任意线程
-    /// 调用；只有终止上下文（`mpv_terminate_destroy`）之后不能再用这个指针。
-    /// 为了不让"终止"和"正在收事件"这两件事在两个线程上撞车，这个指针的
-    /// 每一次写入（初始化之外）都固定发生在 `eventQueue` 上，读取也只在
-    /// 这一个队列里发生——`eventQueue` 是串行队列，天然把这些操作排成顺序。
+    /// 主线程创建并读取播放命令所需的句柄，eventQueue 读取事件并负责最终销毁。
+    /// stop 先在主线程置 isStopped，后续同步播放操作在读取句柄前检查该标记。
     private var mpv: OpaquePointer?
     private let eventQueue = DispatchQueue(label: "com.neobili.mpv.events", qos: .userInitiated)
     private var isStopped = false
@@ -54,8 +38,7 @@ final class MPVEngine: @unchecked Sendable {
         self.configuration = configuration
     }
 
-    /// `layer` 只是取一次它的地址交给 mpv 的 `wid` 选项，不需要长期持有——
-    /// 渲染层本身的生命周期由 `MPVMetalViewController` 管。
+    /// wid 使用图层地址；宿主持有图层，stop 将它强引用到异步内核销毁结束。
     func start(renderingInto layer: MPVMetalLayer) {
         attachedLayer = layer
         guard let mpv = mpv_create() else {
@@ -136,9 +119,7 @@ final class MPVEngine: @unchecked Sendable {
         setFlag(mpv, name: "pause", value: true)
     }
 
-    /// 手势退出的提交帧不能同步等内核拿锁（暂停期间渲染线程可能正持有着
-    /// 核心锁），命令排进事件队列异步执行。mpv 指针的读写本来就约定只发生
-    /// 在这条队列上（见 `stop()`），这里沿用同一份约束，与销毁天然串行。
+    /// 把暂停命令排入 eventQueue，与事件读取和销毁串行执行，避免退出转场在主线程等待内核锁。
     func pauseAsync(afterPaused: (@MainActor @Sendable () -> Void)? = nil) {
         eventQueue.async { [weak self] in
             if let mpv = self?.mpv {
@@ -180,11 +161,8 @@ final class MPVEngine: @unchecked Sendable {
         // 时候被释放，mpv 都不会再摸到一块已经释放的内存。
         mpv_set_wakeup_callback(mpv, nil, nil)
 
-        // 销毁要在 eventQueue 上排队（与 drainEvents 串行，满足 mpv 的
-        // 「销毁期间不能并发访问」约束），但改成 async：mpv_terminate_destroy
-        // 要拆掉解码管线和 Vulkan 设备，主线程同步等它会卡住切画质/关页的
-        // 转场动画几十毫秒。block 强持有 engine（连带保持 `wid` 指向的渲染
-        // 层引用），销毁完成前对象链不会被释放，原来的时序保证不变。
+        // 内核销毁排在事件读取之后，避免主线程等待解码管线与 Vulkan 资源释放。
+        // 闭包保留 engine 和渲染图层，直到销毁完成。
         let layer = attachedLayer
         eventQueue.async { [self] in
             var pauseFlag: Int32 = 1
@@ -367,11 +345,7 @@ final class MPVEngine: @unchecked Sendable {
         dispatchToMain { [weak self] in self?.onEvent?(.displayAspectRatio(displayAspect)) }
     }
 
-    /// `onEvent` 最终会调到 `PlayerViewModel`（`@MainActor`），这里统一走
-    /// 普通的 `DispatchQueue.main.async`，而不是 `Task { @MainActor in }`——
-    /// 这个类本身没有任何 actor 隔离，用哪种方式跳主线程都可以，选前者是
-    /// 因为它不会被 Swift 6 运行时的隔离检查误伤（正是这份文件另一处崩溃
-    /// 的起因）。
+    /// 按事件队列的投递顺序将状态更新转到主队列，供 MainActor 上的播放模型消费。
     private func dispatchToMain(_ work: @escaping @Sendable () -> Void) {
         DispatchQueue.main.async(execute: work)
     }

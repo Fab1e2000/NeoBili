@@ -52,9 +52,7 @@ struct PlaybackSource: Sendable, Hashable {
 }
 
 enum PlaybackSourceBuilder {
-    /// 同一清晰度下的编码偏好：avc1 兼容性最好、硬解最省电，排后面的
-    /// （dvh1、av01）通常只有软解或部分机型才有硬解。mpv/FFmpeg 都能解，
-    /// 这只是"优先选哪个"，不是能不能播的问题。
+    /// 同画质轨道按 AVC、HEVC、Dolby Vision、AV1 的本地偏好排序；实际解码由 mpv 与设备能力决定。
     private static let preferredCodecPrefixes = ["avc1", "hvc1", "hev1", "dvh1", "av01"]
 
     static func makeSource(from payload: PlayURLData, configuration: VideoPlaybackConfiguration) throws -> PlaybackSource {

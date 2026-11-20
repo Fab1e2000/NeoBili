@@ -3,111 +3,78 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
+/// 「直播」Tab：导航栏下方是关注中正在直播的主播头像条，下面是推荐直播。
+/// 两个来源不再分成两页，页面只有一条纵向滚动视图。
 struct LiveView: View {
     @Environment(AccountStore.self) private var account
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var recommended: LiveFeedModel
-    @State private var following: LiveFeedModel
-    @State private var source: LiveFeedModel.Source = .recommended
+    @State private var model: LiveFeedModel
+    @State private var directory: FollowedLiveDirectory
     let onOpenRoom: (LiveRoom, String) -> Void
 
-    init(model: LiveFeedModel = LiveFeedModel(), onOpenRoom: @escaping (LiveRoom, String) -> Void) {
-        _recommended = State(initialValue: model)
-        let followed = LiveFeedModel()
-        followed.select(.following)
-        _following = State(initialValue: followed)
+    init(model: LiveFeedModel = LiveFeedModel(),
+         liveDirectory: FollowedLiveDirectory? = nil,
+         onOpenRoom: @escaping (LiveRoom, String) -> Void) {
+        _model = State(initialValue: model)
+        _directory = State(initialValue: liveDirectory ?? FollowedLiveDirectory())
         self.onOpenRoom = onOpenRoom
     }
 
     var body: some View {
         NavigationStack {
-            // 和视频页共用原生横向分页行为，每页保留自己的列表和滚动位置。
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
-                    page(recommended)
-                        .id(LiveFeedModel.Source.recommended)
-                    if account.isLoggedIn {
-                        page(following)
-                            .id(LiveFeedModel.Source.following)
+            // 与关注页一致：单一纵向列表，头像条常驻导航栏下方并跟着导航栏收起。
+            LiveFeedPage(model: model, directory: directory, onOpenRoom: onOpenRoom)
+                .safeAreaBar(edge: .top, spacing: 0) {
+                    if showsFollowedLive {
+                        LiveFollowedStrip(rooms: directory.rooms) { room in
+                            onOpenRoom(room, "live-followed-avatar-\(room.roomID)")
+                        }
                     }
                 }
-                .scrollTargetLayout()
-            }
-            .scrollPosition(id: Binding<LiveFeedModel.Source?>(
-                get: { source },
-                set: { if let value = $0 { source = value } }
-            ))
-            .scrollTargetBehavior(.paging)
-            .scrollIndicators(.hidden, axes: .horizontal)
-            // 标题用原生栏内大标题；来源切换器常驻在导航栏下方，使用切边背景。
-            .safeAreaBar(edge: .top, spacing: 0) { sourcePicker }
-            .scrollEdgeEffectStyle(.hard, for: .top)
-            .background(Color(uiColor: .systemGroupedBackground))
-            .rootPageChrome(title: String(localized: "直播"), barFollowsCollapse: true)
+                .scrollEdgeEffectStyle(.hard, for: .top)
+                .background(Color(uiColor: .systemGroupedBackground))
+                .rootPageChrome(title: String(localized: "直播"), barFollowsCollapse: true)
         }
-        .onChange(of: account.sessionID) {
-            source = .recommended
-            following.select(.following)
-        }
+        .onChange(of: account.sessionID) { directory.reset() }
         .onChange(of: account.isLoggedIn) { _, loggedIn in
-            if !loggedIn { source = .recommended }
-            else { following.select(.following) }
+            if !loggedIn { directory.reset() }
         }
     }
 
-    private var sourcePicker: LiveSourcePicker {
-        LiveSourcePicker(selection: selection, showsFollowing: account.isLoggedIn)
-    }
-
-    private var selection: Binding<LiveFeedModel.Source> {
-        Binding(get: { source }, set: { value in
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { source = value }
-        })
-    }
-
-    private func page(_ model: LiveFeedModel) -> some View {
-        LiveFeedPage(model: model, isActive: model.source == source,
-                     onSelectRecommended: { selection.wrappedValue = .recommended },
-                     onOpenRoom: onOpenRoom)
-            .frame(maxHeight: .infinity)
-            .containerRelativeFrame(.horizontal)
+    private var showsFollowedLive: Bool {
+        account.isLoggedIn && !directory.rooms.isEmpty
     }
 }
 
 private struct LiveFeedPage: View {
-    /// 当前显示的那一页才响应标签栏的重复点击。
-    let isActive: Bool
-    let onSelectRecommended: () -> Void
+    let model: LiveFeedModel
+    let directory: FollowedLiveDirectory
     let onOpenRoom: (LiveRoom, String) -> Void
 
     @Environment(AccountStore.self) private var account
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .live)
 
-    private let model: LiveFeedModel
     @State private var entranceClock = VideoEntranceClock()
     @State private var previousEntranceGeneration: Int?
-    @State private var refreshTask: Task<Void, Never>?
-    @State private var isRefreshing = false
-    @State private var refreshID = UUID()
-    @State private var listOpacity = 1.0
+    /// 暂存刷新由统一控制器持有任务；页面只提供取回、提交与丢弃。
+    @State private var refresh = ListRefreshController()
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var isAwayFromTop = false
     @State private var shortcutTask: Task<Void, Never>?
-
-    init(model: LiveFeedModel, isActive: Bool,
-         onSelectRecommended: @escaping () -> Void, onOpenRoom: @escaping (LiveRoom, String) -> Void) {
-        self.model = model
-        self.isActive = isActive
-        self.onSelectRecommended = onSelectRecommended
-        self.onOpenRoom = onOpenRoom
-    }
+    @State private var isVisible = false
 
     private struct LoadContext: Hashable {
-        let source: LiveFeedModel.Source
+        let sessionID: UUID
+        let isLoggedIn: Bool
+    }
+
+    private struct DirectoryContext: Hashable {
+        let isVisible: Bool
+        let isActive: Bool
         let sessionID: UUID
         let isLoggedIn: Bool
     }
@@ -127,15 +94,20 @@ private struct LiveFeedPage: View {
     var body: some View {
         feed
         .background(Color(uiColor: .systemGroupedBackground))
-        .task(id: LoadContext(source: model.source, sessionID: account.sessionID,
-                              isLoggedIn: account.isLoggedIn)) {
-            let previousSource = model.source
+        .task(id: LoadContext(sessionID: account.sessionID, isLoggedIn: account.isLoggedIn)) {
             model.synchronizeAccount(sessionID: account.sessionID, isLoggedIn: account.isLoggedIn)
-            // Signing out starts a new Recommended task; that task owns its request.
-            guard previousSource == model.source else { return }
             await model.loadInitial()
         }
-        .onAppear { OrientationController.enterPortrait() }
+        // 关注直播目录只在页面可见时刷新；回到前台或再次进入本页都会重试。
+        .task(id: DirectoryContext(isVisible: isVisible, isActive: scenePhase == .active,
+                                   sessionID: account.sessionID, isLoggedIn: account.isLoggedIn)) {
+            guard isVisible, scenePhase == .active, account.isLoggedIn else { return }
+            await directory.refresh(force: true)
+        }
+        .onAppear {
+            OrientationController.enterPortrait()
+            isVisible = true
+        }
         .transformEnvironment(\.videoEntranceClocks) {
             $0.append(VideoEntranceScope(ids: Set(entranceBatch.ids),
                                         generation: entranceBatch.generation, clock: entranceClock))
@@ -152,11 +124,11 @@ private struct LiveFeedPage: View {
             if !enabled { entranceClock.finishAnimations() }
         }
         .onChange(of: animatesExit) { _, enabled in
-            if !enabled { withAnimation(nil) { listOpacity = 1 } }
+            if !enabled { refresh.restoreContent() }
         }
         // 与推荐页一致：重复点「直播」标签，不在顶部时回到顶部，已在顶部时刷新。
         .onTabReselected(.live) {
-            guard isActive, shortcutTask == nil, !isRefreshing else { return }
+            guard shortcutTask == nil, !refresh.isRefreshing else { return }
             if isAwayFromTop {
                 withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .top) }
                 // 回顶动画结束前忽略重复点击，避免误触发刷新。
@@ -168,8 +140,10 @@ private struct LiveFeedPage: View {
                 startRefresh()
             }
         }
-        .onDisappear { resetRefreshPresentation() }
-        .onChange(of: model.source) { resetRefreshPresentation() }
+        .onDisappear {
+            isVisible = false
+            resetRefreshPresentation()
+        }
         .onChange(of: account.sessionID) { resetRefreshPresentation() }
     }
 
@@ -191,8 +165,8 @@ private struct LiveFeedPage: View {
                                 .task { await model.loadMoreIfNeeded(current: room) }
                         }
                     }
-                    .opacity(animatesExit ? listOpacity : 1)
-                    .allowsHitTesting(listOpacity == 1)
+                    .opacity(refresh.contentOpacity)
+                    .allowsHitTesting(refresh.contentOpacity == 1)
                     pagination
                 }
             }
@@ -201,7 +175,7 @@ private struct LiveFeedPage: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
             .background {
-                ShortPullRefresh(threshold: refreshDistance, enabled: !isRefreshing && !model.isLoading,
+                ShortPullRefresh(threshold: refreshDistance, enabled: !refresh.isRefreshing && !model.isLoading,
                                  onProgress: { _, _ in },
                                  onRefresh: startRefresh)
             }
@@ -225,18 +199,13 @@ private struct LiveFeedPage: View {
             } description: {
                 Text(message)
             } actions: {
-                Button("重新加载") { Task { await refreshFeed() } }
+                Button("重新加载") { startRefresh() }
             }
         } else {
             ContentUnavailableView {
-                Label(model.source == .following ? "关注的主播暂未开播" : "暂时没有直播",
-                      systemImage: "dot.radiowaves.left.and.right")
+                Label("暂时没有直播", systemImage: "dot.radiowaves.left.and.right")
             } description: {
-                Text(model.source == .following ? "开播后会显示在这里，也可以看看推荐直播。" : "稍后下拉刷新。")
-            } actions: {
-                if model.source == .following {
-                    Button("看看推荐", action: onSelectRecommended)
-                }
+                Text("稍后下拉刷新。")
             }
         }
     }
@@ -251,7 +220,7 @@ private struct LiveFeedPage: View {
             Button("加载更多") { Task { await model.loadMore() } }
                 .font(.app(.subheadline))
                 .frame(minHeight: 44)
-                .disabled(model.isLoading || isRefreshing)
+                .disabled(model.isLoading || refresh.isRefreshing)
         } else {
             Text("已经到底了").font(.app(.footnote)).foregroundStyle(.secondary).padding(.vertical, 12)
         }
@@ -264,74 +233,88 @@ private struct LiveFeedPage: View {
         }
     }
 
-    private func refreshFeed() async {
-        guard !isRefreshing, !model.isLoading else { return }
-        let requestID = UUID()
-        refreshID = requestID
-        isRefreshing = true
-        let duration = animatesExit && !model.rooms.isEmpty ? FeedRefreshTuning.fadeExit : 0
-        // 与推荐页一致：松手即开始淡出，请求并行进行，两者都结束后再换上新内容；全程不显示提示。
-        let exitStart = ProcessInfo.processInfo.systemUptime
-        if duration > 0 { withAnimation(.easeOut(duration: duration)) { listOpacity = 0 } }
-        defer {
-            if refreshID == requestID {
-                model.discardStagedRefresh()
-                withAnimation(nil) {
-                    listOpacity = 1
-                    isRefreshing = false
-                }
-            }
-        }
-        await model.refresh(staged: true)
-        guard !Task.isCancelled, refreshID == requestID else { return }
-        // 刷新失败时 defer 直接恢复旧内容。
-        guard model.errorMessage == nil else { return }
-        if duration > 0 {
-            let remaining = max(0, duration - (ProcessInfo.processInfo.systemUptime - exitStart))
-            do {
-                try await CardAnimationSettings.waitWhileEnabled(
-                    for: remaining,
-                    category: .video, phase: .exit, source: .live
-                )
-            } catch { return }
-        }
-        guard !Task.isCancelled, refreshID == requestID else { return }
-        withAnimation(nil) {
-            model.commitStagedRefresh()
-            listOpacity = 1
-        }
-    }
-
+    /// 与推荐页一致：松手即开始淡出，请求并行进行，两者都结束后再换上新内容；全程不显示提示。
+    /// 关注直播目录单独刷新：它要扫完关注列表的全部页，不拖慢可见的推荐内容。
     private func startRefresh() {
-        guard !isRefreshing, !model.isLoading else { return }
-        refreshTask = Task { await refreshFeed() }
+        guard !refresh.isRefreshing, !model.isLoading else { return }
+        let refreshesFollowed = account.isLoggedIn
+        refresh.start(
+            hasContent: !model.rooms.isEmpty,
+            animatesExit: animatesExit,
+            source: .live,
+            fetch: {
+                if refreshesFollowed {
+                    Task { await directory.refresh(force: true) }
+                }
+                await model.refresh(staged: true)
+                // 刷新失败时控制器直接恢复旧内容。
+                return !Task.isCancelled && model.errorMessage == nil
+            },
+            commit: { model.commitStagedRefresh() },
+            discard: { model.discardStagedRefresh() }
+        )
     }
 
     private func resetRefreshPresentation() {
-        refreshTask?.cancel()
-        refreshTask = nil
-        model.discardStagedRefresh()
-        refreshID = UUID()
-        withAnimation(nil) {
-            listOpacity = 1
-            isRefreshing = false
-        }
+        refresh.reset(discard: model.discardStagedRefresh)
     }
 }
 
-/// 直播的推荐/关注切换器。
-struct LiveSourcePicker: View {
-    let selection: Binding<LiveFeedModel.Source>
-    let showsFollowing: Bool
+/// 关注中正在直播的主播，横向头像条；尺寸与间距沿用关注页顶部的头像条。
+private struct LiveFollowedStrip: View {
+    let rooms: [LiveRoom]
+    let onOpen: (LiveRoom) -> Void
+
+    private static let cellWidth: CGFloat = 64
 
     var body: some View {
-        Picker("直播内容", selection: selection) {
-            Text("推荐").tag(LiveFeedModel.Source.recommended)
-            if showsFollowing { Text("关注").tag(LiveFeedModel.Source.following) }
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 2) {
+                ForEach(rooms) { room in
+                    Button { onOpen(room) } label: {
+                        VStack(spacing: 4) {
+                            LiveFollowedAvatar(url: room.faceURL)
+                            Text(room.username)
+                                .font(.app(.caption2))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .frame(width: Self.cellWidth)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("\(room.username)，正在直播"))
+                    .accessibilityHint("进入直播间")
+                    .accessibilityIdentifier("live.followed.\(room.roomID)")
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
         }
-        .pickerStyle(.segmented)
-        .accessibilityIdentifier("live.feedSource")
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .scrollIndicators(.hidden)
+        .accessibilityIdentifier("live.followed.strip")
+    }
+}
+
+/// 与关注页头像同尺寸；这一条里的每个头像都代表正在直播的主播，所以不再叠「LIVE」角标。
+private struct LiveFollowedAvatar: View {
+    let url: URL?
+    var size: CGFloat = 52
+
+    var body: some View {
+        Group {
+            if let url {
+                BiliImage(url: url).aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay { Circle().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5) }
+        .padding(3)
     }
 }

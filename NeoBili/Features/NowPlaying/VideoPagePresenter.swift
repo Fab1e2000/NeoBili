@@ -4,7 +4,7 @@ import NeoBiliDomain
 import SwiftUI
 
 extension View {
-    /// 以全屏模态呈现当前的视频页或直播间，从 `.player` 转场源 zoom 展开。
+    /// 通过 fullScreenCover 呈现点播或直播，使用 MediaZoomPresentation 选择的卡片或缩略播放器转场源。
     ///
     /// 根视图和「我的」服务卡片各挂一份：服务卡片打开时由它承载视频页，
     /// 根视图让出（`isActive` 返回 false），关闭播放器后仍回到卡片里的列表。
