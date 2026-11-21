@@ -5,6 +5,7 @@ public struct VideoService: Sendable {
     public func storyboard(bvid: String, cid: Int) async throws -> VideoStoryboard { try await storyboardOperation(bvid, cid) }
 
     public var playURLOperation: @Sendable (String, Int, Int) async throws -> PlayURLData = { _, _, _ in throw ServiceError.unconfigured("Video.playURL") }
+    public var castPlayURLOperation: @Sendable (String, Int, Int) async throws -> PlayURLData = { _, _, _ in throw ServiceError.unconfigured("Video.castPlayURL") }
     public var videoDetailOperation: @Sendable (String) async throws -> VideoDetail = { _ in throw ServiceError.unconfigured("Video.videoDetail") }
     public var appRelatedPageOperation: @Sendable (String, Int, PlaybackEntry, String, UUID, Data?) async throws -> AppRelatedPage = { _, _, _, _, _, _ in throw ServiceError.unconfigured("Video.appRelatedPage") }
     public var videoTagsOperation: @Sendable (Int) async throws -> [VideoTag] = { _ in throw ServiceError.unconfigured("Video.videoTags") }
@@ -21,6 +22,10 @@ public struct VideoService: Sendable {
 
     public func playURL(bvid: String, cid: Int, quality: Int = 127) async throws -> PlayURLData {
         try await playURLOperation(bvid, cid, quality)
+    }
+
+    public func castPlayURL(bvid: String, cid: Int, quality: Int = 80) async throws -> PlayURLData {
+        try await castPlayURLOperation(bvid, cid, quality)
     }
 
     public func videoDetail(bvid: String) async throws -> VideoDetail {
@@ -78,6 +83,7 @@ public struct VideoService: Sendable {
     public init(
         storyboardOperation: @escaping @Sendable (String, Int) async throws -> VideoStoryboard = { _, _ in throw ServiceError.unconfigured("Video.storyboard") },
         playURLOperation: @escaping @Sendable (String, Int, Int) async throws -> PlayURLData = { _, _, _ in throw ServiceError.unconfigured("Video.playURL") },
+        castPlayURLOperation: @escaping @Sendable (String, Int, Int) async throws -> PlayURLData = { _, _, _ in throw ServiceError.unconfigured("Video.castPlayURL") },
         videoDetailOperation: @escaping @Sendable (String) async throws -> VideoDetail = { _ in throw ServiceError.unconfigured("Video.videoDetail") },
         appRelatedPageOperation: @escaping @Sendable (String, Int, PlaybackEntry, String, UUID, Data?) async throws -> AppRelatedPage = { _, _, _, _, _, _ in throw ServiceError.unconfigured("Video.appRelatedPage") },
         videoTagsOperation: @escaping @Sendable (Int) async throws -> [VideoTag] = { _ in throw ServiceError.unconfigured("Video.videoTags") },
@@ -94,6 +100,7 @@ public struct VideoService: Sendable {
     ) {
         self.storyboardOperation = storyboardOperation
         self.playURLOperation = playURLOperation
+        self.castPlayURLOperation = castPlayURLOperation
         self.videoDetailOperation = videoDetailOperation
         self.appRelatedPageOperation = appRelatedPageOperation
         self.videoTagsOperation = videoTagsOperation

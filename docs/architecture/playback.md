@@ -171,6 +171,10 @@ param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 Recor
 
 `PlaybackReportingCoordinator` 持有观看累计、心跳与播放行为的开始/结束去重状态，以及对应发送器。Player 在原事件顺序中传入即时值快照；协作者不持有 Player、渲染会话或额外任务。退出、析构和 EOF 各自保留已有的上报边界，本地续播保存仍由 Player 管理。
 
+## DLNA 投屏
+
+`CastService` 契约和设备/状态值属于 `NeoBiliDomain`，`CastSessionModel` 在 `Application/Casting` 中统一管理设备发现、活动投屏会话与进度轮询，通过 `castSession` 环境值向在线点播、离线缓存与直播页面提供同一会话状态。`Platform/Casting` 提供纯 Swift 实现的 SSDP 发现、UPnP SOAP 控制（`DLNAXMLCodec` / `UPnPControlClient`）、本地 HTTP Range 代理（`LocalMediaProxyServer`）和离线双轨快速无损封装（`OfflineCastMuxer`）。在线点播通过 `VideoService.castPlayURL` 获取单文件合并 MP4，直播优先选择 HLS 并由本地代理重写分片 URI 以透传防盗链请求头，离线缓存直接经本地代理分块输出；投屏独立于 `MPVPlayerSession`，起播后暂停本地内核，退出投屏时同步进度回本地续播。
+
 ## 弹幕渲染预算
 
 弹幕继续使用独立图层，不经 SwiftUI 逐帧重建。新位图在主线程同步绘制前先检查轨道追及冲突；

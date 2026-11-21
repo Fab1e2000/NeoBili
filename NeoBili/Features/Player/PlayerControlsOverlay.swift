@@ -23,6 +23,7 @@ struct PlayerControlsOverlay: View {
     var videoSubtitle = ""
     var shareURL: URL?
     var onCache: (() -> Void)? = nil
+    var onCast: (() -> Void)? = nil
 
     @State private var isScrubbing = false
     @State private var scrubTime: Double = 0
@@ -118,6 +119,12 @@ struct PlayerControlsOverlay: View {
 
     @ViewBuilder
     private var playbackMenuContent: some View {
+        if let onCast {
+            Button("投屏", systemImage: "tv.badge.wifi") {
+                onCast()
+                scheduleAutoHide()
+            }
+        }
         PlayerSpeedMenu(rate: viewModel.playbackRate) { rate in
             viewModel.selectPlaybackRate(rate)
             scheduleAutoHide()

@@ -57,6 +57,9 @@ targets:
         CFBundleLocalizations: [zh-Hans, en]
         # 后台继续播放音频（退出视频页后的缩略播放器、锁屏）。
         UIBackgroundModes: [audio]
+        NSLocalNetworkUsageDescription: "用于发现局域网内的投屏设备并将视频投送到电视"
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UILaunchScreen: {}
         # 宋体风格使用的内置思源宋体（SIL OFL），随应用注册。
         UIAppFonts:

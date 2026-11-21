@@ -18,6 +18,7 @@ struct RootView: View {
     private let offlineCache: OfflineCacheStore
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
+    @State private var castSession = CastSessionModel(service: ApplicationServices.live.cast)
     @State private var toolbarAccessory = RootToolbarAccessory()
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
@@ -116,6 +117,7 @@ struct RootView: View {
         .environment(\.videoPreparation, nowPlaying.preparationCache)
         .environment(account)
         .environment(feedback)
+        .environment(\.castSession, castSession)
         .environment(toolbarAccessory)
         .environment(themeIcon)
         .environment(\.videoTransitionNamespace, videoTransition)

@@ -8,15 +8,20 @@ import Foundation
 import AVFAudio
 
 extension ApplicationServices {
+    private static let liveCastBackend = LiveCastBackend()
+
     static let live = makeLive(identity: .shared, client: .shared, session: AppNetwork.session,
                               diagnostics: .shared, network: .shared, recommendationSession: .shared,
-                              reporter: .shared, clickReporter: .shared, offlineCache: OfflineCacheComposition.repository.service)
+                              reporter: .shared, clickReporter: .shared,
+                              offlineCache: OfflineCacheComposition.repository.service,
+                              cast: liveCastBackend.makeService())
 
     static func makeLive(identity: DeviceIdentity, client: APIClient, session: URLSession,
                          diagnostics: RecommendationDiagnostics, network: AppNetworkMetadata,
                          recommendationSession: AppRecommendationSession, reporter: AppBehaviorReporter,
                          clickReporter: RecommendationClickReporter,
                          offlineCache: OfflineCacheService = OfflineCacheService(),
+                         cast: CastService = CastService(),
                          filter: @escaping @Sendable () -> RecommendationFilter = { .current() }) -> Self {
         Self(
             currentAppBuvid: { await identity.appBuvid() },
@@ -34,7 +39,8 @@ extension ApplicationServices {
             community: .live(client: client, identity: identity),
             recommendation: .live(client: client, identity: identity, session: recommendationSession,
                                   network: network, clickReporter: clickReporter, filter: filter),
-            offlineCache: offlineCache
+            offlineCache: offlineCache,
+            cast: cast
         )
     }
 }

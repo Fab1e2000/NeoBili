@@ -7,6 +7,7 @@ struct LiveRoomView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.castSession) private var castSession
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     private var keepsPlaybackOnDismiss = false
@@ -22,6 +23,7 @@ struct LiveRoomView: View {
     @State private var requestedQuality: Int?
     @State private var hideTask: Task<Void, Never>?
     @State private var keepsControlsForMenu = false
+    @State private var isCastPickerPresented = false
     @State private var danmaku = LiveDanmakuModel()
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(DanmakuSettings.liveEnabledKey) private var liveDanmakuEnabled = DanmakuSettings.defaultValue
@@ -40,6 +42,8 @@ struct LiveRoomView: View {
     }
 
     private var shareURL: URL { URL(string: "https://live.bilibili.com/\(player.room.roomID)")! }
+    private var castMediaID: String { "live:\(player.danmakuRoomID)" }
+    private var isCastingCurrentLive: Bool { castSession?.isCasting(mediaID: castMediaID) == true }
     private var showsControls: Bool {
         controlsVisible || player.errorMessage != nil || player.isOffline
     }
@@ -102,9 +106,24 @@ struct LiveRoomView: View {
         .onChange(of: player.displayAspectRatio) { if isFullScreen { applyFullScreenOrientation() } }
         .onDisappear {
             hideTask?.cancel()
-            if !keepsPlaybackOnDismiss { player.stop() }
+            if !keepsPlaybackOnDismiss {
+                player.stop()
+                if let castSession {
+                    let mediaID = castMediaID
+                    Task { await castSession.stopIfCasting(mediaID: mediaID) }
+                }
+            }
             danmaku.stop()
             OrientationController.endPlaybackOrientation(owner: orientationOwner)
+        }
+        .sheet(isPresented: $isCastPickerPresented) {
+            if let castSession {
+                CastDevicePickerSheet(
+                    castSession: castSession,
+                    mediaTitle: player.room.title,
+                    onSelectDevice: startCasting(to:)
+                )
+            }
         }
     }
 
@@ -149,7 +168,16 @@ struct LiveRoomView: View {
                 .foregroundStyle(.white)
                 .environment(\.colorScheme, .dark)
             }
-            if showsControls {
+            if isCastingCurrentLive, let castSession {
+                CastPlaybackOverlay(
+                    castSession: castSession,
+                    isFullScreen: isFullScreen,
+                    safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
+                    onBack: { if isFullScreen { toggleFullScreen() } else { if let onReturn { onReturn() } else { dismiss() } } },
+                    onSwitchDevice: { isCastPickerPresented = true },
+                    onExitCast: exitCasting
+                )
+            } else if showsControls {
                 PlayerGlassChrome(
                     title: player.room.title, subtitle: player.room.username, shareURL: shareURL,
                     videoQualityControl: qualityControl,
@@ -166,6 +194,11 @@ struct LiveRoomView: View {
                     onToggleFullScreen: toggleFullScreen,
                     onMenuInteraction: { hideTask?.cancel(); keepsControlsForMenu = true; controlsVisible = true }
                 ) {
+                    Button("投屏", systemImage: "tv.badge.wifi") {
+                        isCastPickerPresented = true
+                        scheduleHide()
+                    }
+                    .disabled(player.isOffline || player.preferredCastCandidate() == nil)
                     Button("重新连接", systemImage: "arrow.clockwise", action: reconnect)
                     ShareLink(item: shareURL) { Label("分享直播间", systemImage: "square.and.arrow.up") }
                 }
@@ -272,6 +305,46 @@ struct LiveRoomView: View {
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { return }
             controlsVisible = false
+        }
+    }
+
+    private func startCasting(to device: CastDevice) {
+        guard let castSession else { return }
+        guard let candidate = player.preferredCastCandidate() else {
+            feedback.show(String(localized: "当前直播地址暂不可投屏"))
+            return
+        }
+        var headers = candidate.headers
+        if headers["Referer"] == nil {
+            headers["Referer"] = "https://live.bilibili.com/\(player.danmakuRoomID)"
+        }
+        if headers["User-Agent"] == nil {
+            headers["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+        }
+        let mimeType = candidate.isHLS ? "application/vnd.apple.mpegurl" : "video/x-flv"
+        let request = CastMediaRequest(
+            id: castMediaID,
+            title: player.room.title,
+            subtitle: player.room.username,
+            kind: .live,
+            source: .remoteHTTP(url: candidate.url, headers: headers, mimeType: mimeType)
+        )
+        Task {
+            let started = await castSession.startCasting(device: device, media: request)
+            if started {
+                player.pause()
+                feedback.show(String(localized: "已投屏到 \(device.name)"))
+            } else if case .error(let message) = castSession.phase {
+                feedback.show(message)
+            }
+        }
+    }
+
+    private func exitCasting() {
+        guard let castSession else { return }
+        Task {
+            _ = await castSession.stopCasting()
+            player.play()
         }
     }
 
