@@ -4,7 +4,7 @@ import NeoBiliDomain
 import SwiftUI
 import UIKit
 
-/// 收藏夹通栏列表。视图本身就是滚动视图，标题栏才能像首页一样跟着下滑收起。
+/// 收藏夹分组列表。视图本身就是滚动视图，标题栏才能像首页一样跟着下滑收起。
 /// 安全区由外层量好后写进内容边距，不再让系统重复叠加。
 struct FavoriteFolderList: UIViewRepresentable {
     var folders: [FavFolder]
@@ -12,20 +12,22 @@ struct FavoriteFolderList: UIViewRepresentable {
     /// 收藏页的卡片退出开关。删除和撤销时后面的行补位；关掉或减弱动态效果时直接重排。
     var animatesRemoval: Bool
     var safeInsets: EdgeInsets
+    var refreshDistance: CGFloat
+    var onRefresh: () -> Void
     var onOpen: (FavFolder) -> Void
     var onDelete: (FavFolder) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> UICollectionView {
-        var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
-        configuration.backgroundColor = .systemBackground
+        var configuration = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
+        configuration.backgroundColor = .systemGroupedBackground
         let coordinator = context.coordinator
         configuration.itemSeparatorHandler = { [weak coordinator] indexPath, separator in
             coordinator?.separator(at: indexPath, base: separator) ?? separator
         }
         let view = UICollectionView(frame: .zero, collectionViewLayout: RemovalFillLayout(list: configuration))
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .systemGroupedBackground
         view.alwaysBounceVertical = true
         // 内容和滚动条边距使用外层量出的安全区，关闭 UIKit 的再次叠加。
         view.contentInsetAdjustmentBehavior = .never
@@ -33,6 +35,8 @@ struct FavoriteFolderList: UIViewRepresentable {
         view.topEdgeEffect.isHidden = false
         view.bottomEdgeEffect.isHidden = true
         view.delegate = coordinator
+        coordinator.refreshDistance = refreshDistance
+        coordinator.onRefresh = onRefresh
         coordinator.attach(view)
         applyInsets(to: view)
         coordinator.update(
@@ -48,6 +52,8 @@ struct FavoriteFolderList: UIViewRepresentable {
 
     func updateUIView(_ view: UICollectionView, context: Context) {
         applyInsets(to: view)
+        context.coordinator.refreshDistance = refreshDistance
+        context.coordinator.onRefresh = onRefresh
         context.coordinator.update(
             folders: folders,
             contentOpacity: contentOpacity,
@@ -86,6 +92,15 @@ struct FavoriteFolderList: UIViewRepresentable {
         private weak var collectionView: UICollectionView?
         /// 分隔线回调不在主演员隔离里，只读这个数量。
         private nonisolated(unsafe) var itemCount = 0
+
+        var refreshDistance: CGFloat = 0
+        var onRefresh: () -> Void = {}
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            if -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top) >= refreshDistance {
+                onRefresh()
+            }
+        }
 
         func attach(_ collectionView: UICollectionView) {
             self.collectionView = collectionView

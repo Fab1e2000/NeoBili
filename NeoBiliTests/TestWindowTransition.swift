@@ -19,3 +19,24 @@ enum TestWindowTransition {
         }
     }
 }
+
+@MainActor
+func accessibilityItem(in root: UIView, matching: (NSObject) -> Bool) -> NSObject? {
+    var visited = Set<ObjectIdentifier>()
+    var pending: [NSObject] = [root]
+    while let object = pending.popLast() {
+        guard visited.insert(ObjectIdentifier(object)).inserted else { continue }
+        if matching(object) {
+            return object
+        }
+        if let view = object as? UIView { pending.append(contentsOf: view.subviews) }
+        pending.append(contentsOf: (object.accessibilityElements ?? []).compactMap { $0 as? NSObject })
+        let count = object.accessibilityElementCount()
+        if count > 0, count != NSNotFound {
+            for index in 0..<min(count, 1024) {
+                if let child = object.accessibilityElement(at: index) as? NSObject { pending.append(child) }
+            }
+        }
+    }
+    return nil
+}

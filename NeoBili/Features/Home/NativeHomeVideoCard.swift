@@ -66,7 +66,7 @@ struct NativeHomeVideoCard: UIViewRepresentable {
             super.init(frame: .zero)
             isUserInteractionEnabled = false
             backgroundColor = .secondarySystemGroupedBackground
-            layer.cornerRadius = 7
+            layer.cornerRadius = HomeCardLayout.cardCornerRadius
             layer.cornerCurve = .continuous
             layer.borderWidth = 0.5
             cover.layer.cornerRadius = HomeCardLayout.coverCornerRadius

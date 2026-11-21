@@ -113,11 +113,11 @@ final class OfflineCacheDesignTests: XCTestCase {
             .environment(\.offlineCacheNavigation, navigation),
                          in: window, name: "native-selection-light")
         XCTAssertTrue(try element("全选", in: window).accessibilityActivate())
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitForState("all parts selected") { (try? self.element("取消全选", in: window)) != nil }
         let start = try element("开始缓存", in: window)
         XCTAssertTrue(window.bounds.contains(window.convert(start.accessibilityFrame, from: nil)))
         XCTAssertTrue(start.accessibilityActivate())
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitForState("download navigation request") { navigation.requestID != nil }
         let recorded = await recorder.videos
         XCTAssertEqual(Set(recorded), ["BV-one:11", "BV-one:12"])
         let quality = await recorder.quality
@@ -137,7 +137,7 @@ final class OfflineCacheDesignTests: XCTestCase {
             cache: OfflineCacheStore(service: services.offlineCache))
             .environment(\.offlineCacheNavigation, navigation), in: window, name: "cache-selection-enqueue-failure")
         XCTAssertTrue(try element("开始缓存", in: window).accessibilityActivate())
-        try await Task.sleep(for: .milliseconds(150))
+        try await waitForState("retry button after enqueue failure") { (try? self.element("重新加载", in: window)) != nil }
         XCTAssertNil(navigation.requestID)
         XCTAssertFalse(try element("开始缓存", in: window).accessibilityTraits.contains(.notEnabled))
     }
@@ -239,7 +239,7 @@ final class OfflineCacheDesignTests: XCTestCase {
         try await render(OfflinePartsPlaybackSheet(entries: cache.entries(in: "mountains"), cache: cache)
             .environment(store), in: window, name: "shared-offline-parts-picker")
         XCTAssertTrue(try element("沿着山脊，慢慢走", in: window, exact: false).accessibilityActivate())
-        try await Task.sleep(for: .milliseconds(200))
+        try await waitForState("selected offline part") { store.activeCid == 2 }
         XCTAssertEqual(store.activeCid, 2)
         XCTAssertEqual(store.offline?.entry.id, "BV-design:2")
         XCTAssertNil(store.detailViewModel)
@@ -258,11 +258,11 @@ final class OfflineCacheDesignTests: XCTestCase {
         try await render(NavigationStack { OfflineCacheView(cache: model, showsDownloads: true) }.environment(store),
                          in: window, name: "native-download-actions")
         XCTAssertTrue(try element("暂停", in: window).accessibilityActivate())
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitForState("pause request") { await recorder.actions.count == 1 }
         model.snapshot.tasks[0].state = .paused
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitForState("resume button") { (try? self.element("继续", in: window)) != nil }
         XCTAssertTrue(try element("继续", in: window).accessibilityActivate())
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitForState("resume request") { await recorder.actions.count == 2 }
         let actions = await recorder.actions
         XCTAssertEqual(actions, ["pause:BV-design:4", "resume:BV-design:4:false"])
     }
@@ -275,17 +275,30 @@ final class OfflineCacheDesignTests: XCTestCase {
         try await render(NavigationStack { OfflineCacheView(cache: model) }.environment(store),
                          in: window, name: "native-management")
         XCTAssertTrue(try element("管理", in: window).accessibilityActivate())
-        try await Task.sleep(for: .milliseconds(150))
+        try await waitForState("group in selection mode") {
+            (try? self.element("把周末交给山野", in: window))?.accessibilityValue == "未选择"
+        }
         XCTAssertTrue(try element("把周末交给山野", in: window).accessibilityActivate())
-        try await Task.sleep(for: .milliseconds(150))
+        try await waitForState("three-item deletion button") { (try? self.element("删除 3 项", in: window)) != nil }
         XCTAssertTrue(try element("删除 3 项", in: window).accessibilityActivate())
-        try await Task.sleep(for: .milliseconds(350))
+        try await waitForState("deletion confirmation sheet") { window.rootViewController?.presentedViewController != nil }
         let beforeConfirmation = await recorder.videos
         XCTAssertTrue(beforeConfirmation.isEmpty)
         add(ScrollIndicatorSnapshot.attachment(window: window, name: "native-delete-confirmation"))
         let dialog = try XCTUnwrap(window.rootViewController?.presentedViewController)
         let confirm = try element("删除 3 项", in: dialog.view)
         XCTAssertFalse(confirm.accessibilityTraits.contains(.notEnabled))
+    }
+
+    private func waitForState(_ description: String, condition: () async -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(4)
+        while !(await condition()) {
+            guard ContinuousClock.now < deadline else {
+                throw NSError(domain: "OfflineCacheDesignTests", code: 2,
+                              userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for " + description])
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
     }
 
     private func scrollViews(_ view: UIView) -> [UIScrollView] {

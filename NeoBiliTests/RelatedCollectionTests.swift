@@ -11,6 +11,36 @@ import XCTest
 
 @MainActor
 final class RelatedCollectionTests: XCTestCase {
+    func testVideoDetailSkeletonsFitInLightDarkAndLargeText() throws {
+        var regularHeight: CGFloat = 0
+        for (scheme, typeSize) in [(ColorScheme.light, DynamicTypeSize.large), (.dark, .accessibility3)] {
+            let related = RelatedVideosSkeleton()
+                .frame(width: 320)
+                .environment(\.dynamicTypeSize, typeSize)
+            let relatedHeight = try XCTUnwrap(ImageRenderer(content: related).uiImage).size.height
+            XCTAssertEqual(relatedHeight, 2 * (NativeRelatedVideoCard.cardHeight(typeSize: typeSize)
+                + 2 * NativeRelatedVideoCard.verticalInset) + 16, accuracy: 1)
+
+            let content = VStack(spacing: 0) {
+                VideoIntroductionSkeleton()
+                RelatedVideosSkeleton()
+                VideoCommentSkeleton(rowCount: 3, label: "正在加载评论")
+            }
+            .frame(width: 320)
+            .background(Color(uiColor: .systemBackground))
+            .environment(\.colorScheme, scheme)
+            .environment(\.dynamicTypeSize, typeSize)
+            let image = try XCTUnwrap(ImageRenderer(content: content).uiImage)
+            XCTAssertEqual(image.size.width, 320)
+            if typeSize == .large { regularHeight = image.size.height }
+            else { XCTAssertGreaterThan(image.size.height, regularHeight) }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "video-loading-skeletons-\(scheme)-\(typeSize)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+
     func testPickerEntryUpdatesOnlyForVisibleSummaryChanges() throws {
         func entries(_ detail: VideoDetail, index: Int?) -> [VideoDescriptionComponent] {
             VideoDescriptionComponents(viewModel: nil, contentInset: 16, descriptionExpanded: .constant(false),
@@ -45,7 +75,7 @@ final class RelatedCollectionTests: XCTestCase {
     private func pickerDetail(count: Int = 20, hiddenTitle: String = "另一集", currentTitle: String = "当前集") -> VideoDetail {
         let episodes = (0..<count).map { index in
             UgcSeasonEpisode(episodeId: index, aid: index, cid: index, bvid: "BVFixture\(index)",
-                title: index == 0 ? currentTitle : hiddenTitle, arc: nil)
+                title: index == 0 ? currentTitle : hiddenTitle, arc: nil, pages: nil)
         }
         let parts = (0..<count).map { index in
             VideoPart(cid: index, page: index + 1, part: index == 0 ? currentTitle : hiddenTitle, duration: 120)
@@ -72,10 +102,13 @@ final class RelatedCollectionTests: XCTestCase {
         var shouldFail = true
         let page = try AppRelatedPage(payload: Data(), isView: false, accountSession: UUID())
         let model = VideoDetailViewModel(bvid: "BVFixture", relatedPageLoader: { _ in
-            if shouldFail { throw URLError(.notConnectedToInternet) }
+            if shouldFail { throw URLError(.secureConnectionFailed) }
             return page
         })
+        XCTAssertTrue(model.isWaitingForFirstRelated)
         await model.loadRelated()
+        XCTAssertFalse(model.isWaitingForFirstRelated)
+        XCTAssertEqual(model.relatedErrorMessage, String(localized: "暂时无法与哔哩哔哩建立安全连接，请稍后重试。"))
         let store = NowPlayingStore()
         let content = VideoDescriptionContent(store: store, viewModel: model, components: [],
             consume: { _ in 0 }, end: {}, canConsume: { _ in false }, canContinue: { false })
@@ -103,12 +136,34 @@ final class RelatedCollectionTests: XCTestCase {
             attachment.name = "Related failure \(style == .dark ? "dark" : "light")"
             attachment.lifetime = .keepAlways
             add(attachment)
+            try assertRetryIsCentered(in: status.convert(status.bounds, to: window), image: image)
         }
         shouldFail = false
         await model.retryRelated()
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertNil(model.relatedErrorMessage)
         XCTAssertFalse(model.isLoadingRelated)
+        XCTAssertFalse(model.isWaitingForFirstRelated)
+    }
+
+    private func assertRetryIsCentered(in status: CGRect, image: UIImage) throws {
+        let scale = image.scale
+        // Sample through the lower half of the bordered button, below the description.
+        let row = CGRect(x: round(status.minX * scale), y: round((status.maxY - 26) * scale),
+                         width: round(status.width * scale), height: 1)
+        let strip = try XCTUnwrap(image.cgImage?.cropping(to: row))
+        let width = strip.width
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: 1, bitsPerComponent: 8,
+                                             bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(),
+                                             bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        context.draw(strip, in: CGRect(x: 0, y: 0, width: width, height: 1))
+        let pixels = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
+        let background = Int(pixels[0])
+        let buttonPixels = (0..<width).filter { abs(Int(pixels[$0]) - background) > 7 }
+        let left = try XCTUnwrap(buttonPixels.first)
+        let right = try XCTUnwrap(buttonPixels.last)
+        XCTAssertGreaterThan(CGFloat(right - left) / scale, 30)
+        XCTAssertEqual(CGFloat(left + right) / (2 * scale), status.width / 2, accuracy: 2)
     }
 
     func testPaginationRetryIsAfterRetainedRowsAndCanBeRemoved() async throws {
@@ -155,10 +210,8 @@ final class RelatedCollectionTests: XCTestCase {
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
         for size in DynamicTypeSize.allCases {
-            let height = NativeRelatedVideoCard.rowHeight(typeSize: size)
+            let height = NativeRelatedVideoCard.cardHeight(typeSize: size)
             let row = NativeRelatedVideoCard.CardView(frame: CGRect(x: 0, y: 0, width: 360, height: height))
-            row.backgroundColor = .systemBackground
-            row.isOpaque = true
             row.frame.origin = CGPoint(x: 16, y: window.safeAreaInsets.top + 16)
             host.view.addSubview(row)
             row.configure(video(1), typeSize: size, scale: 2)
@@ -168,7 +221,7 @@ final class RelatedCollectionTests: XCTestCase {
             XCTAssertEqual(labels.count, 3)
             for label in labels {
                 XCTAssertGreaterThanOrEqual(label.frame.height, ceil(label.font.lineHeight), "字号 \(size)")
-                XCTAssertLessThanOrEqual(label.frame.maxY, height - NativeRelatedVideoCard.verticalInset, "字号 \(size)")
+                XCTAssertLessThanOrEqual(label.frame.maxY, height, "字号 \(size)")
             }
             for (earlier, later) in zip(labels, labels.dropFirst()) {
                 XCTAssertLessThanOrEqual(earlier.frame.maxY, later.frame.minY, "字号 \(size)")
@@ -183,7 +236,8 @@ final class RelatedCollectionTests: XCTestCase {
                     XCTAssertTrue(window.isKeyWindow)
                     XCTAssertTrue(row.window === window)
                     XCTAssertEqual(row.traitCollection.userInterfaceStyle, scheme)
-                    let background = UIColor.systemBackground.resolvedColor(with: row.traitCollection)
+                    let background = try XCTUnwrap(row.backgroundColor).resolvedColor(with: row.traitCollection)
+                    XCTAssertEqual(background, UIColor.systemBackground.resolvedColor(with: row.traitCollection))
                     for label in labels {
                         let foreground = label.textColor.resolvedColor(with: label.traitCollection)
                         XCTAssertGreaterThan(contrast(foreground, over: background), 1.25,
@@ -191,15 +245,22 @@ final class RelatedCollectionTests: XCTestCase {
                     }
                     let format = UIGraphicsImageRendererFormat()
                     format.scale = row.traitCollection.displayScale
-                    format.opaque = true
+                    format.opaque = false
                     let renderer = UIGraphicsImageRenderer(size: row.bounds.size, format: format)
                     var rendered = false
-                    let image = renderer.image { context in
-                        background.setFill()
-                        context.fill(row.bounds)
+                    let image = renderer.image { _ in
                         rendered = row.drawHierarchy(in: row.bounds, afterScreenUpdates: true)
                     }
                     XCTAssertTrue(rendered, "必须截取已挂载窗口中的实际卡片")
+                    // 封面与标题之间的空白随卡片抬起时必须仍有不透明的底色。
+                    let sample = CGRect(x: 165 * image.scale, y: image.size.height * image.scale / 2,
+                                        width: 1, height: 1)
+                    let pixel = try XCTUnwrap(image.cgImage?.cropping(to: sample))
+                    let rgba = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+                    let probe = try XCTUnwrap(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8,
+                        bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: rgba))
+                    probe.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+                    XCTAssertEqual(probe.data?.load(fromByteOffset: 3, as: UInt8.self), 255, "\(size) / \(scheme)")
                     let attachment = XCTAttachment(image: image)
                     attachment.name = "related-card-\(size)-\(scheme.rawValue)"
                     attachment.lifetime = .keepAlways
@@ -261,9 +322,13 @@ final class RelatedCollectionTests: XCTestCase {
         XCTAssertLessThan(list.visibleCells.count, 15, "Only visible cards should have live hosts")
         let header = try XCTUnwrap(list.layoutAttributesForItem(at: IndexPath(item: 0, section: 0)))
         let first = try XCTUnwrap(list.layoutAttributesForItem(at: IndexPath(item: 0, section: 1)))
+        let second = try XCTUnwrap(list.layoutAttributesForItem(at: IndexPath(item: 1, section: 1)))
         XCTAssertEqual(header.size.height, 180, accuracy: 1)
-        XCTAssertEqual(first.frame.minY, header.frame.maxY, accuracy: 1)
-        XCTAssertEqual(first.size.height, 102, accuracy: 1)
+        XCTAssertEqual(first.frame.minY, header.frame.maxY + 6, accuracy: 1)
+        XCTAssertEqual(first.size.height, 90, accuracy: 1)
+        XCTAssertEqual(second.frame.minY - first.frame.maxY, 12, accuracy: 1)
+        let gap = CGPoint(x: first.frame.midX, y: (first.frame.maxY + second.frame.minY) / 2)
+        XCTAssertNil(list.indexPathForItem(at: gap))
     }
     func testIntroductionExpansionKeepsOwnerCellAnchored() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -333,9 +398,11 @@ final class RelatedCollectionTests: XCTestCase {
                 for id in ["owner", "introduction", "actions"] {
                     components.append(VideoDescriptionComponent(id, revision: [1]) { Color.clear.frame(height: 70) })
                 }
+            } else {
+                components.append(VideoDescriptionComponent("introduction-loading", revision: []) { VideoIntroductionSkeleton() })
             }
             if !recommendations {
-                components.append(VideoDescriptionComponent("loading", revision: [1]) { ProgressView().frame(height: 50) })
+                components.append(VideoDescriptionComponent("loading", revision: []) { RelatedVideosSkeleton() })
             }
             return VideoDescriptionCollection(videos: recommendations ? (1...8).map(video) : [], components: components,
                                               scrollState: scroll, onSelect: { _ in }, consume: { _ in 0 }, end: {},
@@ -358,7 +425,7 @@ final class RelatedCollectionTests: XCTestCase {
             host.rootView = content(detail: detail, recommendations: recommendations)
             try await Task.sleep(for: .milliseconds(100))
             list.layoutIfNeeded()
-            XCTAssertEqual(list.numberOfItems(inSection: 0), (detail ? 3 : 0) + (recommendations ? 0 : 1))
+            XCTAssertEqual(list.numberOfItems(inSection: 0), (detail ? 3 : 1) + (recommendations ? 0 : 1))
             XCTAssertEqual(list.numberOfItems(inSection: 1), recommendations ? 8 : 0)
         }
     }

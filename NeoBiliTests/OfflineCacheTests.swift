@@ -1,4 +1,5 @@
 import XCTest
+import Observation
 @testable import NeoBili
 @testable import NeoBiliDomain
 @testable import NeoBiliData
@@ -31,6 +32,111 @@ final class OfflineCacheTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTFail("Timed out waiting for cache state", file: file, line: line)
+    }
+
+    func testFailedCancelCanBeRetriedWithoutLosingTheTransfer() async throws {
+        let root = try directory(), transport = CacheTestTransport(), plan = resources()
+        let repo = OfflineCacheRepository(directory: root, transport: transport, prepare: { _ in plan }, accountID: { nil })
+        await repo.start()
+        await transport.network()
+        try await repo.enqueue([video()], quality: 80, audioQuality: 0, replace: false)
+        try await waitFor { await transport.count() > 0 }
+        let file = root.appendingPathComponent("manifest.json")
+        let backup = root.appendingPathComponent("saved.json")
+        try FileManager.default.moveItem(at: file, to: backup)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
+        do {
+            try await repo.cancel(video().id)
+            XCTFail("Cancellation should report the manifest write failure")
+        } catch { }
+        let pending = await repo.snapshot().tasks
+        XCTAssertEqual(pending.map(\.id), [video().id])
+        let active = await transport.existingTokens()
+        XCTAssertFalse(active.isEmpty)
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.moveItem(at: backup, to: file)
+        try await repo.cancel(video().id)
+        let remaining = await transport.existingTokens()
+        XCTAssertTrue(remaining.isEmpty)
+        let restored = OfflineCacheRepository(directory: root, transport: CacheTestTransport(), prepare: { _ in plan }, accountID: { nil })
+        await restored.start()
+        let tasks = await restored.snapshot().tasks
+        XCTAssertTrue(tasks.isEmpty)
+    }
+
+    func testOnlinePlaybackLimitsNewTransfersWithoutCancellingExistingOnes() async throws {
+        let transfer = CacheTestTransport(), plan = resources(subtitle: false)
+        let repo = OfflineCacheRepository(directory: try directory(), transport: transfer,
+            prepare: { _ in plan }, accountID: { nil })
+        await repo.start()
+        await transfer.network()
+        await repo.service.setOnlinePlaybackActive(true)
+        try await repo.enqueue((1...5).map(video), quality: 80, audioQuality: 0, replace: false)
+        try await waitFor {
+            let tasks = await repo.snapshot().tasks
+            return tasks.count == 5 && tasks.allSatisfy { !$0.resources.isEmpty }
+        }
+        try await waitFor { await transfer.count() >= 2 }
+        let limited = await transfer.existingTokens()
+        XCTAssertEqual(limited.count, 2)
+
+        await repo.service.setOnlinePlaybackActive(false)
+        try await waitFor { await transfer.count() >= 8 }
+        let full = await transfer.existingTokens()
+        XCTAssertEqual(full.count, 8)
+        XCTAssertTrue(limited.isSubset(of: full))
+
+        await repo.service.setOnlinePlaybackActive(true)
+        let stillRunning = await transfer.existingTokens()
+        XCTAssertEqual(stillRunning, full)
+
+        let key = try XCTUnwrap(full.first { $0.hasSuffix("/video-0") })
+        try await transfer.finish(token: key, data: Data("\0\0\0\u{18}ftypisom".utf8))
+        try await waitFor { await repo.snapshot().tasks.flatMap(\.resources).contains(where: \.isComplete) }
+        let starts = await transfer.count()
+        XCTAssertEqual(starts, 8)
+    }
+
+    @MainActor func testDownloadProgressDoesNotInvalidateLibraryOrTaskCount() async {
+        let store = OfflineCacheStore(service: .init())
+        var completed = OfflineCacheEntry(video: video(), quality: 80, accountID: nil)
+        completed.state = .completed
+        var task = OfflineCacheEntry(video: video(2), quality: 80, accountID: nil)
+        task.resources = resources().resources
+        store.snapshot.completed = [completed]
+        store.snapshot.tasks = [task]
+
+        let libraryChanged = expectation(description: "Library should stay stable during progress")
+        libraryChanged.isInverted = true
+        withObservationTracking {
+            _ = store.entries(in: completed.video.groupID)
+            _ = store.completedCovers
+            _ = store.taskCount
+        } onChange: {
+            libraryChanged.fulfill()
+        }
+        let tasksChanged = expectation(description: "Download readers receive the new progress")
+        withObservationTracking {
+            _ = store.tasks
+        } onChange: {
+            tasksChanged.fulfill()
+        }
+        task.resources[0].receivedBytes = 1024
+        store.snapshot.tasks = [task]
+        await fulfillment(of: [tasksChanged, libraryChanged], timeout: 0.05)
+        XCTAssertEqual(store.tasks.first?.receivedBytes, 1024)
+    }
+
+    func testInvalidBatchLeavesQueueEmpty() async throws {
+        let plan = resources()
+        let repo = OfflineCacheRepository(directory: try directory(), transport: CacheTestTransport(),
+            prepare: { _ in plan }, accountID: { nil })
+        do {
+            try await repo.enqueue([video(), video(0)], quality: 80, audioQuality: 0, replace: false)
+            XCTFail("Invalid part must reject the batch")
+        } catch OfflineCacheError.invalidResource { }
+        let tasks = await repo.snapshot().tasks
+        XCTAssertTrue(tasks.isEmpty)
     }
 
     func testRequiresAllResourcesAndRestoresCompletedCacheWithoutNetwork() async throws {
@@ -129,8 +235,19 @@ final class OfflineCacheTests: XCTestCase {
         try await transfer.finish(kind: "danmaku", data: Data("<i/>".utf8))
         try await waitFor { await repo.snapshot().completed.count == 1 }
         let old = try await repo.service.playback(video().id)
-        try await repo.enqueue([video()], quality: 64, audioQuality: 0, replace: true)
+        try await repo.enqueue([video()], quality: 80, audioQuality: 30280, replace: true)
+        let duplicate = await repo.snapshot()
+        XCTAssertTrue(duplicate.tasks.isEmpty)
+        XCTAssertEqual(duplicate.completed.first?.generation, old.entry.generation)
+        try await repo.enqueue([video()], quality: 120, audioQuality: 0, replace: true)
         try await waitFor { await transfer.count() == 4 }
+        try await transfer.finish(kind: "video-0", data: Data("invalid media".utf8))
+        try await waitFor { await repo.snapshot().tasks.first?.state == .failed }
+        let playable = try await repo.service.playback(video().id)
+        XCTAssertEqual(playable.entry.generation, old.entry.generation)
+        await repo.service.releasePlayback(playable.leaseID)
+        try await repo.enqueue([video()], quality: 64, audioQuality: 0, replace: true)
+        try await waitFor { await transfer.count() == 6 }
         let during = await repo.snapshot(); XCTAssertEqual(during.completed.first?.quality, 80)
         try await transfer.finish(kind: "video-0", data: Data("\0\0\0\u{18}ftypisom-new".utf8))
         try await transfer.finish(kind: "danmaku", data: Data("<i/>".utf8))

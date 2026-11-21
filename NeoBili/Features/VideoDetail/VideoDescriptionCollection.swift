@@ -52,9 +52,15 @@ struct VideoDescriptionCollection: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UICollectionView {
         let layout = UICollectionViewCompositionalLayout { [weak coordinator = context.coordinator] section, _ in
-            let rowHeight = NativeRelatedVideoCard.rowHeight(typeSize: coordinator?.typeSize ?? .large)
+            let rowHeight = NativeRelatedVideoCard.cardHeight(typeSize: coordinator?.typeSize ?? .large)
+                + 2 * NativeRelatedVideoCard.verticalInset
             let height: NSCollectionLayoutDimension = section == 1 ? .absolute(rowHeight) : .estimated(100)
             let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: height))
+            if section == 1 {
+                // 留白归列表所有，按在两行之间不会落到相邻视频的按钮上。
+                let inset = NativeRelatedVideoCard.verticalInset
+                item.contentInsets = .init(top: inset, leading: 0, bottom: inset, trailing: 0)
+            }
             let group = NSCollectionLayoutGroup.vertical(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: height), subitems: [item])
             let result = NSCollectionLayoutSection(group: group)
             if section == 1 { result.contentInsets = .init(top: 0, leading: 16, bottom: 16, trailing: 16) }
@@ -187,13 +193,23 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             }
             let video = videos[path.item]
             let cell = view.dequeueReusableCell(withReuseIdentifier: "video", for: path) as! PersistentFeedHostingCell
-            let content = Button { [weak self] in self?.onSelect?(video) } label: {
-                NativeRelatedVideoCard(video: video)
-                    .frame(height: NativeRelatedVideoCard.rowHeight(typeSize: environment.dynamicTypeSize))
-                    .contentShape(Rectangle())
+            let needsElevatedPreview = environment.colorScheme == .dark
+            let content = GeometryReader { [weak self] geometry in
+                let button = Button { [weak self] in self?.onSelect?(video) } label: {
+                    NativeRelatedVideoCard(video: video)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+                .buttonStyle(CardPressStyle(cornerRadius: VideoListCardLayout.cardCornerRadius))
+                let menu = WatchLaterMenuButton(aid: video.aid, bvid: video.bvid)
+                if needsElevatedPreview {
+                    button.contextMenu { menu } preview: {
+                        NativeRelatedVideoCard(video: video, isMenuPreview: true)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                    }
+                } else {
+                    button.contextMenu { menu }
+                }
             }
-            .buttonStyle(.plain)
-            .contextMenu { WatchLaterMenuButton(aid: video.aid, bvid: video.bvid) }
             .environment(\.self, environment)
             cell.setContent(AnyView(content))
             return cell
@@ -224,11 +240,11 @@ struct VideoDescriptionCollection: UIViewRepresentable {
                 let video = videos[path.item]
                 guard prefetch[video.bvid] == nil else { continue }
                 let scale = view.traitCollection.displayScale
-                prefetch[video.bvid] = Task { [weak self] in
+                prefetch[video.bvid] = Task(priority: .utility) { [weak self] in
                     defer { self?.prefetch[video.bvid] = nil }
                     guard let url = video.secureCoverURL,
                           let pixels = ImagePixelSize(points: CGSize(width: 160, height: 90), scale: scale) else { return }
-                    _ = try? await BiliImageLoader.load(url, pixelSize: pixels)
+                    _ = try? await BiliImageLoader.load(url, pixelSize: pixels, prefetch: true)
                 }
             }
         }
@@ -257,23 +273,30 @@ struct VideoDescriptionCollection: UIViewRepresentable {
 
 struct NativeRelatedVideoCard: UIViewRepresentable {
     let video: VideoSummary
+    var isMenuPreview = false
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.displayScale) private var scale
-    func makeUIView(context: Context) -> CardView { CardView() }
+    func makeUIView(context: Context) -> CardView {
+        let card = CardView()
+        if isMenuPreview { card.traitOverrides.userInterfaceLevel = .elevated }
+        return card
+    }
     func updateUIView(_ view: CardView, context: Context) { view.configure(video, typeSize: typeSize, scale: scale) }
 
-    /// 卡片上下各留 6；卡片之间不画分隔线，相邻两张封面靠这两份留白隔开 12。
+    /// 卡面外的留白，两张相邻卡片之间共 12 点。
     static let verticalInset: CGFloat = 6
+    static let coverSize = CGSize(width: 160, height: 90)
+    static let coverTextSpacing: CGFloat = 10
+    private static let minimumOwnerY: CGFloat = 54
     /// UP 主与播放数据相对主文字色的强度。
     static let secondaryTextColor = UIColor.label.withAlphaComponent(0.6)
 
-    static func rowHeight(typeSize: DynamicTypeSize) -> CGFloat {
+    static func cardHeight(typeSize: DynamicTypeSize) -> CGFloat {
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
         let titleHeight = ceil(AppFont.preferred(.subheadline, traits: traits).lineHeight * 2)
         let ownerHeight = ceil(AppFont.preferred(.caption1, traits: traits).lineHeight)
         let metadataHeight = ceil(AppFont.preferred(.caption1, traits: traits).lineHeight)
-        return max(90 + 2 * verticalInset,
-                   max(60, verticalInset + titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight) + verticalInset)
+        return max(coverSize.height, max(minimumOwnerY, titleHeight + 4) + max(18, ownerHeight) + 1 + max(17, metadataHeight))
     }
 
     final class CardView: UIView {
@@ -287,6 +310,11 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
         override init(frame: CGRect) {
             super.init(frame: frame)
             isUserInteractionEnabled = false
+            // 长按时系统会单独抬起卡面，标题与封面共用卡片自身的底色。
+            backgroundColor = .systemBackground
+            layer.cornerRadius = VideoListCardLayout.cardCornerRadius
+            layer.cornerCurve = .continuous
+            clipsToBounds = true
             for view in [cover, title, owner, metadata] { addSubview(view) }
             // 与首页卡片封面同一圆角规格。
             cover.layer.cornerRadius = HomeCardLayout.coverCornerRadius
@@ -321,17 +349,17 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
                 text.append(NSAttributedString(string: " \(value)   "))
             }
             metadata.attributedText = text
-            cover.load(video.secureCoverURL, size: CGSize(width: 160, height: 90), scale: scale)
+            cover.load(video.secureCoverURL, size: NativeRelatedVideoCard.coverSize, scale: scale)
             accessibilityLabel = String(localized: "\(video.title)，\(video.owner.name)，\(video.stat.view.biliCountText)次播放，\(video.formattedDuration)")
             setNeedsLayout()
         }
         override func layoutSubviews() {
             super.layoutSubviews()
-            let inset = NativeRelatedVideoCard.verticalInset
-            cover.frame = CGRect(x: 0, y: inset, width: 160, height: 90)
-            let x: CGFloat = 170, width = max(0, bounds.width - 170)
-            title.frame = CGRect(x: x, y: inset, width: width, height: ceil(title.font.lineHeight * 2))
-            owner.frame = CGRect(x: x, y: max(60, title.frame.maxY + 4), width: width,
+            cover.frame = CGRect(origin: .zero, size: NativeRelatedVideoCard.coverSize)
+            let x = cover.frame.maxX + NativeRelatedVideoCard.coverTextSpacing
+            let width = max(0, bounds.width - x)
+            title.frame = CGRect(x: x, y: 0, width: width, height: ceil(title.font.lineHeight * 2))
+            owner.frame = CGRect(x: x, y: max(NativeRelatedVideoCard.minimumOwnerY, title.frame.maxY + 4), width: width,
                                  height: max(18, ceil(owner.font.lineHeight)))
             metadata.frame = CGRect(x: x, y: owner.frame.maxY + 1, width: width,
                                     height: max(17, ceil(metadata.font.lineHeight)))
@@ -415,18 +443,17 @@ struct VideoDescriptionContent: View {
         let all = viewModel?.related ?? []
         let videos = all.hidingKnownPortraitVideos(hidesPortraitVideos, filtering: filtering)
         let relatedError = viewModel?.relatedErrorMessage
+        let showsSkeleton = all.isEmpty && viewModel?.isWaitingForFirstRelated == true
         let loading = viewModel?.isLoadingRelated == true || all.hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering)
         // 相关视频不加分区标题，直接接在操作栏（或合集、分P 入口）下面，间距由上方组件自带。
-        let status = (showsRelated && (videos.isEmpty || relatedError != nil) ? [VideoDescriptionComponent("status", revision: [loading, all.isEmpty, relatedError]) {
-            if loading { ProgressView().padding(24) }
+        let status = (showsRelated && (videos.isEmpty || relatedError != nil) ? [VideoDescriptionComponent("status", revision: [showsSkeleton, loading, all.isEmpty, relatedError]) {
+            if showsSkeleton { RelatedVideosSkeleton() }
+            else if loading { ProgressView().padding(24) }
             else if let relatedError {
-                VStack(spacing: 12) {
-                    Text(relatedError).font(.app(.subheadline)).foregroundStyle(.secondary)
-                    Button("重试") { Task { await viewModel?.retryRelated() } }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("related.retry")
+                InlineLoadFailure(title: all.isEmpty ? "相关视频加载失败" : "无法加载更多相关视频",
+                                  message: relatedError, retryIdentifier: "related.retry") {
+                    Task { await viewModel?.retryRelated() }
                 }
-                .padding(16)
             } else {
                 Text(all.isEmpty ? "暂时没有相关视频" : "相关视频已被内容过滤设置隐藏")
                     .font(.app(.subheadline)).foregroundStyle(.secondary).padding(16)

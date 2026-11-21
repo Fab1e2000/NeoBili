@@ -24,7 +24,7 @@ struct FollowingFeedContent: View {
             loadingPlaceholder
         } else if let message = feed.errorMessage, feed.entries.isEmpty {
             ContentUnavailableView {
-                Label("加载失败", systemImage: "wifi.slash")
+                Label("动态加载失败", systemImage: "wifi.slash")
             } description: {
                 Text(message)
             } actions: {
@@ -36,18 +36,13 @@ struct FollowingFeedContent: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: 300)
         } else if !feed.isLoading, feed.entries.isEmpty {
-            ContentUnavailableView(
-                "还没有新动态",
-                systemImage: "bell.slash",
-                description: Text(
-                    showsAuthor
-                        ? "你关注的 UP 主最近没有更新。"
-                        : "这位 UP 主最近没有更新。"
-                )
-            )
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 300)
+            ContentUnavailableView("还没有新动态", systemImage: "bell.slash")
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 300)
         } else {
+            if let message = feed.errorMessage {
+                InlineLoadFailure(title: "动态未能刷新", message: message, onRetry: onRetry)
+            }
             let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) ?? true }
             if visibleEntries.isEmpty {
                 if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos, filtering: filtering) {
@@ -88,11 +83,5 @@ struct FollowingFeedContent: View {
             showsAuthor: showsAuthor
         )
         .videoTransitionSource("following-dynamic-\(entry.id)", in: dynamicTransition)
-        .contextMenu {
-            if let video = entry.video,
-               video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) {
-                WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
-            }
-        }
     }
 }

@@ -123,11 +123,9 @@ struct SearchPage: View {
             if viewModel.isLoadingHotSearches {
                 ProgressView().frame(maxWidth: .infinity).padding(8)
             } else if let error = viewModel.hotSearchError {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(error).font(.app(.caption)).foregroundStyle(.secondary)
-                    Button("重新加载") { Task { await viewModel.loadHotSearches() } }
-                        .font(.app(.caption))
-                }.padding(.vertical, 8)
+                InlineLoadFailure(title: "热搜加载失败", message: error) {
+                    Task { await viewModel.loadHotSearches() }
+                }
             } else if viewModel.hotSearches.isEmpty {
                 Text("暂无热搜").font(.app(.caption)).foregroundStyle(.secondary).padding(.vertical, 8)
             }

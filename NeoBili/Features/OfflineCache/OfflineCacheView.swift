@@ -23,7 +23,7 @@ struct OfflineCacheView: View {
     }
 
     private var completed: [OfflineCacheEntry] {
-        groupID.map { cache.entries(in: $0) } ?? cache.snapshot.completed
+        groupID.map { cache.entries(in: $0) } ?? cache.completed
     }
     private var title: String { completed.first.map { groupID == nil ? "离线缓存" : $0.video.groupTitle } ?? "离线缓存" }
     private var selectedEntries: [OfflineCacheEntry] { completed.filter { selected.contains($0.id) } }
@@ -39,7 +39,7 @@ struct OfflineCacheView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 if groupID == nil { cachePicker }
-                if let message = cache.snapshot.error { Text(message).font(.app(.footnote)).foregroundStyle(.red) }
+                if let message = cache.storageError { Text(message).font(.app(.footnote)).foregroundStyle(.red) }
                 if showsDownloads { downloads }
                 else { library }
             }
@@ -71,7 +71,7 @@ struct OfflineCacheView: View {
                 Button("允许此任务") { cache.perform { [service = cache.service] in try await service.resume(entry.id, true) } }
             }
             Button("取消", role: .cancel) {}
-        } message: { Text("仅放行所选任务，其他任务继续等待 Wi-Fi。") }
+        }
         .alert("缓存操作失败", isPresented: Binding(get: { cache.errorMessage != nil }, set: { if !$0 { cache.errorMessage = nil } })) {
             Button("好") { cache.errorMessage = nil }
         } message: { Text(cache.errorMessage ?? "") }
@@ -84,20 +84,16 @@ struct OfflineCacheView: View {
     private var cachePicker: some View {
         Picker("缓存状态", selection: $showsDownloads) {
             Text("已缓存").tag(false)
-            Text("下载中 \(cache.snapshot.tasks.count)").tag(true)
+            Text("下载中 \(cache.taskCount)").tag(true)
         }.pickerStyle(.segmented)
     }
 
     @ViewBuilder private var library: some View {
         if completed.isEmpty {
-            ContentUnavailableView("暂无缓存", systemImage: "arrow.down.to.line",
-                                   description: Text("在视频详情或播放器菜单中选择缓存。"))
+            ContentUnavailableView("暂无缓存", systemImage: "arrow.down.to.line")
         } else {
+            let groups = groupID == nil ? grouped(completed) : []
             VStack(spacing: 12) {
-                if groupID != nil {
-                    Text("已缓存选集").font(.app(.subheadline, weight: .semibold))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
                 LazyVStack(spacing: 10) {
                     if groupID != nil {
                         ForEach(completed) { entry in
@@ -105,7 +101,6 @@ struct OfflineCacheView: View {
                                 .removalFillTransition()
                         }
                     } else {
-                        let groups = grouped(completed)
                         ForEach(groups, id: \.id) { group in
                             cachedItem(group.entries, isGroup: group.entries.count > 1 || group.entries.first?.video.partTitle.isEmpty == false)
                                 .removalFillTransition()
@@ -116,7 +111,7 @@ struct OfflineCacheView: View {
                     Button("删除整组", role: .destructive) { askToDelete(completed) }.font(.app(.footnote))
                 }
             }
-            .removalFill(ids: groupID != nil ? completed.map(\.id) : grouped(completed).map(\.id),
+            .removalFill(ids: groupID != nil ? completed.map(\.id) : groups.map(\.id),
                          enabled: animatesRemoval)
         }
     }
@@ -134,7 +129,7 @@ struct OfflineCacheView: View {
                     } label: { cachedLabel(entries, isGroup: isGroup) }
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CardPressStyle(cornerRadius: OfflineCacheStyle.radius))
             .accessibilityLabel(isGroup ? entry.video.groupTitle : entry.video.displayTitle)
             .accessibilityValue(isEditing ? (entries.allSatisfy { selected.contains($0.id) } ? "已选择" : "未选择") : "\(entries.count) 项")
             .contextMenu {
@@ -152,7 +147,7 @@ struct OfflineCacheView: View {
                 Image(systemName: allSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title3).foregroundStyle(allSelected ? accent : .secondary)
             }
-            OfflineCover(remoteURL: nil, localURL: cache.snapshot.coverURLs[entry.generation],
+            OfflineCover(remoteURL: nil, localURL: cache.completedCovers[entry.generation],
                          badge: isGroup ? "\(entries.count) 集" : OfflineCacheStyle.duration(entry.video.duration),
                          width: isEditing ? 80 : 108)
             VStack(alignment: .leading, spacing: 6) {
@@ -162,30 +157,32 @@ struct OfflineCacheView: View {
                 Text(isGroup ? "\(entries.count) 集 · \(Self.size(entries.reduce(0) { $0 + $1.receivedBytes }))"
                      : "\(PlaybackQuality.videoTitle(entry.quality)) · \(Self.size(entry.receivedBytes))")
                     .font(.app(.caption)).foregroundStyle(.secondary)
-                if isGroup {
-                    Label("合集 · 查看选集", systemImage: "square.3.layers.3d")
-                        .font(.app(.caption2)).foregroundStyle(accent)
-                }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(allSelected && isEditing ? accent.opacity(0.1) : OfflineCacheStyle.card,
-                    in: RoundedRectangle(cornerRadius: OfflineCacheStyle.radius))
-        .contentShape(RoundedRectangle(cornerRadius: OfflineCacheStyle.radius))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: OfflineCacheStyle.radius, style: .continuous)
+            if allSelected && isEditing {
+                shape.fill(OfflineCacheStyle.background)
+                    .overlay { shape.fill(accent.opacity(0.1)) }
+            } else {
+                shape.fill(OfflineCacheStyle.card)
+            }
+        }
     }
 
     @ViewBuilder private var downloads: some View {
-        if cache.snapshot.tasks.isEmpty {
+        if cache.tasks.isEmpty {
             ContentUnavailableView("暂无下载任务", systemImage: "arrow.down.circle")
         } else {
-            let groups = grouped(cache.snapshot.tasks)
+            let groups = grouped(cache.tasks)
             LazyVStack(alignment: .leading, spacing: 16) {
                 ForEach(groups, id: \.id) { group in
                     Text(group.entries.first?.video.groupTitle ?? "")
                         .font(.app(.subheadline, weight: .semibold)).padding(.top, 2)
                     ForEach(group.entries) { entry in
-                        OfflineDownloadCard(entry: entry, coverURL: cache.snapshot.coverURLs[entry.generation],
-                            speed: cache.snapshot.speeds[entry.id] ?? 0,
+                        OfflineDownloadCard(entry: entry, coverURL: cache.taskCovers[entry.generation],
+                            speed: cache.speeds[entry.id] ?? 0,
                             toggle: {
                                 cache.perform { [service = cache.service] in
                                     if entry.state.canSchedule { try await service.pause(entry.id) }

@@ -3,7 +3,7 @@ import NeoBiliDomain
 #endif
 import SwiftUI
 
-private enum VideoActionBarLayout {
+enum VideoActionBarLayout {
     static let captionSpacing: CGFloat = 5
     static let buttonSpacing: CGFloat = 8
     static let buttonHeight: CGFloat = 44

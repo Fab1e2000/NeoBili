@@ -26,10 +26,12 @@ struct HomeView: View {
     @State private var refresh = ListRefreshController()
     /// 每次刷新加一，驱动每一行重新播落位动画。
     @State private var landingGeneration = 0
+    @State private var refreshFailure: String?
 
-    init(isSelected: Bool = true, filtering: VideoFilterDependencies = .live) {
+    init(isSelected: Bool = true, filtering: VideoFilterDependencies = .live, viewModel: HomeViewModel? = nil) {
         self.isSelected = isSelected
-        _viewModel = State(initialValue: HomeViewModel(source: RecommendationSourcePreference.launched, filtering: filtering))
+        _viewModel = State(initialValue: viewModel ?? HomeViewModel(source: RecommendationSourcePreference.launched,
+                                                                  filtering: filtering))
     }
 
     private var animatesExit: Bool {
@@ -50,6 +52,7 @@ struct HomeView: View {
             // 这里保留旧内容、后台换成新批次，跟 PiliPlus 的行为一致。
             .onChange(of: HomeFeedAccount(accountID: account.accountID,
                                           hasAppCredential: account.hasAppCredential)) { _, current in
+                refreshFailure = nil
                 Task { await viewModel.refreshIfAccountChanged(to: current) }
             }
             .onAppear {
@@ -76,7 +79,7 @@ struct HomeView: View {
                 }
                 Button("点错了", role: .cancel) {}
             } message: { owner in
-                Text("确定拉黑 \(owner.name)（\(String(owner.mid))）？\n拉黑后不会再收到他的推荐。在 B 站 App 或网页解除后，还需到本应用的推荐内容过滤中解除本地屏蔽。")
+                Text("确定拉黑 \(owner.name)（\(String(owner.mid))）？")
             }
             .resolvePortraitVideos(viewModel.videos, batchID: landingGeneration) {
                 await viewModel.loadReplacementPage()
@@ -119,8 +122,17 @@ struct HomeView: View {
             .onGeometryChange(for: EdgeInsets.self, of: \.safeAreaInsets) { safeInsets = $0 }
 
             // 加载、出错、全被过滤这些状态单独观察，isLoading 翻转时不重算整个列表。
-            HomeFeedStatusOverlay(viewModel: viewModel, hidesPortraitVideos: hidesPortraitVideos) {
+            HomeFeedStatusOverlay(viewModel: viewModel, hidesPortraitVideos: hidesPortraitVideos,
+                                  contentOpacity: tabContentOpacity) {
                 startRefresh()
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let refreshFailure, !refresh.isRefreshing, !viewModel.videos.isEmpty {
+                InlineLoadFailure(title: "推荐未能刷新", message: refreshFailure) {
+                    startRefresh()
+                }
+                .background(.bar)
             }
         }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触卡片。
@@ -144,7 +156,9 @@ struct HomeView: View {
     }
 
     private func startRefresh(scrollToTop: Bool = false) {
-        guard !refresh.isRefreshing else { return }
+        guard !refresh.isRefreshing, !viewModel.isLoading else { return }
+        refreshFailure = nil
+        let session = account.sessionID
         refresh.start(
             hasContent: !viewModel.videos.isEmpty,
             animatesExit: animatesExit,
@@ -153,7 +167,9 @@ struct HomeView: View {
                 // Keep existing content until the request is ready, including when
                 // animation settings change in the middle of the request.
                 await viewModel.refresh(staged: true, userInitiated: true)
-                return !Task.isCancelled && viewModel.errorMessage == nil
+                guard !Task.isCancelled, account.sessionID == session else { return false }
+                refreshFailure = viewModel.videos.isEmpty ? nil : viewModel.errorMessage
+                return viewModel.errorMessage == nil
             },
             commit: {
                 // Commit data and restore opacity in one transaction. The individual
@@ -171,6 +187,7 @@ struct HomeView: View {
 private struct HomeFeedStatusOverlay: View {
     let viewModel: HomeViewModel
     let hidesPortraitVideos: Bool
+    let contentOpacity: Double
     let onRefresh: () -> Void
 
     var body: some View {
@@ -178,23 +195,108 @@ private struct HomeFeedStatusOverlay: View {
            !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
             LoadingTaskAnchor()
         } else if viewModel.isLoading, viewModel.videos.isEmpty {
-            LoadingTaskAnchor()
+            HomeFeedSkeleton(leadingLargeCard: RecommendationSourcePreference.launched != .web)
+                .opacity(contentOpacity)
         } else if let message = viewModel.errorMessage, viewModel.videos.isEmpty {
-            ContentUnavailableView(
-                "加载失败",
-                systemImage: "wifi.slash",
-                description: Text(message)
-            )
+            ContentUnavailableView {
+                Label("推荐加载失败", systemImage: "wifi.slash")
+            } description: {
+                Text(message)
+            } actions: {
+                Button("重试", action: onRefresh)
+            }
         } else if !viewModel.videos.isEmpty,
                   !viewModel.hasVisibleVideos(hidingKnownPortraitVideos: hidesPortraitVideos) {
             ContentUnavailableView {
                 Label("没有可显示的视频", systemImage: "rectangle.slash")
-            } description: {
-                Text("当前推荐中的视频都被内容过滤设置隐藏了。")
             } actions: {
                 Button("刷新推荐", action: onRefresh)
             }
         }
+    }
+}
+
+struct HomeFeedSkeleton: View {
+    let leadingLargeCard: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let coverSize = HomeCardLayout.coverSize(for: width)
+            let rowStride = HomeCardLayout.cardHeight(for: width) + HomeCardLayout.rowSpacing
+            let leadingRowHeight = leadingLargeCard
+                ? HomeCardLayout.largeCardHeight(for: width) + HomeCardLayout.rowSpacing : 0
+            let remainingHeight = max(0, geometry.size.height - HomeCardLayout.verticalInset - leadingRowHeight)
+            let rowCount = Int(ceil(remainingHeight / rowStride))
+
+            VStack(spacing: HomeCardLayout.rowSpacing) {
+                if leadingLargeCard {
+                    HomeFeedSkeletonCard(coverSize: HomeCardLayout.largeCoverSize(for: width), isLarge: true)
+                }
+                ForEach(0..<rowCount, id: \.self) { _ in
+                    HStack(spacing: HomeCardLayout.columnSpacing) {
+                        HomeFeedSkeletonCard(coverSize: coverSize)
+                        HomeFeedSkeletonCard(coverSize: coverSize)
+                    }
+                }
+            }
+            .padding(.top, HomeCardLayout.verticalInset)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+            .clipped()
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("正在加载推荐")
+    }
+}
+
+private struct HomeFeedSkeletonCard: View {
+    let coverSize: CGSize
+    var isLarge = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let fill = Color(uiColor: .tertiarySystemFill)
+        let detailsWidth = max(0, coverSize.width - 2 * HomeCardLayout.detailsHorizontalPadding)
+        let fontSize = PreparedTitle.fontSize(for: dynamicTypeSize)
+        let titleMetrics = PreparedTitle.metrics(fontSize: fontSize)
+        let lineHeight = isLarge
+            ? min(ceil(AppFont.uiFont(ofSize: fontSize, weight: .semibold).lineHeight), 28)
+            : min(titleMetrics?.boxHeight ?? 40, 48) / 2
+        let avatarSize = HomeCardLayout.avatarSize
+
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(fill)
+                .frame(width: coverSize.width, height: coverSize.height)
+
+            VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Capsule().fill(fill)
+                        .frame(width: detailsWidth * (isLarge ? 0.72 : 0.92), height: 8)
+                        .frame(height: lineHeight)
+                    if !isLarge {
+                        Capsule().fill(fill)
+                            .frame(width: detailsWidth * 0.62, height: 8)
+                            .frame(height: lineHeight)
+                    }
+                }
+
+                HStack(spacing: 4) {
+                    Circle().fill(fill)
+                        .frame(width: avatarSize.width, height: avatarSize.height)
+                    Capsule().fill(fill)
+                        .frame(width: max(0, detailsWidth - avatarSize.width - 4) * 0.42, height: 6)
+                }
+            }
+            .padding(.leading, HomeCardLayout.detailsHorizontalPadding)
+            .padding(.top, 8)
+            .frame(width: coverSize.width,
+                   height: isLarge ? HomeCardLayout.largeDetailsHeight : HomeCardLayout.detailsHeight,
+                   alignment: .topLeading)
+        }
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(.rect(cornerRadius: HomeCardLayout.cardCornerRadius))
     }
 }
 
@@ -205,7 +307,8 @@ enum HomeCardLayout {
     static let verticalInset: CGFloat = 10
     /// 推荐封面保持 4:3。
     static let coverAspectRatio: CGFloat = 4.0 / 3.0
-    static let coverCornerRadius: CGFloat = 7
+    static let cardCornerRadius: CGFloat = 7
+    static let coverCornerRadius = cardCornerRadius
     /// 标题和 UP 主所在白色区域的固定高度。
     static let detailsHeight: CGFloat = 81
     static let avatarSize = CGSize(width: 16, height: 16)
@@ -249,8 +352,13 @@ enum HomeCardLayout {
 
     static let largeDetailsHeight: CGFloat = 60
     static let largeCoverAspectRatio: CGFloat = 16 / 9
+    static func largeCoverSize(for pageWidth: CGFloat) -> CGSize {
+        let width = max(0, pageWidth - horizontalInset * 2)
+        return CGSize(width: width, height: width / largeCoverAspectRatio)
+    }
+
     static func largeCardHeight(for pageWidth: CGFloat) -> CGFloat {
-        max(0, pageWidth - horizontalInset * 2) / largeCoverAspectRatio + largeDetailsHeight
+        largeCoverSize(for: pageWidth).height + largeDetailsHeight
     }
 }
 
@@ -269,12 +377,12 @@ struct LastSeenCard: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous)
                 .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous))
         .accessibilityLabel("上次看到这里，点击刷新")
     }
 }
@@ -323,13 +431,13 @@ struct HomeVideoCard: View {
         // 离屏渲染。封面上面两个角由封面自己的圆角负责。
         .background(
             Color(uiColor: .secondarySystemGroupedBackground),
-            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+            in: RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous)
                 .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: HomeCardLayout.cardCornerRadius, style: .continuous))
     }
 }
 

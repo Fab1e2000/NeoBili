@@ -47,6 +47,17 @@ final class LivePlayerModel {
     /// 拿到播放地址后是真实长房间号；之前是入口的短号。弹幕连接用它。
     var danmakuRoomID: Int { playbackRoomID }
 
+    /// 供 DLNA 投屏使用：优先挑选 HLS (.m3u8) 候选流（电视兼容性最好），否则回退到当前候选。
+    func preferredCastCandidate() -> LiveStreamCandidate? {
+        if let hls = candidates.first(where: { $0.isHLS }) {
+            return hls
+        }
+        if candidates.indices.contains(candidateIndex) {
+            return candidates[candidateIndex]
+        }
+        return candidates.first
+    }
+
     init(room: LiveRoom,
          roomLoader: @escaping LiveRoomLoader = { try await ApplicationServices.live.streaming.roomInfo(roomID: $0) },
          playbackLoader: @escaping LivePlaybackLoader = { try await ApplicationServices.live.streaming.playback(roomID: $0, quality: $1) },

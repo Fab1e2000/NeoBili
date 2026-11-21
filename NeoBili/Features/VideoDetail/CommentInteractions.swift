@@ -10,9 +10,9 @@ extension EnvironmentValues {
 
 extension View {
     func commentAuthorHost() -> some View { modifier(CommentAuthorHost()) }
-    func commentActions(comment: Comment, root: Comment? = nil,
+    func commentActions(comment: Comment, root: Comment? = nil, surface: UIColor,
                         isDeleting: Bool, actions: CommentRowActions) -> some View {
-        modifier(CommentActions(comment: comment, root: root, isDeleting: isDeleting, actions: actions))
+        CommentActions(content: self, comment: comment, root: root, surface: surface, isDeleting: isDeleting, actions: actions)
     }
 }
 
@@ -34,39 +34,64 @@ private struct CommentAuthorHost: ViewModifier {
     }
 }
 
-private struct CommentActions: ViewModifier {
+private struct CommentActions<Content: View>: View {
+    let content: Content
     let comment: Comment
     let root: Comment?
+    let surface: UIColor
     let isDeleting: Bool
     let actions: CommentRowActions
     @Environment(AccountStore.self) private var account
+    @Environment(\.colorScheme) private var colorScheme
     @State private var deletion: CommentsViewModel.Deletion?
+    @State private var sourceSize: CGSize?
 
-    func body(content: Content) -> some View {
-        content
-            .contextMenu {
-                Button("复制全文", systemImage: "doc.on.doc") {
-                    UIPasteboard.general.string = comment.message
-                    actions.copyMessage(comment.message)
-                }
-                .accessibilityIdentifier("comment.copy.\(comment.id)")
-                if actions.canDelete(comment, accountID: account.accountID, isLoggedIn: account.isLoggedIn) {
-                    Button("删除评论", systemImage: "trash", role: .destructive) {
-                        deletion = actions.deletion(for: comment, root: root,
-                                                    accountID: account.accountID, isLoggedIn: account.isLoggedIn)
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
+        let source = content
+            .background(Color(uiColor: surface), in: shape)
+            .contentShape(.interaction, Rectangle())
+            .contentShape(.contextMenuPreview, shape)
+        Group {
+            if colorScheme == .dark {
+                source
+                    .onGeometryChange(for: CGSize.self, of: { $0.size }) { sourceSize = $0 }
+                    .contextMenu { menuItems } preview: {
+                        let elevated = UIColor { [surface] traits in
+                            surface.resolvedColor(with: traits.modifyingTraits { $0.userInterfaceLevel = .elevated })
+                        }
+                        content
+                            .frame(width: sourceSize?.width, height: sourceSize?.height, alignment: .topLeading)
+                            .background(Color(uiColor: elevated), in: shape)
                     }
-                    .disabled(isDeleting)
-                    .accessibilityIdentifier("comment.delete.\(comment.id)")
-                }
+            } else {
+                source.contextMenu { menuItems }
             }
-            .alert("删除这条评论？", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }),
-                   presenting: deletion) { target in
-                Button("取消", role: .cancel) {}
-                Button("删除", role: .destructive) {
-                    actions.delete(target, accountID: account.accountID, isLoggedIn: account.isLoggedIn)
-                }
-            } message: { _ in Text("删除后无法恢复。") }
-            .onChange(of: account.sessionID) { deletion = nil }
+        }
+        .alert("删除这条评论？", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }),
+               presenting: deletion) { target in
+            Button("取消", role: .cancel) {}
+            Button("删除", role: .destructive) {
+                actions.delete(target, accountID: account.accountID, isLoggedIn: account.isLoggedIn)
+            }
+        } message: { _ in Text("删除后无法恢复。") }
+        .onChange(of: account.sessionID) { deletion = nil }
+    }
+
+    @ViewBuilder private var menuItems: some View {
+        Button("复制全文", systemImage: "doc.on.doc") {
+            UIPasteboard.general.string = comment.message
+            actions.copyMessage(comment.message)
+        }
+        .accessibilityIdentifier("comment.copy.\(comment.id)")
+        if actions.canDelete(comment, accountID: account.accountID, isLoggedIn: account.isLoggedIn) {
+            Button("删除评论", systemImage: "trash", role: .destructive) {
+                deletion = actions.deletion(for: comment, root: root,
+                                            accountID: account.accountID, isLoggedIn: account.isLoggedIn)
+            }
+            .disabled(isDeleting)
+            .accessibilityIdentifier("comment.delete.\(comment.id)")
+        }
     }
 }
 
@@ -124,6 +149,10 @@ extension CommentSort {
 struct CommentSortHeader: View {
     let viewModel: CommentsViewModel
     static let scrollID = "comment-list-top"
+    private static let topInset: CGFloat = 8
+    private static let bottomInset: CGFloat = 2
+    private static let menuHeight: CGFloat = 44
+    static let minimumHeight = topInset + menuHeight + bottomInset
     var body: some View {
         HStack(spacing: 10) {
             Text(viewModel.displayCount > 0 ? String(localized: "评论 \(viewModel.displayCount)") : String(localized: "评论"))
@@ -141,13 +170,13 @@ struct CommentSortHeader: View {
                     Text(viewModel.sort.title)
                     Image(systemName: "chevron.down").font(.app(.caption2, weight: .semibold))
                 }
-                .font(.app(.subheadline)).foregroundStyle(Color.secondary).frame(minHeight: 44)
+                .font(.app(.subheadline)).foregroundStyle(Color.secondary).frame(minHeight: Self.menuHeight)
             }
             .accessibilityLabel(String(localized: "评论排序，\(viewModel.sort.title)"))
             .accessibilityIdentifier("comment.sort")
         }
         .padding(.horizontal, CommentLayout.pageHorizontalInset)
-        .padding(.top, 8).padding(.bottom, 2)
+        .padding(.top, Self.topInset).padding(.bottom, Self.bottomInset)
         .id(Self.scrollID)
     }
 }

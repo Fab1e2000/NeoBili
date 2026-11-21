@@ -88,6 +88,39 @@ final class CommentSpacingTests: XCTestCase {
 
     private static let width: CGFloat = 390
 
+    func testShortReplyMenuFillsItsOwnRow() throws {
+        let comment = try makeComment(rpid: 1, message: "正文", rcount: 2, replies: ["好", "收到"])
+        let model = CommentsViewModel(aid: 1)
+        let replies = model.rowModel(for: comment, root: nil, showsReplies: true).previewReplies
+        XCTAssertEqual(replies.count, 2)
+        for reply in replies {
+            let view = CommentPreviewMessage(reply: reply, root: comment, actions: CommentRowActions(viewModel: model))
+                .environment(AccountStore(monitorNetwork: false))
+            let host = UIHostingController(rootView: view)
+            host.safeAreaRegions = []
+            let size = host.sizeThatFits(in: CGSize(width: 280, height: 500))
+            XCTAssertEqual(size.width, 280, accuracy: 0.5)
+            XCTAssertLessThan(size.height, 50, "每条短回复的菜单应限于自身内容高度")
+
+            // 预览会脱离外层灰块；短回复右侧的底色必须随这条回复一起渲染。
+            for scheme in [ColorScheme.light, .dark] {
+                let surface = VStack(spacing: 0) {
+                    view
+                    Color(uiColor: .secondarySystemBackground).frame(height: 4)
+                }
+                .frame(width: 280)
+                .background(Color(uiColor: .magenta))
+                .environment(\.colorScheme, scheme)
+                let image = try XCTUnwrap(ImageRenderer(content: surface).cgImage)
+                func trailingPixel(at y: Int) throws -> Data {
+                    let pixel = try XCTUnwrap(image.cropping(to: CGRect(x: 268, y: y, width: 1, height: 1)))
+                    return try XCTUnwrap(UIImage(cgImage: pixel).pngData())
+                }
+                XCTAssertEqual(try trailingPixel(at: (image.height - 4) / 2), try trailingPixel(at: image.height - 2))
+            }
+        }
+    }
+
     func testReplyBlockToDividerGapIsIdenticalAcrossComments() throws {
         // 两条结构不同的评论：回复条数、行数、是否有「查看全部」按钮都不一样。
         // 灰块本身高度当然不同，但它到下面那条分隔线的距离必须一样。
@@ -145,6 +178,31 @@ final class CommentSpacingTests: XCTestCase {
         let comment = try makeComment(rpid: 12, message: "正文", rcount: 2, replies: ["预览回复"])
         let model = CommentsViewModel(aid: 1)
         XCTAssertTrue(model.shouldShowAllReplies(comment))
+    }
+
+    func testOpeningRepliesKeepsPreviewLayoutDuringLoadingAndFailure() async throws {
+        let comment = try makeComment(rpid: 1, message: "正文", rcount: 5, replies: ["预览回复"])
+        let (finish, continuation) = AsyncStream<Void>.makeStream()
+        let model = CommentsViewModel(oid: 1, type: 1, fetchReplies: { _, _, _, _ in
+            for await _ in finish {}
+            throw URLError(.timedOut)
+        })
+        let before = try render(comment, viewModel: model).height
+        let row = model.rowModel(for: comment)
+        let request = Task { await model.loadRepliesIfNeeded(for: comment) }
+        defer { continuation.finish() }
+        for _ in 0..<1_000 {
+            if model.isLoadingReplies(comment) { break }
+            await Task.yield()
+        }
+        XCTAssertTrue(model.isLoadingReplies(comment))
+        XCTAssertEqual(model.rowModel(for: comment), row)
+        XCTAssertEqual(try render(comment, viewModel: model).height, before)
+        continuation.finish()
+        await request.value
+        XCTAssertNotNil(model.replyErrors[comment.id])
+        XCTAssertEqual(model.rowModel(for: comment), row)
+        XCTAssertEqual(try render(comment, viewModel: model).height, before)
     }
 
     // MARK: - 渲染与取样

@@ -27,6 +27,24 @@ enum AppLoginRenewal {
     }
     enum Failure: Error { case malformed, rejected(Int), wrongAccount, storage }
 
+    enum Outcome: Sendable {
+        case valid, needsLogin
+        case renewed(SMSLoginModels.Credentials, Int)
+    }
+
+    static func resolve(_ snapshot: Snapshot, device: Device, transport: Transport,
+                        isCurrent: @Sendable () async -> Bool) async throws -> Outcome {
+        let old = snapshot.credentials
+        let info = try await info(old: old, device: device, transport: transport)
+        guard await isCurrent() else { throw CancellationError() }
+        guard info.refresh else { return .valid }
+        guard old.refreshToken?.isEmpty == false else { return .needsLogin }
+        let time = await serverTime(old: old, device: device, transport: transport)
+        guard await isCurrent() else { throw CancellationError() }
+        let fresh = try await refresh(old: old, device: device, sts: time, transport: transport)
+        return .renewed(fresh, time)
+    }
+
     static func request(_ path: String, old: SMSLoginModels.Credentials, device: Device,
                         fields: [String: String] = [:], post: Bool = false,
                         timestamp: Int = Int(Date().timeIntervalSince1970)) -> URLRequest {

@@ -222,3 +222,168 @@ final class AccountSessionTests: XCTestCase {
 
     // MARK: - 展示工具
 }
+
+@MainActor
+extension AccountSessionTests {
+    func testOfflineSessionKeepsCredentialsAndRecoversOnRetry() async throws {
+        let defaults = try temporaryDefaults()
+        var online = false
+        let payload = try profile()
+        let client = AccountSessionClient(
+            credentials: { AccountCredentialsSnapshot(hasCredentials: true, accountID: 42) },
+            save: { _, _ in }, clear: {},
+            profile: { if !online { throw URLError(.notConnectedToInternet) }; return payload }
+        )
+        let account = AccountStore(client: client, defaults: defaults, likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.restoreSessionIfNeeded()
+        XCTAssertTrue(account.isLoggedIn)
+        XCTAssertFalse(account.isRestoringSession)
+        XCTAssertNotNil(account.sessionError)
+        online = true
+        await account.retrySessionIfNeeded()
+        XCTAssertEqual(account.profile?.mid, 42)
+        XCTAssertNil(account.sessionError)
+        online = false
+        let restored = AccountStore(client: client, defaults: defaults, likeStore: VideoLikeStore(), monitorNetwork: false)
+        await restored.restoreSessionIfNeeded()
+        XCTAssertEqual(restored.profile?.mid, 42, "同账号可使用缓存资料离线启动")
+    }
+
+    func testCookieOnlyLoginAndRestoreDoNotStartHiddenQRCodeExchange() async throws {
+        var exchanges = 0
+        let payload = try profile()
+        let client = AccountSessionClient(
+            credentials: { AccountCredentialsSnapshot(hasCredentials: true, accountID: 42) },
+            save: { _, _ in }, clear: {}, profile: { payload },
+            exchangeAppCredential: { exchanges += 1 }
+        )
+        let restored = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
+        await restored.restoreSessionIfNeeded()
+        XCTAssertEqual(exchanges, 0, "已登录的账号不在后台悄悄换取，由用户在设置里确认")
+        XCTAssertFalse(restored.hasAppCredential)
+
+        let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.completeLogin(LoginModels.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42"))
+        for _ in 0..<20 where !account.hasAppCredential { await Task.yield() }
+        XCTAssertEqual(exchanges, 0)
+        XCTAssertFalse(account.hasAppCredential)
+        XCTAssertTrue(account.isLoggedIn)
+        XCTAssertEqual(account.accountID, 42)
+    }
+
+    func testRestorePreservesLegacyLoginUntilSMSAuthorization() async throws {
+        var exchanges = 0
+        let payload = try profile()
+        let client = AccountSessionClient(
+            credentials: { AccountCredentialsSnapshot(hasCredentials: true, needsAppCredentialMigration: true, accountID: 42) },
+            save: { _, _ in }, clear: { XCTFail("Migration must preserve cookies") }, profile: { payload },
+            exchangeAppCredential: { exchanges += 1 }
+        )
+        let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.restoreSessionIfNeeded()
+        for _ in 0..<20 where !account.hasAppCredential { await Task.yield() }
+        XCTAssertEqual(exchanges, 0)
+        XCTAssertFalse(account.hasAppCredential)
+        XCTAssertTrue(account.isLoggedIn)
+        XCTAssertEqual(account.accountID, 42)
+    }
+
+    func testFailedAppMigrationIsVisibleAndScanAuthorizationPreservesAccount() async throws {
+        let payload = try profile()
+        var saved = 0
+        let client = AccountSessionClient(
+            credentials: { AccountCredentialsSnapshot(hasCredentials: true, accountID: 42) },
+            save: { _, _ in XCTFail("App authorization must not replace web login") },
+            clear: { XCTFail("App authorization must not log out") }, profile: { payload },
+            exchangeAppCredential: { throw LoginModels.PassportError.rejected("账号未登录 (code -101)") },
+            saveAppAuthorization: { key, mid in XCTAssertEqual(key, "fixture"); XCTAssertEqual(mid, 42); saved += 1 }
+        )
+        let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.restoreSessionIfNeeded()
+        let error = await account.ensureAppCredential()
+        XCTAssertEqual(account.appCredentialError, error)
+        XCTAssertNotNil(error)
+        XCTAssertTrue(account.isLoggedIn)
+        XCTAssertFalse(account.hasAppCredential)
+        let session = account.sessionID
+        let cookies = LoginModels.LoginCookies(sessdata: "s", biliJct: "j", dedeUserID: "42")
+        try await account.completeAppAuthorization(cookies, accessKey: "fixture", expectedSessionID: session)
+        XCTAssertEqual(saved, 1)
+        XCTAssertTrue(account.hasAppCredential)
+        XCTAssertEqual(account.sessionID, session)
+        XCTAssertNil(account.appCredentialError)
+    }
+
+    func testAppScanRejectsDifferentAccountMissingTokenAndStaleSessionBeforeSaving() async throws {
+        let payload = try profile()
+        var saves = 0
+        let client = AccountSessionClient(
+            credentials: { AccountCredentialsSnapshot(hasCredentials: true, accountID: 42) },
+            save: { _, _ in }, clear: {}, profile: { payload }, saveAppAuthorization: { _, _ in saves += 1 })
+        let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.restoreSessionIfNeeded()
+        for (mid, key, session): (String, String?, UUID) in [("43", "fixture", account.sessionID), ("42", nil, account.sessionID), ("42", "fixture", UUID())] {
+            do {
+                try await account.completeAppAuthorization(.init(sessdata: "s", biliJct: "j", dedeUserID: mid), accessKey: key, expectedSessionID: session)
+                XCTFail("Invalid authorization must fail")
+            } catch {}
+        }
+        XCTAssertEqual(saves, 0)
+        XCTAssertTrue(account.isLoggedIn)
+        XCTAssertFalse(account.hasAppCredential)
+    }
+
+    func testLateProfileResponseCannotLogBackInAfterLogout() async throws {
+        let pending = PendingModelResult<AccountProfilePayload>()
+        let store = VideoLikeStore()
+        let client = AccountSessionClient(
+            credentials: { AccountCredentialsSnapshot(hasCredentials: true, accountID: 42) },
+            save: { _, _ in }, clear: {}, profile: { await pending.value() }
+        )
+        let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: store, monitorNetwork: false)
+        let restore = Task { await account.restoreSessionIfNeeded() }
+        await waitForPendingRequest { pending.isWaiting }
+        XCTAssertTrue(account.isLoggedIn, "Cached credentials must be usable while network work is pending")
+        XCTAssertEqual(account.accountID, 42)
+        XCTAssertFalse(account.isRestoringSession, "Profile loading must not gate local session restoration")
+        store.setOverride(aid: 9, liked: true)
+        let oldSession = store.sessionID
+        await account.logout()
+        pending.resolve(try profile())
+        await restore.value
+        XCTAssertFalse(account.isLoggedIn)
+        XCTAssertNil(account.profile)
+        XCTAssertFalse(store.isLiked(aid: 9, serverValue: false))
+        store.setOverride(aid: 9, liked: true, sessionID: oldSession)
+        XCTAssertFalse(store.isLiked(aid: 9, serverValue: false), "旧请求不能污染新的账号会话")
+    }
+
+    func testExplicitExpiredSessionClearsCredentials() async throws {
+        var didClear = false
+        let client = AccountSessionClient(
+            credentials: { AccountCredentialsSnapshot(hasCredentials: true, accountID: 42) },
+            save: { _, _ in }, clear: { didClear = true },
+            profile: { throw BiliAPIError.apiError(code: -101, message: "expired") }
+        )
+        let account = AccountStore(client: client, defaults: try temporaryDefaults(), likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.restoreSessionIfNeeded()
+        XCTAssertTrue(didClear)
+        XCTAssertFalse(account.isLoggedIn)
+        XCTAssertFalse(account.isRestoringSession)
+    }
+
+    private func temporaryDefaults() throws -> UserDefaults {
+        let suite = "neobili.audit.tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return defaults
+    }
+
+    private func profile() throws -> AccountProfilePayload {
+        try decode(#"{"isLogin":true,"mid":42,"uname":"Test Account"}"#)
+    }
+
+    private func decode<T: Decodable>(_ json: String) throws -> T {
+        try JSONDecoder().decode(T.self, from: Data(json.utf8))
+    }
+}

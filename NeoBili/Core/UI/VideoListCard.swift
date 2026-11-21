@@ -1,5 +1,26 @@
 import SwiftUI
 
+/// Keep press feedback, touch hit testing and the lifted preview on the same card surface.
+struct CardPressStyle: ButtonStyle {
+    let cornerRadius: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        surface(configuration.label, isPressed: configuration.isPressed)
+    }
+
+    func surface(_ label: some View, isPressed: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return label
+            .overlay {
+                if isPressed {
+                    shape.fill(Color(uiColor: .tertiarySystemFill))
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape([.interaction, .contextMenuPreview], shape)
+    }
+}
+
 enum VideoListCardLayout {
     static let pageHorizontalInset: CGFloat = 8
 
@@ -31,10 +52,8 @@ enum VideoListCardLayout {
     static let borderWidth: CGFloat = 0.5
 }
 
-/// 搜索结果和相关视频共用的横向视频卡片：左边封面，右边标题、UP 主和播放数据。
-///
-/// 卡片外观（留白、圆角、边线）也包含在这里，所以两个页面不会各自跑偏。
-/// 调用方只负责把卡片放进列表并处理点击。
+/// 搜索结果、空间投稿、资料库和选集列表共用的横向视频卡。
+/// 视频详情页下方的推荐使用 NativeRelatedVideoCard。
 struct VideoListCard: View {
     let coverURL: URL?
     let title: String
@@ -43,9 +62,7 @@ struct VideoListCard: View {
     let playCount: Int
     /// 已经排好版的时长文字，例如 `12:34`。留空则不显示这一项。
     let durationText: String
-    /// 是否画出卡片本身的外观（浅色底、圆角、边线）。
-    ///
-    /// 详情页传 false，让推荐列表直接显示在页面背景上。
+    /// 是否显示卡面底色、圆角和边线。
     var showsCardChrome = true
     var animatesEntrance = true
 
@@ -136,7 +153,8 @@ private struct VideoListCardContent: View, Equatable {
                     }
             }
         }
-        .contentShape(Rectangle())
+        .contentShape(RoundedRectangle(cornerRadius: showsCardChrome ? VideoListCardLayout.cardCornerRadius : 0,
+                                       style: .continuous))
     }
 }
 

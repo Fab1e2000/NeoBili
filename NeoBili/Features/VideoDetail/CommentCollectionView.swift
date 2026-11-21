@@ -236,7 +236,13 @@ struct CommentCollectionView: UIViewRepresentable {
         private func content(for id: ItemID) -> some View {
             switch id {
             case .header:
-                CommentSortHeader(viewModel: worker.viewModel)
+                VStack(spacing: 0) {
+                    CommentSortHeader(viewModel: worker.viewModel)
+                    if let message = worker.viewModel.errorMessage, !worker.viewModel.comments.isEmpty,
+                       worker.viewModel.didFailReload {
+                        CommentListLoadFailure(viewModel: worker.viewModel, message: message)
+                    }
+                }
             case .comment(let commentID):
                 if let model = rowsByID[commentID], let actions {
                     CommentRow(model: model, actions: actions)

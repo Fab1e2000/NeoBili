@@ -64,7 +64,7 @@ struct FollowingAllUpsView: View {
     private var initialState: some View {
         if let message = model.errorMessage {
             ContentUnavailableView {
-                Label("加载失败", systemImage: "wifi.slash")
+                Label("关注列表加载失败", systemImage: "person.2")
             } description: {
                 Text(message)
             } actions: {
@@ -82,11 +82,9 @@ struct FollowingAllUpsView: View {
         if model.isLoading {
             LoadingTaskAnchor().padding(.bottom, 16)
         } else if let message = model.errorMessage {
-            VStack(spacing: 6) {
-                Text(message).font(.app(.footnote)).foregroundStyle(.secondary)
-                Button("重试") { Task { await model.loadMore() } }.frame(minHeight: 44)
+            InlineLoadFailure(title: "无法加载更多关注", message: message) {
+                Task { await model.loadMore() }
             }
-            .padding(.bottom, 16)
         }
     }
 }

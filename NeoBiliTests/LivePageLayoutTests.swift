@@ -12,6 +12,30 @@ import XCTest
 @MainActor
 final class LivePageLayoutTests: XCTestCase {
     private let imagePipeline = BiliImagePipeline(download: { _ in throw URLError(.notConnectedToInternet) })
+
+    func testSuperChatCloseTargetInStripAndBanner() async throws {
+        let host = try LivePageSnapshotHost()
+        defer { host.close() }
+        let message = LiveDanmakuModel.SuperChat(
+            id: 1, price: 30, message: "谢谢分享", userName: "观众", faceURL: nil,
+            start: 0, end: 90, backgroundColor: .blue, bottomColor: .blue, priceColor: .white, fontColor: .white)
+        for compact in [true, false] {
+            let closed = expectation(description: "关闭当前醒目留言")
+            try await host.show(SuperChatCard(item: message, now: 30, isCompact: compact) { closed.fulfill() }
+                .frame(width: compact ? 240 : 255)
+                .fixedSize(horizontal: false, vertical: true)
+                .dynamicTypeSize(compact ? .large : .accessibility1)
+                .preferredColorScheme(compact ? .light : .dark))
+            let button = try XCTUnwrap(accessibilityItem(in: host.window) {
+                $0.accessibilityLabel == "关闭这条醒目留言" && $0.accessibilityTraits.contains(.button)
+            })
+            XCTAssertEqual(button.accessibilityFrame.width, 44, accuracy: 0.5)
+            XCTAssertEqual(button.accessibilityFrame.height, 44, accuracy: 0.5)
+            XCTAssertTrue(button.accessibilityActivate())
+            await fulfillment(of: [closed], timeout: 1)
+        }
+    }
+
     func testLiveCardExpandsForAccessibilityTextAtNarrowAndWideWidths() async throws {
         let host = try LivePageSnapshotHost()
         defer { host.close() }
@@ -50,7 +74,7 @@ final class LivePageLayoutTests: XCTestCase {
         }
     }
 
-    func testLivePageFollowedAvatarStripAndRecommendationLayoutsInForegroundWindow() async throws {
+    func testLivePageFollowedCardStripAndRecommendationLayoutsInForegroundWindow() async throws {
         let host = try LivePageSnapshotHost()
         defer { host.close() }
         let rooms = await makeRooms()
@@ -103,7 +127,7 @@ final class LivePageLayoutTests: XCTestCase {
             for list in lists {
                 XCTAssertEqual(list.bounds.width, host.window.bounds.width, accuracy: 1, name)
             }
-            // 关注直播只以导航栏下方的横向头像条出现，不是第二个纵向列表。
+            // 关注直播只以列表顶部的横向房间卡片出现，不是第二个纵向列表。
             let strips = scrollViews.filter { !$0.alwaysBounceVertical && $0.bounds.width > $0.bounds.height }
             XCTAssertEqual(strips.count, loggedIn && !followedRooms.isEmpty ? 1 : 0, name)
             XCTAssertTrue(descendants(of: host.controller.view).compactMap { $0 as? UISegmentedControl }.isEmpty,

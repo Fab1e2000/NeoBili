@@ -10,6 +10,8 @@ struct RecommendedDynamicSheet: View {
     let id: String
     @State private var entry: DynamicEntry?
     @State private var errorMessage: String?
+    @State private var canRetry = false
+    @State private var retryGeneration = 0
     /// 详情页的点赞状态挂在一个动态列表模型上；这里单独给一个。
     @State private var feed = DynamicFeedModel(source: .following)
     @Environment(\.dismiss) private var dismiss
@@ -21,8 +23,13 @@ struct RecommendedDynamicSheet: View {
             } else {
                 Group {
                     if let errorMessage {
-                        ContentUnavailableView("无法打开这条动态", systemImage: "exclamationmark.triangle",
-                                               description: Text(errorMessage))
+                        ContentUnavailableView {
+                            Label("无法打开这条动态", systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(errorMessage)
+                        } actions: {
+                            if canRetry { Button("重试") { retryGeneration += 1 } }
+                        }
                     } else {
                         ProgressView()
                     }
@@ -36,9 +43,10 @@ struct RecommendedDynamicSheet: View {
                 }
             }
         }
-        .task(id: id) {
+        .task(id: [id, String(retryGeneration)]) {
             entry = nil
             errorMessage = nil
+            canRetry = false
             do {
                 let item = try await services.community.dynamicDetail(id: id)
                 try Task.checkCancellation()
@@ -48,8 +56,9 @@ struct RecommendedDynamicSheet: View {
                     errorMessage = String(localized: "暂不支持这种动态")
                 }
             } catch {
-                guard !Task.isCancelled else { return }
-                errorMessage = error.localizedDescription
+                guard !Task.isCancelled, !error.isCancellation else { return }
+                canRetry = true
+                errorMessage = error.loadFailureDescription
             }
         }
     }

@@ -23,8 +23,6 @@ struct CommentRowModel: Equatable, Sendable {
     let likeCount: Int
     let replyCount: Int
     let previewReplies: [Reply]
-    let isLoadingReplies: Bool
-    let replyError: String?
     let showsAllReplies: Bool
 }
 

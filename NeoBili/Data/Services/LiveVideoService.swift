@@ -12,6 +12,9 @@ extension VideoService {
             playURLOperation: { bvid, cid, quality in
                 try await BiliAPI.playURL(bvid: bvid, cid: cid, quality: quality, client: client, identity: identity)
             },
+            castPlayURLOperation: { bvid, cid, quality in
+                try await BiliAPI.castPlayURL(bvid: bvid, cid: cid, quality: quality, client: client, identity: identity)
+            },
             videoDetailOperation: { bvid in
                 try await BiliAPI.videoDetail(bvid: bvid, client: client)
             },

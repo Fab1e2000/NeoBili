@@ -13,6 +13,7 @@ struct VideoPage: View {
     /// 点赞、投币这些操作都要求登录，按钮点下去时据此决定是执行还是提示登录。
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.castSession) private var castSession
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.scenePhase) private var scenePhase
 
@@ -35,9 +36,17 @@ struct VideoPage: View {
 
     private var isFullScreen: Bool { isPortraitFullScreen || verticalSizeClass == .compact }
     private var isPortraitVideo: Bool { VideoFullscreenOrientation.preferred(for: inlineAspectRatio) == .portrait }
-    /// 首帧前以及重取播放地址期间属于加载，不能套用暂停后的隐藏／染色行为。
+    private var isCastingCurrentVideo: Bool {
+        guard let player = store.player else { return false }
+        let mediaID = player.isOffline ? "offline:\(player.bvid):\(player.cid)" : "video:\(player.bvid):\(player.cid)"
+        return castSession?.isCasting(mediaID: mediaID) == true
+    }
+
+    /// 首帧前以及重取播放地址期间属于加载，不能套用暂停后的隐藏／染色行为；
+    /// 投屏期间按播放态约束：横屏视频保持固定展开，竖屏视频最多收缩至默认横视频尺寸，绝不收进标题栏。
     private var collapsePhase: InlineVideoPlaybackPhase {
-        store.dismissalPlaybackPhase ?? InlineVideoPlaybackPhase(
+        if isCastingCurrentVideo { return .playing }
+        return store.dismissalPlaybackPhase ?? InlineVideoPlaybackPhase(
             isPlaying: store.player?.isPlaying == true,
             hasRenderedFirstFrame: store.player?.hasRenderedFirstFrame == true,
             isLoading: store.player?.isLoading ?? true
@@ -211,11 +220,7 @@ struct VideoPage: View {
                     // 选择器固定在播放器下方，作为简介和评论两页的顶部栏：内容从它下面滑过，
                     // 由系统给出与主页一致的原生顶部模糊。
                     if store.player != nil, let message = viewModel?.errorMessage {
-                        VStack(spacing: 8) {
-                            Text(message).font(.app(.callout)).foregroundStyle(.secondary)
-                            Button("重试", systemImage: "arrow.clockwise", action: store.retryDetail)
-                        }
-                        .padding()
+                        InlineLoadFailure(title: "视频详情加载失败", message: message, onRetry: store.retryDetail)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { detailErrorHeight = $0 }
                     }
                     VStack(spacing: 0) {
@@ -311,6 +316,13 @@ struct VideoPage: View {
                 }
             }
         }
+        .onChange(of: isCastingCurrentVideo) { _, casting in
+            if casting {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    collapseMotion.distance = collapseLayout.constrainedDistance(collapseMotion.distance, for: .playing)
+                }
+            }
+        }
         .onChange(of: inlineAspectRatio) { updateFullScreenOrientation() }
         .onChange(of: verticalSizeClass) { _, sizeClass in
             if sizeClass == .compact, !isPortraitVideo { isPortraitFullScreen = false }
@@ -361,7 +373,7 @@ struct VideoPage: View {
 
                 if let message = viewModel?.errorMessage {
                     ContentUnavailableView {
-                        Label("加载失败", systemImage: "exclamationmark.triangle")
+                        Label("视频详情加载失败", systemImage: "exclamationmark.triangle")
                     } description: {
                         Text(message)
                     } actions: {
@@ -492,46 +504,33 @@ struct VideoPage: View {
                          canCollapse: canConsumeVideoScroll, collapseCanContinue: canContinueCollapseMomentum)
                 .environment(\.commentTimeJump, commentTimeJump)
         } else {
-            VideoCommentsLoadingView(consume: consumeVideoScroll, canConsume: canConsumeVideoScroll)
+            VideoCommentsLoadingView(consume: consumeVideoScroll, canConsume: canConsumeVideoScroll,
+                                     showsSkeleton: viewModel?.errorMessage == nil)
         }
     }
 
     private var descriptionSection: some View {
         VideoDescriptionContent(store: store, viewModel: viewModel,
-                                components: store.offline.map(offlineInfoComponents) ?? viewModel?.detail.map(infoComponents) ?? [],
+                                components: store.offline.map(offlineInfoComponents)
+                                    ?? viewModel?.detail.map(infoComponents)
+                                    ?? loadingDescriptionComponents,
                                 showsRelated: store.offline == nil,
                                 consume: consumeVideoScroll, end: finishVideoCollapse,
                                 canConsume: canConsumeVideoScroll, canContinue: canContinueCollapseMomentum)
     }
 
+    private var loadingDescriptionComponents: [VideoDescriptionComponent] {
+        guard viewModel != nil, viewModel?.errorMessage == nil else { return [] }
+        return [VideoDescriptionComponent("introduction-loading", revision: []) {
+            VideoIntroductionSkeleton()
+        }]
+    }
+
     private func offlineInfoComponents(_ descriptor: OfflinePlaybackDescriptor) -> [VideoDescriptionComponent] {
-        let video = descriptor.entry.video
-        let entries = offlineCache.entries(in: video.groupID)
-        var components = [VideoDescriptionComponent("owner", revision: [video.author]) {
-            VideoOwnerRow(owner: VideoOwner(mid: 0, name: video.author, face: ""), avatarURL: nil,
-                          card: nil, isFollowing: false, onToggleFollow: {}, onOpenSpace: {}, isOffline: true)
-                .padding(.horizontal, Self.contentInset).padding(.top, 12).padding(.bottom, 10)
-        }, VideoDescriptionComponent(introduction: VideoIntroductionCard(
-            title: video.title,
-            metadata: String(localized: "本地播放 · \(PlaybackQuality.videoTitle(descriptor.entry.quality))"),
-            isExpanded: Binding(get: { store.isDescriptionExpanded }, set: { store.isDescriptionExpanded = $0 }))) ]
-        if entries.count > 1 || !video.partTitle.isEmpty {
-            let index = entries.firstIndex(where: { $0.id == descriptor.entry.id }).map { $0 + 1 }
-            components.append(VideoDescriptionComponent("parts", revision: [video.id, entries.count]) {
-                Group {
-                    if video.groupID.hasPrefix("season:") {
-                        UgcSeasonRow(title: video.groupTitle, total: entries.count, currentIndex: index) {
-                            offlinePartsPicker = VideoPickerPresentation(content: entries)
-                        }
-                    } else {
-                        VideoPartsRow(currentPartName: video.displayTitle, total: entries.count, currentIndex: index) {
-                            offlinePartsPicker = VideoPickerPresentation(content: entries)
-                        }
-                    }
-                }.padding(.horizontal, Self.contentInset).padding(.bottom, 14)
-            })
-        }
-        return components
+        let entries = offlineCache.entries(in: descriptor.entry.video.groupID)
+        return OfflineDescriptionComponents.make(descriptor, entries: entries, contentInset: Self.contentInset,
+            descriptionExpanded: Binding(get: { store.isDescriptionExpanded }, set: { store.isDescriptionExpanded = $0 }),
+            onShowParts: { offlinePartsPicker = VideoPickerPresentation(content: entries) })
     }
 
     private func infoComponents(_ detail: VideoDetail) -> [VideoDescriptionComponent] {

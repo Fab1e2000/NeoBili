@@ -32,6 +32,7 @@ final class VideoDetailViewModel {
     private(set) var related: [VideoSummary] = []
     private(set) var isLoadingRelated = false
     private(set) var relatedErrorMessage: String?
+    var isWaitingForFirstRelated: Bool { !relatedLoaded && relatedErrorMessage == nil }
 
     /// 稿件标签。加载失败只是少一行 chip，不影响页面其它部分。
     private(set) var tags: [VideoTag] = []
@@ -118,7 +119,7 @@ final class VideoDetailViewModel {
             coinCount = loaded.stat.coin
             favoriteCount = loaded.stat.favorite
         } catch {
-            if !error.isCancellation { errorMessage = error.localizedDescription }
+            if !error.isCancellation { errorMessage = error.loadFailureDescription }
         }
     }
 
@@ -154,7 +155,7 @@ final class VideoDetailViewModel {
         } catch {
             // Preserve App tracking and existing cards; a failed request is not an empty result.
             guard !error.isCancellation, likeStore.sessionID == sessionID else { return }
-            relatedErrorMessage = error.localizedDescription
+            relatedErrorMessage = error.loadFailureDescription
         }
     }
 

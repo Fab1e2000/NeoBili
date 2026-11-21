@@ -30,7 +30,7 @@ final class WatchLaterModel {
     private(set) var contentRevision = 0
     var selectedIDs: Set<Int> = []
     var isSelecting = false
-    private var failedRefresh = false
+    private(set) var failedRefresh = false
     /// 手动刷新取回但还没换进列表的第一页；由界面在淡出结束后提交。
     private var stagedRefresh: (page: Page, session: UUID)?
     private var nextKey = ""
@@ -79,7 +79,7 @@ final class WatchLaterModel {
         } catch {
             guard generation == request, client.session() == session, !error.isCancellation else { return }
             failedRefresh = refreshing
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 
@@ -100,7 +100,7 @@ final class WatchLaterModel {
         } catch {
             guard generation == request, client.session() == session, !error.isCancellation else { return false }
             failedRefresh = true
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
             return false
         }
     }

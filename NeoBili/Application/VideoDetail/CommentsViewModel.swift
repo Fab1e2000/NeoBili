@@ -21,6 +21,9 @@ final class CommentsViewModel {
     private(set) var isLoadingMore = false
     private(set) var errorMessage: String?
     var didFailReload: Bool { failedReloadSort != nil }
+    var isWaitingForFirstComments: Bool {
+        comments.isEmpty && errorMessage == nil && (isLoading || !hasLoadedInitialPage)
+    }
     private(set) var hasMore = true
     /// Only a successful sort change moves the viewport; refresh preserves it.
     private(set) var scrollRevision = 0
@@ -108,8 +111,6 @@ final class CommentsViewModel {
             isLiked: isLiked(comment), likeCount: likeCount(comment),
             replyCount: replyCount(for: comment),
             previewReplies: previews,
-            isLoadingReplies: isLoadingReplies(comment),
-            replyError: replyErrors[comment.id],
             showsAllReplies: showsReplies && shouldShowAllReplies(comment)
         )
     }
@@ -206,7 +207,7 @@ final class CommentsViewModel {
         } catch {
             guard request == generation, !error.isCancellation else { return }
             failedReloadSort = requestedSort
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 
@@ -273,13 +274,18 @@ final class CommentsViewModel {
             hasMore = more
         } catch {
             guard request == generation, !error.isCancellation else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 
     // MARK: Replies
 
     func isLoadingReplies(_ comment: Comment) -> Bool { loadingReplyIDs.contains(comment.id) }
+    func isWaitingForFirstReplies(_ comment: Comment) -> Bool {
+        replyNextPage[comment.id] == nil && replyErrors[comment.id] == nil
+            && allReplies(for: comment).isEmpty
+            && (isLoadingReplies(comment) || replyCount(for: comment) > 0)
+    }
     func hasMoreReplies(_ comment: Comment) -> Bool { moreRepliesIDs.contains(comment.id) }
 
     func replies(for comment: Comment) -> [Comment] {
@@ -289,7 +295,7 @@ final class CommentsViewModel {
 
     func shouldShowAllReplies(_ comment: Comment) -> Bool {
         // 回复详情使用独立入口，避免与昵称的个人主页跳转冲突。
-        replyErrors[comment.id] != nil || replyCount(for: comment) > 0
+        replyCount(for: comment) > 0
     }
 
     func replyCount(for comment: Comment) -> Int {
@@ -365,7 +371,7 @@ final class CommentsViewModel {
             else { moreRepliesIDs.remove(root) }
         } catch {
             guard replyGeneration[root, default: 0] == request, !deletedIDs.contains(root), !error.isCancellation else { return }
-            replyErrors[root] = error.localizedDescription
+            replyErrors[root] = error.loadFailureDescription
             if replacing { failedReplyRefreshes.insert(root) }
             else { moreRepliesIDs.remove(root) }
         }

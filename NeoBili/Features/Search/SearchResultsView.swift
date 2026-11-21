@@ -47,7 +47,7 @@ struct SearchResultsView: View {
                                 durationText: item.duration
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(CardPressStyle(cornerRadius: VideoListCardLayout.cardCornerRadius))
                         // 搜索结果没有 avid，稍后再看接口用 bvid 也能加。
                         .contextMenu {
                             WatchLaterMenuButton(bvid: item.bvid)
@@ -63,12 +63,9 @@ struct SearchResultsView: View {
                     }
                 }
                 if let message = viewModel.loadMoreError {
-                    VStack(spacing: 8) {
-                        Text(message).font(.app(.caption)).foregroundStyle(.secondary)
-                        Button("重试加载") { Task { await viewModel.loadMore() } }
-                            .buttonStyle(.bordered)
+                    InlineLoadFailure(title: "无法加载更多搜索结果", message: message) {
+                        Task { await viewModel.loadMore() }
                     }
-                    .padding()
                 } else if viewModel.hasMore, !visibleResults.isEmpty {
                     LoadingTaskAnchor()
                         .frame(maxWidth: .infinity)

@@ -61,7 +61,7 @@ final class FollowingAllUpsModel {
             }
         } catch {
             guard !Task.isCancelled, !error.isCancellation else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = error.loadFailureDescription
         }
     }
 }

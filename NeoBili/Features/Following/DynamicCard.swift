@@ -192,12 +192,18 @@ struct DynamicCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 9)
             }
-            .padding(.horizontal, DynamicCardLayout.contentInset)
-            .padding(.top, 8)
-            .contentShape(Rectangle())
+            .background(
+                Color(uiColor: .secondarySystemGroupedBackground),
+                in: RoundedRectangle(cornerRadius: DynamicCardLayout.imageCornerRadius, style: .continuous)
+            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CardPressStyle(cornerRadius: DynamicCardLayout.imageCornerRadius))
+        .contextMenu {
+            WatchLaterMenuButton(aid: video.aid > 0 ? video.aid : nil, bvid: video.bvid)
+        }
         .videoTransitionSource(video.bvid, in: videoTransition)
+        .padding(.horizontal, DynamicCardLayout.contentInset)
+        .padding(.top, 8)
     }
 
     // MARK: - 底部按钮

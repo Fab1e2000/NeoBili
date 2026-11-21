@@ -54,15 +54,22 @@ actor BiliImageCache {
         pixelSize: ImagePixelSize? = nil,
         downloader: @escaping @Sendable () async throws -> UIImage
     ) async throws -> UIImage {
+        try await image(for: url, pixelSize: pixelSize, prefetch: false) { _ in try await downloader() }
+    }
+
+    func image(
+        for url: URL, pixelSize: ImagePixelSize?, prefetch: Bool,
+        downloader: @escaping @Sendable (ImageWorkPriority) async throws -> UIImage
+    ) async throws -> UIImage {
         try Task.checkCancellation()
         if let cached = cachedImage(for: url, pixelSize: pixelSize) { return cached }
         // Explicitly supplied originals (for example preloaded avatars) remain
         // suitable for every smaller presentation of that URL.
         if pixelSize != nil, let original = cachedImage(for: url) { return original }
-        return try await requests.value(for: Key(url: url, pixelSize: pixelSize)) { [self] in
+        return try await requests.value(for: Key(url: url, pixelSize: pixelSize), prefetch: prefetch) { [self] priority in
             // Another operation may have filled the cache before this pool hop.
             if let cached = cachedImage(for: url, pixelSize: pixelSize) { return cached }
-            let image = try await downloader()
+            let image = try await downloader(priority)
             try Task.checkCancellation()
             insert(image, for: url, pixelSize: pixelSize)
             return image
@@ -123,23 +130,23 @@ enum BiliImageLoader {
               BiliImageMemoryCache.image(for: url, pixelSize: pixelSize, pipeline: pipeline) == nil else { return nil }
         return Task(priority: .utility) {
             guard await pipeline.prefetchGate.tryEnter() else { return }
-            _ = try? await load(url, pixelSize: pixelSize, pipeline: pipeline)
+            _ = try? await load(url, pixelSize: pixelSize, pipeline: pipeline, prefetch: true)
             await pipeline.prefetchGate.leave()
         }
     }
 
     /// nil requests an original; on-screen cards always supply physical pixels.
     static func load(_ url: URL, pixelSize: ImagePixelSize? = nil,
-                     pipeline: BiliImagePipeline = .live,
+                     pipeline: BiliImagePipeline = .live, prefetch: Bool = false,
                      download: (@Sendable (URL) async throws -> Data)? = nil) async throws -> UIImage {
-        try await pipeline.cache.image(for: url, pixelSize: pixelSize) {
+        try await pipeline.cache.image(for: url, pixelSize: pixelSize, prefetch: prefetch) { priority in
             let data: Data
             if url.isFileURL { data = try Data(contentsOf: url) }
             else { data = try await (download ?? pipeline.download)(url) }
-            try await pipeline.decodeGate.enter()
+            try await pipeline.decodeGate.enter(priority: priority)
             do {
                 try Task.checkCancellation()
-                let decoding = Task.detached(priority: .userInitiated) {
+                let decoding = Task.detached(priority: priority.isVisible ? .userInitiated : .utility) {
                     try Task.checkCancellation()
                     guard let decoded = ImageDownsampling.decode(data, fitting: pixelSize) else {
                         throw BiliAPIError.invalidURL

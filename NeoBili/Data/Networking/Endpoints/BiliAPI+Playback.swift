@@ -35,6 +35,38 @@ extension BiliAPI {
         throw BiliAPIError.apiError(code: -1, message: String(localized: "该视频暂不支持播放"))
     }
 
+    /// 投屏专用取流：优先请求服务端合并好的单文件 MP4（durl），避免电视无法播放分离的 DASH 音视频轨。
+    static func castPlayURL(bvid: String, cid: Int, quality: Int = 80, client: APIClient, identity: DeviceIdentity) async throws -> PlayURLData {
+        let preferred = max(16, quality)
+        var candidates = [preferred, 80, 64, 32]
+        var seen = Set<Int>()
+        candidates = candidates.filter { seen.insert($0).inserted }
+
+        for qn in candidates {
+            let extraParams: [String: String] = [
+                "qn": String(qn),
+                "fnval": "1",
+                "fnver": "0",
+                "otype": "json",
+                "platform": "html5",
+                "high_quality": "1"
+            ]
+            do {
+                let payload = try await requestPlayURL(bvid: bvid, cid: cid, extraParams: extraParams, client: client, identity: identity)
+                if payload.isRiskControlled {
+                    throw BiliAPIError.riskControlled
+                }
+                if let durl = payload.durl, !durl.isEmpty {
+                    return payload
+                }
+            } catch {
+                guard Self.isUnsupportedPlayFormat(error) else { throw error }
+            }
+        }
+
+        throw BiliAPIError.apiError(code: -1, message: String(localized: "该视频暂不支持投屏（未获取到兼容的合并视频流）"))
+    }
+
     private static func requestPlayURL(
         bvid: String,
         cid: Int,

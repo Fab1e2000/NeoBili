@@ -8,6 +8,7 @@ public struct OfflineCacheService: Sendable {
     public var cancel: @Sendable (String) async throws -> Void
     public var delete: @Sendable ([String]) async throws -> Void
     public var playback: @Sendable (String) async throws -> OfflinePlaybackDescriptor
+    public var setOnlinePlaybackActive: @Sendable (Bool) async -> Void
     public var releasePlayback: @Sendable (UUID) async -> Void
 
     public init(
@@ -18,9 +19,11 @@ public struct OfflineCacheService: Sendable {
         cancel: @escaping @Sendable (String) async throws -> Void = { _ in throw OfflineCacheError.unconfigured },
         delete: @escaping @Sendable ([String]) async throws -> Void = { _ in throw OfflineCacheError.unconfigured },
         playback: @escaping @Sendable (String) async throws -> OfflinePlaybackDescriptor = { _ in throw OfflineCacheError.unconfigured },
-        releasePlayback: @escaping @Sendable (UUID) async -> Void = { _ in }
+        releasePlayback: @escaping @Sendable (UUID) async -> Void = { _ in },
+        setOnlinePlaybackActive: @escaping @Sendable (Bool) async -> Void = { _ in }
     ) {
         self.updates = updates; self.enqueue = enqueue; self.pause = pause; self.resume = resume
         self.cancel = cancel; self.delete = delete; self.playback = playback; self.releasePlayback = releasePlayback
+        self.setOnlinePlaybackActive = setOnlinePlaybackActive
     }
 }

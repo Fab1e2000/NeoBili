@@ -22,6 +22,8 @@ public actor OfflineCacheRepository {
     private var available = false
     private var cellular = false
     private var active: Set<String> = []
+    private var onlinePlaybackActive = false
+    private var transferLimit: Int { onlinePlaybackActive ? 2 : 8 }
     private var preparations: [String: Task<Void, Never>] = [:]
     private var preparationIDs: [String: UUID] = [:]
     private var operationIDs: [String: UUID] = [:]
@@ -60,7 +62,8 @@ public actor OfflineCacheRepository {
             enqueue: { try await self.enqueue($0, quality: $1, audioQuality: $2, replace: $3) },
             pause: { _ = try await self.pause($0) }, resume: { try await self.resume($0, allowsCellular: $1) },
             cancel: { try await self.cancel($0) }, delete: { try await self.delete($0) },
-            playback: { try await self.playback($0) }, releasePlayback: { await self.release($0) })
+            playback: { try await self.playback($0) }, releasePlayback: { await self.release($0) },
+            setOnlinePlaybackActive: { await self.setOnlinePlaybackActive($0) })
     }
 
     public func start() async {
@@ -92,8 +95,6 @@ public actor OfflineCacheRepository {
             // A finished background task can deliver its file before allTasks returns.
             active = allowed
             for token in existing.subtracting(allowed) { await transport.cancel(token: token) }
-            for generation in manifest.retired { try removeFiles(generation) }
-            manifest.retired = []
             try persist()
             while !startupEvents.isEmpty {
                 let events = startupEvents; startupEvents = []
@@ -117,7 +118,12 @@ public actor OfflineCacheRepository {
     }
 
     private func persist() throws {
-        try JSONEncoder().encode(manifest).write(to: directory.appendingPathComponent("manifest.json"), options: .atomic)
+        try commit(manifest)
+    }
+
+    private func commit(_ next: Manifest) throws {
+        try JSONEncoder().encode(next).write(to: directory.appendingPathComponent("manifest.json"), options: .atomic)
+        manifest = next
         let removable = manifest.retired.filter { !leases.values.contains($0) }
         if !removable.isEmpty {
             // The new manifest is durable before an older version can be removed.
@@ -175,34 +181,42 @@ public actor OfflineCacheRepository {
 
     func enqueue(_ videos: [OfflineVideo], quality: Int, audioQuality: Int, replace: Bool) async throws {
         await start(); try load()
+        guard videos.allSatisfy({ $0.cid > 0 && !$0.bvid.isEmpty }) else { throw OfflineCacheError.invalidResource }
         let account = await accountID()
+        var next = manifest
+        var replaced: [OfflineCacheEntry] = []
         for video in videos {
-            guard video.cid > 0, !video.bvid.isEmpty else { throw OfflineCacheError.invalidResource }
-            if let existing = manifest.completed[video.id], existing.quality == quality { continue }
-            if manifest.completed[video.id] != nil, !replace { continue }
-            if let existing = manifest.pending[video.id] {
-                if existing.quality == quality { continue }
-                guard replace else { continue }
-                try await cancel(video.id)
+            let existing = [next.completed[video.id], next.pending[video.id]].compactMap { $0 }
+            if existing.contains(where: { $0.matches(videoID: video.id, quality: quality) }) { continue }
+            if !existing.isEmpty && !replace { continue }
+            if let old = next.pending[video.id] {
+                replaced.append(old)
+                next.retired.append(old.generation)
             }
             var entry = OfflineCacheEntry(video: video, quality: quality, accountID: account)
             entry.audioQuality = audioQuality
-            manifest.pending[video.id] = entry
+            next.pending[video.id] = entry
         }
-        try persist(); publish(); schedule()
+        try commit(next)
+        await cancelTransfers(replaced)
+        publish(); schedule()
     }
 
     @discardableResult func pause(_ id: String, state: OfflineCacheState = .paused) async throws -> UUID? {
         guard var entry = manifest.pending[id] else { return nil }
-        let operation = UUID(); operationIDs[id] = operation
+        let operation = UUID()
         let oldResources = entry.resources
         for index in entry.resources.indices where !entry.resources[index].isComplete {
             entry.resources[index].transferID = UUID()
         }
-        entry.state = state; manifest.pending[id] = entry
+        entry.state = state
+        var next = manifest
+        next.pending[id] = entry
+        try commit(next)
+        operationIDs[id] = operation
         preparations.removeValue(forKey: id)?.cancel()
         preparationIDs[id] = nil
-        try persist(); publish()
+        publish()
         for resource in oldResources where !resource.isComplete {
             let key = token(entry, resource)
             active.remove(key); samples[key] = nil
@@ -220,36 +234,59 @@ public actor OfflineCacheRepository {
         let operation = try await pause(id)
         let account = await accountID()
         guard operationIDs[id] == operation, manifest.pending[id]?.generation == entry.generation else { return }
-        manifest.pending[id]?.accountID = account
-        manifest.pending[id]?.allowsCellular = allowsCellular || entry.allowsCellular
-        manifest.pending[id]?.state = .queued
-        manifest.pending[id]?.message = nil
+        var next = manifest
+        next.pending[id]?.accountID = account
+        next.pending[id]?.allowsCellular = allowsCellular || entry.allowsCellular
+        next.pending[id]?.state = .queued
+        next.pending[id]?.message = nil
+        try commit(next)
         // Re-resolve expired URLs; completed resources are retained by identity.
         if entry.state == .failed || entry.state == .accountPaused { refreshRequired.insert(id) }
-        try persist(); publish(); schedule()
+        publish(); schedule()
     }
 
     private var refreshRequired = Set<String>()
 
     func cancel(_ id: String) async throws {
-        guard let entry = manifest.pending.removeValue(forKey: id) else { return }
-        preparations.removeValue(forKey: id)?.cancel(); refreshRequired.remove(id)
-        preparationIDs[id] = nil; operationIDs[id] = nil
-        try persist()
-        for resource in entry.resources {
-            let key = token(entry, resource); active.remove(key); samples[key] = nil
-            await transport.cancel(token: key)
-        }
-        try removeFiles(entry.generation)
+        guard let entry = manifest.pending[id] else { return }
+        var next = manifest
+        next.pending[id] = nil
+        next.retired.append(entry.generation)
+        try commit(next)
+        await cancelTransfers([entry])
         publish(); schedule()
     }
 
-    func delete(_ ids: [String]) async throws {
-        for id in ids {
-            try await cancel(id)
-            if let entry = manifest.completed.removeValue(forKey: id) { try retire(entry.generation) }
+    private func cancelTransfers(_ entries: [OfflineCacheEntry]) async {
+        var tokens: [String] = []
+        for entry in entries {
+            preparations.removeValue(forKey: entry.id)?.cancel()
+            refreshRequired.remove(entry.id)
+            preparationIDs[entry.id] = nil
+            operationIDs[entry.id] = nil
+            for resource in entry.resources {
+                let key = token(entry, resource)
+                active.remove(key)
+                samples[key] = nil
+                tokens.append(key)
+            }
         }
-        try persist(); publish()
+        for key in tokens { await transport.cancel(token: key) }
+    }
+
+    func delete(_ ids: [String]) async throws {
+        var next = manifest
+        var cancelled: [OfflineCacheEntry] = []
+        for id in ids {
+            if let pending = next.pending.removeValue(forKey: id) {
+                cancelled.append(pending)
+                next.retired.append(pending.generation)
+            }
+            if let completed = next.completed.removeValue(forKey: id) { next.retired.append(completed.generation) }
+        }
+        try commit(next)
+        await cancelTransfers(cancelled)
+        publish(); schedule()
     }
 
     public func accountDidChange() async {
@@ -261,6 +298,12 @@ public actor OfflineCacheRepository {
         }
     }
 
+    private func setOnlinePlaybackActive(_ active: Bool) {
+        guard !Task.isCancelled, onlinePlaybackActive != active else { return }
+        onlinePlaybackActive = active
+        schedule()
+    }
+
     private func schedule() {
         guard loaded, !starting, storageError == nil else { return }
         for entry in manifest.pending.values.sorted(by: { $0.createdAt < $1.createdAt }) where entry.state.canSchedule {
@@ -270,10 +313,10 @@ public actor OfflineCacheRepository {
             }
             guard preparations[entry.id] == nil else { continue }
             if entry.resources.isEmpty || refreshRequired.contains(entry.id) {
-                guard preparations.count < 3 else { continue }
+                guard preparations.count < (onlinePlaybackActive ? 1 : 3) else { continue }
                 manifest.pending[entry.id]?.state = .preparing
                 let preparationID = UUID(); preparationIDs[entry.id] = preparationID
-                preparations[entry.id] = Task { [weak self, prepare] in
+                preparations[entry.id] = Task(priority: .utility) { [weak self, prepare] in
                     do { let result = try await prepare(entry); try Task.checkCancellation(); await self?.prepared(entry, result, requestID: preparationID) }
                     catch { await self?.preparationFailed(entry, error, requestID: preparationID) }
                 }
@@ -283,15 +326,21 @@ public actor OfflineCacheRepository {
                     catch { storageError = error.localizedDescription }
                     continue
                 }
-                manifest.pending[entry.id]?.state = .downloading
+                var hasActiveTransfer = false
                 for resource in entry.resources where !resource.isComplete {
                     let key = token(entry, resource)
-                    guard !active.contains(key) else { continue }
+                    if active.contains(key) {
+                        hasActiveTransfer = true
+                        continue
+                    }
+                    guard active.count < transferLimit else { continue }
+                    hasActiveTransfer = true
                     active.insert(key)
-                    Task { [weak self, transport] in
+                    Task(priority: .utility) { [weak self, transport] in
                         await self?.beginTransfer(entry, resource, transport: transport)
                     }
                 }
+                manifest.pending[entry.id]?.state = hasActiveTransfer ? .downloading : .queued
             }
         }
         publish()
@@ -310,11 +359,11 @@ public actor OfflineCacheRepository {
     }
 
     private func prepared(_ original: OfflineCacheEntry, _ result: OfflinePreparedResources, requestID: UUID) async {
+        let account = await accountID()
         guard var entry = manifest.pending[original.id], entry.generation == original.generation,
               preparationIDs[entry.id] == requestID, !Task.isCancelled, entry.state.canSchedule else { return }
         preparations[entry.id] = nil; refreshRequired.remove(entry.id)
         do {
-            let account = await accountID()
             guard entry.accountID == account else { try await pause(entry.id, state: .accountPaused); return }
             let previous = Dictionary(uniqueKeysWithValues: entry.resources.map { ($0.id, $0) })
             entry.resources = result.resources.map { resource in
@@ -331,9 +380,6 @@ public actor OfflineCacheRepository {
             entry.state = .queued
             try FileManager.default.createDirectory(at: folder(entry.generation), withIntermediateDirectories: true,
                 attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
-            guard manifest.pending[entry.id]?.generation == entry.generation,
-                  preparationIDs[entry.id] == requestID,
-                  manifest.pending[entry.id]?.state.canSchedule == true else { return }
             manifest.pending[entry.id] = entry
             try completeIfReady(entry.id)
         } catch { await preparationFailed(original, error, requestID: requestID) }
@@ -426,18 +472,14 @@ public actor OfflineCacheRepository {
     private func completeIfReady(_ id: String) throws {
         guard var entry = manifest.pending[id], !entry.resources.isEmpty,
               entry.resources.allSatisfy(\.isComplete) else { try persist(); return }
-        let previous = manifest
+        var next = manifest
         entry.state = .completed; entry.message = nil
-        if let old = manifest.completed[id] { try retire(old.generation) }
-        manifest.completed[id] = entry
-        manifest.pending[id] = nil
-        do { try persist() }
-        catch { manifest = previous; throw error }
+        if let old = next.completed[id] { next.retired.append(old.generation) }
+        next.completed[id] = entry
+        next.pending[id] = nil
+        try commit(next)
     }
 
-    private func retire(_ generation: UUID) throws {
-        if !manifest.retired.contains(generation) { manifest.retired.append(generation) }
-    }
     private func removeFiles(_ generation: UUID) throws {
         let path = folder(generation)
         if FileManager.default.fileExists(atPath: path.path) { try FileManager.default.removeItem(at: path) }

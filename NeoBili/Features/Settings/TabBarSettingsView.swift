@@ -30,6 +30,7 @@ struct TabBarSettingsView: View {
                         .disabled(shown.count <= 1)
                         .accessibilityLabel("隐藏\(tab.title)")
                     }
+                    .moveDisabled(false)
                 }
                 .onMove(perform: moveShown)
                 Label(MainTab.search.title, systemImage: MainTab.search.systemImage)
@@ -37,13 +38,12 @@ struct TabBarSettingsView: View {
                     .moveDisabled(true)
             } header: {
                 Text("显示的标签")
-            } footer: {
-                Text(String(localized: "拖动右侧的把手调整顺序，点红色按钮隐藏。标签栏最多 \(MainTabSettings.maxVisible + 1) 个（含固定在末尾的搜索），不会出现「更多」。"))
             }
 
             if !hiddenInOrder.isEmpty {
                 Section {
-                    ForEach(hiddenInOrder) { tab in
+                    // 使用独立行标识，避免从无排序把手的分组移入显示分组时复用旧单元格导致把手缺失。
+                    ForEach(hiddenInOrder, id: \.hiddenRowID) { tab in
                         HStack {
                             Label(tab.title, systemImage: tab.systemImage)
                                 .foregroundStyle(.secondary)
@@ -60,14 +60,9 @@ struct TabBarSettingsView: View {
                             .disabled(shown.count >= MainTabSettings.maxVisible)
                             .accessibilityLabel("显示\(tab.title)")
                         }
-                        .moveDisabled(true)
                     }
                 } header: {
                     Text("隐藏的标签")
-                } footer: {
-                    if shown.count >= MainTabSettings.maxVisible {
-                        Text("显示的标签已满，先隐藏一个才能添加。")
-                    }
                 }
             }
 
@@ -80,8 +75,6 @@ struct TabBarSettingsView: View {
                         Text(tab.title).tag(tab.rawValue)
                     }
                 }
-            } footer: {
-                Text("下次打开 App 时生效。")
             }
 
             Section {
@@ -112,4 +105,8 @@ struct TabBarSettingsView: View {
         if isHidden { updated.insert(tab) } else { updated.remove(tab) }
         withAnimation { storedHidden = MainTabSettings.stored(order.filter(updated.contains)) }
     }
+}
+
+private extension MainTab {
+    var hiddenRowID: String { "hidden.\(rawValue)" }
 }

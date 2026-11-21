@@ -9,6 +9,9 @@
 Application Support 的独立目录，排除系统备份。后台传输使用固定标识的 Wi-Fi 和蜂窝
 会话；资源任务的尝试标识、恢复信息与暂停原因持久化，启动时与系统任务重新关联。
 AppDelegate 在后台事件及持久化处理完成后结束系统回调。账号变更暂停未完成任务。
+仓库最多提交 8 个未完成资源传输，并发准备上限为 3 个条目。在线点播或直播正在取流
+或播放时，收紧为 2 个传输和 1 个准备任务；已有任务继续执行，空出的名额按当前上限
+分配。下载进度与已缓存条目独立观察，进度更新不会重新分组缓存库或刷新离线选集。
 
 每个 `bvid + cid` 只有一个已完成版本。全部资源通过验证才发布为已缓存，失败保留在任务
 列表。画质替换先保存新版本，再切换清单；旧文件在本地播放租约结束后清理。取消与删除
@@ -54,6 +57,9 @@ UIScrollView 负责拖动及惯性，移除偏移锁定与手工减速时钟；�
 当前会话播放时，`PlaybackIdleTimer` 禁用系统自动变暗与锁屏；暂停、播放结束、关闭或替换
 会话、App 失去前台活动状态时恢复。返回前台后按当前播放状态重新应用，小窗持续播放同样
 保持屏幕常亮。旧会话的迟到事件不能影响当前会话；只在状态变化时写系统设置，不使用轮询。
+
+mpv 内核的初始化、打开、倍速、暂停、跳转和销毁按同一串行队列执行。UIKit 持有并布局图层，
+队列保留图层直到内核销毁。播放事件按顺序回到主线程，关闭后和切源前已排队的回调作废。
 
 正式播放默认不与其他应用混音：mpv 设置 `audio-exclusive=yes`，防止 iOS AudioUnit 后端
 覆盖应用的非混音音频会话；首页静音预览仍使用 `ao=null`，不请求独占音频。
@@ -164,6 +170,10 @@ param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 Recor
 播放值与服务契约由 `NeoBiliDomain` 编译，网络适配器由 `NeoBiliData` 提供；播放器协调与 mpv 平台会话仍属于 App target。生产依赖由 App 组装，播放模型通过注入的契约调用。
 
 `PlaybackReportingCoordinator` 持有观看累计、心跳与播放行为的开始/结束去重状态，以及对应发送器。Player 在原事件顺序中传入即时值快照；协作者不持有 Player、渲染会话或额外任务。退出、析构和 EOF 各自保留已有的上报边界，本地续播保存仍由 Player 管理。
+
+## DLNA 投屏
+
+`CastService` 契约和设备/状态值属于 `NeoBiliDomain`，`CastSessionModel` 在 `Application/Casting` 中统一管理设备发现、持久投屏模式与进度轮询，通过 `castSession` 环境值向在线点播、离线缓存、直播页面与底部缩略条提供同一会话状态。`Platform/Casting` 提供纯 Swift 实现的 SSDP 发现（含同网段单播兜底）、UPnP SOAP 控制（`DLNAXMLCodec` / `UPnPControlClient`）、基于 `MPVKit` 内置 `Libavformat` 的实时无损 DASH 混流器（`DASHCastRemuxer`）、本地 HTTP Range/Chunked 代理（`LocalMediaProxyServer`）和离线双轨硬链接无损封装（`OfflineCastMuxer`）。在线点播优先获取完整 DASH 音视频轨并经 `DASHCastRemuxer` 实时封装为 Fragmented MP4 流式投屏（无 DASH 时回退合并 MP4），支持全部高画质与独立音质热切换及服务端时间偏移 Seek；直播优先选择 HLS 并由本地代理重写分片 URI 以透传防盗链请求头；离线缓存直接经本地代理分块输出。投屏模式开启后离开播放页保持连接，点播新内容时自动切换投屏目标并暂停本地内核，退出投屏时同步进度回本地续播。
 
 ## 弹幕渲染预算
 

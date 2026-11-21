@@ -1,5 +1,15 @@
 import Foundation
 
+/// Shared by consumers of one in-flight request and read by the decode queue.
+public final class ImageWorkPriority: @unchecked Sendable {
+    private let lock = NSLock()
+    private var visible: Bool
+
+    fileprivate init(isVisible: Bool) { visible = isVisible }
+    public var isVisible: Bool { lock.withLock { visible } }
+    fileprivate func promote() { lock.withLock { visible = true } }
+}
+
 /// Coalesce image work while tracking its consumers. A reused cell can leave
 /// immediately; the transfer/decode is cancelled only after its last consumer
 /// leaves. Generation IDs prevent a late cancelled operation from touching a
@@ -7,6 +17,7 @@ import Foundation
 public actor ImageRequestPool<Key: Hashable & Sendable, Value: Sendable> {
     private struct Entry {
         let generation: UUID
+        let priority: ImageWorkPriority
         let task: Task<Void, Never>
         var consumers: [UUID: CheckedContinuation<Value, Error>]
     }
@@ -16,6 +27,11 @@ public actor ImageRequestPool<Key: Hashable & Sendable, Value: Sendable> {
     public var consumerCount: Int { entries.values.reduce(0) { $0 + $1.consumers.count } }
 
     public func value(for key: Key, operation: @escaping @Sendable () async throws -> Value) async throws -> Value {
+        try await value(for: key, prefetch: false) { _ in try await operation() }
+    }
+
+    public func value(for key: Key, prefetch: Bool,
+                      operation: @escaping @Sendable (ImageWorkPriority) async throws -> Value) async throws -> Value {
         try Task.checkCancellation()
         let consumer = UUID()
         let value: Value = try await withTaskCancellationHandler {
@@ -24,16 +40,18 @@ public actor ImageRequestPool<Key: Hashable & Sendable, Value: Sendable> {
                     continuation.resume(throwing: CancellationError())
                     return
                 }
-                if entries[key] != nil {
+                if let priority = entries[key]?.priority {
+                    if !prefetch { priority.promote() }
                     entries[key]?.consumers[consumer] = continuation
                     return
                 }
                 let generation = UUID()
+                let priority = ImageWorkPriority(isVisible: !prefetch)
                 let task = Task {
                     let result: Result<Value, Error>
                     do {
                         try Task.checkCancellation()
-                        let value = try await operation()
+                        let value = try await operation(priority)
                         try Task.checkCancellation()
                         result = .success(value)
                     } catch {
@@ -41,7 +59,7 @@ public actor ImageRequestPool<Key: Hashable & Sendable, Value: Sendable> {
                     }
                     complete(key, generation: generation, result: result)
                 }
-                entries[key] = Entry(generation: generation, task: task, consumers: [consumer: continuation])
+                entries[key] = Entry(generation: generation, priority: priority, task: task, consumers: [consumer: continuation])
             }
         } onCancel: {
             Task { await self.cancel(key, consumer: consumer) }
@@ -70,6 +88,7 @@ public actor ImageRequestPool<Key: Hashable & Sendable, Value: Sendable> {
 public actor ImageDecodeGate {
     private struct Waiter {
         let id: UUID
+        let priority: ImageWorkPriority?
         let continuation: CheckedContinuation<Void, Error>
     }
     private let limit: Int
@@ -79,7 +98,7 @@ public actor ImageDecodeGate {
 
     public init(limit: Int) { self.limit = max(1, limit) }
 
-    public func enter() async throws {
+    public func enter(priority: ImageWorkPriority? = nil) async throws {
         try Task.checkCancellation()
         if active < limit {
             active += 1
@@ -91,7 +110,7 @@ public actor ImageDecodeGate {
                 if Task.isCancelled {
                     continuation.resume(throwing: CancellationError())
                 } else {
-                    waiters.append(Waiter(id: id, continuation: continuation))
+                    waiters.append(Waiter(id: id, priority: priority, continuation: continuation))
                 }
             }
         } onCancel: {
@@ -103,7 +122,8 @@ public actor ImageDecodeGate {
         if waiters.isEmpty {
             active -= 1
         } else {
-            waiters.removeFirst().continuation.resume()
+            let next = waiters.firstIndex { $0.priority?.isVisible ?? true } ?? waiters.startIndex
+            waiters.remove(at: next).continuation.resume()
         }
     }
 

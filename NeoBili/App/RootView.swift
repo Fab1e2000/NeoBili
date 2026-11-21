@@ -18,6 +18,7 @@ struct RootView: View {
     private let offlineCache: OfflineCacheStore
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
+    @State private var castSession = CastSessionModel(service: ApplicationServices.live.cast)
     @State private var toolbarAccessory = RootToolbarAccessory()
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
@@ -55,6 +56,11 @@ struct RootView: View {
         _nowPlaying = State(initialValue: nowPlaying)
         _cacheNavigation = State(initialValue: cacheNavigation)
         self.offlineCache = offlineCache
+    }
+
+    private var onlinePlaybackActive: Bool {
+        nowPlaying.offline == nil && (nowPlaying.player != nil || nowPlaying.livePlayer != nil)
+            && (nowPlaying.isLoading || nowPlaying.isPlaying)
     }
 
     var body: some View {
@@ -111,6 +117,7 @@ struct RootView: View {
         .environment(\.videoPreparation, nowPlaying.preparationCache)
         .environment(account)
         .environment(feedback)
+        .environment(\.castSession, castSession)
         .environment(toolbarAccessory)
         .environment(themeIcon)
         .environment(\.videoTransitionNamespace, videoTransition)
@@ -123,6 +130,9 @@ struct RootView: View {
         // 冷启动时用 Keychain 里可能存在的登录凭据恢复会话；
         // 「我的」页在恢复完成前不会闪出登录按钮。
         .task { await account.restoreSessionIfNeeded() }
+        .task(id: onlinePlaybackActive) { [active = onlinePlaybackActive] in
+            await offlineCache.service.setOnlinePlaybackActive(active)
+        }
         .task(id: "\(themeID)-\(scenePhase == .active)") {
             guard scenePhase == .active else { return }
             // Coalesce rapid taps before asking the system to change the icon.

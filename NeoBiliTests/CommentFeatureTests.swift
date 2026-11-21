@@ -375,3 +375,51 @@ private actor ControlledCommentDeletion {
     }
     func finish() { continuation?.resume(); continuation = nil }
 }
+
+@MainActor
+extension CommentFeatureTests {
+    func testCommentRetryKeepsFirstPageAndRetriesFailedPage() async throws {
+        let first = try comment(1), second = try comment(2)
+        var requests: [Int] = []
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
+            requests.append(page)
+            if requests.count == 2 { throw URLError(.timedOut) }
+            return CommentPage(page: CommentPageInfo(num: page, size: 1, count: 2),
+                               replies: page == 1 ? [first] : [second])
+        })
+        await model.loadInitial()
+        await model.loadMoreIfNeeded(current: first)
+        XCTAssertEqual(model.comments.map(\.id), [1])
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertTrue(model.hasMore)
+        await model.retry()
+        XCTAssertEqual(requests, [1, 2, 2])
+        XCTAssertEqual(model.comments.map(\.id), [1, 2])
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.hasMore)
+    }
+
+    func testCancelledCommentRequestCanBeLoadedAgain() async throws {
+        let first = try comment(1)
+        var calls = 0
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
+            calls += 1
+            if calls == 1 { throw URLError(.cancelled) }
+            return CommentPage(page: CommentPageInfo(num: page, size: 1, count: 1), replies: [first])
+        })
+        await model.loadInitial()
+        XCTAssertNil(model.errorMessage)
+        await model.loadInitial()
+        XCTAssertEqual(model.comments.map(\.id), [1])
+    }
+
+    private func comment(_ id: Int) throws -> Comment {
+        try decode("""
+        {"rpid":\(id),"ctime":1,"like":0,"rcount":0,"member":{"uname":"test","avatar":""},"content":{"message":"test"}}
+        """)
+    }
+
+    private func decode<T: Decodable>(_ json: String) throws -> T {
+        try JSONDecoder().decode(T.self, from: Data(json.utf8))
+    }
+}

@@ -52,7 +52,7 @@ struct WatchLaterView: View {
                 } actions: {
                     Button("重试") { Task { await model.load(refresh: true) } }
                 }
-            } else if !isLoading, visibleItems.isEmpty, !model.hasMore {
+            } else if !isLoading, visibleItems.isEmpty, !model.hasMore, errorMessage == nil {
                 ContentUnavailableView(
                     items.isEmpty ? "稍后再看是空的" : "没有可显示的视频",
                     systemImage: items.isEmpty ? "flag.checkered" : "rectangle.slash"
@@ -152,7 +152,10 @@ struct WatchLaterView: View {
     private func row(_ item: WatchLaterItem, loadsNextPage: Bool) -> some View {
         let summary = item.asVideoSummary
 
-        return Button {
+        return LibraryVideoCardButton(
+            id: item.id, registry: menuRegistry,
+            isSelecting: model.isSelecting, isSelected: model.selectedIDs.contains(item.id)
+        ) {
             if model.isSelecting { model.toggle(item); return }
             guard let summary else { return }
             nowPlaying.open(
@@ -166,34 +169,20 @@ struct WatchLaterView: View {
                 from: "wl-\(summary.bvid)"
             )
         } label: {
-            HStack(spacing: 8) {
-                if model.isSelecting {
-                    Image(systemName: model.selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(model.selectedIDs.contains(item.id) ? Color.accentColor : .secondary)
-                        .font(.app(.title2))
-                }
-                if dynamicTypeSize.isAccessibilitySize {
-                    accessibleCard(item, summary: summary)
-                } else {
-                    VideoListCard(
-                coverURL: summary?.secureCoverURL,
-                title: item.title,
-                author: item.upper?.name ?? "",
-                playCount: -1,
-                durationText: summary?.formattedDuration ?? ""
-                    )
-                    .videoEntranceIdentity("wl:\(item.id)")
-                }
+            if dynamicTypeSize.isAccessibilitySize {
+                accessibleCard(item, summary: summary)
+            } else {
+                VideoListCard(
+                    coverURL: summary?.secureCoverURL,
+                    title: item.title,
+                    author: item.upper?.name ?? "",
+                    playCount: -1,
+                    durationText: summary?.formattedDuration ?? ""
+                )
+                .videoEntranceIdentity("wl:\(item.id)")
             }
-            .background(layoutProbe("card-\(item.id)"))
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(model.selectedIDs.contains(item.id) ? .isSelected : [])
-        .background { ResolvedMenuMarker(id: item.id, registry: menuRegistry) }
-        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { menuRegistry.setLayoutFrame(item.id, $0) }
-        .onDisappear { menuRegistry.clearLayoutFrame(item.id) }
-        // 与首页完全同款的转场源挂载（紧跟 buttonStyle）。前缀避免与首页
-        // 同一视频的转场源在共享命名空间里撞 id。
+        .background(layoutProbe("card-\(item.id)"))
         .videoTransitionSource("wl-\(summary?.bvid ?? "")", in: videoTransition)
         .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
         .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
@@ -230,7 +219,7 @@ struct WatchLaterView: View {
         .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 7))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous))
     }
 
     /// Geometry observation is injected only by rendering tests; normal scrolling has no probes.
@@ -245,9 +234,9 @@ struct WatchLaterView: View {
     private var paginationFooter: some View {
         Group {
             if let error = model.errorMessage {
-                VStack {
-                    Text(error).font(.app(.footnote)).foregroundStyle(.secondary)
-                    Button("重试") { Task { await model.load() } }
+                InlineLoadFailure(title: model.failedRefresh ? "稍后再看未能刷新" : "无法加载更多稍后再看视频",
+                                  message: error) {
+                    Task { await model.load() }
                 }
             } else if model.isLoading {
                 ProgressView()
@@ -262,12 +251,12 @@ struct WatchLaterView: View {
         let busy = model.isRemoving || isLoading || refresh.isRefreshing
         var actions: [UIAction] = []
         if !model.isSelecting {
-            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, fallback: id) { target in
+            actions.append(menuRegistry.action("多选", systemImage: "checkmark.circle", enabled: !busy, id: id) { target in
                 model.isSelecting = true
                 model.selectedIDs = [target]
             })
         }
-        actions.append(menuRegistry.action("移出稍后再看", systemImage: "flag.slash", destructive: true, enabled: !busy, fallback: id) { target in
+        actions.append(menuRegistry.action("移出稍后再看", systemImage: "flag.slash", destructive: true, enabled: !busy, id: id) { target in
             Task { await remove(ids: [target]) }
         })
         return UIMenu(children: actions)
