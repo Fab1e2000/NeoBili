@@ -38,8 +38,10 @@ final class CastSessionModel {
     private(set) var duration: TimeInterval = 0
     private(set) var volume: Int?
     private(set) var controlError: String?
+    private(set) var isSwitchingStream = false
 
     var isScrubbing = false
+    private var baseTimeOffset: TimeInterval = 0
     private var discoverTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var sessionToken = UUID()
@@ -60,6 +62,11 @@ final class CastSessionModel {
 
     var isActive: Bool {
         activeDevice != nil && activeMedia != nil && phase != .idle
+    }
+
+    /// 投屏模式是否开启：开启后离开播放页不会断开连接，点播新视频、离线缓存或直播时自动切换到当前投屏设备。
+    var isCastModeActive: Bool {
+        activeDevice != nil && phase != .idle
     }
 
     func isCasting(mediaID: String) -> Bool {
@@ -118,10 +125,12 @@ final class CastSessionModel {
         activeMedia = media
         phase = .connecting
         transportState = .transitioning
+        baseTimeOffset = media.source.usesServerSideTimeSeek ? media.startPosition : 0
         currentTime = media.startPosition
-        duration = 0
+        duration = media.duration
         volume = nil
         controlError = nil
+        isSwitchingStream = false
 
         do {
             try await service.startCasting(device: device, media: media)
@@ -129,6 +138,7 @@ final class CastSessionModel {
             rememberRecentDevice(device)
             phase = .casting
             transportState = .playing
+            isSwitchingStream = false
             if device.renderingControlURL != nil {
                 volume = try? await service.volume(device: device)
             }
@@ -140,6 +150,40 @@ final class CastSessionModel {
             phase = .error(message)
             controlError = message
             transportState = .stopped
+            isSwitchingStream = false
+            return false
+        }
+    }
+
+    /// 投屏期间热更新媒体源（如切换点播画质或直播清晰度）：保持当前投屏会话与进度上下文，失败不退出投屏模式。
+    @discardableResult
+    func hotUpdateMedia(_ media: CastMediaRequest) async -> Bool {
+        guard let device = activeDevice, isCastModeActive else { return false }
+        pollTask?.cancel()
+        let token = UUID()
+        sessionToken = token
+        isSwitchingStream = true
+        controlError = nil
+
+        do {
+            try await service.startCasting(device: device, media: media)
+            guard sessionToken == token else { return false }
+            activeMedia = media
+            baseTimeOffset = media.source.usesServerSideTimeSeek ? media.startPosition : 0
+            if media.duration > 0 { duration = media.duration }
+            if media.source.usesServerSideTimeSeek { currentTime = media.startPosition }
+            phase = .casting
+            transportState = .playing
+            isSwitchingStream = false
+            startPolling(token: token, device: device, media: media)
+            return true
+        } catch {
+            guard sessionToken == token else { return false }
+            isSwitchingStream = false
+            controlError = error.localizedDescription
+            if let existing = activeMedia, phase == .casting {
+                startPolling(token: token, device: device, media: existing)
+            }
             return false
         }
     }
@@ -168,6 +212,10 @@ final class CastSessionModel {
         let clamped = max(0, duration > 0 ? min(seconds, duration) : seconds)
         currentTime = clamped
         controlError = nil
+        if media.source.usesServerSideTimeSeek {
+            _ = await hotUpdateMedia(media.withStartPosition(clamped))
+            return
+        }
         do {
             try await service.seek(device: device, to: clamped)
         } catch {
@@ -208,6 +256,7 @@ final class CastSessionModel {
         duration = 0
         volume = nil
         controlError = nil
+        isSwitchingStream = false
 
         if let previousDevice {
             try? await service.stop(device: previousDevice)
@@ -263,9 +312,12 @@ final class CastSessionModel {
                    let info = try? await service.positionInfo(device: device) {
                     guard self.sessionToken == token else { break }
                     if !self.isScrubbing {
-                        self.currentTime = info.position
+                        let resolved = media.source.usesServerSideTimeSeek
+                            ? (self.baseTimeOffset + info.position)
+                            : info.position
+                        self.currentTime = self.duration > 0 ? min(resolved, self.duration) : resolved
                     }
-                    if info.duration > 0 {
+                    if !media.source.usesServerSideTimeSeek, info.duration > 0 {
                         self.duration = info.duration
                     }
                 }

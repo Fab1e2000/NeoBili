@@ -54,6 +54,14 @@ final class LiveCastBackend: Sendable {
                         || url.pathExtension.lowercased() == "m3u8"
                     route = .remoteMedia(url: url, headers: headers, mimeType: remoteMime, isHLS: isHLS)
                     mimeType = isHLS ? "application/vnd.apple.mpegurl" : remoteMime
+                case .remoteDualTrack(let videoURL, let audioURL, let headers):
+                    route = .remoteDualTrack(
+                        videoURL: videoURL,
+                        audioURL: audioURL,
+                        headers: headers,
+                        startPosition: media.startPosition
+                    )
+                    mimeType = "video/mp4"
                 case .localFile(let url, let localMime):
                     route = .localFile(url: url, mimeType: localMime)
                     mimeType = localMime
@@ -73,7 +81,7 @@ final class LiveCastBackend: Sendable {
                     isLive: media.kind == .live
                 )
                 try await controlClient.play(device: device)
-                if media.kind.supportsSeeking, media.startPosition >= 3 {
+                if media.kind.supportsSeeking, !media.source.usesServerSideTimeSeek, media.startPosition >= 3 {
                     // 部分电视起播后需短暂进入 PLAYING/TRANSITIONING 状态才接受 Seek。
                     try? await Task.sleep(for: .milliseconds(500))
                     try? await controlClient.seek(device: device, to: media.startPosition)

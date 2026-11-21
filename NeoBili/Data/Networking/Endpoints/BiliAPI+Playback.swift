@@ -37,8 +37,8 @@ extension BiliAPI {
 
     /// 投屏专用取流：优先请求服务端合并好的单文件 MP4（durl），避免电视无法播放分离的 DASH 音视频轨。
     static func castPlayURL(bvid: String, cid: Int, quality: Int = 80, client: APIClient, identity: DeviceIdentity) async throws -> PlayURLData {
-        let preferred = min(max(32, quality), 80)
-        var candidates = [preferred, 64, 32]
+        let preferred = max(16, quality)
+        var candidates = [preferred, 80, 64, 32]
         var seen = Set<Int>()
         candidates = candidates.filter { seen.insert($0).inserted }
 

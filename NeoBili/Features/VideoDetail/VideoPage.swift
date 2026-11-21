@@ -13,6 +13,7 @@ struct VideoPage: View {
     /// 点赞、投币这些操作都要求登录，按钮点下去时据此决定是执行还是提示登录。
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
+    @Environment(\.castSession) private var castSession
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.scenePhase) private var scenePhase
 
@@ -35,9 +36,17 @@ struct VideoPage: View {
 
     private var isFullScreen: Bool { isPortraitFullScreen || verticalSizeClass == .compact }
     private var isPortraitVideo: Bool { VideoFullscreenOrientation.preferred(for: inlineAspectRatio) == .portrait }
-    /// 首帧前以及重取播放地址期间属于加载，不能套用暂停后的隐藏／染色行为。
+    private var isCastingCurrentVideo: Bool {
+        guard let player = store.player else { return false }
+        let mediaID = player.isOffline ? "offline:\(player.bvid):\(player.cid)" : "video:\(player.bvid):\(player.cid)"
+        return castSession?.isCasting(mediaID: mediaID) == true
+    }
+
+    /// 首帧前以及重取播放地址期间属于加载，不能套用暂停后的隐藏／染色行为；
+    /// 投屏期间按播放态约束：横屏视频保持固定展开，竖屏视频最多收缩至默认横视频尺寸，绝不收进标题栏。
     private var collapsePhase: InlineVideoPlaybackPhase {
-        store.dismissalPlaybackPhase ?? InlineVideoPlaybackPhase(
+        if isCastingCurrentVideo { return .playing }
+        return store.dismissalPlaybackPhase ?? InlineVideoPlaybackPhase(
             isPlaying: store.player?.isPlaying == true,
             hasRenderedFirstFrame: store.player?.hasRenderedFirstFrame == true,
             isLoading: store.player?.isLoading ?? true
@@ -304,6 +313,13 @@ struct VideoPage: View {
             } else {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     collapseMotion.distance = collapseLayout.distanceAfterPlaybackChange(collapseMotion.distance, to: phase)
+                }
+            }
+        }
+        .onChange(of: isCastingCurrentVideo) { _, casting in
+            if casting {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    collapseMotion.distance = collapseLayout.constrainedDistance(collapseMotion.distance, for: .playing)
                 }
             }
         }

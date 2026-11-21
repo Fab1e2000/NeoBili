@@ -320,6 +320,133 @@ final class CastTests: XCTestCase {
     }
 
     @MainActor
+    func testCastModePersistsAndSwitchesMediaOnSameDevice() async {
+        let device = CastDevice(
+            id: "kodi-mode",
+            name: "Kodi",
+            location: URL(string: "http://10.208.23.6:1680/desc.xml")!,
+            avTransportControlURL: URL(string: "http://10.208.23.6:1680/AVTransport")!
+        )
+        let recorder = CastCallRecorder()
+        let service = CastService(
+            startCastingOperation: { dev, media in await recorder.record("cast:\(dev.id):\(media.id)") },
+            stopOperation: { _ in await recorder.record("stop") },
+            stopServerOperation: { await recorder.record("stopServer") }
+        )
+
+        let model = CastSessionModel(service: service, pollInterval: .seconds(60), recentDefaults: nil)
+        let first = CastMediaRequest(
+            id: "video:BV1:1",
+            title: "视频一",
+            kind: .video,
+            source: .remoteHTTP(url: URL(string: "https://example.com/1.mp4")!, headers: [:], mimeType: "video/mp4")
+        )
+        let second = CastMediaRequest(
+            id: "live:1001",
+            title: "直播二",
+            kind: .live,
+            source: .remoteHTTP(url: URL(string: "https://example.com/live.m3u8")!, headers: [:], mimeType: "application/vnd.apple.mpegurl")
+        )
+
+        let firstStarted = await model.startCasting(device: device, media: first)
+        XCTAssertTrue(firstStarted)
+        XCTAssertTrue(model.isCastModeActive)
+        XCTAssertTrue(model.isCasting(mediaID: "video:BV1:1"))
+
+        let switched = await model.startCasting(device: device, media: second)
+        XCTAssertTrue(switched)
+        XCTAssertTrue(model.isCastModeActive)
+        XCTAssertFalse(model.isCasting(mediaID: "video:BV1:1"))
+        XCTAssertTrue(model.isCasting(mediaID: "live:1001"))
+
+        _ = await model.stopCasting()
+        XCTAssertFalse(model.isCastModeActive)
+        let calls = await recorder.calls
+        XCTAssertEqual(calls, ["cast:kodi-mode:video:BV1:1", "cast:kodi-mode:live:1001", "stop", "stopServer"])
+    }
+
+    func testDASHCastRemuxerProducesValidFragmentedMP4FromDualTracks() async throws {
+        let bundle = Bundle(for: Self.self)
+        let videoFixture = try XCTUnwrap(
+            bundle.url(forResource: "offline-video", withExtension: "mp4", subdirectory: "Fixtures/Offline")
+                ?? bundle.url(forResource: "offline-video", withExtension: "mp4")
+        )
+        let audioFixture = try XCTUnwrap(
+            bundle.url(forResource: "offline-audio", withExtension: "m4a", subdirectory: "Fixtures/Offline")
+                ?? bundle.url(forResource: "offline-audio", withExtension: "m4a")
+        )
+
+        var output = Data()
+        try DASHCastRemuxer.stream(
+            videoURL: videoFixture,
+            audioURL: audioFixture,
+            headers: [:],
+            startPosition: 0
+        ) { chunk in
+            output.append(chunk)
+            return true
+        }
+
+        XCTAssertGreaterThan(output.count, 1024)
+        XCTAssertNotNil(output.range(of: Data("ftyp".utf8)))
+        XCTAssertNotNil(output.range(of: Data("moov".utf8)))
+        XCTAssertNotNil(output.range(of: Data("moof".utf8)))
+
+        let tempOutput = FileManager.default.temporaryDirectory
+            .appendingPathComponent("neobili-dash-remux-\(UUID().uuidString).mp4")
+        try output.write(to: tempOutput)
+        defer { try? FileManager.default.removeItem(at: tempOutput) }
+
+        let asset = AVURLAsset(url: tempOutput)
+        let vTracks = try await asset.loadTracks(withMediaType: .video)
+        let aTracks = try await asset.loadTracks(withMediaType: .audio)
+        XCTAssertFalse(vTracks.isEmpty)
+        XCTAssertFalse(aTracks.isEmpty)
+    }
+
+    @MainActor
+    func testHotUpdateAndServerSideTimeSeekKeepCastMode() async {
+        let device = CastDevice(
+            id: "kodi-dash",
+            name: "Kodi",
+            location: URL(string: "http://10.208.23.6:1680/desc.xml")!,
+            avTransportControlURL: URL(string: "http://10.208.23.6:1680/AVTransport")!
+        )
+        let recorder = CastCallRecorder()
+        let service = CastService(
+            startCastingOperation: { _, media in
+                await recorder.record("cast:\(media.title)@\(Int(media.startPosition))")
+            },
+            stopOperation: { _ in },
+            stopServerOperation: {}
+        )
+
+        let model = CastSessionModel(service: service, pollInterval: .seconds(60), recentDefaults: nil)
+        let media = CastMediaRequest(
+            id: "video:BV3:1",
+            title: "4K",
+            kind: .video,
+            startPosition: 10,
+            duration: 300,
+            source: .remoteDualTrack(
+                videoURL: URL(string: "https://example.com/v.m4s")!,
+                audioURL: URL(string: "https://example.com/a.m4s")!,
+                headers: [:]
+            )
+        )
+
+        let started = await model.startCasting(device: device, media: media)
+        XCTAssertTrue(started)
+        XCTAssertEqual(model.duration, 300)
+        XCTAssertEqual(model.currentTime, 10)
+
+        await model.seek(to: 125)
+        XCTAssertEqual(model.currentTime, 125)
+        let calls = await recorder.calls
+        XCTAssertEqual(calls, ["cast:4K@10", "cast:4K@125"])
+    }
+
+    @MainActor
     func testLivePlayerPrefersHLSForCasting() async {
         let room = LiveRoom(roomID: 1001, title: "测试直播", username: "主播")
         let flv = LiveStreamCandidate(

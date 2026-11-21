@@ -51,8 +51,15 @@ public enum CastMediaKind: String, Hashable, Sendable {
 
 public enum CastMediaSource: Hashable, Sendable {
     case remoteHTTP(url: URL, headers: [String: String], mimeType: String)
+    case remoteDualTrack(videoURL: URL, audioURL: URL?, headers: [String: String])
     case localFile(url: URL, mimeType: String)
     case localDualTrack(videoURL: URL, audioURL: URL)
+
+    /// 实时混流输出使用时间偏移重定位，不依赖电视端字节 Range Seek。
+    public var usesServerSideTimeSeek: Bool {
+        if case .remoteDualTrack = self { return true }
+        return false
+    }
 }
 
 public struct CastMediaRequest: Hashable, Sendable {
@@ -61,6 +68,7 @@ public struct CastMediaRequest: Hashable, Sendable {
     public let subtitle: String
     public let kind: CastMediaKind
     public let startPosition: TimeInterval
+    public let duration: TimeInterval
     public let source: CastMediaSource
 
     public init(
@@ -69,6 +77,7 @@ public struct CastMediaRequest: Hashable, Sendable {
         subtitle: String = "",
         kind: CastMediaKind,
         startPosition: TimeInterval = 0,
+        duration: TimeInterval = 0,
         source: CastMediaSource
     ) {
         self.id = id
@@ -76,7 +85,20 @@ public struct CastMediaRequest: Hashable, Sendable {
         self.subtitle = subtitle
         self.kind = kind
         self.startPosition = max(0, startPosition)
+        self.duration = max(0, duration)
         self.source = source
+    }
+
+    public func withStartPosition(_ seconds: TimeInterval) -> CastMediaRequest {
+        CastMediaRequest(
+            id: id,
+            title: title,
+            subtitle: subtitle,
+            kind: kind,
+            startPosition: seconds,
+            duration: duration,
+            source: source
+        )
     }
 }
 

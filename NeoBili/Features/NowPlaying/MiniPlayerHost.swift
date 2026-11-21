@@ -17,17 +17,22 @@ private struct TabMiniPlayerHost: ViewModifier {
     let transitionNamespace: Namespace.ID?
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @Environment(NowPlayingStore.self) private var store
+    @Environment(\.castSession) private var castSession
+
+    private var showsBar: Bool {
+        isActive() && ((miniPlayerEnabled && store.hasMedia) || castSession?.isCastModeActive == true)
+    }
 
     @ViewBuilder
     func body(content: Content) -> some View {
         // 保留全屏页下方的附件，使 zoom 退出始终有稳定的标题栏目标。
         if #available(iOS 26.1, *) {
-            content.tabViewBottomAccessory(isEnabled: miniPlayerEnabled && store.hasMedia && isActive()) {
+            content.tabViewBottomAccessory(isEnabled: showsBar) {
                 MiniPlayerBar(transitionNamespace: transitionNamespace)
             }
         } else {
             content.tabViewBottomAccessory {
-                if miniPlayerEnabled && store.hasMedia && isActive() {
+                if showsBar {
                     MiniPlayerBar(transitionNamespace: transitionNamespace)
                 }
             }
@@ -40,10 +45,15 @@ private struct SheetMiniPlayerHost: ViewModifier {
     let transitionNamespace: Namespace.ID?
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @Environment(NowPlayingStore.self) private var store
+    @Environment(\.castSession) private var castSession
+
+    private var showsBar: Bool {
+        isActive() && ((miniPlayerEnabled && store.hasMedia) || castSession?.isCastModeActive == true)
+    }
 
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom, spacing: 0) {
-            if miniPlayerEnabled && store.hasMedia && isActive() {
+            if showsBar {
                 MiniPlayerBar(transitionNamespace: transitionNamespace)
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22))
                     .padding(.horizontal, 12)

@@ -173,7 +173,7 @@ param/track_id、卡片类型及已有附加字段放入 Protobuf，使用 Recor
 
 ## DLNA 投屏
 
-`CastService` 契约和设备/状态值属于 `NeoBiliDomain`，`CastSessionModel` 在 `Application/Casting` 中统一管理设备发现、活动投屏会话与进度轮询，通过 `castSession` 环境值向在线点播、离线缓存与直播页面提供同一会话状态。`Platform/Casting` 提供纯 Swift 实现的 SSDP 发现、UPnP SOAP 控制（`DLNAXMLCodec` / `UPnPControlClient`）、本地 HTTP Range 代理（`LocalMediaProxyServer`）和离线双轨快速无损封装（`OfflineCastMuxer`）。在线点播通过 `VideoService.castPlayURL` 获取单文件合并 MP4，直播优先选择 HLS 并由本地代理重写分片 URI 以透传防盗链请求头，离线缓存直接经本地代理分块输出；投屏独立于 `MPVPlayerSession`，起播后暂停本地内核，退出投屏时同步进度回本地续播。
+`CastService` 契约和设备/状态值属于 `NeoBiliDomain`，`CastSessionModel` 在 `Application/Casting` 中统一管理设备发现、持久投屏模式与进度轮询，通过 `castSession` 环境值向在线点播、离线缓存、直播页面与底部缩略条提供同一会话状态。`Platform/Casting` 提供纯 Swift 实现的 SSDP 发现（含同网段单播兜底）、UPnP SOAP 控制（`DLNAXMLCodec` / `UPnPControlClient`）、基于 `MPVKit` 内置 `Libavformat` 的实时无损 DASH 混流器（`DASHCastRemuxer`）、本地 HTTP Range/Chunked 代理（`LocalMediaProxyServer`）和离线双轨硬链接无损封装（`OfflineCastMuxer`）。在线点播优先获取完整 DASH 音视频轨并经 `DASHCastRemuxer` 实时封装为 Fragmented MP4 流式投屏（无 DASH 时回退合并 MP4），支持全部高画质与独立音质热切换及服务端时间偏移 Seek；直播优先选择 HLS 并由本地代理重写分片 URI 以透传防盗链请求头；离线缓存直接经本地代理分块输出。投屏模式开启后离开播放页保持连接，点播新内容时自动切换投屏目标并暂停本地内核，退出投屏时同步进度回本地续播。
 
 ## 弹幕渲染预算
 

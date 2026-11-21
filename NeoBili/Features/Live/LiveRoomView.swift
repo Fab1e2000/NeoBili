@@ -5,6 +5,7 @@ import SwiftUI
 
 struct LiveRoomView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.applicationServices) private var services
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.castSession) private var castSession
@@ -24,6 +25,7 @@ struct LiveRoomView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var keepsControlsForMenu = false
     @State private var isCastPickerPresented = false
+    @State private var castSelectedQuality: Int?
     @State private var danmaku = LiveDanmakuModel()
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(DanmakuSettings.liveEnabledKey) private var liveDanmakuEnabled = DanmakuSettings.defaultValue
@@ -101,17 +103,28 @@ struct LiveRoomView: View {
             danmaku.start(roomID: player.danmakuRoomID)
         }
         .actionFeedbackOverlay()
-        .onChange(of: player.isPlaying) { scheduleHide(afterInteraction: false) }
+        .onChange(of: player.isPlaying) { _, playing in
+            scheduleHide(afterInteraction: false)
+            if playing, isCastingCurrentLive || castSession?.isCastModeActive == true {
+                player.pause()
+            }
+        }
+        // 投屏模式下进入新的直播间，待直播流就绪后自动切换到当前投屏设备。
+        .task(id: "\(castMediaID)-\(player.preferredCastCandidate()?.id ?? "")-\(castSession?.activeDevice?.id ?? "")") {
+            guard let castSession,
+                  castSession.isCastModeActive,
+                  let device = castSession.activeDevice,
+                  castSession.activeMedia?.id != castMediaID,
+                  player.preferredCastCandidate() != nil else { return }
+            player.pause()
+            startCasting(to: device)
+        }
         .onChange(of: voiceOverEnabled) { scheduleHide(afterInteraction: false) }
         .onChange(of: player.displayAspectRatio) { if isFullScreen { applyFullScreenOrientation() } }
         .onDisappear {
             hideTask?.cancel()
             if !keepsPlaybackOnDismiss {
                 player.stop()
-                if let castSession {
-                    let mediaID = castMediaID
-                    Task { await castSession.stopIfCasting(mediaID: mediaID) }
-                }
             }
             danmaku.stop()
             OrientationController.endPlaybackOrientation(owner: orientationOwner)
@@ -173,6 +186,7 @@ struct LiveRoomView: View {
                     castSession: castSession,
                     isFullScreen: isFullScreen,
                     safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
+                    videoQualityControl: castQualityControl,
                     onBack: { if isFullScreen { toggleFullScreen() } else { if let onReturn { onReturn() } else { dismiss() } } },
                     onSwitchDevice: { isCastPickerPresented = true },
                     onExitCast: exitCasting
@@ -308,6 +322,69 @@ struct LiveRoomView: View {
         }
     }
 
+    private var castQualityControl: PlayerQualityControl? {
+        guard !player.qualities.isEmpty else { return nil }
+        let selected = castSelectedQuality ?? player.selectedQuality
+        let title = player.qualities.first { $0.id == selected }?.name ?? LiveQuality.defaultName(for: selected)
+        return PlayerQualityControl(
+            title: title,
+            accessibilityLabel: String(localized: "直播投屏清晰度"),
+            options: player.qualities.map { .init(id: $0.id, title: $0.name) },
+            selectedID: selected,
+            isEnabled: !player.qualities.isEmpty && !player.isOffline,
+            onSelect: { switchCastLiveQuality(to: $0) }
+        )
+    }
+
+    private func switchCastLiveQuality(to targetQuality: Int) {
+        guard let castSession,
+              castSession.isCastModeActive,
+              !castSession.isSwitchingStream,
+              targetQuality != (castSelectedQuality ?? player.selectedQuality) else { return }
+
+        let roomID = player.danmakuRoomID
+        let mediaID = castMediaID
+        let title = player.room.title
+        let subtitle = player.room.username
+
+        Task {
+            do {
+                let playback = try await services.streaming.playback(roomID: roomID, quality: targetQuality)
+                guard let candidate = playback.candidates.first(where: { $0.isHLS }) ?? playback.candidates.first else {
+                    throw CastError.mediaUnavailable(String(localized: "该清晰度暂不可用"))
+                }
+                var headers = candidate.headers
+                if headers["Referer"] == nil {
+                    headers["Referer"] = "https://live.bilibili.com/\(roomID)"
+                }
+                if headers["User-Agent"] == nil {
+                    headers["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+                }
+                let mimeType = candidate.isHLS ? "application/vnd.apple.mpegurl" : "video/x-flv"
+                let request = CastMediaRequest(
+                    id: mediaID,
+                    title: title,
+                    subtitle: subtitle,
+                    kind: .live,
+                    source: .remoteHTTP(url: candidate.url, headers: headers, mimeType: mimeType)
+                )
+                let updated = await castSession.hotUpdateMedia(request)
+                if updated {
+                    castSelectedQuality = candidate.quality
+                    let name = player.qualities.first { $0.id == candidate.quality }?.name
+                        ?? LiveQuality.defaultName(for: candidate.quality)
+                    feedback.show(String(localized: "已切换至 \(name)"))
+                } else if let err = castSession.controlError {
+                    feedback.show(err)
+                }
+            } catch {
+                if !error.isCancellation {
+                    feedback.show(error.localizedDescription)
+                }
+            }
+        }
+    }
+
     private func startCasting(to device: CastDevice) {
         guard let castSession else { return }
         guard let candidate = player.preferredCastCandidate() else {
@@ -332,6 +409,7 @@ struct LiveRoomView: View {
         Task {
             let started = await castSession.startCasting(device: device, media: request)
             if started {
+                castSelectedQuality = candidate.quality
                 player.pause()
                 feedback.show(String(localized: "已投屏到 \(device.name)"))
             } else if case .error(let message) = castSession.phase {

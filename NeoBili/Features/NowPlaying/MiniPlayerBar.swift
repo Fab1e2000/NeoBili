@@ -7,30 +7,58 @@ import SwiftUI
 struct MiniPlayerBar: View {
     let transitionNamespace: Namespace.ID?
     @Environment(NowPlayingStore.self) private var store
+    @Environment(\.castSession) private var castSession
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
 
     private var isInline: Bool { placement == .inline }
-    private var title: String { store.livePlayer?.room.title ?? store.detailViewModel?.detail?.title ?? store.route?.title ?? String(localized: "视频加载中") }
-    private var error: String? { store.livePlayer?.errorMessage ?? store.player?.errorMessage ?? store.detailViewModel?.errorMessage }
+    private var isCastMode: Bool { castSession?.isCastModeActive == true }
+    private var title: String {
+        if isCastMode, let castTitle = castSession?.activeMedia?.title, !castTitle.isEmpty {
+            return castTitle
+        }
+        return store.livePlayer?.room.title ?? store.detailViewModel?.detail?.title ?? store.route?.title ?? String(localized: "视频加载中")
+    }
+    private var error: String? {
+        if isCastMode {
+            if case .error(let message) = castSession?.phase { return message }
+            return nil
+        }
+        return store.livePlayer?.errorMessage ?? store.player?.errorMessage ?? store.detailViewModel?.errorMessage
+    }
     var body: some View {
-        if store.hasMedia {
+        if store.hasMedia || isCastMode {
             HStack(spacing: isInline ? 6 : 10) {
-                Button(action: store.expandMiniPlayer) {
-                    Text(title)
-                        .font(.app(.subheadline, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
+                Button {
+                    if store.hasMedia { store.expandMiniPlayer() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isCastMode {
+                            Image(systemName: "tv.badge.wifi")
+                                .font(.app(.subheadline, weight: .semibold))
+                                .foregroundStyle(.tint)
+                        }
+                        Text(title)
+                            .font(.app(.subheadline, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("展开视频：\(title)")
+                .accessibilityLabel(isCastMode ? "投屏中：\(title)" : "展开视频：\(title)")
                 .accessibilityIdentifier("miniPlayer.expand")
 
-                Button(action: store.togglePlayback) {
+                Button(action: handleTogglePlayback) {
                     Group {
                         if error != nil {
                             Image(systemName: "exclamationmark.triangle")
+                        } else if isCastMode {
+                            if castSession?.phase == .connecting {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: castSession?.transportState.isPlaying == true ? "pause.fill" : "play.fill")
+                            }
                         } else if store.isWaitingForPlayback {
                             Image(systemName: "play.fill")
                         } else if store.isLoading || (store.livePlayer?.isBuffering ?? store.player?.isBuffering ?? false) {
@@ -44,19 +72,19 @@ struct MiniPlayerBar: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled((!store.hasRenderedFirstFrame && !store.isWaitingForPlayback) || error != nil)
-                .accessibilityLabel(store.isPlaying ? "暂停" : "播放")
+                .disabled(isCastMode ? (castSession?.phase != .casting) : ((!store.hasRenderedFirstFrame && !store.isWaitingForPlayback) || error != nil))
+                .accessibilityLabel((isCastMode ? castSession?.transportState.isPlaying == true : store.isPlaying) ? "暂停" : "播放")
                 .accessibilityIdentifier("miniPlayer.playPause")
 
                 if !isInline {
-                    Button(action: store.close) {
+                    Button(action: handleClose) {
                         Image(systemName: "xmark")
                             .font(.app(.body, weight: .medium))
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("关闭播放器")
+                    .accessibilityLabel(isCastMode ? "退出投屏" : "关闭播放器")
                     .accessibilityIdentifier("miniPlayer.close")
                 }
             }
@@ -64,10 +92,10 @@ struct MiniPlayerBar: View {
             .padding(.vertical, isInline ? 2 : 6)
             .contentShape(Rectangle())
             .accessibilityElement(children: .contain)
-            .accessibilityAction(named: "关闭播放器", store.close)
+            .accessibilityAction(named: isCastMode ? "退出投屏" : "关闭播放器", handleClose)
             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 22))
             .contextMenu {
-                Button("关闭播放器", systemImage: "xmark", action: store.close)
+                Button(isCastMode ? "退出投屏" : "关闭播放器", systemImage: "xmark", action: handleClose)
             } preview: {
                 // The accessory changes placement as the tab bar collapses.
                 // A standalone preview must not inherit that layout or its zoom anchor.
@@ -89,6 +117,23 @@ struct MiniPlayerBar: View {
                         .accessibilityHidden(true)
                 }
             }
+        }
+    }
+
+    private func handleTogglePlayback() {
+        if isCastMode, let castSession {
+            Task { await castSession.togglePlayPause() }
+        } else {
+            store.togglePlayback()
+        }
+    }
+
+    private func handleClose() {
+        if isCastMode, let castSession {
+            Task { _ = await castSession.stopCasting() }
+            if store.hasMedia { store.close() }
+        } else {
+            store.close()
         }
     }
 }

@@ -12,6 +12,7 @@ actor LocalMediaProxyServer {
     enum Route: Sendable {
         case localFile(url: URL, mimeType: String)
         case remoteMedia(url: URL, headers: [String: String], mimeType: String, isHLS: Bool)
+        case remoteDualTrack(videoURL: URL, audioURL: URL?, headers: [String: String], startPosition: TimeInterval)
     }
 
     struct ByteRange: Equatable, Sendable {
@@ -126,6 +127,8 @@ actor LocalMediaProxyServer {
             fileName = "media.\(ext)"
         case .remoteMedia(_, _, _, let isHLS):
             fileName = isHLS ? "live.m3u8" : "media.mp4"
+        case .remoteDualTrack:
+            fileName = "dash.mp4"
         }
         guard let url = URL(string: "http://\(host):\(boundPort)/cast/\(token)/\(fileName)") else {
             throw CastError.proxyStartFailed("无法生成本地代理地址")
@@ -234,7 +237,103 @@ actor LocalMediaProxyServer {
                 isHead: isHead,
                 upstreamSession: upstreamSession
             )
+        case .remoteDualTrack(let videoURL, let audioURL, let headers, let startPosition):
+            await serveRemoteDualTrack(
+                connection: connection,
+                videoURL: videoURL,
+                audioURL: audioURL,
+                headers: headers,
+                startPosition: startPosition,
+                isHead: isHead
+            )
         }
+    }
+
+    private static func serveRemoteDualTrack(
+        connection: NWConnection,
+        videoURL: URL,
+        audioURL: URL?,
+        headers: [String: String],
+        startPosition: TimeInterval,
+        isHead: Bool
+    ) async {
+        let header = [
+            "HTTP/1.1 200 OK",
+            "Content-Type: video/mp4",
+            "Transfer-Encoding: chunked",
+            "Cache-Control: no-cache",
+            "Connection: close",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        guard await send(Data(header.utf8), over: connection) else { return }
+        guard !isHead else { return }
+
+        final class CancellationState: @unchecked Sendable {
+            private let lock = NSLock()
+            private var cancelled = false
+            func cancel() {
+                lock.lock()
+                cancelled = true
+                lock.unlock()
+            }
+            var isCancelled: Bool {
+                lock.lock()
+                defer { lock.unlock() }
+                return cancelled
+            }
+        }
+        let state = CancellationState()
+        let box = SendableConnectionBox(connection)
+
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    defer { continuation.resume() }
+                    do {
+                        try DASHCastRemuxer.stream(
+                            videoURL: videoURL,
+                            audioURL: audioURL,
+                            headers: headers,
+                            startPosition: startPosition,
+                            isCancelled: { state.isCancelled },
+                            onChunk: { chunk in
+                                guard !state.isCancelled else { return false }
+                                let frame = Self.makeHTTPChunk(chunk)
+                                return Self.sendSync(frame, over: box.connection)
+                            }
+                        )
+                        if !state.isCancelled {
+                            _ = Self.sendSync(Data("0\r\n\r\n".utf8), over: box.connection)
+                        }
+                    } catch {
+                        // 上游断开或客户端中止时静默结束连接。
+                    }
+                }
+            }
+        } onCancel: {
+            state.cancel()
+        }
+    }
+
+    private static func makeHTTPChunk(_ payload: Data) -> Data {
+        let prefix = String(format: "%x\r\n", payload.count)
+        var framed = Data(prefix.utf8)
+        framed.append(payload)
+        framed.append(Data("\r\n".utf8))
+        return framed
+    }
+
+    private static func sendSync(_ data: Data, over connection: NWConnection) -> Bool {
+        final class ResultBox: @unchecked Sendable { var ok = false }
+        let result = ResultBox()
+        let semaphore = DispatchSemaphore(value: 0)
+        connection.send(content: data, completion: .contentProcessed { error in
+            result.ok = (error == nil)
+            semaphore.signal()
+        })
+        semaphore.wait()
+        return result.ok
     }
 
     private static func serveLocalFile(
