@@ -52,9 +52,32 @@ jobs:
           printf '%s\n' 'n015.top ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBhZA+79dAGqkvQjrVjdZI//7h83DsTUjd89Bi+xVQjP' >> ~/.ssh/known_hosts
           ipa=$(mktemp)
           gh release download "$TAG" --pattern 'NeoBili-*-unsigned.ipa' --output "$ipa" --clobber
-          ssh -i ~/.ssh/neobili -o IdentitiesOnly=yes ubuntu@n015.top put-ipa "$TAG" < "$ipa"
-          ssh -i ~/.ssh/neobili -o IdentitiesOnly=yes ubuntu@n015.top put-icon < design/app-icon-2026/Cards-production.png
-          ssh -i ~/.ssh/neobili -o IdentitiesOnly=yes ubuntu@n015.top put-json < sidestore/apps.json
+          upload() {
+            local payload
+            payload=$(mktemp)
+            cat > "$payload"
+            local attempt
+            for attempt in 1 2 3; do
+              if timeout 600 ssh -i ~/.ssh/neobili \
+                -o IdentitiesOnly=yes \
+                -o ConnectTimeout=30 \
+                -o ServerAliveInterval=15 \
+                -o ServerAliveCountMax=4 \
+                ubuntu@n015.top "$@" < "$payload"; then
+                rm -f "$payload"
+                return 0
+              fi
+              echo "::warning::上传失败（第 ${attempt} 次）：$*"
+              if [[ "$attempt" -lt 3 ]]; then
+                sleep 10
+              fi
+            done
+            rm -f "$payload"
+            return 1
+          }
+          upload put-ipa "$TAG" < "$ipa"
+          upload put-icon < design/app-icon-2026/Cards-production.png
+          upload put-json < sidestore/apps.json
 
       - name: Commit the source on main
         id: source
