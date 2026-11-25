@@ -6,6 +6,40 @@ import XCTest
 @MainActor
 final class CommentPerformanceTests: XCTestCase {
     private let emoteStore = CommentEmoteStore(loader: { _ in throw URLError(.notConnectedToInternet) })
+
+    func testCancellingCollectionPrefetchStopsAnEmoteWithoutAnAvatar() async throws {
+        let started = expectation(description: "emote prefetch started")
+        let cancelled = expectation(description: "emote prefetch cancelled")
+        let store = CommentEmoteStore { _ in
+            started.fulfill()
+            try await withTaskCancellationHandler {
+                try await Task.sleep(for: .seconds(10))
+            } onCancel: {
+                cancelled.fulfill()
+            }
+            throw URLError(.cancelled)
+        }
+        let comment = try JSONDecoder().decode(Comment.self, from: Data("""
+        {"rpid":1,"ctime":1,"like":0,"rcount":0,"member":{"uname":"测试","avatar":""},
+         "content":{"message":"[doge]","emote":{"[doge]":{"url":"https://example.invalid/doge.png","meta":{"size":1}}}}}
+        """.utf8))
+        let model = CommentsViewModel(aid: 1)
+        let worker = CommentCollectionView(viewModel: model, rows: [model.rowModel(for: comment)], scrollRevision: 0)
+        let coordinator = worker.makeCoordinator()
+        let view = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
+        var environment = EnvironmentValues()
+        environment.commentEmoteStore = store
+        coordinator.attach(view)
+        defer { coordinator.detach() }
+        coordinator.update(worker: worker, environment: environment)
+
+        let indexPath = IndexPath(item: 1, section: 0)
+        coordinator.collectionView(view, prefetchItemsAt: [indexPath])
+        await fulfillment(of: [started], timeout: 2)
+        coordinator.collectionView(view, cancelPrefetchingForItemsAt: [indexPath])
+        await fulfillment(of: [cancelled], timeout: 2)
+    }
+
     func testEmoteCacheTracksMetadataAndPreservesUnknownText() {
         let small = CommentEmote(url: "https://example.invalid/a.png", meta: .init(size: 1))
         let large = CommentEmote(url: "https://example.invalid/b.png", meta: .init(size: 2))

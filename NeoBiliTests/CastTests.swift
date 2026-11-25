@@ -1,5 +1,7 @@
 import AVFoundation
 import Foundation
+import Network
+import Synchronization
 import XCTest
 @testable import NeoBili
 @testable import NeoBiliDomain
@@ -186,6 +188,36 @@ final class CastTests: XCTestCase {
         XCTAssertEqual((invalidResp as? HTTPURLResponse)?.statusCode, 404)
     }
 
+    func testRemoteProxyForwardsMultiChunkRangeAndHead() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).mp4")
+        let content = Data((0..<1_048_576).map { UInt8($0 % 251) })
+        try content.write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let upstream = LocalMediaProxyServer()
+        let proxy = LocalMediaProxyServer()
+        defer { Task { await proxy.stop(); await upstream.stop() } }
+        let origin = try await upstream.publish(.localFile(url: file, mimeType: "video/mp4"), host: "127.0.0.1")
+        let url = try await proxy.publish(.remoteMedia(url: origin, headers: [:], mimeType: "video/mp4", isHLS: false),
+                                          host: "127.0.0.1")
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        request.setValue("bytes=7-900006", forHTTPHeaderField: "Range")
+        let (bytes, response) = try await session.data(for: request)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 206)
+        XCTAssertEqual(http.value(forHTTPHeaderField: "Content-Range"), "bytes 7-900006/1048576")
+        XCTAssertEqual(bytes, Data(content[7...900006]))
+        XCTAssertEqual(http.value(forHTTPHeaderField: "Content-Type"), "video/mp4")
+
+        request.httpMethod = "HEAD"
+        let (headBytes, headResponse) = try await session.data(for: request)
+        let head = try XCTUnwrap(headResponse as? HTTPURLResponse)
+        XCTAssertEqual(head.statusCode, 206)
+        XCTAssertEqual(head.value(forHTTPHeaderField: "Content-Length"), "900000")
+        XCTAssertTrue(headBytes.isEmpty)
+    }
+
     // MARK: - CastSessionModel
 
     @MainActor
@@ -363,6 +395,48 @@ final class CastTests: XCTestCase {
         XCTAssertFalse(model.isCastModeActive)
         let calls = await recorder.calls
         XCTAssertEqual(calls, ["cast:kodi-mode:video:BV1:1", "cast:kodi-mode:live:1001", "stop", "stopServer"])
+    }
+
+    func testDASHRemuxCancellationInterruptsOpenBeforeUpstreamResponds() async throws {
+        let queue = DispatchQueue(label: "test.cast.stalled-origin")
+        let listener = try NWListener(using: .tcp)
+        let ready = expectation(description: "upstream listening")
+        let accepted = expectation(description: "upstream accepted input request")
+        let stopped = expectation(description: "remux returned after cancellation")
+        let cancelled = Mutex(false)
+        let peer = Mutex<NWConnection?>(nil)
+        listener.stateUpdateHandler = { if case .ready = $0 { ready.fulfill() } }
+        listener.newConnectionHandler = { connection in
+            peer.withLock { $0 = connection }
+            connection.start(queue: queue)
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { _, _, _, _ in
+                accepted.fulfill()
+            }
+        }
+        listener.start(queue: queue)
+        defer {
+            cancelled.withLock { $0 = true }
+            listener.cancel()
+            peer.withLock { $0?.cancel() }
+        }
+        await fulfillment(of: [ready], timeout: 2)
+        let port = try XCTUnwrap(listener.port)
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port.rawValue)/stalled.mp4"))
+        DispatchQueue.global(qos: .userInitiated).async {
+            defer { stopped.fulfill() }
+            do {
+                try DASHCastRemuxer.stream(videoURL: url, audioURL: nil, headers: [:],
+                                         isCancelled: { cancelled.withLock { $0 } }) { _ in
+                    XCTFail("The stalled upstream cannot produce media")
+                    return false
+                }
+            } catch {
+                XCTFail("Cancellation should exit quietly: \(error)")
+            }
+        }
+        await fulfillment(of: [accepted], timeout: 3)
+        cancelled.withLock { $0 = true }
+        await fulfillment(of: [stopped], timeout: 3)
     }
 
     func testDASHCastRemuxerProducesValidFragmentedMP4FromDualTracks() async throws {

@@ -12,6 +12,13 @@ import SwiftUI
 @Observable
 final class LiveDanmakuModel {
     typealias SuperChatLoader = @MainActor (Int) async throws -> [[String: Any]]
+
+    struct ConnectionContext: Equatable {
+        let roomID: Int
+        let hasRenderedFirstFrame: Bool
+        let scenePhase: ScenePhase
+    }
+
     struct Medal: Hashable, Sendable {
         let name: String
         let level: Int
@@ -62,6 +69,7 @@ final class LiveDanmakuModel {
     private var roomID = 0
     @ObservationIgnored private let stream: any LiveDanmakuStreaming
     private var connectGeneration = 0
+    @ObservationIgnored private var pendingStart: Task<Void, Never>?
     @ObservationIgnored private var historyTask: Task<Void, Never>?
     @ObservationIgnored private let superChatLoader: SuperChatLoader
     @ObservationIgnored private var pendingMessages: [Message] = []
@@ -77,9 +85,29 @@ final class LiveDanmakuModel {
 
     // MARK: - 生命周期
 
+    func updateConnection(from previous: ConnectionContext, to current: ConnectionContext) {
+        if current.scenePhase == .background, previous.scenePhase != .background {
+            stop()
+            return
+        }
+        pendingStart?.cancel()
+        pendingStart = nil
+        guard current.scenePhase == .active, current.roomID > 0, current.roomID != roomID else { return }
+        if current.hasRenderedFirstFrame || previous.scenePhase != .active {
+            start(roomID: current.roomID)
+            return
+        }
+        // Give the first media request a head start, while keeping chat available if video stalls.
+        pendingStart = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(800)) } catch { return }
+            guard !Task.isCancelled, let self else { return }
+            pendingStart = nil
+            start(roomID: current.roomID)
+        }
+    }
+
     func start(roomID newRoomID: Int) {
-        guard newRoomID > 0 else { return }
-        guard roomID != newRoomID || connection == .idle else { return }
+        guard newRoomID > 0, roomID != newRoomID else { return }
         stop()
         roomID = newRoomID
         connectGeneration += 1
@@ -89,6 +117,9 @@ final class LiveDanmakuModel {
     }
 
     func stop() {
+        pendingStart?.cancel()
+        pendingStart = nil
+        roomID = 0
         connectGeneration += 1
         stream.stop()
         historyTask?.cancel()

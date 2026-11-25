@@ -84,6 +84,7 @@ final class CommentEmoteStore {
     /// Each row joins the shared load. A disappearing row cancels only its
     /// own wait, so another visible comment cannot lose its pending emote.
     func preload(_ emotes: [CommentEmote]) async {
+        guard !Task.isCancelled else { return }
         let urls = Set(emotes.compactMap(\.secureURL))
         await withTaskGroup(of: Void.self) { group in
             for url in urls {

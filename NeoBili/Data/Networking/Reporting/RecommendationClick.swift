@@ -79,9 +79,8 @@ public actor RecommendationClickReporter {
         persist()
         while let event = queue.first, identity.loginSessionID == session {
             do {
-                let headers = try await identity.appRequestHeaders(expectedSessionID: session)
                 let body = try event.body(uploadTime: Int(Date().timeIntervalSince1970 * 1000))
-                try await client.postRecommendationClick(body: body, eventCount: 1, headers: headers, expectedSessionID: session)
+                try await client.postRecommendationClick(body: body, eventCount: 1, expectedSessionID: session)
                 queue.removeAll { $0.id == event.id }; persist()
             } catch {
                 // Retain only failures known to occur before a connection. A timeout

@@ -2,11 +2,56 @@
 @testable import NeoBiliDomain
 import Observation
 import Synchronization
+import UIKit
 import XCTest
 @testable import NeoBili
 
 @MainActor
 final class HomeInlinePreviewPerformanceTests: XCTestCase {
+    #if NEOBILI_REGRESSION
+    func testVisibilityCallbacksCoalesceAndScrollEndFlushesPendingSample() async throws {
+        let coordinator = HomeFeedCollection.Coordinator()
+        let view = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
+        let cell = UICollectionViewCell()
+        let indexPath = IndexPath(item: 0, section: 0)
+        func reportVisibilityChanges() {
+            for _ in 0..<20 {
+                coordinator.collectionView(view, willDisplay: cell, forItemAt: indexPath)
+                coordinator.collectionView(view, didEndDisplaying: cell, forItemAt: indexPath)
+            }
+        }
+        coordinator.updateExposure()
+        reportVisibilityChanges()
+        XCTAssertEqual(coordinator.observationSampleCount, 1)
+        let deadline = ContinuousClock.now + .seconds(2)
+        while coordinator.observationSampleCount == 1, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(coordinator.observationSampleCount, 2, "静止时也要补采可见项")
+
+        reportVisibilityChanges()
+        coordinator.scrollViewDidEndDecelerating(view)
+        XCTAssertEqual(coordinator.observationSampleCount, 3)
+        try await Task.sleep(for: .milliseconds(130))
+        XCTAssertEqual(coordinator.observationSampleCount, 3, "滚动结束已采样，应取消待执行的重复采样")
+    }
+    #endif
+
+    func testDisablingInlinePlaybackClearsPendingPreviewBeforeNextSample() {
+        let coordinator = HomeFeedCollection.Coordinator()
+        let card = video(1)
+        coordinator.inlinePlaybackEnabled = true
+        coordinator.updateExposure()
+        coordinator.preview.select(card)
+        coordinator.scheduleExposureUpdate()
+        XCTAssertEqual(coordinator.preview.videoID, card.bvid)
+        XCTAssertNil(coordinator.preview.session)
+
+        coordinator.inlinePlaybackEnabled = false
+
+        XCTAssertNil(coordinator.preview.videoID, "Disabling the preview must cancel the pending start synchronously")
+    }
+
     private func video(_ id: Int, cid: Int? = nil) -> VideoSummary {
         var video = VideoSummary(bvid: "preview-performance-\(id)", aid: id, cid: cid ?? id,
             title: "Preview fixture", pic: "", desc: "", duration: 120, pubdate: 0,

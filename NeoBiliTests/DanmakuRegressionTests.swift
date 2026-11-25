@@ -99,6 +99,28 @@ final class DanmakuRegressionTests: XCTestCase {
         XCTAssertEqual(items.first?.color, 0xFF0000)
     }
 
+    func testParserSortsTimelineAndPreservesOrderOfEqualTimestamps() throws {
+        let xml = Data("""
+        <i><d p="10,1">第一条</d><d p="2,1">更早</d><d p="10,1">第二条</d></i>
+        """.utf8)
+        let items = DanmakuLoader.parse(xml)
+        XCTAssertEqual(items.map(\.time), [2, 10, 10])
+        XCTAssertEqual(items.map(\.text), ["更早", "第一条", "第二条"])
+        XCTAssertEqual(try DanmakuLoader.parseValidated(xml).map(\.text), items.map(\.text))
+    }
+
+    func testPrepareStillAcceptsUnsortedItems() {
+        let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
+        engine.prepare(items: [
+            DanmakuItem(time: 10, text: "稍后", mode: 5, color: 0xFFFFFF),
+            DanmakuItem(time: 1, text: "先展示", mode: 5, color: 0xFFFFFF)
+        ])
+        engine.update(currentTime: 1)
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+        engine.update(currentTime: 10)
+        XCTAssertEqual(engine.layer.sublayers?.count, 2)
+    }
+
     func testLiveStandardHeaderColorDoesNotRequireExtraJSON() throws {
         let model = LiveDanmakuModel()
         let data = try JSONSerialization.data(withJSONObject: [
@@ -247,6 +269,34 @@ final class DanmakuRegressionTests: XCTestCase {
     }
 
 #if NEOBILI_REGRESSION
+    func testBackgroundStopsTicksAndDropsRasterizationUntilForeground() {
+        let frame = CGRect(x: 0, y: 0, width: 400, height: 240)
+        let window = UIWindow(frame: frame)
+        let engine = DanmakuEngine(frame: frame)
+        window.addSubview(engine)
+        defer { engine.removeFromSuperview() }
+        let notifications = NotificationCenter.default
+        func present(_ text: String) {
+            engine.presentImmediately(.init(time: 0, text: text, mode: 5, color: 0xFFFFFF))
+        }
+        present("正在展示")
+        XCTAssertTrue(engine.isTicking)
+        notifications.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        defer { notifications.post(name: UIApplication.willEnterForegroundNotification, object: nil) }
+        XCTAssertFalse(engine.isTicking)
+        let bitmapRequests = engine.bitmapRequestCount
+        present("后台消息")
+        engine.advance(by: 10)
+        XCTAssertEqual(engine.bitmapRequestCount, bitmapRequests)
+        XCTAssertEqual(engine.layer.sublayers?.count, 1)
+
+        engine.setTimelinePaused(true)
+        notifications.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        XCTAssertFalse(engine.isTicking)
+        engine.setTimelinePaused(false)
+        XCTAssertTrue(engine.isTicking)
+    }
+
     func testBurstBoundsRasterizationAndRecoversWithoutDelayingTimeline() {
         let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 2_400))
         var now = 0.0

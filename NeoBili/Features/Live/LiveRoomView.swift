@@ -41,6 +41,11 @@ struct LiveRoomView: View {
               isLoggedIn: account.isLoggedIn, accountID: account.accountID)
     }
 
+    private var danmakuContext: LiveDanmakuModel.ConnectionContext {
+        .init(roomID: player.danmakuRoomID, hasRenderedFirstFrame: player.hasRenderedFirstFrame,
+              scenePhase: scenePhase)
+    }
+
     private var shareURL: URL { URL(string: "https://live.bilibili.com/\(player.room.roomID)")! }
     private var castMediaID: String { "live:\(player.danmakuRoomID)" }
     private var isCastingCurrentLive: Bool { castSession?.isCasting(mediaID: castMediaID) == true }
@@ -90,19 +95,8 @@ struct LiveRoomView: View {
         .task(id: followContext) { await following.load(followContext) }
         // 真实房间号在播放地址返回后才更新；跟着它（重）连弹幕服务器。
         // 列表常驻；飘幕开关只影响画面上的那层。
-        .task(id: "\(player.danmakuRoomID)-\(player.hasRenderedFirstFrame)") {
-            // Give the media request a short head start, but keep chat available if video stalls.
-            if !player.hasRenderedFirstFrame {
-                do { try await Task.sleep(for: .milliseconds(800)) } catch { return }
-            }
-            guard !Task.isCancelled else { return }
-            danmaku.start(roomID: player.danmakuRoomID)
-        }
-        // 退后台后直播 WS 必断，回前台主动重连，不等心跳超时才暴露。
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            danmaku.stop()
-            danmaku.start(roomID: player.danmakuRoomID)
+        .onChange(of: danmakuContext, initial: true) { previous, current in
+            danmaku.updateConnection(from: previous, to: current)
         }
         .actionFeedbackOverlay()
         .onChange(of: player.isPlaying) { _, playing in

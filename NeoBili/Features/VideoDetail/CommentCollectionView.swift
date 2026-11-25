@@ -70,7 +70,11 @@ struct CommentCollectionView: UIViewRepresentable {
         private var actions: CommentRowActions?
         private var lastScrollRevision = 0
         private var restoredOffset = false
-        private var prefetches: [ItemID: Task<Void, Never>] = [:]
+        private struct Prefetch {
+            let id: ItemID
+            let tasks: [Task<Void, Never>]
+        }
+        private var prefetches: [IndexPath: Prefetch] = [:]
         var reservation: CGFloat = 0
         private var minimumContentHeight: CGFloat = 0
         let collapse = PausedVideoCollapseScroll.Observer()
@@ -99,7 +103,7 @@ struct CommentCollectionView: UIViewRepresentable {
         }
 
         func detach() {
-            prefetches.values.forEach { $0.cancel() }
+            prefetches.values.forEach { $0.tasks.forEach { $0.cancel() } }
             prefetches.removeAll()
             collapse.detach()
         }
@@ -144,6 +148,12 @@ struct CommentCollectionView: UIViewRepresentable {
             let previousRowIDs = Set(rowsByID.keys)
             rowsByID = newByID
             appliedCommentIDs = rows.map(\.comment.id)
+            if previousIDs != appliedCommentIDs {
+                for (indexPath, prefetch) in prefetches
+                where !ids.indices.contains(indexPath.item) || ids[indexPath.item] != prefetch.id {
+                    cancelPrefetch(at: indexPath)
+                }
+            }
 
             var snapshot = NSDiffableDataSourceSnapshot<Int, ItemID>()
             snapshot.appendSections([0])
@@ -275,7 +285,7 @@ struct CommentCollectionView: UIViewRepresentable {
             updateMinimumHeightInset()
             guard let id = dataSource?.itemIdentifier(for: indexPath),
                   case .comment(let commentID) = id,
-                  let comment = worker.viewModel.comments.first(where: { $0.id == commentID }) else { return }
+                  let comment = rowsByID[commentID]?.comment else { return }
             let viewModel = worker.viewModel
             guard viewModel.comments.suffix(5).contains(where: { $0.id == commentID }) else { return }
             Task { await viewModel.loadMoreIfNeeded(current: comment) }
@@ -290,25 +300,28 @@ struct CommentCollectionView: UIViewRepresentable {
             for indexPath in indexPaths {
                 guard let id = dataSource?.itemIdentifier(for: indexPath),
                       case .comment(let commentID) = id,
-                      prefetches[id] == nil,
-                      let comment = worker.viewModel.comments.first(where: { $0.id == commentID }) else { continue }
+                      prefetches[indexPath] == nil,
+                      let comment = rowsByID[commentID]?.comment else { continue }
+                var tasks: [Task<Void, Never>] = []
                 if let task = BiliImageLoader.prefetch(comment.member.secureAvatarURL,
                                                        pointSize: CGSize(width: CommentLayout.avatarSize,
                                                                          height: CommentLayout.avatarSize),
                                                        scale: scale, pipeline: pipeline) {
-                    prefetches[id] = task
+                    tasks.append(task)
                 }
                 if !comment.emotes.isEmpty {
-                    Task { await emoteStore.preload(Array(comment.emotes.values)) }
+                    tasks.append(Task { await emoteStore.preload(Array(comment.emotes.values)) })
                 }
+                if !tasks.isEmpty { prefetches[indexPath] = Prefetch(id: id, tasks: tasks) }
             }
         }
 
         func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
-            for indexPath in indexPaths {
-                guard let id = dataSource?.itemIdentifier(for: indexPath) else { continue }
-                prefetches.removeValue(forKey: id)?.cancel()
-            }
+            for indexPath in indexPaths { cancelPrefetch(at: indexPath) }
+        }
+
+        private func cancelPrefetch(at indexPath: IndexPath) {
+            prefetches.removeValue(forKey: indexPath)?.tasks.forEach { $0.cancel() }
         }
     }
 }

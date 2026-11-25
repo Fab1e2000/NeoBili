@@ -262,10 +262,10 @@ public struct APIClient: Sendable {
     }
 
     /// Confirmed home-card event transport. No automatic retry of an ambiguous write.
-    func postRecommendationClick(body: Data, eventCount: Int, headers: [String: String], expectedSessionID: UUID, realtime: Bool = false) async throws {
+    func postRecommendationClick(body: Data, eventCount: Int, expectedSessionID: UUID, realtime: Bool = false) async throws {
         let account = try await appAccount(expectedSessionID: expectedSessionID)
         let operation: AppRequest = realtime ? .realtimeLog(body: body, eventCount: eventCount) : .unrealtimeLog(body: body, eventCount: eventCount)
-        let request = try await encodeAppRequest(operation, context: .init(account: account, headers: headers))
+        let request = try await encodeAppRequest(operation, context: .init(account: account, headers: [:]))
         let (body, response) = try await data(for: request, retries: 0)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw BiliAPIError.httpStatus((response as? HTTPURLResponse)?.statusCode ?? -1)

@@ -81,6 +81,7 @@ final class DanmakuEngine: UIView {
     private var staticTracks: [StaticItem?] = []
     private var displayLink: CADisplayLink?
     private var lastTick: TimeInterval = 0
+    private var isInBackground = false
 
     /// 活动图层硬上限：防御异常刷屏把合成器压垮，超出的直接丢弃。
     private static let maximumActiveLayers = 90
@@ -88,6 +89,7 @@ final class DanmakuEngine: UIView {
 #if NEOBILI_REGRESSION
     /// Deterministic workload evidence for burst admission, without timing noise.
     private(set) var bitmapRequestCount = 0
+    var isTicking: Bool { displayLink != nil }
 #endif
 
     private let bitmapCache: NSCache<NSString, UIImage> = {
@@ -135,6 +137,11 @@ final class DanmakuEngine: UIView {
         isAccessibilityElement = false
         clearsContextBeforeDrawing = false
         clipsToBounds = true
+        isInBackground = UIApplication.shared.applicationState == .background
+        NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground),
+            name: UIApplication.willEnterForegroundNotification, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -156,7 +163,14 @@ final class DanmakuEngine: UIView {
     // MARK: - 时间轴注入（视频）
 
     func prepare(items: [DanmakuItem]) {
-        self.items = items.sorted { $0.time < $1.time }
+        var needsSort = false
+        for index in items.indices.dropFirst() {
+            if !(items[index - 1].time <= items[index].time) {
+                needsSort = true
+                break
+            }
+        }
+        self.items = needsSort ? items.sorted { $0.time < $1.time } : items
         clear(keepTimelineAt: 0)
     }
 
@@ -267,6 +281,7 @@ final class DanmakuEngine: UIView {
     }
 
     private func present(_ item: DanmakuItem) {
+        guard !isInBackground else { return }
         if !item.isScroll && (item.isTop ? blockTop : blockBottom) { return }
         guard bounds.width > 10, activeCount < (isResourceConstrained() ? 30 : Self.maximumActiveLayers) else { return }
         rebuildTracks()
@@ -355,9 +370,19 @@ final class DanmakuEngine: UIView {
 
     // MARK: - 逐帧推进
 
+    @objc private func didEnterBackground() {
+        isInBackground = true
+        stopTicking()
+    }
+
+    @objc private func willEnterForeground() {
+        isInBackground = false
+        startTickingIfNeeded()
+    }
+
     private func startTickingIfNeeded() {
         guard window != nil, displayLink == nil, activeCount > 0,
-              !isSuppressed,
+              !isInBackground, !isSuppressed,
               !(mode == .video && isTimelinePaused) else { return }
         let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
         // Text motion does not need to drive a ProMotion display at 120 Hz.
@@ -383,7 +408,7 @@ final class DanmakuEngine: UIView {
     }
 
     func advance(by dt: TimeInterval) {
-        guard !isSuppressed, !(mode == .video && isTimelinePaused) else { return }
+        guard !isInBackground, !isSuppressed, !(mode == .video && isTimelinePaused) else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }

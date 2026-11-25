@@ -1,11 +1,45 @@
+import NeoBiliCore
+import Synchronization
 import UIKit
 import XCTest
 @testable import NeoBili
+
+private final class ReleaseProbe: Sendable {
+    private let onRelease: @Sendable () -> Void
+
+    init(_ onRelease: @escaping @Sendable () -> Void) {
+        self.onRelease = onRelease
+    }
+
+    deinit { onRelease() }
+}
 
 @MainActor
 final class ImagePipelineIntegrationTests: XCTestCase {
     private let notifications = NotificationCenter()
     private lazy var pipeline = BiliImagePipeline(cache: BiliImageCache(notifications: notifications), download: { _ in throw URLError(.notConnectedToInternet) })
+
+    func testReplacementEvictionAndClearReleaseValuesAfterUnlocking() {
+        let cache = ImageMemoryCache<Int, ReleaseProbe>(maximumBytes: 1, maximumEntries: 1)
+        let results = Mutex<[Bool]>([])
+        func probe() -> ReleaseProbe {
+            ReleaseProbe { [weak cache] in
+                guard let cache else { return }
+                let read = DispatchSemaphore(value: 0)
+                DispatchQueue.global().async {
+                    _ = cache.cachedByteCount
+                    read.signal()
+                }
+                let unlocked = read.wait(timeout: .now() + 1) == .success
+                results.withLock { $0.append(unlocked) }
+            }
+        }
+        cache.insert(probe(), for: 1, cost: 1)
+        cache.insert(probe(), for: 1, cost: 1)
+        cache.insert(probe(), for: 2, cost: 1)
+        cache.removeAll()
+        XCTAssertEqual(results.withLock { $0 }, [true, true, true])
+    }
 
     func testSynchronousAndAsyncCachesHaveOneOwnerAndMemoryWarningClearsBoth() async throws {
         let url = URL(string: "https://example.invalid/image-cache-\(UUID()).png")!

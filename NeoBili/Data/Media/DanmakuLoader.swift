@@ -28,7 +28,7 @@ public enum DanmakuLoader {
         let delegate = ParserDelegate(limit: maximumItems)
         parser.delegate = delegate
         parser.parse()
-        return delegate.items
+        return delegate.sortedItems()
     }
 
     nonisolated static func parseValidated(_ data: Data) throws -> [DanmakuItem] {
@@ -36,17 +36,22 @@ public enum DanmakuLoader {
         let delegate = ParserDelegate(limit: maximumItems)
         parser.delegate = delegate
         guard parser.parse(), delegate.root == "i" else { throw URLError(.cannotParseResponse) }
-        return delegate.items
+        return delegate.sortedItems()
     }
 
     private final class ParserDelegate: NSObject, XMLParserDelegate {
         private let limit: Int
-        private(set) var items: [DanmakuItem] = []
+        private var items: [DanmakuItem] = []
         private var pendingAttributes: [String: String]?
         private var text = ""
         private(set) var root: String?
 
         init(limit: Int) { self.limit = limit }
+
+        func sortedItems() -> [DanmakuItem] {
+            items.sort { $0.time < $1.time }
+            return items
+        }
 
         func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
                     qualifiedName: String?, attributes: [String: String]) {
