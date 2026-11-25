@@ -9,11 +9,14 @@ struct CastPlaybackOverlay: View {
     let isFullScreen: Bool
     var safeAreaInsets = EdgeInsets()
     var videoQualityControl: PlayerQualityControl? = nil
-    var audioQualityControl: PlayerQualityControl? = nil
+    var hiResControl: PlayerHiResControl? = nil
+    var hasEpisodes = false
+    var supportsPlaybackMode = true
     let onBack: () -> Void
     let onSwitchDevice: () -> Void
     let onExitCast: () -> Void
 
+    @Environment(\.playbackModePreferences) private var modePreferences
     @State private var scrubPosition: TimeInterval = 0
 
     private var supportsSeeking: Bool {
@@ -101,12 +104,16 @@ struct CastPlaybackOverlay: View {
             .buttonStyle(.plain)
             .accessibilityLabel(isFullScreen ? "退出全屏" : "返回")
 
+            if let hiResControl {
+                hiResButton(hiResControl, compact: compact)
+            }
+
             if let videoQualityControl {
                 qualityMenu(videoQualityControl, compact: compact, identifier: "cast.videoQuality")
             }
 
-            if let audioQualityControl {
-                qualityMenu(audioQualityControl, compact: compact, identifier: "cast.audioQuality")
+            if supportsPlaybackMode {
+                playbackModeMenu(compact: compact)
             }
 
             Spacer(minLength: 4)
@@ -146,6 +153,72 @@ struct CastPlaybackOverlay: View {
             .buttonStyle(.plain)
         }
         .frame(height: compact ? 34 : 44)
+    }
+
+    @ViewBuilder
+    private func hiResButton(_ control: PlayerHiResControl, compact: Bool) -> some View {
+        Button(action: control.onToggle) {
+            Text(control.title)
+                .font(.app(compact ? .caption2 : .caption, weight: .semibold))
+                .foregroundStyle(control.isActive ? Color.white : Color.white.opacity(0.45))
+                .lineLimit(1)
+                .padding(.horizontal, compact ? 8 : 10)
+                .padding(.vertical, compact ? 5 : 6)
+                .background(.white.opacity(control.isActive ? 0.24 : 0.12), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!control.isEnabled || castSession.isSwitchingStream || castSession.phase == .connecting)
+        .accessibilityLabel(control.isActive ? "关闭 Hi-Res 音质" : "开启 Hi-Res 音质")
+        .accessibilityIdentifier("cast.audioQuality")
+    }
+
+    @ViewBuilder
+    private func playbackModeMenu(compact: Bool) -> some View {
+        let autoTitle = PlaybackModeSettings.autoAdvanceTitle(hasEpisodes: hasEpisodes)
+        let currentTitle: String = modePreferences.loopEnabled
+            ? String(localized: "洗脑循环")
+            : (modePreferences.autoAdvanceEnabled ? autoTitle : String(localized: "播完暂停"))
+        Menu {
+            Button {
+                modePreferences.toggleLoop()
+            } label: {
+                if modePreferences.loopEnabled {
+                    Label("洗脑循环", systemImage: "checkmark")
+                } else {
+                    Text("洗脑循环")
+                }
+            }
+            Divider()
+            Button {
+                modePreferences.setAutoAdvanceEnabled(true)
+            } label: {
+                if modePreferences.autoAdvanceEnabled {
+                    Label(autoTitle, systemImage: "checkmark")
+                } else {
+                    Text(autoTitle)
+                }
+            }
+            Button {
+                modePreferences.setAutoAdvanceEnabled(false)
+            } label: {
+                if !modePreferences.autoAdvanceEnabled {
+                    Label("播完暂停", systemImage: "checkmark")
+                } else {
+                    Text("播完暂停")
+                }
+            }
+        } label: {
+            Text(currentTitle)
+                .font(.app(compact ? .caption2 : .caption, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, compact ? 8 : 10)
+                .padding(.vertical, compact ? 5 : 6)
+                .background(.white.opacity(0.16), in: Capsule())
+        }
+        .accessibilityLabel("播放模式")
+        .accessibilityValue(currentTitle)
+        .accessibilityIdentifier("cast.mode")
     }
 
     @ViewBuilder

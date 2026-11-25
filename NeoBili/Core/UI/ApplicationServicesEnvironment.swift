@@ -16,6 +16,11 @@ extension EnvironmentValues {
         get { injectedPlayerChromePreferences ?? .shared }
         set { injectedPlayerChromePreferences = newValue }
     }
+    @Entry private var injectedPlaybackModePreferences: PlaybackModePreferences?
+    @MainActor var playbackModePreferences: PlaybackModePreferences {
+        get { injectedPlaybackModePreferences ?? .shared }
+        set { injectedPlaybackModePreferences = newValue }
+    }
     @Entry var videoPreparation: VideoPreparationCache = ApplicationServices.playbackPreparation
     @Entry var applicationServices: ApplicationServices = .live
 }

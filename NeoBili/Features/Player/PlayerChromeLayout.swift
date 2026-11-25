@@ -10,6 +10,7 @@ struct PlayerChromeLayout {
     let mode: Mode
     let back: CGRect
     let more: CGRect
+    let playbackMode: CGRect
     let transport: CGRect
     let timeline: CGRect
     let fullScreen: CGRect
@@ -23,6 +24,7 @@ struct PlayerChromeLayout {
 
     init(bounds: CGRect, textScale: CGFloat = 1, isFullScreen: Bool = false,
          hasVideoQuality: Bool = false, hasAudioQuality: Bool = false,
+         hasPlaybackMode: Bool = false,
          hasDanmaku: Bool = false, hasSendDanmaku: Bool = false,
          videoQualityWidth: CGFloat? = nil, audioQualityWidth: CGFloat? = nil,
          spacing: CGFloat = 16) {
@@ -49,27 +51,31 @@ struct PlayerChromeLayout {
         // The collapsed title strip cannot fit two 48pt hit rows. Its own page
         // controls handle expansion; keep only the timeline/fullscreen row here.
         guard mode != .minimal else {
-            back = .zero; more = .zero; transport = .zero; danmaku = .zero
+            back = .zero; more = .zero; playbackMode = .zero; transport = .zero; danmaku = .zero
             videoQuality = .zero; audioQuality = .zero; metadata = .zero
             return
         }
         back = CGRect(x: bounds.minX, y: bounds.minY, width: target, height: target)
         more = CGRect(x: bounds.maxX - target, y: bounds.minY, width: target, height: target)
-        danmaku = hasDanmaku ? CGRect(x: more.minX - circleToCircle - target, y: bounds.minY, width: target, height: target) : .zero
-        let rightEdge = hasDanmaku ? danmaku.minX : more.minX
-        let count = (hasVideoQuality ? 1 : 0) + (hasAudioQuality ? 1 : 0)
+        playbackMode = hasPlaybackMode
+            ? CGRect(x: more.minX - circleToCircle - target, y: bounds.minY, width: target, height: target) : .zero
+        let beforeDanmaku = hasPlaybackMode ? playbackMode.minX : more.minX
+        danmaku = hasDanmaku ? CGRect(x: beforeDanmaku - circleToCircle - target, y: bounds.minY, width: target, height: target) : .zero
+        let rightEdge = hasDanmaku ? danmaku.minX : beforeDanmaku
+        let count = (hasAudioQuality ? 1 : 0) + (hasVideoQuality ? 1 : 0)
         let available = max(0, rightEdge - back.maxX - circleToPill * 2 - pillToPill * CGFloat(max(0, count - 1)))
         if count > 0, available >= CGFloat(count) * target {
+            let requestedAudio = hasAudioQuality ? max(target, audioQualityWidth ?? 80 * scale) : 0
             let requestedVideo = hasVideoQuality ? max(target, videoQualityWidth ?? 112 * scale) : 0
-            let requestedAudio = hasAudioQuality ? max(target, audioQualityWidth ?? 112 * scale) : 0
             let extra = max(0, requestedVideo + requestedAudio - target * CGFloat(count))
             let compression = extra > 0 ? min(1, max(0, available - target * CGFloat(count)) / extra) : 1
-            let videoWidth = hasVideoQuality ? target + (requestedVideo - target) * compression : 0
             let audioWidth = hasAudioQuality ? target + (requestedAudio - target) * compression : 0
-            let start = rightEdge - circleToPill - videoWidth - audioWidth - CGFloat(count - 1) * pillToPill
-            videoQuality = hasVideoQuality ? CGRect(x: start, y: bounds.minY, width: videoWidth, height: target) : .zero
-            audioQuality = hasAudioQuality ? CGRect(x: hasVideoQuality ? start + videoWidth + pillToPill : start,
-                                                     y: bounds.minY, width: audioWidth, height: target) : .zero
+            let videoWidth = hasVideoQuality ? target + (requestedVideo - target) * compression : 0
+            let start = rightEdge - circleToPill - audioWidth - videoWidth - CGFloat(count - 1) * pillToPill
+            // 音质（Hi-Res 开关）位于画质按钮左侧。
+            audioQuality = hasAudioQuality ? CGRect(x: start, y: bounds.minY, width: audioWidth, height: target) : .zero
+            videoQuality = hasVideoQuality ? CGRect(x: hasAudioQuality ? start + audioWidth + pillToPill : start,
+                                                     y: bounds.minY, width: videoWidth, height: target) : .zero
             let width = min(240, start - pillToPill - back.maxX - circleToPill)
             metadata = width >= 120 ? CGRect(x: back.maxX + circleToPill, y: bounds.minY, width: width, height: target) : .zero
         } else {

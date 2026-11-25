@@ -151,8 +151,11 @@ private struct SampleChrome: View {
             title: String(localized: "示例视频标题"),
             videoQualityControl: PlayerQualityControl(title: "1080P", accessibilityLabel: String(localized: "分辨率"), options: [],
                                                      selectedID: 0, isEnabled: true, onSelect: { _ in }),
-            audioQualityControl: PlayerQualityControl(title: "192K", accessibilityLabel: String(localized: "音质"), options: [],
-                                                     selectedID: 0, isEnabled: true, onSelect: { _ in }),
+            playbackModeControl: PlayerPlaybackModeControl(
+                loopEnabled: false, autoAdvanceEnabled: true,
+                autoAdvanceTitle: String(localized: "自动连播"),
+                onToggleLoop: {}, onSetAutoAdvance: { _ in }
+            ),
             position: 83, duration: 300, buffered: 120,
             isPlaying: true, canControlPlayback: true, isFullScreen: isFullScreen,
             safeAreaInsets: safeAreaInsets,

@@ -27,6 +27,7 @@ final class PlayerViewModel {
     private(set) var errorMessage: String?
     private(set) var isPlaying = false
     private(set) var playbackRate: Double = 1
+    @ObservationIgnored var onPlaybackEnded: (@MainActor () -> Void)?
 
     private var rateBeforeLongPress: Double?
 
@@ -779,11 +780,17 @@ final class PlayerViewModel {
             reporting.finishWatchReport(context: reportingContext)
             if sleepsAfterVideoEnd {
                 enterSleep()
+                dependencies.systemMedia.updatePlaybackState(
+                    isPlaying: false,
+                    sessionID: systemMediaSessionID, rate: playbackRate
+                )
+            } else {
+                dependencies.systemMedia.updatePlaybackState(
+                    isPlaying: false,
+                    sessionID: systemMediaSessionID, rate: playbackRate
+                )
+                onPlaybackEnded?()
             }
-            dependencies.systemMedia.updatePlaybackState(
-                isPlaying: false,
-                sessionID: systemMediaSessionID, rate: playbackRate
-            )
         case .error(let message):
             recoverFromSourceFailure(message)
         }

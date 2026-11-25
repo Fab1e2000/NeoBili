@@ -41,10 +41,12 @@ final class CastSessionModel {
     private(set) var isSwitchingStream = false
 
     var isScrubbing = false
+    @ObservationIgnored var onPlaybackEnded: (@MainActor (String) -> Void)?
     private var baseTimeOffset: TimeInterval = 0
     private var discoverTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var sessionToken = UUID()
+    private var endedNotifiedToken: UUID?
 
     init(service: CastService = CastService(),
          pollInterval: Duration = .seconds(1),
@@ -293,9 +295,25 @@ final class CastSessionModel {
         return decoded
     }
 
+    @discardableResult
+    func replayCurrentMedia() async -> Bool {
+        guard let device = activeDevice, let media = activeMedia else { return false }
+        let restarted = CastMediaRequest(
+            id: media.id,
+            title: media.title,
+            subtitle: media.subtitle,
+            kind: media.kind,
+            startPosition: 0,
+            duration: media.duration,
+            source: media.source
+        )
+        return await startCasting(device: device, media: restarted)
+    }
+
     private func startPolling(token: UUID, device: CastDevice, media: CastMediaRequest) {
         pollTask?.cancel()
         pollTask = Task { [weak self, service, pollInterval] in
+            var sawPlaying = false
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(for: pollInterval)
@@ -307,6 +325,17 @@ final class CastSessionModel {
                 if let state = try? await service.transportState(device: device) {
                     guard self.sessionToken == token else { break }
                     self.transportState = state
+                    if state == .playing {
+                        sawPlaying = true
+                    } else if state == .stopped,
+                              media.kind.supportsSeeking,
+                              !self.isSwitchingStream,
+                              self.endedNotifiedToken != token,
+                              sawPlaying || (self.duration > 0 && self.currentTime >= self.duration - 2.5) {
+                        self.endedNotifiedToken = token
+                        self.onPlaybackEnded?(media.id)
+                        break
+                    }
                 }
                 if media.kind.supportsSeeking,
                    let info = try? await service.positionInfo(device: device) {

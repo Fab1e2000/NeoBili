@@ -47,6 +47,31 @@ struct PlayerQualityControl {
     let onSelect: (Int) -> Void
 }
 
+struct PlayerHiResControl {
+    let isActive: Bool
+    let isEnabled: Bool
+    let onToggle: () -> Void
+    var title: String { "Hi-Res" }
+}
+
+struct PlayerPlaybackModeControl {
+    let loopEnabled: Bool
+    let autoAdvanceEnabled: Bool
+    let autoAdvanceTitle: String
+    let onToggleLoop: () -> Void
+    let onSetAutoAdvance: (Bool) -> Void
+
+    var symbol: String {
+        if loopEnabled { return "repeat.1" }
+        return autoAdvanceEnabled ? "play.square.stack" : "pause.circle"
+    }
+
+    var currentTitle: String {
+        if loopEnabled { return String(localized: "洗脑循环") }
+        return autoAdvanceEnabled ? autoAdvanceTitle : String(localized: "播完暂停")
+    }
+}
+
 /// 弹幕开关的「弹」字圆角徽标。SF Symbols 里没有贴近 B 站弹幕语义的符号，
 /// 自绘这个徽标与玻璃圆钮的视觉分量一致；关闭时整块降透明度。
 struct DanmakuBadge: View {
@@ -70,7 +95,8 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     var subtitle = ""
     var shareURL: URL?
     var videoQualityControl: PlayerQualityControl?
-    var audioQualityControl: PlayerQualityControl?
+    var hiResControl: PlayerHiResControl?
+    var playbackModeControl: PlayerPlaybackModeControl?
     var position: Double = 0
     var duration: Double = 0
     var buffered: Double = 0
@@ -133,11 +159,12 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                                 height: max(0, geometry.size.height - top - bottom))
             let layout = PlayerChromeLayout(bounds: bounds, textScale: textScale, isFullScreen: isFullScreen,
                                             hasVideoQuality: videoQualityControl != nil,
-                                            hasAudioQuality: audioQualityControl != nil,
+                                            hasAudioQuality: hiResControl != nil,
+                                            hasPlaybackMode: playbackModeControl != nil,
                                             hasDanmaku: showsDanmakuToggle && onToggleDanmaku != nil,
                                             hasSendDanmaku: onSendDanmaku != nil && !hasError,
                                             videoQualityWidth: preferredWidth(videoQualityControl),
-                                            audioQualityWidth: preferredWidth(audioQualityControl),
+                                            audioQualityWidth: preferredHiResWidth(hiResControl),
                                             spacing: CGFloat(PlayerChromeSettings.clamp(
                                                 usesScreenEdges ? fullScreenValues.spacing : inlineValues.spacing,
                                                 to: PlayerChromeSettings.spacingRange)))
@@ -145,9 +172,15 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                 ZStack {
                     if !layout.back.isEmpty { backButton.chromeFrame(layout.back) }
                     if !layout.more.isEmpty {
-                        settingsMenu(inlineQualities: !layout.videoQuality.isEmpty || !layout.audioQuality.isEmpty,
+                        settingsMenu(inlineQualities: !layout.videoQuality.isEmpty,
+                                     inlineHiRes: !layout.audioQuality.isEmpty,
+                                     inlinePlaybackMode: !layout.playbackMode.isEmpty,
                                      needsPlaybackAction: layout.transport.isEmpty)
                             .chromeFrame(layout.more)
+                    }
+                    if !hasError, let playbackModeControl, !layout.playbackMode.isEmpty {
+                        playbackModeMenuButton(playbackModeControl)
+                            .chromeFrame(layout.playbackMode)
                     }
                     fullScreenButton.chromeFrame(layout.fullScreen)
                     if let onSendDanmaku, !layout.sendDanmaku.isEmpty {
@@ -172,13 +205,13 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                         .accessibilityIdentifier("player.danmaku")
                         .chromeFrame(layout.danmaku)
                     }
+                    if !hasError, let hiResControl, !layout.audioQuality.isEmpty {
+                        hiResToggleButton(hiResControl)
+                            .chromeFrame(layout.audioQuality)
+                    }
                     if !hasError, let videoQualityControl, !layout.videoQuality.isEmpty {
                         qualityMenu(videoQualityControl, identifier: "player.videoQuality")
                             .chromeFrame(layout.videoQuality)
-                    }
-                    if !hasError, let audioQualityControl, !layout.audioQuality.isEmpty {
-                        qualityMenu(audioQualityControl, identifier: "player.audioQuality")
-                            .chromeFrame(layout.audioQuality)
                     }
                     if !hasError {
                         if !layout.metadata.isEmpty, !title.isEmpty {
@@ -237,11 +270,20 @@ struct PlayerGlassChrome<MenuContent: View>: View {
 
     private func preferredWidth(_ control: PlayerQualityControl?) -> CGFloat? {
         guard let control else { return nil }
+        return preferredTextWidth(control.title)
+    }
+
+    private func preferredHiResWidth(_ control: PlayerHiResControl?) -> CGFloat? {
+        guard let control else { return nil }
+        return preferredTextWidth(control.title)
+    }
+
+    private func preferredTextWidth(_ title: String) -> CGFloat {
         // 标题宽度按文字与字号缓存，避免控件更新时重复测量。
-        let memoKey = "\(control.title)|\(control.options.count)|\(textScale)" as NSString
+        let memoKey = "\(title)|\(textScale)" as NSString
         if let memo = PlayerGlassWidthMemo.cache.object(forKey: memoKey) { return CGFloat(memo.doubleValue) }
         let font = AppFont.uiFont(ofSize: 12 * textScale, weight: .semibold)
-        let width = max(48, ceil((control.title as NSString).size(withAttributes: [.font: font]).width) + 24)
+        let width = max(48, ceil((title as NSString).size(withAttributes: [.font: font]).width) + 24)
         PlayerGlassWidthMemo.cache.setObject(NSNumber(value: width), forKey: memoKey)
         return width
     }
@@ -308,17 +350,31 @@ struct PlayerGlassChrome<MenuContent: View>: View {
     private var compactTitle: String { isCompact ? String(localized: "展开视频画面") : String(localized: "收起视频画面") }
     private var compactSymbol: String { isCompact ? "chevron.compact.up" : "chevron.compact.down" }
 
-    private func settingsMenu(inlineQualities: Bool, needsPlaybackAction: Bool) -> some View {
+    private func settingsMenu(inlineQualities: Bool, inlineHiRes: Bool, inlinePlaybackMode: Bool, needsPlaybackAction: Bool) -> some View {
         ZStack {
         Menu {
             if needsPlaybackAction {
                 Button(isPlaying ? "暂停" : "播放", systemImage: isPlaying ? "pause.fill" : "play.fill", action: onTogglePlayback)
                     .disabled(!canControlPlayback)
             }
-            // 极矮画幅装不下第二排；展开全屏即可使用独立画质、音质按钮。
+            // 极矮画幅装不下顶栏胶囊时，回退到更多菜单。
             if !inlineQualities {
                 if let videoQualityControl { Menu(videoQualityControl.accessibilityLabel) { qualityOptions(videoQualityControl) } }
-                if let audioQualityControl { Menu(audioQualityControl.accessibilityLabel) { qualityOptions(audioQualityControl) } }
+            }
+            if !inlineHiRes, let hiResControl {
+                Button(action: hiResControl.onToggle) {
+                    if hiResControl.isActive {
+                        Label("Hi-Res 无损", systemImage: "checkmark")
+                    } else {
+                        Text("Hi-Res 无损")
+                    }
+                }
+                .disabled(!hiResControl.isEnabled)
+            }
+            if !inlinePlaybackMode, let playbackModeControl {
+                Menu("播放模式", systemImage: playbackModeControl.symbol) {
+                    playbackModeOptions(playbackModeControl)
+                }
             }
             menuContent()
             if !hasError, !isFullScreen, let onToggleCompact {
@@ -337,6 +393,77 @@ struct PlayerGlassChrome<MenuContent: View>: View {
             PlayerGlassCircleLabel(symbol: "ellipsis", diameter: 32, symbolSize: 16, hitDiameter: 48)
                 .allowsHitTesting(false).accessibilityHidden(true)
         }
+    }
+
+    private func hiResToggleButton(_ control: PlayerHiResControl) -> some View {
+        Button(action: control.onToggle) {
+            Text(control.title)
+                .font(.system(size: 12 * textScale, weight: .semibold))
+                .foregroundStyle(control.isActive ? Color.white : Color.white.opacity(0.42))
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity).frame(height: 32)
+                .glassEffect(.clear.interactive(), in: Capsule())
+                .frame(height: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!control.isEnabled)
+        .accessibilityLabel(control.isActive ? "关闭 Hi-Res 音质" : "开启 Hi-Res 音质")
+        .accessibilityValue(control.isActive ? "已开启" : "已关闭")
+        .accessibilityIdentifier("player.audioQuality")
+    }
+
+    private func playbackModeMenuButton(_ control: PlayerPlaybackModeControl) -> some View {
+        ZStack {
+            Menu {
+                playbackModeOptions(control)
+            } label: {
+                Color.clear.frame(width: 48, height: 48).contentShape(Rectangle())
+            }
+            .buttonStyle(PlayerMenuButtonStyle(onPress: onMenuInteraction))
+            .accessibilityLabel("播放模式")
+            .accessibilityValue(control.currentTitle)
+            .accessibilityIdentifier("player.mode")
+            PlayerGlassCircleLabel(symbol: control.symbol, diameter: 32, symbolSize: 15, hitDiameter: 48)
+                .allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
+    private func playbackModeOptions(_ control: PlayerPlaybackModeControl) -> some View {
+        Button(action: control.onToggleLoop) {
+            if control.loopEnabled {
+                Label("洗脑循环", systemImage: "checkmark")
+            } else {
+                Text("洗脑循环")
+            }
+        }
+        .accessibilityIdentifier("player.mode.loop")
+
+        Divider()
+
+        Button {
+            control.onSetAutoAdvance(true)
+        } label: {
+            if control.autoAdvanceEnabled {
+                Label(control.autoAdvanceTitle, systemImage: "checkmark")
+            } else {
+                Text(control.autoAdvanceTitle)
+            }
+        }
+        .accessibilityIdentifier("player.mode.autoAdvance")
+
+        Button {
+            control.onSetAutoAdvance(false)
+        } label: {
+            if !control.autoAdvanceEnabled {
+                Label("播完暂停", systemImage: "checkmark")
+            } else {
+                Text("播完暂停")
+            }
+        }
+        .accessibilityIdentifier("player.mode.pauseAtEnd")
     }
 
     private func qualityMenu(_ control: PlayerQualityControl, identifier: String) -> some View {
@@ -453,7 +580,7 @@ private struct PlayerChromeScrim: View {
 
     /// 上排控件最靠下的边、下排控件最靠上的边；中间的播放按钮不算在内。
     private var rowExtents: (top: CGFloat?, bottom: CGFloat?) {
-        let controls = [layout.back, layout.more, layout.metadata, layout.danmaku,
+        let controls = [layout.back, layout.more, layout.playbackMode, layout.metadata, layout.danmaku,
                         layout.videoQuality, layout.audioQuality,
                         layout.timeline, layout.fullScreen, layout.sendDanmaku, layout.secondaryActions]
             .filter { !$0.isEmpty }
@@ -495,8 +622,7 @@ private extension View {
         title: "示例视频标题",
         videoQualityControl: PlayerQualityControl(title: "1080P", accessibilityLabel: "分辨率", options: [],
                                                  selectedID: 0, isEnabled: true, onSelect: { _ in }),
-        audioQualityControl: PlayerQualityControl(title: "192K", accessibilityLabel: "音质", options: [],
-                                                 selectedID: 0, isEnabled: true, onSelect: { _ in }),
+        hiResControl: PlayerHiResControl(isActive: true, isEnabled: true, onToggle: {}),
         position: 83, duration: 300, buffered: 120, isPlaying: true,
         isDanmakuEnabled: true, showsDanmakuToggle: true, onToggleDanmaku: {}
     ) { EmptyView() }
@@ -509,8 +635,7 @@ private extension View {
         title: "示例视频标题",
         videoQualityControl: PlayerQualityControl(title: "1080P", accessibilityLabel: "分辨率", options: [],
                                                  selectedID: 0, isEnabled: true, onSelect: { _ in }),
-        audioQualityControl: PlayerQualityControl(title: "192K", accessibilityLabel: "音质", options: [],
-                                                 selectedID: 0, isEnabled: true, onSelect: { _ in }),
+        hiResControl: PlayerHiResControl(isActive: true, isEnabled: true, onToggle: {}),
         position: 83, duration: 300, buffered: 120, isPlaying: false, isFullScreen: true,
         safeAreaInsets: EdgeInsets(top: 0, leading: 59, bottom: 21, trailing: 59),
         isDanmakuEnabled: true, showsDanmakuToggle: true, onToggleDanmaku: {}, onSendDanmaku: {}

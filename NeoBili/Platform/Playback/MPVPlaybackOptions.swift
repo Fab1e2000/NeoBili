@@ -31,18 +31,16 @@ struct VideoPlaybackConfiguration: Sendable, Equatable {
 
     /// 系统设置里的「默认清晰度」。每次新建播放器都重新读取，改动即时生效，
     /// 不必重启应用；已打开的视频页保持原来的配置不受影响。
+    /// 音质自动选取最高可用档位（遵循 Hi-Res 开关）。
     static var current: VideoPlaybackConfiguration {
         var configuration = VideoPlaybackConfiguration()
         configuration.quality = PlaybackQuality.defaultVideoQuality
-        configuration.audioQuality = PlaybackQuality.defaultAudioQuality
+        configuration.audioQuality = PlaybackQuality.preferredAudioQuality(
+            hiResEnabled: PlaybackQuality.isHiResEnabled()
+        )
         let stored = UserDefaults.standard.object(forKey: PlaybackQuality.videoStorageKey) as? Int
         if let stored, Self.validQualities.contains(stored) {
             configuration.quality = stored
-        }
-        // 用 object 而不是 integer：没设置过时 integer 会读成 0（「自动」），盖掉默认音质。
-        if let audio = UserDefaults.standard.object(forKey: PlaybackQuality.audioStorageKey) as? Int,
-           PlaybackQuality.audioOptions.contains(where: { $0.id == audio }) {
-            configuration.audioQuality = audio
         }
         return configuration
     }

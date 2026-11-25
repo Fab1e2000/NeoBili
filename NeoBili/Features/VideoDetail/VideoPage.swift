@@ -101,6 +101,12 @@ struct VideoPage: View {
         .task { if store.offline != nil { offlineCache.connect() } }
         .onAppear {
             installCommentTimeJump()
+            if let session = castSession {
+                session.onPlaybackEnded = { [store, weak session] mediaID in
+                    guard let session else { return }
+                    store.handleCastPlaybackEnded(mediaID: mediaID, castSession: session)
+                }
+            }
             commentAuthor.setHandler { [path = $spacePath] member in
                 guard let mid = member.mid else { return }
                 path.wrappedValue.append(FollowedUp(mid: mid, uname: member.uname, face: member.avatar, hasUpdate: false))
@@ -359,7 +365,8 @@ struct VideoPage: View {
                 videoTitle: viewModel?.detail?.title ?? store.route?.title ?? "",
                 videoSubtitle: viewModel?.detail?.owner.name ?? store.route?.artist ?? "",
                 shareURL: onlineShareURL,
-                onCache: onlineCacheAction
+                onCache: onlineCacheAction,
+                hasEpisodes: store.hasCurrentEpisodes
             )
         } else {
             // 等待详情或等待用户点播放时都保留列表封面。
@@ -394,8 +401,6 @@ struct VideoPage: View {
                         title: viewModel?.detail?.title ?? store.route?.title ?? "",
                         subtitle: viewModel?.detail?.owner.name ?? store.route?.artist ?? "",
                         videoQualityControl: PlayerQualityControl(title: String(localized: "分辨率"), accessibilityLabel: String(localized: "分辨率"), options: [],
-                                                                 selectedID: 0, isEnabled: false, onSelect: { _ in }),
-                        audioQualityControl: PlayerQualityControl(title: String(localized: "音质"), accessibilityLabel: String(localized: "音质"), options: [],
                                                                  selectedID: 0, isEnabled: false, onSelect: { _ in }),
                         canControlPlayback: store.isWaitingForPlayback && viewModel?.errorMessage == nil,
                         isWaiting: !store.isWaitingForPlayback && viewModel?.errorMessage == nil,

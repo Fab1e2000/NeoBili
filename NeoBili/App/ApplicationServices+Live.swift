@@ -163,6 +163,9 @@ extension PlaybackAudioSession {
 extension PlayerChromePreferences {
     @MainActor static let shared = PlayerChromePreferences()
 }
+extension PlaybackModePreferences {
+    @MainActor static let shared = PlaybackModePreferences()
+}
 
 extension AppRecommendationSession {
     static let shared = AppRecommendationSession()

@@ -65,7 +65,7 @@ final class PlayerGlassStyleTests: XCTestCase {
                     let danmakuCircle = layout.danmaku.insetBy(dx: circleInset, dy: circleInset)
                     let moreCircle = layout.more.insetBy(dx: circleInset, dy: circleInset)
                     let fullScreenCircle = layout.fullScreen.insetBy(dx: circleInset, dy: circleInset)
-                    XCTAssertEqual(danmakuCircle.minX - layout.audioQuality.maxX, visualSpacing, accuracy: 0.001)
+                    XCTAssertEqual(danmakuCircle.minX - layout.videoQuality.maxX, visualSpacing, accuracy: 0.001)
                     XCTAssertEqual(moreCircle.minX - danmakuCircle.maxX, visualSpacing, accuracy: 0.001)
                     XCTAssertLessThanOrEqual(layout.danmaku.maxX, layout.more.minX)
                     XCTAssertEqual(layout.timeline.minX, backCircle.minX)
@@ -74,7 +74,8 @@ final class PlayerGlassStyleTests: XCTestCase {
                     XCTAssertEqual(layout.timeline.midY, layout.fullScreen.midY)
                     XCTAssertTrue(layout.secondaryActions.isEmpty)
                     XCTAssertGreaterThanOrEqual(layout.videoQuality.width, 48)
-                    XCTAssertLessThan(layout.back.maxX, layout.videoQuality.minX)
+                    XCTAssertLessThan(layout.back.maxX, layout.audioQuality.minX)
+                    XCTAssertLessThan(layout.audioQuality.maxX, layout.videoQuality.minX)
                 }
             }
         }
@@ -97,8 +98,9 @@ final class PlayerGlassStyleTests: XCTestCase {
                                        videoQualityWidth: 180, audioQualityWidth: 130)
         XCTAssertGreaterThanOrEqual(narrow.audioQuality.width, 48)
         XCTAssertGreaterThan(narrow.videoQuality.width, narrow.audioQuality.width)
-        XCTAssertLessThan(narrow.back.maxX, narrow.videoQuality.minX)
-        XCTAssertLessThan(narrow.audioQuality.maxX, narrow.more.minX)
+        XCTAssertLessThan(narrow.back.maxX, narrow.audioQuality.minX)
+        XCTAssertLessThan(narrow.audioQuality.maxX, narrow.videoQuality.minX)
+        XCTAssertLessThan(narrow.videoQuality.maxX, narrow.more.minX)
     }
 
     func testVisibleControlRegionsRemainInsideBoundsAndDoNotOverlap() {
@@ -166,9 +168,9 @@ final class PlayerGlassStyleTests: XCTestCase {
         XCTAssertLessThan(layout.more.maxY, layout.fullScreen.minY)
         XCTAssertEqual(layout.videoQuality.minY, bounds.minY)
         XCTAssertEqual(layout.audioQuality.minY, bounds.minY)
-        XCTAssertLessThan(layout.back.maxX, layout.videoQuality.minX)
-        XCTAssertLessThan(layout.videoQuality.maxX, layout.audioQuality.minX)
-        XCTAssertLessThan(layout.audioQuality.maxX, layout.more.minX)
+        XCTAssertLessThan(layout.back.maxX, layout.audioQuality.minX)
+        XCTAssertLessThan(layout.audioQuality.maxX, layout.videoQuality.minX)
+        XCTAssertLessThan(layout.videoQuality.maxX, layout.more.minX)
         XCTAssertTrue(layout.showsTimeLabels)
     }
 
@@ -201,7 +203,31 @@ final class PlayerGlassStyleTests: XCTestCase {
         let landscape = PlayerChromeLayout(bounds: CGRect(x: 28, y: 12, width: 818, height: 361),
                                             isFullScreen: true, hasVideoQuality: true, hasAudioQuality: true)
         XCTAssertGreaterThanOrEqual(landscape.metadata.width, 120)
-        XCTAssertLessThan(landscape.metadata.maxX, landscape.videoQuality.minX)
+        XCTAssertLessThan(landscape.metadata.maxX, landscape.audioQuality.minX)
+        XCTAssertLessThan(landscape.audioQuality.maxX, landscape.videoQuality.minX)
+    }
+
+    func testPlaybackModeSitsBetweenDanmakuAndMoreWithUniformSpacing() {
+        let circleInset: CGFloat = 8
+        let visualSpacing: CGFloat = 16
+        let bounds = CGRect(x: 28, y: 12, width: 788, height: 361)
+        let layout = PlayerChromeLayout(
+            bounds: bounds, isFullScreen: true,
+            hasVideoQuality: true, hasAudioQuality: true,
+            hasPlaybackMode: true, hasDanmaku: true,
+            videoQualityWidth: 100, audioQualityWidth: 80,
+            spacing: visualSpacing
+        )
+        XCTAssertFalse(layout.playbackMode.isEmpty)
+        XCTAssertEqual(layout.playbackMode.midY, layout.more.midY)
+        XCTAssertEqual(layout.danmaku.midY, layout.playbackMode.midY)
+        let danmakuCircle = layout.danmaku.insetBy(dx: circleInset, dy: circleInset)
+        let modeCircle = layout.playbackMode.insetBy(dx: circleInset, dy: circleInset)
+        let moreCircle = layout.more.insetBy(dx: circleInset, dy: circleInset)
+        XCTAssertEqual(moreCircle.minX - modeCircle.maxX, visualSpacing, accuracy: 0.001)
+        XCTAssertEqual(modeCircle.minX - danmakuCircle.maxX, visualSpacing, accuracy: 0.001)
+        XCTAssertEqual(danmakuCircle.minX - layout.videoQuality.maxX, visualSpacing, accuracy: 0.001)
+        XCTAssertEqual(layout.videoQuality.minX - layout.audioQuality.maxX, visualSpacing, accuracy: 0.001)
     }
 
     func testGlassChromeAcrossWindowOrientationsSizesAndLoadingStates() async throws {
@@ -391,7 +417,7 @@ private struct PlayerGlassScreenFixture: View {
             PlayerGlassChrome(title: "海边的日落 · 一起去看世界", subtitle: "NeoBili · 1080P",
                               shareURL: URL(string: "https://example.invalid/static-player-fixture"),
                               videoQualityControl: videoQualityControl,
-                              audioQualityControl: isLive ? nil : audioQualityControl,
+                              hiResControl: isLive ? nil : PlayerHiResControl(isActive: true, isEnabled: state == .playing, onToggle: {}),
                               position: 37, duration: 184, buffered: 92,
                               isPlaying: state == .playing,
                               canControlPlayback: state == .playing,

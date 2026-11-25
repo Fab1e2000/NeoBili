@@ -187,6 +187,7 @@ struct LiveRoomView: View {
                     isFullScreen: isFullScreen,
                     safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
                     videoQualityControl: castQualityControl,
+                    supportsPlaybackMode: false,
                     onBack: { if isFullScreen { toggleFullScreen() } else { if let onReturn { onReturn() } else { dismiss() } } },
                     onSwitchDevice: { isCastPickerPresented = true },
                     onExitCast: exitCasting
