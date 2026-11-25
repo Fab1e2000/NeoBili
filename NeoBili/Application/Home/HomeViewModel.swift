@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 /// 首页网格中可能出现普通视频，也可能出现“上次看到这里”提示卡。
@@ -145,7 +143,7 @@ final class HomeViewModel {
             remove(video)
             return reason.toast ?? String(localized: "已提交")
         } catch {
-            guard currentSessionID() == session, !Self.isCancellation(error) else { return nil }
+            guard currentSessionID() == session, !Task.isCancelled, !error.isCancellation else { return nil }
             return error.localizedDescription
         }
     }
@@ -162,7 +160,7 @@ final class HomeViewModel {
             guard currentSessionID() == session, !Task.isCancelled else { return nil }
             return String(localized: "成功")
         } catch {
-            guard currentSessionID() == session, !Self.isCancellation(error) else { return nil }
+            guard currentSessionID() == session, !Task.isCancelled, !error.isCancellation else { return nil }
             return error.localizedDescription
         }
     }
@@ -179,7 +177,7 @@ final class HomeViewModel {
             if dislike { remove(video) }
             return dislike ? String(localized: "点踩成功") : String(localized: "取消踩")
         } catch {
-            guard currentSessionID() == session, !Self.isCancellation(error) else { return nil }
+            guard currentSessionID() == session, !Task.isCancelled, !error.isCancellation else { return nil }
             return error.localizedDescription
         }
     }
@@ -202,7 +200,7 @@ final class HomeViewModel {
             videosRevision += 1
             return String(localized: "已拉黑 \(owner.name)")
         } catch {
-            guard currentSessionID() == session, !Self.isCancellation(error) else { return nil }
+            guard currentSessionID() == session, !Task.isCancelled, !error.isCancellation else { return nil }
             return error.localizedDescription
         }
     }
@@ -463,7 +461,7 @@ final class HomeViewModel {
                 if wasEmpty, !videos.isEmpty { appRefreshCursor = response.refreshCursor ?? 0 }
             }
         } catch {
-            guard activeLoadID == loadID, currentSessionID() == session, !Self.isCancellation(error) else { return }
+            guard activeLoadID == loadID, currentSessionID() == session, !Task.isCancelled, !error.isCancellation else { return }
             // 与 PiliPlus 一致：已有推荐时刷新失败也保留旧内容，不把页面替换成错误页。
             errorMessage = error.loadFailureDescription
         }
@@ -507,13 +505,4 @@ final class HomeViewModel {
         var seen = Set<String>()
         return videos.filter { seen.insert($0.bvid).inserted }
     }
-
-    /// URLSession 有时抛出 `CancellationError`，有时抛出含义相同的
-    /// `URLError.cancelled`。这里统一识别，避免向用户显示“Cancelled”。
-    private static func isCancellation(_ error: Error) -> Bool {
-        Task.isCancelled
-            || error is CancellationError
-            || (error as? URLError)?.code == .cancelled
-    }
-
 }

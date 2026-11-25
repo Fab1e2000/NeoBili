@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 /// SwiftUI owns modal lifetime. This state only selects its destination and the

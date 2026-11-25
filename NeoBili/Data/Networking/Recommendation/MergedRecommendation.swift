@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 /// BiliPai's app-first interleave, adapted to NeoBili's iOS credential scope.

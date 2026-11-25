@@ -1,12 +1,5 @@
 import Foundation
-
-// Only the unused default network entry point is stubbed. Every test injects a
-// controlled loader into the production FollowedLiveDirectory implementation.
-enum LiveAPI {
-    static func followedUsers() async throws -> LiveRoomPage {
-        preconditionFailure("Offline regression must never call a network loader")
-    }
-}
+@testable import NeoBiliDomain
 
 @MainActor
 private final class DirectoryLoader {
@@ -185,9 +178,4 @@ enum FollowedLiveDirectoryRegression {
 private actor PageCount {
     private(set) var value = 0
     func add() { value += 1 }
-}
-
-struct ApplicationServices {
-    static let live = ApplicationServices()
-    var streaming: LiveAPI.Type { LiveAPI.self }
 }

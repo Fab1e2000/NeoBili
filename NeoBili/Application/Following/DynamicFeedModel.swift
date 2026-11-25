@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 /// 动态列表的公共部分。
@@ -42,12 +40,6 @@ final class DynamicFeedModel {
     private var reloadTask: Task<Void, Never>?
     private var loadGeneration = UUID()
     private let fetchFeed: @MainActor (Source, Int, String?) async throws -> DynamicFeedPage
-
-    /// 本地叠加的点赞状态：动态 id -> 是否已赞。
-    /// 点一下就把整页重拉一遍太贵，所以这里只记差量，展示时和接口回报的状态叠加。
-    private(set) var likeOverrides: [String: Bool] = [:]
-    /// 正在请求中的动态，用来防连点。
-    private var likingIDs: Set<String> = []
 
     init(source: Source, likeStore: VideoLikeStore = .shared, services: ApplicationServices = .live,
          fetchFeed: (@MainActor (Source, Int, String?) async throws -> DynamicFeedPage)? = nil) {
@@ -202,13 +194,12 @@ final class DynamicFeedModel {
 
     // MARK: - 点赞
 
+    private func likeTarget(_ entry: DynamicEntry) -> VideoLikeStore.Target {
+        entry.video.map { .video($0.aid) } ?? .dynamic(entry.id)
+    }
+
     func isLiked(_ entry: DynamicEntry) -> Bool {
-        // 视频动态的点赞就是稿件点赞，走全 App 共享的差量，
-        // 这样视频详情页点完赞回到列表（或反过来）状态一致。
-        if let aid = entry.video?.aid {
-            return likeStore.isLiked(aid: aid, serverValue: entry.isLikedByServer)
-        }
-        return likeOverrides[entry.id] ?? entry.isLikedByServer
+        likeStore.isLiked(likeTarget(entry), serverValue: entry.isLikedByServer)
     }
 
     /// 展示用的点赞数：接口给的原始值，加上本地这一次的增减。
@@ -225,33 +216,26 @@ final class DynamicFeedModel {
     /// 文字/图文动态点的是动态（`dyn/thumb`）。
     func toggleLike(_ entry: DynamicEntry, isLoggedIn: Bool) async -> String? {
         guard isLoggedIn, likeStore.sessionID == accountSessionID else { return String(localized: "请先登录") }
-        guard !likingIDs.contains(entry.id) else { return nil }
-        likingIDs.insert(entry.id)
-        defer { likingIDs.remove(entry.id) }
-
+        let target = likeTarget(entry)
+        guard likeStore.beginDynamicFeedWrite(target) else { return nil }
         let sessionID = likeStore.sessionID
-        let wasLiked = isLiked(entry)
-        let willBeLiked = !wasLiked
-        if let aid = entry.video?.aid {
-            likeStore.setOverride(aid: aid, liked: willBeLiked, sessionID: sessionID)
-        } else {
-            likeOverrides[entry.id] = willBeLiked
-        }
+        defer { likeStore.finishDynamicFeedWrite(target, sessionID: sessionID) }
+
+        let previousOverride = likeStore.overrideValue(for: target)
+        let willBeLiked = !(previousOverride ?? entry.isLikedByServer)
+        likeStore.setOverride(target, liked: willBeLiked, sessionID: sessionID)
 
         do {
-            if let aid = entry.video?.aid {
+            switch target {
+            case .video(let aid):
                 try await services.video.likeVideo(aid: aid, like: willBeLiked)
-            } else {
-                try await services.community.likeDynamic(id: entry.id, like: willBeLiked)
+            case .dynamic(let id):
+                try await services.community.likeDynamic(id: id, like: willBeLiked)
             }
             return nil
         } catch {
             guard likeStore.sessionID == sessionID else { return nil }
-            if let aid = entry.video?.aid {
-                likeStore.setOverride(aid: aid, liked: wasLiked, sessionID: sessionID)
-            } else {
-                likeOverrides[entry.id] = wasLiked
-            }
+            likeStore.setOverride(target, liked: previousOverride, sessionID: sessionID)
             return error.isCancellation ? nil : error.localizedDescription
         }
     }

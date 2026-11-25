@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import UIKit
 
 /// 弹幕渲染引擎。

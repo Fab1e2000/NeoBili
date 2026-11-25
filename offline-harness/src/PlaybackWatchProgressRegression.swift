@@ -1,4 +1,5 @@
 import Foundation
+@testable import NeoBiliDomain
 
 @main
 @MainActor

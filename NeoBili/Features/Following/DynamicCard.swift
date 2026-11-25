@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 enum DynamicCardLayout {
@@ -76,7 +74,6 @@ struct DynamicCard: View {
             if let video = entry.video,
                video.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: filtering) {
                 videoBlock(video)
-                    .videoEntranceIdentity(video.bvid)
             }
 
             actionBar
@@ -89,7 +86,6 @@ struct DynamicCard: View {
                         .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
                 }
         )
-        // 视频过滤与入场时钟由列表统一管理，避免每张卡片再创建一套任务。
     }
 
     // MARK: - UP 主
@@ -222,6 +218,7 @@ struct DynamicCard: View {
             }
             .buttonStyle(.plain)
             .disabled(!entry.hasComments)
+            .accessibilityIdentifier("dynamic.comments.\(entry.id)")
 
             Button(action: onLike) {
                 counter(
@@ -233,6 +230,7 @@ struct DynamicCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("dynamic.like.\(entry.id)")
         }
         .padding(.top, 12)
         .padding(.bottom, 10)

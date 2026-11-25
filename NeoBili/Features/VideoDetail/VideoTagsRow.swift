@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 稿件标签，横向一排浅灰填充的圆角标签（内容里的按钮不用玻璃）。圆角与操作按钮、合集、分P 入口在视觉上一致。

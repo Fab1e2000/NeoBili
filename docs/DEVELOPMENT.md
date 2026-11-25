@@ -149,9 +149,9 @@ python3 scripts/check-architecture.py
 python3 scripts/check-doc-links.py
 ```
 
-`NeoBiliDomain`、`NeoBiliCore` 和 `NeoBiliData` 是独立静态框架，Debug / Regression / Release 与 App 使用相同配置；Regression 的隔离编译条件也传入模块。测试可以 `@testable import NeoBiliDomain` / `NeoBiliCore` / `NeoBiliData`，离线 harness 则直接编译所需源码。
+`NeoBiliDomain`、`NeoBiliCore` 和 `NeoBiliData` 是独立静态框架，Debug / Regression / Release 与 App 使用相同配置，Regression 的隔离编译条件也传入模块。离线与性能验证通过 `offline-harness/modules.sh` 在临时目录构建同名静态库，链接场景所需的 App 层源码。宿主构建也启用 `NEOBILI_REGRESSION`，性能入口使用优化编译。App 和测试直接导入项目模块，测试夹具可用 `@testable import` 访问模块内部接口。
 
-边界检查禁止页面/业务模型引用网络实现，也禁止网络层引用页面状态。Domain / Core / Data 分别编译；脚本同时检查模块导入方向、禁止 UI 层直接使用传输，以及尚在 App target 内的目录边界。源码检查不代替行为测试。文档检查验证本地目标文件存在，不联网检查外部站点。
+边界检查禁止页面/业务模型引用网络实现，也禁止网络层引用页面状态。脚本检查模块导入方向、UI 层的传输引用、App target 内部目录边界，以及对项目模块的条件导入。边界检查也验证离线 harness 脚本中的 Swift 源码路径，源码移动后应同步更新这些路径。源码检查不代替行为测试。文档检查验证本地目标文件存在，不联网检查外部站点。
 
 ## 修改后的检查
 

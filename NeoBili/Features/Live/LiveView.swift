@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 「直播」Tab：一条纵向列表。顶部是关注中正在直播的房间，下面是推荐直播；
@@ -45,11 +43,8 @@ private struct LiveFeedPage: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .live)
 
-    @State private var entranceClock = VideoEntranceClock()
-    @State private var previousEntranceGeneration: Int?
     /// 暂存刷新由统一控制器持有任务；页面只提供取回、提交与丢弃。
     @State private var refresh = ListRefreshController()
     @State private var scrollPosition = ScrollPosition(edge: .top)
@@ -72,20 +67,11 @@ private struct LiveFeedPage: View {
         let isLoggedIn: Bool
     }
 
-    private struct EntranceBatch: Hashable {
-        let ids: [String]
-        let generation: Int
+    private var entranceIDs: [String] {
+        model.rooms.map { "live:\($0.roomID)" }
+            + directory.rooms.map { "live:followed:\($0.roomID)" }
     }
 
-    private var entranceBatch: EntranceBatch {
-        EntranceBatch(
-            ids: model.rooms.map { "live:\($0.roomID)" }
-                + directory.rooms.map { "live:followed:\($0.roomID)" },
-            generation: model.entranceGeneration
-        )
-    }
-
-    private var animatesEnter: Bool { !reduceMotion && animations.isEnabled(phase: .enter) }
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
     private var showsFollowedLive: Bool { account.isLoggedIn && !directory.rooms.isEmpty }
 
@@ -109,21 +95,8 @@ private struct LiveFeedPage: View {
             OrientationController.enterPortrait()
             isVisible = true
         }
-        .transformEnvironment(\.videoEntranceClocks) {
-            $0.append(VideoEntranceScope(ids: Set(entranceBatch.ids),
-                                        generation: entranceBatch.generation, clock: entranceClock))
-        }
+        .listEntrance(ids: entranceIDs, generation: model.entranceGeneration, source: .live)
         .videoCardAnimationSource(.live)
-        .task(id: entranceBatch) {
-            let batch = entranceBatch
-            entranceClock.prepare(ids: Set(batch.ids), generation: batch.generation,
-                                  reset: previousEntranceGeneration != batch.generation)
-            entranceClock.admit(batch.ids, animated: animatesEnter)
-            previousEntranceGeneration = batch.generation
-        }
-        .onChange(of: animatesEnter) { _, enabled in
-            if !enabled { entranceClock.finishAnimations() }
-        }
         .onChange(of: animatesExit) { _, enabled in
             if !enabled { refresh.restoreContent() }
         }
@@ -159,10 +132,8 @@ private struct LiveFeedPage: View {
             // 切换标签只淡入内容；列表本身保持不透明，顶部模糊立即出现。
             .opacity(tabContentOpacity)
             .background {
-                ShortPullRefresh(threshold: refreshDistance,
-                                 enabled: !refresh.isRefreshing && !model.isLoading,
-                                 onProgress: { _, _ in },
-                                 onRefresh: startRefresh)
+                ListPullRefresh(enabled: !refresh.isRefreshing && !model.isLoading,
+                                onRefresh: startRefresh)
             }
         }
         .scrollPosition($scrollPosition)

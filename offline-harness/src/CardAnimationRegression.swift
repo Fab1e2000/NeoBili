@@ -1,4 +1,5 @@
 import Foundation
+@testable import NeoBiliDomain
 
 @main struct CardAnimationRegression {
     static func main() async throws {

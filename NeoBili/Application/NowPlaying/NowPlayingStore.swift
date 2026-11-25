@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 import SwiftUI
 
@@ -559,21 +557,7 @@ final class NowPlayingStore {
     func handlePlaybackEnded(for endedPlayer: PlayerViewModel) {
         guard player === endedPlayer else { return }
         let action = resolveEndAction(sleepsAfterVideoEnd: endedPlayer.sleepsAfterVideoEnd, player: endedPlayer)
-        switch action {
-        case .sleep, .pause:
-            break
-        case .loop:
-            endedPlayer.play()
-        case .nextPart(let cid):
-            hasRequestedPlayback = true
-            selectPart(cid: cid)
-        case .nextSeasonEpisode(let episode):
-            openEpisode(episode, forceAutoPlay: true)
-        case .nextOfflineEntry(let id):
-            switchOfflineEntry(to: id)
-        case .nextRelated(let video):
-            openRelated(video, forceAutoPlay: true)
-        }
+        applyEndAction(action, onLoop: { endedPlayer.play() })
     }
 
     func handleCastPlaybackEnded(mediaID: String, castSession: CastSessionModel) {
@@ -581,13 +565,20 @@ final class NowPlayingStore {
         let expectedID = player.isOffline ? "offline:\(player.bvid):\(player.cid)" : "video:\(player.bvid):\(player.cid)"
         guard expectedID == mediaID else { return }
         let action = resolveEndAction(sleepsAfterVideoEnd: player.sleepsAfterVideoEnd, player: player)
+        applyEndAction(action, onSleep: { player.cancelSleepTimer() },
+                       onLoop: { Task { await castSession.replayCurrentMedia() } })
+    }
+
+    private func applyEndAction(
+        _ action: PlaybackModeSettings.EndAction, onSleep: () -> Void = {}, onLoop: () -> Void
+    ) {
         switch action {
         case .sleep:
-            player.cancelSleepTimer()
+            onSleep()
         case .pause:
             break
         case .loop:
-            Task { await castSession.replayCurrentMedia() }
+            onLoop()
         case .nextPart(let cid):
             hasRequestedPlayback = true
             selectPart(cid: cid)

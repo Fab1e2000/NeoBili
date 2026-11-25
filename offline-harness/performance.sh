@@ -5,42 +5,41 @@ HARNESS="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HARNESS")"
 BUILD_DIR="$(mktemp -d /tmp/neobili-performance.XXXXXX)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
-swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Core/UI/ImageDownsampling.swift" \
+APP="$ROOT/NeoBili"
+source "$HARNESS/modules.sh"
+harness_build_modules -O
+harness_compile -O \
+    "$APP/Core/UI/ImageDownsampling.swift" \
     "$HARNESS/src/ImagePerformanceRegression.swift" \
     -o "$BUILD_DIR/image-performance"
 "$BUILD_DIR/image-performance"
-swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Core/Caching/ImageRequestPool.swift" \
-    "$ROOT/NeoBili/Core/Caching/ImageMemoryCache.swift" \
+harness_compile -O \
     "$HARNESS/src/ImagePipelineRegression.swift" \
     -o "$BUILD_DIR/image-pipeline"
 "$BUILD_DIR/image-pipeline"
-swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Application/Player/PlaybackProgressStore.swift" \
+harness_compile -O \
+    "$APP/Application/Player/PlaybackProgressStore.swift" \
     "$HARNESS/src/PlaybackPersistencePerformance.swift" \
     -o "$BUILD_DIR/persistence-performance"
 "$BUILD_DIR/persistence-performance"
-swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Application/Player/VideoPreparationCache.swift" \
+harness_compile -O \
+    "$APP/Application/Player/VideoPreparationCache.swift" \
+    "$HARNESS/src/HostServiceDefaults.swift" \
     "$HARNESS/src/VideoPreparationRegression.swift" \
     -o "$BUILD_DIR/video-preparation"
 "$BUILD_DIR/video-preparation"
 
 # Metadata classification commits a page once, off the main thread, while
 # retaining restart/cancellation durability and the existing cache format.
-swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Domain/Models/VideoDimension.swift" \
-    "$ROOT/NeoBili/Application/Content/VideoFiltering.swift" \
-    "$ROOT/NeoBili/Application/Settings/VideoDurationFilterSettings.swift" \
-    "$ROOT/NeoBili/Domain/Models/VideoDuration.swift" \
-    "$ROOT/NeoBili/Application/Content/PortraitVideoStore.swift" \
+harness_compile -O \
+    "$APP/Application/Content/VideoFiltering.swift" \
+    "$APP/Application/Settings/VideoDurationFilterSettings.swift" \
+    "$APP/Application/Content/PortraitVideoStore.swift" \
     "$HARNESS/src/MetadataPersistenceRegression.swift" \
     -o "$BUILD_DIR/metadata-persistence"
 "$BUILD_DIR/metadata-persistence"
 
-swiftc -swift-version 6 -O -parse-as-library \
-    "$ROOT/NeoBili/Core/Formatting/BiliDateFormatting.swift" \
+harness_compile -O \
     "$HARNESS/src/DateFormattingPerformance.swift" \
     -o "$BUILD_DIR/date-formatting"
 "$BUILD_DIR/date-formatting"

@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 import XCTest
@@ -18,7 +16,8 @@ final class EmotePipelineTests: XCTestCase {
             }
         }
         let cost = 32 * 32 * 4
-        let store = CommentEmoteStore(maximumOriginalBytes: cost * 2)
+        let notifications = NotificationCenter()
+        let store = CommentEmoteStore(maximumOriginalBytes: cost * 2, notifications: notifications)
         weak var first: UIImage?
         for index in 0..<20 {
             autoreleasepool {
@@ -29,6 +28,9 @@ final class EmotePipelineTests: XCTestCase {
             }
         }
         XCTAssertNil(first, "Observation slots must not keep evicted original bitmaps alive")
+        XCTAssertGreaterThan(store.cachedOriginalByteCount, 0)
+        notifications.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+        XCTAssertEqual(store.cachedOriginalByteCount, 0)
     }
 
     func testCancellingOneCommentKeepsAnotherEmoteConsumerAlive() async throws {

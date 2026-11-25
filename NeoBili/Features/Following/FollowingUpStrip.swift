@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 关注页标题下方的横向头像条：「全部动态」在最前，随后是直播中和有新动态的 UP 主，
@@ -27,21 +25,46 @@ struct FollowingUpStrip: View {
             .padding(.bottom, 8)
         }
         .scrollIndicators(.hidden)
-        .accessibilityIdentifier("following.upStrip")
     }
 
+    @ViewBuilder
     private func cell(_ item: FollowingSelection) -> some View {
         let selected = item.id == selectedID
-        return Button { onSelect(item) } label: {
+        let select = { onSelect(item) }
+        let button = Button(action: select) {
             label(title: item.id == .all ? String(localized: "全部动态") : item.title, selected: selected) {
                 FollowingUpAvatar(item: item, selected: selected, size: 52)
             }
         }
         .buttonStyle(.plain)
-        .modifier(FollowingAvatarGesture(item: item, onTap: { onSelect(item) }, onOpenLive: onOpenLive))
-        .accessibilityLabel(item.title + (item.up?.liveRoomID != nil ? String(localized: "，正在直播") : ""))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("following.avatar.\(item.id)")
+
+        if let up = item.up {
+            button
+                .highPriorityGesture(
+                    LongPressGesture(minimumDuration: 0.5, maximumDistance: 10)
+                        .exclusively(before: TapGesture())
+                        .onEnded { result in
+                            switch result {
+                            case .first(let recognized):
+                                if recognized { onOpenLive(up) }
+                            case .second: select()
+                            }
+                        }
+                )
+                // Expose one accessible button and wire its activation independently of touch recognition.
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityLabel(item.title + (up.liveRoomID != nil ? String(localized: "，正在直播") : ""))
+                .accessibilityHint("轻点查看动态，再次轻点进入主页；长按进入直播间")
+                .accessibilityAction(.default, select)
+                .accessibilityAction(named: Text("进入直播间")) { onOpenLive(up) }
+                .accessibilityIdentifier("following.avatar.\(up.mid)")
+        } else {
+            button
+                .accessibilityLabel(item.title)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .accessibilityIdentifier("following.avatar.all")
+        }
     }
 
     private var allFollowingsCell: some View {
@@ -79,34 +102,5 @@ private struct FollowingUpName: View {
             .font(.app(.caption2, weight: selected ? .semibold : .regular))
             .foregroundStyle(selected ? .primary : .secondary)
             .lineLimit(1)
-    }
-}
-
-/// Exclusive recognition prevents a long press from also switching the dynamic feed.
-private struct FollowingAvatarGesture: ViewModifier {
-    let item: FollowingSelection
-    let onTap: () -> Void
-    let onOpenLive: (FollowedUp) -> Void
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let up = item.up {
-            content
-                .highPriorityGesture(
-                    LongPressGesture(minimumDuration: 0.5, maximumDistance: 10)
-                        .exclusively(before: TapGesture())
-                        .onEnded { result in
-                            switch result {
-                            case .first(let recognized):
-                                if recognized { onOpenLive(up) }
-                            case .second: onTap()
-                            }
-                        }
-                )
-                .accessibilityHint("轻点查看动态，再次轻点进入主页；长按进入直播间")
-                .accessibilityAction(named: Text("进入直播间")) { onOpenLive(up) }
-        } else {
-            content
-        }
     }
 }

@@ -1,7 +1,5 @@
 #if NEOBILI_REGRESSION
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import XCTest
 @testable import NeoBili
 

@@ -38,13 +38,33 @@ final class LibraryListModelTests: XCTestCase {
         }
         let staged = await model.stageReload(services: updated, feedback: ActionFeedback(), folder: folder)
         XCTAssertTrue(staged)
-        await model.loadNextPage(services: updated, folder: folder, refreshing: true)
+        XCTAssertEqual(model.videos.map(\.id), Array(1...20))
+        await model.loadNextPage(services: updated, folder: folder, refreshing: false)
         model.commitStagedReload()
         oldPage.resolve(first)
         await pending.value
         XCTAssertEqual(model.videos.map(\.id), [1, 30])
         XCTAssertEqual(model.selectedIDs, [1])
         XCTAssertFalse(model.isLoadingMore)
+    }
+
+    func testHistoryAndFavoritesUseTheSameErrorDescriptionForFirstAndNextPages() async {
+        let timeout = URLError(.timedOut)
+        var services = services()
+        services.library.historyPageOperation = { _, _ in throw timeout }
+        services.library.favoriteVideosOperation = { _, _ in throw timeout }
+        let history = HistoryListModel()
+        let favorites = FavoriteFolderListModel()
+
+        await history.reload(services: services)
+        await favorites.reload(services: services, folder: folder)
+        XCTAssertEqual(history.errorMessage, timeout.loadFailureDescription)
+        XCTAssertEqual(favorites.errorMessage, timeout.loadFailureDescription)
+
+        await history.loadNextPage(services: services, refreshing: false)
+        await favorites.loadNextPage(services: services, folder: folder, refreshing: false)
+        XCTAssertEqual(history.errorMessage, timeout.loadFailureDescription)
+        XCTAssertEqual(favorites.errorMessage, timeout.loadFailureDescription)
     }
 
     func testHistoryRemovalDiscardsLatePageAndRestoresOriginalOrderOnFailure() async throws {

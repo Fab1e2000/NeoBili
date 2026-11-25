@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 所有关注的 UP 主，每行五个头像、下方名字；轻点进入个人主页。
@@ -11,10 +9,10 @@ struct FollowingAllUpsView: View {
 
     @State private var model: FollowingAllUpsModel
 
-    init(mid: Int, decorated: [Int: FollowedUp], onOpenUp: @escaping (FollowedUp) -> Void) {
+    init(mid: Int, services: ApplicationServices, decorated: [Int: FollowedUp], onOpenUp: @escaping (FollowedUp) -> Void) {
         self.decorated = decorated
         self.onOpenUp = onOpenUp
-        _model = State(initialValue: FollowingAllUpsModel(mid: mid))
+        _model = State(initialValue: FollowingAllUpsModel(mid: mid, services: services))
     }
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4, alignment: .top), count: 5)
@@ -58,6 +56,7 @@ struct FollowingAllUpsView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(up.uname + (up.liveRoomID != nil ? String(localized: "，正在直播") : ""))
         .accessibilityHint("打开 UP 主主页")
+        .accessibilityIdentifier("following.allUp.\(up.mid)")
     }
 
     @ViewBuilder

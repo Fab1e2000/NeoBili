@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 列表卡片需要用同一个命名空间登记自己是 zoom 转场的起点，
@@ -179,7 +177,6 @@ struct RootView: View {
                 .tint(.primary)
         case .following:
             FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") })
-                .id(account.sessionID)
                 .tint(.primary)
         case .watchLater, .favorites, .history:
             // 列表只在首次出现时加载，换账号后要整页重建，否则会留着上个账号的内容。

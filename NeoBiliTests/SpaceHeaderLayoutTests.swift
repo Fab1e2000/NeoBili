@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import SwiftUI
 import XCTest
 @testable import NeoBili
@@ -19,10 +17,11 @@ final class SpaceHeaderLayoutTests: XCTestCase {
         let services = ApplicationServices(session: .init(currentID: { session }, homeAccount: { .init(accountID: nil, hasAppCredential: false) }),
             community: .init(spaceCardOperation: { _ in card }, spaceProfileOperation: { _ in card },
                              spaceVideosOperation: { _, _ in emptyVideos }))
+        let stores = ApplicationStores(likes: VideoLikeStore(), followingRead: FollowingReadStore(), searchHistory: SearchHistory())
         let host = UIHostingController(rootView: NavigationStack {
-            SpaceView(up: FollowedUp(mid: 42, uname: "测试 UP 主", face: "", hasUpdate: false), services: services, likeStore: VideoLikeStore())
-        }.environment(AccountStore(monitorNetwork: false)).environment(NowPlayingStore()).environment(ActionFeedback())
-            .environment(\.applicationServices, services).dynamicTypeSize(.xxxLarge))
+            SpaceView(up: FollowedUp(mid: 42, uname: "测试 UP 主", face: "", hasUpdate: false))
+        }.environment(AccountStore(likeStore: stores.likes, monitorNetwork: false)).environment(NowPlayingStore()).environment(ActionFeedback())
+            .environment(\.applicationServices, services).environment(\.applicationStores, stores).dynamicTypeSize(.xxxLarge))
         window.rootViewController = host; window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
         try await Task.sleep(for: .milliseconds(400))

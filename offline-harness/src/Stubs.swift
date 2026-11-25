@@ -1,54 +1,20 @@
 import Foundation
+import NeoBiliDomain
+@testable import NeoBiliData
 
-/// 离线测试桩：PortraitVideoStore 默认 loader 引用的播放预取缓存在 App 里
-/// 依赖 mpv/SwiftUI。宿主机上它只需返回确定性的详情数据，让 shared store
-/// 的补查路径可以在测试里真实走通。
-actor VideoPreparationCache {
-    static let shared = VideoPreparationCache()
-
-    func detail(for bvid: String) async throws -> VideoDetail {
-        VideoDetail(
-            bvid: bvid,
-            aid: 1,
-            cid: 1,
-            title: bvid,
-            desc: "",
-            pic: "",
-            duration: 700,
-            pubdate: 0,
-            owner: VideoOwner(mid: 1, name: "UP", face: ""),
-            stat: VideoStat(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0),
-            pages: [],
-            dimension: VideoDimension(width: 1920, height: 1080),
-            tname: nil,
-            copyright: nil,
-            ugcSeason: nil
-        )
-    }
+// The host uses real service contracts and adapters with isolated credentials.
+extension ApplicationServices {
+    static let live = ApplicationServices(
+        session: .live(identity: .shared),
+        video: .live(client: .shared, identity: .shared),
+        recommendation: .live(client: .shared, identity: .shared, session: .shared,
+            network: .shared, clickReporter: .shared, filter: { .current() })
+    )
 }
 
-/// 宿主测试所需的账号凭据快照，字段对应 Domain 的 AccountSessionClient 契约。
-struct AccountCredentialsSnapshot: Sendable {
-    let hasCredentials: Bool
-    var hasAppCredential = false
-    var needsAppReauthorization = false
-    var needsAppCredentialMigration = false
-    let accountID: Int?
-}
-
-// Host composition root: the same service contracts and adapters as the app.
-// Only presentation-only services are omitted from this smaller executable.
-struct ApplicationServices {
-    var session: SessionService = .live(identity: .shared)
-    var video: VideoService = .live(client: .shared, identity: .shared)
-    var recommendation: RecommendationService = .live(client: .shared, identity: .shared, session: .shared,
-        network: .shared, clickReporter: .shared, filter: { .current() })
-    static let live = ApplicationServices()
-}
 extension HomeFeedAccount {
     static func current() async -> Self { await ApplicationServices.live.session.homeAccount() }
 }
-public enum ServiceError: Error { case unconfigured(String) }
 
 extension VideoFilterDependencies {
     @MainActor static let live: Self = {

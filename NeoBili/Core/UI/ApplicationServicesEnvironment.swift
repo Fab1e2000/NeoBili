@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 extension EnvironmentValues {
@@ -23,4 +21,9 @@ extension EnvironmentValues {
     }
     @Entry var videoPreparation: VideoPreparationCache = ApplicationServices.playbackPreparation
     @Entry var applicationServices: ApplicationServices = .live
+    @Entry private var injectedApplicationStores: ApplicationStores?
+    @MainActor var applicationStores: ApplicationStores {
+        get { injectedApplicationStores ?? .live }
+        set { injectedApplicationStores = newValue }
+    }
 }

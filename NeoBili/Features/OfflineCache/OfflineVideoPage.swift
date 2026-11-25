@@ -59,6 +59,6 @@ struct OfflineSubtitleOverlay: View {
 struct OfflineArtwork: View {
     let url: URL
     var body: some View {
-        if let image = UIImage(contentsOfFile: url.path) { Image(uiImage: image).resizable() }
+        BiliImage(url: url, placeholder: .hidden)
     }
 }

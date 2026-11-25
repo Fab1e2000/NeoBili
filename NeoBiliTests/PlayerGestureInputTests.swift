@@ -54,6 +54,45 @@ final class PlayerGestureInputTests: XCTestCase {
         XCTAssertEqual(PlayerGestureInputView().hold.minimumPressDuration, 0.3)
     }
 
+    func testVerticalOnlyInputLeavesHorizontalPansUnclaimed() {
+        let input = PlayerGestureInputView()
+        let horizontal = CGPoint(x: 200, y: 20)
+        let vertical = CGPoint(x: 20, y: -200)
+        XCTAssertTrue(input.canBeginPan(velocity: horizontal, translation: .zero))
+
+        input.allowsHorizontalPan = false
+        XCTAssertFalse(input.canBeginPan(velocity: horizontal, translation: vertical))
+        XCTAssertTrue(input.canBeginPan(velocity: vertical, translation: .zero))
+        XCTAssertTrue(input.canBeginPan(velocity: .zero, translation: vertical))
+        XCTAssertFalse(input.canBeginPan(velocity: .zero, translation: horizontal))
+    }
+
+    func testLiveGestureDisablesSeekAndHoldButStillRecognizesDoubleTap() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        var singleTaps = 0
+        var doubleTaps = 0
+        let host = UIHostingController(rootView: PlayerVerticalGestureLayer(
+            isFullScreen: false, currentTime: 0, duration: 0, canSeek: false, canLongPress: false,
+            onDoubleTap: { doubleTaps += 1 }, onTap: { singleTaps += 1 }, onToggleFullScreen: {}
+        ))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        try await Task.sleep(for: .milliseconds(100))
+        let input = try XCTUnwrap(findInput(in: host.view))
+        XCTAssertFalse(input.hold.isEnabled)
+        XCTAssertFalse(input.allowsHorizontalPan)
+
+        input.tap.began(at: .zero, time: 1)
+        input.tap.ended(at: .zero, time: 1.04)
+        input.tap.began(at: .zero, time: 1.14)
+        input.tap.expire(at: 2)
+        XCTAssertEqual(doubleTaps, 1)
+        XCTAssertEqual(singleTaps, 0)
+    }
+
     func testTransparentInputFillsThePlayerAndDismantlingCancelsInteraction() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previous = scene.keyWindow
@@ -68,11 +107,7 @@ final class PlayerGestureInputTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
         try await Task.sleep(for: .milliseconds(100))
         window.layoutIfNeeded()
-        func find(_ view: UIView) -> PlayerGestureInputView? {
-            if let input = view as? PlayerGestureInputView { return input }
-            return view.subviews.lazy.compactMap { find($0) }.first
-        }
-        let input = try XCTUnwrap(find(host.view))
+        let input = try XCTUnwrap(findInput(in: host.view))
         XCTAssertEqual(input.bounds.width, 320, accuracy: 1)
         XCTAssertEqual(input.bounds.height, 180, accuracy: 1)
         for point in [CGPoint(x: 10, y: 10), CGPoint(x: 160, y: 90), CGPoint(x: 310, y: 170)] {
@@ -85,5 +120,10 @@ final class PlayerGestureInputTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(cancellations, 1)
+    }
+
+    private func findInput(in view: UIView) -> PlayerGestureInputView? {
+        if let input = view as? PlayerGestureInputView { return input }
+        return view.subviews.lazy.compactMap { self.findInput(in: $0) }.first
     }
 }

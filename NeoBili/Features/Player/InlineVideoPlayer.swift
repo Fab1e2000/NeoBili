@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 视频渲染层与自绘控件。VideoPage 在内联和全屏布局间保留同一播放会话。

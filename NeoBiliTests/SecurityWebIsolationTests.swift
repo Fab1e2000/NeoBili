@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import XCTest
 import WebKit
 @testable import NeoBili

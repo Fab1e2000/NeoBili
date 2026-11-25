@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 
@@ -530,8 +528,6 @@ struct FavoriteFolderView: View {
     }
 
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
-
-    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
 
     private var canRefresh: Bool {
         !refresh.isRefreshing && !model.isLoading && !model.isLoadingMore && !model.removals.hasPending && !model.isRemovingSelected

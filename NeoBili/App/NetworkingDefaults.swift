@@ -1,9 +1,5 @@
-#if canImport(NeoBiliData)
 import NeoBiliData
-#endif
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 // Production convenience initializers live at the composition boundary.

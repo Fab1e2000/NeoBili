@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 把点赞观察和可见性任务限制在行内，避免牵动整个动态列表及头像条。

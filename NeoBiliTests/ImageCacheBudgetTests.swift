@@ -1,6 +1,4 @@
-#if canImport(NeoBiliData)
 @testable import NeoBiliData
-#endif
 import XCTest
 import UIKit
 @testable import NeoBili

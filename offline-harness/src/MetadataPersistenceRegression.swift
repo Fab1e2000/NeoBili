@@ -1,15 +1,5 @@
 import Foundation
-
-// Only the network boundary is stubbed; the metadata store and dimensions are
-// compiled directly from production source, including persistence and queues.
-struct VideoDetail: Sendable {
-    let dimension: VideoDimension?
-    let duration: Int
-}
-actor VideoPreparationCache {
-    static let shared = VideoPreparationCache()
-    func detail(for bvid: String) async throws -> VideoDetail { throw URLError(.unsupportedURL) }
-}
+import NeoBiliDomain
 
 private final class MetadataRecordingDefaults: UserDefaults, @unchecked Sendable {
     private let lock = NSLock()

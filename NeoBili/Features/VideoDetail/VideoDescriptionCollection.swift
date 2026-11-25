@@ -1,15 +1,6 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
-
-/// Scroll persistence does not publish per-frame offsets back through SwiftUI.
-@MainActor
-final class VideoDescriptionScrollState {
-    /// 离列表顶部滚了多远（不含顶部边距），顶部边距变化后仍能恢复到同一位置。
-    var offset: CGFloat = 0
-}
 
 /// One vertical scroll surface: self-sizing introduction followed by recycled,
 /// font-sized related cards. No nested expanding list or per-scroll SwiftUI state.
@@ -86,6 +77,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
 
     func updateUIView(_ view: UICollectionView, context: Context) {
         let c = context.coordinator
+        let imagePipelineChanged = c.environment.imagePipeline.cache !== context.environment.imagePipeline.cache
         c.environment = context.environment
         view.verticalScrollIndicatorInsets.bottom = context.environment.commentBottomInset
         c.onSelect = onSelect
@@ -99,7 +91,8 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         let environmentChanged = typeSizeChanged
             || c.theme != context.environment.appThemeColor
             || c.colorScheme != context.environment.colorScheme
-        let rowsChanged = c.videos != videos || environmentChanged
+        let rowsChanged = c.videos != videos || environmentChanged || imagePipelineChanged
+        if imagePipelineChanged || c.videos != videos { c.cancelPrefetches() }
         let footersChanged = c.footers.map(\.id) != footers.map(\.id) || c.footers.map(\.revision) != footers.map(\.revision) || environmentChanged
         let previous = c.components
         let structureChanged = previous.map(\.id) != components.map(\.id)
@@ -156,7 +149,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
 
     static func dismantleUIView(_ view: UICollectionView, coordinator: Coordinator) {
         coordinator.collapse.detach()
-        coordinator.prefetch.values.forEach { $0.cancel() }
+        coordinator.cancelPrefetches()
         coordinator.preparations.values.forEach { $0.cancel() }
     }
 
@@ -173,7 +166,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         var onSelect: ((VideoSummary) -> Void)?
         var onReachEnd: (() -> Void)?
         let collapse = PausedVideoCollapseScroll.Observer()
-        var prefetch: [String: Task<Void, Never>] = [:]
+        private var prefetches: [String: (id: UUID, task: Task<Void, Never>)] = [:]
         var preparations: [ObjectIdentifier: Task<Void, Never>] = [:]
 
         func numberOfSections(in collectionView: UICollectionView) -> Int { 3 }
@@ -194,9 +187,11 @@ struct VideoDescriptionCollection: UIViewRepresentable {
             let video = videos[path.item]
             let cell = view.dequeueReusableCell(withReuseIdentifier: "video", for: path) as! PersistentFeedHostingCell
             let needsElevatedPreview = environment.colorScheme == .dark
+            let pipelineID = ObjectIdentifier(environment.imagePipeline.cache)
             let content = GeometryReader { [weak self] geometry in
                 let button = Button { [weak self] in self?.onSelect?(video) } label: {
                     NativeRelatedVideoCard(video: video)
+                        .id(pipelineID)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                 }
                 .buttonStyle(CardPressStyle(cornerRadius: VideoListCardLayout.cardCornerRadius))
@@ -204,6 +199,7 @@ struct VideoDescriptionCollection: UIViewRepresentable {
                 if needsElevatedPreview {
                     button.contextMenu { menu } preview: {
                         NativeRelatedVideoCard(video: video, isMenuPreview: true)
+                            .id(pipelineID)
                             .frame(width: geometry.size.width, height: geometry.size.height)
                     }
                 } else {
@@ -235,22 +231,30 @@ struct VideoDescriptionCollection: UIViewRepresentable {
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             scrollState?.offset = collapse.logicalOffset(for: scrollView)
         }
+        func cancelPrefetches() {
+            prefetches.values.forEach { $0.task.cancel() }
+            prefetches.removeAll()
+        }
+
         func collectionView(_ view: UICollectionView, prefetchItemsAt paths: [IndexPath]) {
             for path in paths where path.section == 1 && path.item < videos.count {
                 let video = videos[path.item]
-                guard prefetch[video.bvid] == nil else { continue }
-                let scale = view.traitCollection.displayScale
-                prefetch[video.bvid] = Task(priority: .utility) { [weak self] in
-                    defer { self?.prefetch[video.bvid] = nil }
-                    guard let url = video.secureCoverURL,
-                          let pixels = ImagePixelSize(points: CGSize(width: 160, height: 90), scale: scale) else { return }
-                    _ = try? await BiliImageLoader.load(url, pixelSize: pixels, prefetch: true)
+                let bvid = video.bvid
+                guard prefetches[bvid] == nil,
+                      let task = BiliImageLoader.prefetch(video.secureCoverURL,
+                          pointSize: NativeRelatedVideoCard.coverSize, scale: environment.displayScale,
+                          pipeline: environment.imagePipeline) else { continue }
+                let id = UUID()
+                prefetches[bvid] = (id, task)
+                Task { [weak self] in
+                    await task.value
+                    if self?.prefetches[bvid]?.id == id { self?.prefetches[bvid] = nil }
                 }
             }
         }
         func collectionView(_ view: UICollectionView, cancelPrefetchingForItemsAt paths: [IndexPath]) {
             for path in paths where path.section == 1 && path.item < videos.count {
-                prefetch.removeValue(forKey: videos[path.item].bvid)?.cancel()
+                prefetches.removeValue(forKey: videos[path.item].bvid)?.task.cancel()
             }
         }
         func collectionView(_ view: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt path: IndexPath) {
@@ -276,8 +280,9 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
     var isMenuPreview = false
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.displayScale) private var scale
+    @Environment(\.imagePipeline) private var pipeline
     func makeUIView(context: Context) -> CardView {
-        let card = CardView()
+        let card = CardView(frame: .zero, pipeline: pipeline)
         if isMenuPreview { card.traitOverrides.userInterfaceLevel = .elevated }
         return card
     }
@@ -300,14 +305,19 @@ struct NativeRelatedVideoCard: UIViewRepresentable {
     }
 
     final class CardView: UIView {
-        private let cover = NativeHomeVideoCard.CardImageView()
+        private let cover: NativeHomeVideoCard.CardImageView
         private let title = UILabel()
         private let owner = UILabel()
         private let metadata = UILabel()
         private var video: VideoSummary?
         private var typeSize: DynamicTypeSize?
         private var scale: CGFloat = 0
-        override init(frame: CGRect) {
+        override convenience init(frame: CGRect) {
+            self.init(frame: frame, pipeline: .live)
+        }
+
+        init(frame: CGRect, pipeline: BiliImagePipeline) {
+            cover = NativeHomeVideoCard.CardImageView(pipeline: pipeline)
             super.init(frame: frame)
             isUserInteractionEnabled = false
             // 长按时系统会单独抬起卡面，标题与封面共用卡片自身的底色。

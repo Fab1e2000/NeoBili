@@ -18,15 +18,14 @@ struct OfflineCover: View {
     var localURL: URL? = nil
     var badge: String? = nil
     var width: CGFloat = 108
-    @State private var localImage: UIImage?
 
     var body: some View {
         ZStack {
             Rectangle().fill(.quaternary)
             if let localURL {
-                if let localImage { Image(uiImage: localImage).resizable().scaledToFill() }
-                else { Image(systemName: "play.rectangle").foregroundStyle(.tertiary) }
-                Color.clear.task(id: localURL) { localImage = UIImage(contentsOfFile: localURL.path) }
+                BiliImage(url: localURL, targetSize: CGSize(width: width, height: width * 0.66),
+                          placeholder: .symbol("play.rectangle"))
+                    .scaledToFill()
             } else if let remoteURL {
                 BiliImage(url: remoteURL, targetSize: CGSize(width: width, height: width * 0.66)).scaledToFill()
             } else {

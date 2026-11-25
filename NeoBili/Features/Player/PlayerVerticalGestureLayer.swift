@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 import MediaPlayer
@@ -19,9 +17,9 @@ struct PlayerVerticalGestureLayer: View {
     var onLongPressChanged: (Bool) -> Void = { _ in }
     let onTap: () -> Void
     let onToggleFullScreen: () -> Void
-    let onSeekChanged: (Double) -> Void
-    let onSeekEnded: (Double) -> Void
-    let onSeekCancelled: () -> Void
+    var onSeekChanged: (Double) -> Void = { _ in }
+    var onSeekEnded: (Double) -> Void = { _ in }
+    var onSeekCancelled: () -> Void = {}
     @AppStorage(PlayerGestureSettings.leftKey) private var left = 0.33
     @AppStorage(PlayerGestureSettings.rightKey) private var right = 0.67
     @AppStorage(PlayerGestureSettings.reverseKey) private var reversed = false
@@ -43,8 +41,9 @@ struct PlayerVerticalGestureLayer: View {
         GeometryReader { geometry in
             PlayerGestureInput(
                 canLongPress: canLongPress,
+                allowsHorizontalPan: canSeek,
                 onTap: onTap,
-                onDoubleTap: { if canSeek { onDoubleTap() } },
+                onDoubleTap: onDoubleTap,
                 onLongPressChanged: { active in
                     if active {
                         isLongPressActive = true

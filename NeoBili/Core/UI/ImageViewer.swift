@@ -1,9 +1,4 @@
-#if canImport(NeoBiliData)
-import NeoBiliData
-#endif
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 
@@ -132,6 +127,13 @@ struct ImageViewer: View {
     }
 }
 
+/// Owner-scoped file access keeps the viewer independent of its disk cache implementation.
+struct ImageViewerFileAccess: Sendable {
+    let localFile: @Sendable (URL, UUID) async throws -> URL
+    let invalidate: @Sendable (URL, URL) async -> Void
+    let release: @Sendable (UUID) async -> Void
+}
+
 @MainActor
 @Observable
 final class ImageViewerModel {
@@ -146,21 +148,21 @@ final class ImageViewerModel {
     private let fetch: @Sendable (URL) async throws -> URL
     private struct Request: Hashable { let index: Int; let original: Bool }
 
-    @ObservationIgnored private let cache: ImageFileCache?
+    @ObservationIgnored private let fileAccess: ImageViewerFileAccess?
     @ObservationIgnored private let owner = UUID()
 
-    init(images: [ViewerImage], cache: ImageFileCache = .shared,
+    init(images: [ViewerImage], fileAccess: ImageViewerFileAccess = .live,
          fetch: (@Sendable (URL) async throws -> URL)? = nil) {
         self.images = images
-        self.cache = fetch == nil ? cache : nil
+        self.fileAccess = fetch == nil ? fileAccess : nil
         let owner = self.owner
-        self.fetch = fetch ?? { try await cache.localFile(for: $0, owner: owner) }
+        self.fetch = fetch ?? { try await fileAccess.localFile($0, owner) }
     }
 
     deinit {
-        if let cache {
+        if let fileAccess {
             let owner = owner
-            Task { await cache.release(owner: owner) }
+            Task { await fileAccess.release(owner) }
         }
     }
 
@@ -176,7 +178,7 @@ final class ImageViewerModel {
             failures.insert(index)
         }
         let remote = original ? images[index].originalURL : images[index].previewURL
-        if let remote, let cache { await cache.invalidate(remote, file: file) }
+        if let remote, let fileAccess { await fileAccess.invalidate(remote, file) }
     }
 
     func canLoadOriginal(_ index: Int) -> Bool {

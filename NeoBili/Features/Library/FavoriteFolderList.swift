@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 参考 Apple Music 资料库的极简原生列表：无封面、纯系统底色与细分隔线，

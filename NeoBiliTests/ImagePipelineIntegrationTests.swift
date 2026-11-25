@@ -43,6 +43,22 @@ final class ImagePipelineIntegrationTests: XCTestCase {
         XCTAssertTrue(BiliImageMemoryCache.image(for: url, pixelSize: pixels, pipeline: other) === second)
     }
 
+    func testLocalArtworkUsesSizedCacheWithoutNetwork() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let original = UIGraphicsImageRenderer(size: CGSize(width: 1024, height: 512), format: format).image { _ in }
+        try XCTUnwrap(original.pngData()).write(to: url)
+        let pixels = try XCTUnwrap(ImagePixelSize(points: CGSize(width: 128, height: 64), scale: 1))
+
+        let loaded = try await BiliImageLoader.load(url, pixelSize: pixels, pipeline: pipeline)
+
+        XCTAssertEqual(loaded.cgImage?.width, 128)
+        XCTAssertEqual(loaded.cgImage?.height, 64)
+        XCTAssertTrue(BiliImageMemoryCache.image(for: url, pixelSize: pixels, pipeline: pipeline) === loaded)
+    }
+
     func testPreloadedOriginalCanBeReadSynchronouslyWithoutDuplicatingBitmap() throws {
         let url = URL(string: "https://example.invalid/image-original-\(UUID()).png")!
         let pixels = try XCTUnwrap(ImagePixelSize(points: CGSize(width: 16, height: 16), scale: 1))

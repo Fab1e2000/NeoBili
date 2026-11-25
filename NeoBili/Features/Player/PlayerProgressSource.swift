@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 struct PlayerProgressSnapshot {
@@ -36,7 +34,7 @@ struct PlayerProgressGestureLayer: View {
         PlayerVerticalGestureLayer(
             isFullScreen: isFullScreen, currentTime: progress.position, duration: progress.duration, canSeek: canSeek, canLongPress: canLongPress,
             feedbackTopInset: feedbackTopInset,
-            onDoubleTap: onDoubleTap, onLongPressChanged: onLongPressChanged,
+            onDoubleTap: { if canSeek { onDoubleTap() } }, onLongPressChanged: onLongPressChanged,
             onTap: onTap, onToggleFullScreen: onToggleFullScreen,
             onSeekChanged: onSeekChanged, onSeekEnded: onSeekEnded, onSeekCancelled: onSeekCancelled
         )

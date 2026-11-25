@@ -1,17 +1,5 @@
 import Foundation
-
-/// Network-only stand-ins; all pagination, staging and request invalidation run
-/// the production LiveFeedModel and LiveRoomPage without UIKit or HTTP.
-enum LiveAPI {
-    static func recommended(page: Int = 1) async throws -> LiveRoomPage { fatalError("Unexpected network dependency") }
-    static func followed(page: Int = 1) async throws -> LiveRoomPage { fatalError("Unexpected network dependency") }
-}
-
-extension Error {
-    var isCancellation: Bool {
-        self is CancellationError || (self as? URLError)?.code == .cancelled
-    }
-}
+@testable import NeoBiliDomain
 
 @main @MainActor
 struct LiveFeedRegression {
@@ -157,9 +145,4 @@ private actor LiveFeedResponseGate {
     func resolve(_ request: Int, room: LiveRoom) {
         pending.removeValue(forKey: request)?.resume(returning: LiveRoomPage(rooms: [room], page: 1, hasMore: false))
     }
-}
-
-struct ApplicationServices {
-    static let live = ApplicationServices()
-    var streaming: LiveAPI.Type { LiveAPI.self }
 }

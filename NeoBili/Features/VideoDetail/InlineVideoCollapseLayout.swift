@@ -1,21 +1,6 @@
 import Foundation
 import CoreGraphics
 
-/// playing 信号可能先于解码首帧到达，加载与真正暂停必须分开判断。
-enum InlineVideoPlaybackPhase: Equatable {
-    case loading
-    case playing
-    case paused
-
-    init(isPlaying: Bool, hasRenderedFirstFrame: Bool, isLoading: Bool) {
-        if !hasRenderedFirstFrame || isLoading {
-            self = .loading
-        } else {
-            self = isPlaying ? .playing : .paused
-        }
-    }
-}
-
 /// 内联播放器随消费的滚动距离连续缩小；播放/加载停在标准画幅，
 /// 只有已显示首帧的暂停视频才能继续缩至控制条并逐渐染色。
 struct InlineVideoCollapseLayout: Equatable {

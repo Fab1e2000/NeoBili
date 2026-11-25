@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 关注页的推入目标：UP 主空间，或「全部关注」列表。
@@ -13,6 +11,20 @@ enum FollowingRoute: Hashable {
 struct FollowingView: View {
     var onOpenLiveRoom: (LiveRoom) -> Void = { _ in }
 
+    @Environment(\.applicationServices) private var services
+    @Environment(\.applicationStores) private var stores
+    @Environment(AccountStore.self) private var account
+
+    var body: some View {
+        FollowingPage(services: services, stores: stores, onOpenLiveRoom: onOpenLiveRoom)
+            .id(account.sessionID)
+    }
+}
+
+private struct FollowingPage: View {
+    private let services: ApplicationServices
+    private let onOpenLiveRoom: (LiveRoom) -> Void
+
     @Environment(NowPlayingStore.self) private var nowPlaying
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
@@ -22,16 +34,16 @@ struct FollowingView: View {
     @Environment(\.hidesPortraitVideos) private var hidesPortraitVideos
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    private let dynamicTransitionPrefix = "following-dynamic-"
     @Namespace private var dynamicTransition
 
     // 设置
-    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicRefreshEnterKey) private var dynamicEnterEnabled = CardAnimationSettings.defaultValue
 
     // 数据与导航
-    @State private var viewModel = FollowingViewModel()
+    @State private var viewModel: FollowingViewModel
     @State private var path: [FollowingRoute] = []
     /// 正在看哪条动态的详情。有值时推入详情页。
     @State private var detailEntry: DynamicEntry?
@@ -61,6 +73,13 @@ struct FollowingView: View {
         let generation: Int
     }
 
+    init(services: ApplicationServices, stores: ApplicationStores, onOpenLiveRoom: @escaping (LiveRoom) -> Void) {
+        self.services = services
+        self.onOpenLiveRoom = onOpenLiveRoom
+        _viewModel = State(initialValue: FollowingViewModel(services: services, readStore: stores.followingRead,
+                                                            likeStore: stores.likes))
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             Group {
@@ -87,7 +106,7 @@ struct FollowingView: View {
                     SpaceView(up: up)
                 case .allFollowings:
                     FollowingAllUpsView(
-                        mid: account.accountID ?? 0,
+                        mid: account.accountID ?? 0, services: services,
                         decorated: Dictionary(viewModel.selectionItems.compactMap(\.up).map { ($0.mid, $0) },
                                               uniquingKeysWith: { first, _ in first }),
                         onOpenUp: { path.append(.space($0)) }
@@ -96,11 +115,11 @@ struct FollowingView: View {
             }
             .fullScreenCover(item: $detailEntry) { entry in
                 NavigationStack {
-                    DynamicDetailView(entry: entry, feed: viewModel.activeFeed)
+                    DynamicDetailView(entry: entry, feed: viewModel.activeFeed, services: services)
                 }
                 .appTextSize()
                 .actionFeedbackOverlay()
-                .navigationTransition(.zoom(sourceID: "following-dynamic-\(entry.id)", in: dynamicTransition))
+                .navigationTransition(.zoom(sourceID: dynamicTransitionPrefix + entry.id, in: dynamicTransition))
             }
             .imageViewerHost()
             // 关注流滚动时底部标签栏始终保留；进入子页面后由子页面自行隐藏。
@@ -109,18 +128,7 @@ struct FollowingView: View {
                 OrientationController.enterPortrait()
             }
         }
-        .onChange(of: account.sessionID) {
-            cancelRefreshAnimation()
-            selectionTransitionTask?.cancel()
-            path = []
-            detailEntry = nil
-            pendingSelectionID = nil
-            isSelectionLoading = false
-            feedOpacity = 1
-            listPosition.scrollTo(edge: .top)
-            viewModel = FollowingViewModel()
-        }
-        .resolvePortraitVideos(viewModel.activeFeed.entries.compactMap(\.video), batchID: feedGeneration, animationCategory: .dynamic) {
+        .resolvePortraitVideos(viewModel.activeFeed.entries.compactMap(\.video), batchID: feedGeneration, providesEntrance: false) {
             let feed = viewModel.activeFeed
             await feed.loadReplacementPage()
             return feed.entries.compactMap(\.video)
@@ -180,12 +188,7 @@ struct FollowingView: View {
                 }
                 // 手势观察器不参与纵向布局，避免独立零高占位产生默认间距。
                 .background(alignment: .top) {
-                    ShortPullRefresh(
-                        threshold: refreshDistance,
-                        enabled: !refresh.isRefreshing,
-                        onProgress: { _, _ in },
-                        onRefresh: startRefresh
-                    )
+                    ListPullRefresh(enabled: !refresh.isRefreshing, onRefresh: startRefresh)
                     .frame(width: 0, height: 0)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
@@ -250,6 +253,7 @@ struct FollowingView: View {
         let feed = viewModel.activeFeed
         return FollowingFeedContent(feed: feed, showsAuthor: viewModel.selectedUp == nil,
             hidesPortraitVideos: hidesPortraitVideos, filtering: filtering, dynamicTransition: dynamicTransition,
+            transitionPrefix: dynamicTransitionPrefix, emptyTitle: "还没有新动态",
             onRetry: { Task { await viewModel.activeFeed.refresh() } },
             onLoadReplacement: { Task { await feed.loadReplacementPage() } },
             onOpenVideo: open,

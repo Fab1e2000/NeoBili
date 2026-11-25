@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 由主页面右上角头像打开的个人面板，提供账号、资料库和设置入口。

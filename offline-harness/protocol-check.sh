@@ -6,11 +6,10 @@ set -euo pipefail
 HARNESS="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HARNESS")"
 BUILD_DIR="$(mktemp -d /tmp/neobili-harness.XXXXXX)"
-trap "rm -rf $BUILD_DIR" EXIT
+trap 'rm -rf "$BUILD_DIR"' EXIT
 
 APP="$ROOT/NeoBili"
-source "$HARNESS/sources.sh"
-cp "$HARNESS/src/ProtocolCheck.swift" "$BUILD_DIR/"
-
-swiftc -O -D NEOBILI_REGRESSION -parse-as-library -o "$BUILD_DIR/protocol-check" "$BUILD_DIR"/*.swift
+source "$HARNESS/modules.sh"
+harness_build_modules -O
+harness_compile -O "$HARNESS/src/ProtocolCheck.swift" -o "$BUILD_DIR/protocol-check"
 "$BUILD_DIR/protocol-check" "$@"

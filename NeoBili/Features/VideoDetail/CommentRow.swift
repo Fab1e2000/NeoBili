@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 单条评论。显示输入是父级一次求值得到的快照，行内不再观察评论模型；

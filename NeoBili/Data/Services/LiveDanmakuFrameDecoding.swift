@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 /// 一帧解码后的结果。认证结果只供连接内部使用，其余直接转为展示层事件。

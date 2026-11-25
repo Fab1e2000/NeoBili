@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import AVFAudio
 import MediaPlayer
 import UIKit
@@ -13,7 +11,7 @@ import UIKit
 final class SystemNowPlayingCenter: SystemMediaControlling {
     private let output: SystemMediaOutput
     private let notifications: NotificationCenter
-    private let artworkLoader: @Sendable (URL) async throws -> Data
+    private let artworkLoader: @Sendable (URL) async throws -> UIImage
     private var removeCommandHandlers: (() -> Void)?
     private var interruptionObserver: NSObjectProtocol?
     private var applicationObservers: [NSObjectProtocol] = []
@@ -34,7 +32,7 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
 
     init(output: SystemMediaOutput, notifications: NotificationCenter,
          interruptionObject: AnyObject?, idleTimer: PlaybackIdleTimer,
-         artworkLoader: @escaping @Sendable (URL) async throws -> Data) {
+         artworkLoader: @escaping @Sendable (URL) async throws -> UIImage) {
         self.output = output
         self.notifications = notifications
         self.idleTimer = idleTimer
@@ -213,12 +211,10 @@ final class SystemNowPlayingCenter: SystemMediaControlling {
         }
         let artworkLoader = self.artworkLoader
         artworkTask = Task { [weak self] in
-            guard let data = try? await artworkLoader(url),
-                  !Task.isCancelled,
-                  let image = UIImage(data: data)
-            else { return }
+            guard let image = try? await artworkLoader(url),
+                  !Task.isCancelled, let self, self.activeSessionID == sessionID,
+                  self.metadata?.artworkURL == url else { return }
             let loadedArtwork = Self.makeArtwork(image)
-            guard let self, self.activeSessionID == sessionID else { return }
             self.artwork = loadedArtwork
             self.publish()
         }

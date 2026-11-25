@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 extension EnvironmentValues {
@@ -21,7 +19,7 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
     var animations = CardAnimationPreferences()
     let videos: [Video]
     let batchID: Int
-    let animationCategory: CardAnimationCategory
+    let providesEntrance: Bool
     let loadReplacementPage: (@MainActor () async -> [Video])?
     @State private var entranceClock = VideoEntranceClock()
     @State private var previousBatch: VideoResolutionBatch?
@@ -39,13 +37,15 @@ private struct PortraitVideoResolution<Video: VideoDimensionProviding>: ViewModi
     }
 
     private var animatesEntrance: Bool {
-        !reduceMotion && animations.isEnabled(category: animationCategory, phase: .enter)
+        providesEntrance && !reduceMotion && animations.isEnabled(category: .video, phase: .enter)
     }
 
     func body(content: Content) -> some View {
         content
             .transformEnvironment(\.videoEntranceClocks) {
-                $0.append(VideoEntranceScope(ids: Set(batch.ids), generation: batchID, clock: entranceClock))
+                if providesEntrance {
+                    $0.append(VideoEntranceScope(ids: Set(batch.ids), generation: batchID, clock: entranceClock))
+                }
             }
             .overlay {
                 VideoEntrancePreparingOverlay(clock: entranceClock, hasVideos: !videos.isEmpty)
@@ -114,11 +114,11 @@ extension View {
     func resolvePortraitVideos<S: Sequence>(
         _ videos: S,
         batchID: Int = 0,
-        animationCategory: CardAnimationCategory = .video,
+        providesEntrance: Bool = true,
         loadReplacementPage: (@MainActor () async -> [S.Element])? = nil
     ) -> some View where S.Element: VideoDimensionProviding {
         modifier(PortraitVideoResolution(videos: Array(videos), batchID: batchID,
-                                         animationCategory: animationCategory,
+                                         providesEntrance: providesEntrance,
                                          loadReplacementPage: loadReplacementPage))
     }
 }

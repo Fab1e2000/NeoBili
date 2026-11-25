@@ -1,95 +1,18 @@
 #!/bin/zsh
-# Shared production inputs for core, protocol and behavior-identity checks.
-# Caller supplies APP, HARNESS and BUILD_DIR. Keep scenario entrypoints separate.
-cp \
-    "$APP/Domain/Models/VideoDimension.swift" \
-    "$APP/Application/Content/VideoFiltering.swift" \
-    "$APP/Application/Settings/VideoDurationFilterSettings.swift" \
-    "$APP/Domain/Models/VideoDuration.swift" \
-    "$APP/Application/Content/PortraitVideoStore.swift" \
-    "$APP/Domain/Models/VideoDimensionProviders.swift" \
-    "$APP/Domain/Models/VideoModels.swift" \
-    "$APP/Domain/Models/LiveModels.swift" \
-    "$APP/Domain/Models/UgcSeasonModels.swift" \
-    "$APP/Domain/Models/FollowModels.swift" \
-    "$APP/Domain/Models/DynamicModels.swift" \
-    "$APP/Domain/Models/SearchModels.swift" \
-    "$APP/Domain/Models/SpaceModels.swift" \
-    "$APP/Application/Content/SpaceVideo+Presentation.swift" \
-    "$APP/Domain/Models/AccountModels.swift" \
-    "$APP/Domain/Models/DynamicVote.swift" \
-    "$APP/Domain/Models/CommentModels.swift" \
-    "$APP/Domain/Models/LenientDecoding.swift" \
-    "$APP/Domain/Models/RecommendationFilter.swift" \
-    "$APP/Application/Settings/RecommendationFilter+Preferences.swift" \
-    "$APP/Domain/Models/AppLanguage.swift" \
-    "$APP/Application/Settings/AppLanguage+Preferences.swift" \
-    "$APP/Core/Extensions/Int+BiliFormatting.swift" \
-    "$APP/Core/Formatting/BiliDateFormatting.swift" \
-    "$APP/Data/Networking/Transport/AppNetwork.swift" \
-    "$APP/Data/Networking/Reporting/RecommendationDiagnostics.swift" \
-    "$APP/Domain/Models/DiagnosticsPreferences.swift" \
-    "$APP/Data/Networking/Transport/APIClient.swift" \
-    "$APP/App/NetworkingDefaults.swift" \
-    "$APP/Domain/Models/BiliAPIError.swift" \
-    "$APP/Data/Networking/Transport/HTTPTransport.swift" \
-    "$APP/Data/Networking/Transport/AppRequestEncoding.swift" \
-    "$APP/Data/Networking/Identity/AppClientIdentity.swift" \
-    "$APP/Data/Networking/Transport/AppProto.swift" \
-    "$APP/Data/Networking/Transport/BiliHeaders.swift" \
-    "$APP/Data/Networking/Identity/AppDeviceProtocol.swift" \
-    "$APP/Data/Networking/Identity/AppDeviceMetadata.swift" \
-    "$APP/Domain/Models/RecommendationExposurePolicy.swift" \
-    "$APP/Data/Networking/Recommendation/AppRecommendationProtocol.swift" \
-    "$APP/Data/Networking/Reporting/AppBehaviorEncoder.swift" \
-    "$APP/Data/Networking/Reporting/AppBehaviorReporter.swift" \
-    "$APP/Data/Networking/Identity/AppBuvid.swift" \
-    "$APP/Data/Networking/Identity/CapturedDeviceDiagnostic.swift" \
-    "$APP/Domain/Models/DeviceIdentityPreferences.swift" \
-    "$APP/Data/Networking/Identity/DeviceIdentityPreferences+Storage.swift" \
-    "$APP/Data/Networking/Identity/AppDeviceRegistration.swift" \
-    "$APP/Data/Networking/Identity/AppGuestRegistration.swift" \
-    "$APP/Data/Networking/Identity/AppTicketService.swift" \
-    "$APP/Data/Networking/Identity/AppNetworkMetadata.swift" \
-    "$APP/Data/Networking/Identity/PasswordCipher.swift" \
-    "$APP/Data/Networking/Endpoints/BiliAPI.swift" \
-    "$APP/Data/Networking/Recommendation/MergedRecommendation.swift" \
-    "$APP/Data/Networking/Endpoints/BiliAPI+Recommendation.swift" \
-    "$APP/Domain/Models/RecommendationBatch.swift" \
-    "$APP/Data/Networking/Endpoints/BiliAPI+VideoActions.swift" \
-    "$APP/Data/Networking/Recommendation/AppRecommendationSession.swift" \
-    "$APP/Data/Networking/Recommendation/AppRecommendationPage.swift" \
-    "$APP/Domain/Models/VideoIdentifier.swift" \
-    "$APP/Data/Networking/Recommendation/AppRelatedPage+Decoding.swift" \
-    "$APP/Domain/Models/AppRelatedPage.swift" \
-    "$APP/Data/Networking/Reporting/RecommendationClick.swift" \
-    "$APP/Data/Networking/Recommendation/AppRecommendationDisplay.swift" \
-    "$APP/Data/Networking/Recommendation/WebRecommendationPage.swift" \
-    "$APP/Domain/Models/LoginModels.swift" \
-    "$APP/Data/Networking/Identity/SMSPassport.swift" \
-    "$APP/Domain/Models/SMSLoginModels.swift" \
-    "$APP/Data/Networking/Identity/AppLoginRenewal.swift" \
-    "$APP/Data/Networking/Identity/WBISigner.swift" \
-    "$APP/Data/Networking/Identity/DeviceIdentity.swift" \
-    "$APP/Data/Networking/Identity/AccountCredentialPersistence.swift" \
-    "$APP/Data/Networking/Identity/KeychainStore.swift" \
-    "$APP/Data/Networking/Identity/AppSigner.swift" \
-    "$APP/Domain/Models/URL+Bili.swift" \
-    "$APP/Core/UI/EnvironmentAction.swift" \
-    "$APP/Domain/Models/DanmakuModels.swift" \
-    "$APP/Data/Media/DanmakuLoader.swift" \
-    "$APP/Application/Home/HomeViewModel.swift" \
-    "$APP/Domain/Services/RecommendationService.swift" \
-    "$APP/Domain/Services/VideoService.swift" \
-    "$APP/Domain/Services/SessionService.swift" \
-    "$APP/Domain/Services/AccountSessionEvents.swift" \
-    "$APP/Domain/Models/HomeFeedAccount.swift" \
-    "$APP/Domain/Models/PlayURLModels.swift" \
-    "$APP/Domain/Models/VideoStoryboard.swift" \
-    "$APP/Data/Services/LiveRecommendationService.swift" \
-    "$APP/Data/Services/LiveVideoService.swift" \
-    "$APP/Data/Networking/Endpoints/BiliAPI+Playback.swift" \
-    "$APP/Data/Networking/Endpoints/BiliAPI+Video.swift" \
-    "$APP/Data/Services/LiveSessionService.swift" \
-    "$HARNESS/src/Stubs.swift" \
-    "$BUILD_DIR/"
+# App-target sources shared by the main, network and identity harnesses.
+# NeoBiliDomain, NeoBiliCore and NeoBiliData are compiled separately by modules.sh.
+harness_app_sources=(
+    "$APP/Application/Content/VideoFiltering.swift"
+    "$APP/Application/Settings/VideoDurationFilterSettings.swift"
+    "$APP/Application/Content/PortraitVideoStore.swift"
+    "$APP/Application/Content/SpaceVideo+Presentation.swift"
+    "$APP/Application/Settings/RecommendationFilter+Preferences.swift"
+    "$APP/Application/Settings/AppLanguage+Preferences.swift"
+    "$APP/Core/Extensions/Int+BiliFormatting.swift"
+    "$APP/App/NetworkingDefaults.swift"
+    "$APP/Core/UI/EnvironmentAction.swift"
+    "$APP/Application/Home/HomeViewModel.swift"
+    "$APP/Application/Content/LoadFailureDescription.swift"
+    "$APP/Core/Extensions/Error+Cancellation.swift"
+    "$HARNESS/src/Stubs.swift"
+)

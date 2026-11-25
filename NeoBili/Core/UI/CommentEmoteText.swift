@@ -1,9 +1,5 @@
-#if canImport(NeoBiliCore)
 import NeoBiliCore
-#endif
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 
@@ -36,19 +32,31 @@ final class CommentEmoteStore {
         return entry
     }
     @ObservationIgnored private let originalsCache: ImageMemoryCache<URL, UIImage>
+    private let notifications: NotificationCenter
+    @ObservationIgnored private nonisolated(unsafe) var memoryPressureObserver: (any NSObjectProtocol)?
     @ObservationIgnored private let requests = ImageRequestPool<URL, UIImage>()
     @ObservationIgnored private let loader: @Sendable (URL) async throws -> UIImage
     @ObservationIgnored private let maximumPixelDimension: CGFloat
 
     init(maximumOriginalBytes: Int = 16 * 1024 * 1024,
+         notifications: NotificationCenter = .default,
          loader: @escaping @Sendable (URL) async throws -> UIImage = {
              try await BiliImageLoader.load($0, pixelSize: ImagePixelSize(points: CGSize(width: 256, height: 256), scale: 1))
          }) {
         let budget = max(4096, maximumOriginalBytes)
-        originalsCache = ImageMemoryCache(maximumBytes: budget, maximumEntries: 256)
+        let cache = ImageMemoryCache<URL, UIImage>(maximumBytes: budget, maximumEntries: 256)
+        originalsCache = cache
+        self.notifications = notifications
         // Align to 16 pixels so a 64-byte-aligned RGBA row also fits the budget.
         maximumPixelDimension = min(512, floor(sqrt(CGFloat(budget) / 4) / 16) * 16)
         self.loader = loader
+        memoryPressureObserver = notifications.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil
+        ) { _ in cache.removeAll() }
+    }
+
+    deinit {
+        if let memoryPressureObserver { notifications.removeObserver(memoryPressureObserver) }
     }
 
     var cachedOriginalByteCount: Int { originalsCache.cachedByteCount }

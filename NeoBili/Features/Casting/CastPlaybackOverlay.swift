@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 投屏进行中覆盖在播放器区域的控制层：支持播放/暂停、进度拖动（点播与离线缓存）、音量调节、画质/音质热切换、换设备与退出投屏。

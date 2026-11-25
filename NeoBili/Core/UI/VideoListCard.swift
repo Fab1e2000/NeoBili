@@ -55,6 +55,10 @@ enum VideoListCardLayout {
 /// 搜索结果、空间投稿、资料库和选集列表共用的横向视频卡。
 /// 视频详情页下方的推荐使用 NativeRelatedVideoCard。
 struct VideoListCard: View {
+    enum AccessibilityField: String {
+        case title, author, duration
+    }
+
     let coverURL: URL?
     let title: String
     let author: String
@@ -155,6 +159,41 @@ private struct VideoListCardContent: View, Equatable {
         }
         .contentShape(RoundedRectangle(cornerRadius: showsCardChrome ? VideoListCardLayout.cardCornerRadius : 0,
                                        style: .continuous))
+    }
+}
+
+/// A stacked card for sizes where a horizontal row compresses the text.
+struct AccessibleVideoListCard<Probe: View>: View {
+    let coverURL: URL?
+    let title: String
+    let author: String
+    let durationText: String
+    @ViewBuilder let fieldBackground: (VideoListCard.AccessibilityField) -> Probe
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CoverThumbnail(url: coverURL)
+                .frame(maxWidth: 240)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+            Text(title)
+                .font(.app(.subheadline, weight: .medium))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .background { fieldBackground(.title) }
+            Text(author)
+                .font(.app(.caption)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .background { fieldBackground(.author) }
+            Label(durationText, systemImage: "clock")
+                .font(.app(.caption2)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .background { fieldBackground(.duration) }
+        }
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous))
     }
 }
 

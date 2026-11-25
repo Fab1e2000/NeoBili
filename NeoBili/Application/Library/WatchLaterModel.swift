@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 import Observation
 
@@ -18,35 +16,35 @@ final class WatchLaterModel {
             try await ApplicationServices.live.library.removeWatchLater(aid: aid, expectedSessionID: session)
         }, session: { ApplicationServices.live.session.currentID() }) }
     }
-    private(set) var items: [WatchLaterItem] = []
-    private(set) var isLoading = false
-    private(set) var hasLoaded = false
-    private(set) var hasMore = false
-    private(set) var isRemoving = false
-    private(set) var errorMessage: String?
-    /// 列表整体换成新的第一页（首次加载或刷新）时加一，驱动卡片进入动画重新计时。
-    private(set) var entranceGeneration = 0
-    /// 列表内容每变一次加一，视图的过滤缓存据此重算。
-    private(set) var contentRevision = 0
-    var selectedIDs: Set<Int> = []
-    var isSelecting = false
-    private(set) var failedRefresh = false
-    /// 手动刷新取回但还没换进列表的第一页；由界面在淡出结束后提交。
-    private var stagedRefresh: (page: Page, session: UUID)?
-    private var nextKey = ""
-    private var splitKey = ""
-    private var generation = UUID()
+    private typealias Cursor = (nextKey: String, splitKey: String)
+    private let list = LibraryListState<WatchLaterItem, Cursor>(firstCursor: ("", ""), hasMore: false)
     private var owner: UUID?
     private let client: Client
+
+    var items: [WatchLaterItem] { list.items }
+    var isLoading: Bool { list.isLoading || list.isLoadingMore }
+    var hasLoaded: Bool { list.hasLoaded }
+    var hasMore: Bool { list.hasMore }
+    var isRemoving: Bool { list.isRemovingBatch }
+    var errorMessage: String? { list.errorMessage }
+    var entranceGeneration: Int { list.entranceGeneration }
+    var contentRevision: Int { list.contentRevision }
+    var selectedIDs: Set<Int> {
+        get { list.selectedIDs }
+        set { list.selectedIDs = newValue }
+    }
+    var isSelecting: Bool {
+        get { list.isSelecting }
+        set { list.isSelecting = newValue }
+    }
+    private(set) var failedRefresh = false
 
     init(client: Client = .live) { self.client = client }
 
     func reset() {
-        generation = UUID(); owner = nil; stagedRefresh = nil
-        items = []; selectedIDs = []; isSelecting = false
-        contentRevision += 1
-        isLoading = false; isRemoving = false; hasLoaded = false
-        hasMore = false; nextKey = ""; splitKey = ""; errorMessage = nil; failedRefresh = false
+        list.reset(hasMore: false)
+        owner = nil
+        failedRefresh = false
     }
 
     func loadInitial() async {
@@ -55,106 +53,78 @@ final class WatchLaterModel {
     }
 
     func load(refresh: Bool = false) async {
-        let session = client.session()
-        if owner != session { reset(); owner = session }
+        let session = currentSession()
+        guard !isRemoving, !isLoading else { return }
         let refreshing = refresh || failedRefresh
-        guard !isRemoving, !isLoading, refreshing || !hasLoaded || hasMore else { return }
-        let request = UUID(); generation = request
-        let key = refreshing ? "" : nextKey
-        isLoading = true; errorMessage = nil
-        defer { if generation == request { isLoading = false } }
-        do {
-            let page = try await client.load(key, refreshing ? "" : splitKey, session)
-            guard generation == request, client.session() == session, !Task.isCancelled else { return }
-            var seen = Set(refreshing ? [] : items.map(\.id))
-            let incoming = page.items.filter { $0.bvid?.isEmpty == false && seen.insert($0.id).inserted }
-            if key.isEmpty { entranceGeneration += 1 }
-            if refreshing { items = incoming } else { items += incoming }
-            contentRevision += 1
-            selectedIDs.formIntersection(Set(items.map(\.id)))
-            hasLoaded = true; failedRefresh = false
-            // A repeated/empty cursor must never create an endless request loop.
-            hasMore = page.hasMore && !page.nextKey.isEmpty && page.nextKey != key
-            nextKey = page.nextKey; splitKey = page.splitKey
-        } catch {
-            guard generation == request, client.session() == session, !error.isCancellation else { return }
-            failedRefresh = refreshing
-            errorMessage = error.loadFailureDescription
+        if refreshing || !hasLoaded {
+            if await loadFirstPage(staged: false, refreshing: refreshing, session: session),
+               ownsList(session) {
+                failedRefresh = false
+            }
+        } else {
+            await list.loadNextPage(isCurrent: { ownsList(session) }, prunesSelection: true) {
+                try await fetchPage($0, session: session)
+            }
         }
     }
 
-    /// 取回第一页但不改动当前列表。成功返回 true，由 `commitStagedRefresh()` 换入。
+    /// Keep the old rows until the page finishes its exit animation.
     func stageRefresh() async -> Bool {
-        let session = client.session()
-        if owner != session { reset(); owner = session }
+        let session = currentSession()
         guard !isRemoving, !isLoading else { return false }
-        let request = UUID(); generation = request
-        stagedRefresh = nil
-        isLoading = true; errorMessage = nil
-        defer { if generation == request { isLoading = false } }
-        do {
-            let page = try await client.load("", "", session)
-            guard generation == request, client.session() == session, !Task.isCancelled else { return false }
-            stagedRefresh = (page, session)
-            return true
-        } catch {
-            guard generation == request, client.session() == session, !error.isCancellation else { return false }
-            failedRefresh = true
-            errorMessage = error.loadFailureDescription
-            return false
-        }
+        return await loadFirstPage(staged: true, refreshing: true, session: session)
     }
 
     func commitStagedRefresh() {
-        guard let staged = stagedRefresh else { return }
-        stagedRefresh = nil
-        guard client.session() == staged.session, !isRemoving else { return }
-        var seen = Set<Int>()
-        items = staged.page.items.filter { $0.bvid?.isEmpty == false && seen.insert($0.id).inserted }
-        contentRevision += 1
-        selectedIDs.formIntersection(Set(items.map(\.id)))
-        if selectedIDs.isEmpty { isSelecting = false }
-        entranceGeneration += 1
-        hasLoaded = true; failedRefresh = false
-        hasMore = staged.page.hasMore && !staged.page.nextKey.isEmpty
-        nextKey = staged.page.nextKey; splitKey = staged.page.splitKey
+        guard owner == client.session(), !isRemoving else {
+            discardStagedRefresh()
+            return
+        }
+        if list.commitStagedPage() { failedRefresh = false }
     }
 
-    func discardStagedRefresh() { stagedRefresh = nil }
+    func discardStagedRefresh() { list.discardStagedPage() }
+
+    private func loadFirstPage(staged: Bool, refreshing: Bool, session: UUID) async -> Bool {
+        list.errorMessage = nil
+        return await list.loadFirstPage(staged: staged, isCurrent: { ownsList(session) }, exitsEmptySelection: false,
+            fetch: { try await fetchPage($0, session: session) },
+            onFailure: { [self] message in
+                failedRefresh = refreshing
+                list.errorMessage = message
+            })
+    }
+
+    private func fetchPage(_ cursor: Cursor, session: UUID) async throws -> LibraryListState<WatchLaterItem, Cursor>.Page {
+        let page = try await client.load(cursor.nextKey, cursor.splitKey, session)
+        return .init(items: page.items.filter { $0.bvid?.isEmpty == false },
+                     nextCursor: (page.nextKey, page.splitKey),
+                     hasMore: page.hasMore && !page.nextKey.isEmpty && page.nextKey != cursor.nextKey)
+    }
+
+    private func ownsList(_ session: UUID) -> Bool {
+        owner == session && client.session() == session
+    }
+
+    private func currentSession() -> UUID {
+        let session = client.session()
+        if owner != session {
+            reset()
+            owner = session
+        }
+        return session
+    }
 
     func toggle(_ item: WatchLaterItem) {
         guard !isRemoving, item.aid != nil else { return }
         if selectedIDs.contains(item.id) { selectedIDs.remove(item.id) } else { selectedIDs.insert(item.id) }
     }
 
-    /// Individual confirmed deletes allow accurate rollback when only some writes succeed.
     func remove(ids: Set<Int>, confirm: @MainActor () async -> Bool) async -> String? {
-        guard !isRemoving, !isLoading else { return nil }
         let session = client.session()
         guard owner == session else { return nil }
-        let snapshot = items
-        let targets = snapshot.filter { ids.contains($0.id) && $0.aid != nil }
-        guard !targets.isEmpty else { return nil }
-        stagedRefresh = nil
-        let request = UUID(); generation = request; isRemoving = true
-        let targetIDs = Set(targets.map(\.id))
-        items.removeAll { targetIDs.contains($0.id) }
-        contentRevision += 1
-        var succeeded: Set<Int> = []
-        var failure: String?
-        if await confirm(), !Task.isCancelled, client.session() == session {
-            for item in targets {
-                guard !Task.isCancelled, client.session() == session else { break }
-                do { try await client.remove(item.aid!, session); succeeded.insert(item.id) }
-                catch { if !error.isCancellation { failure = error.localizedDescription } }
-            }
-        }
-        guard generation == request, client.session() == session else { return nil }
-        items = snapshot.filter { !succeeded.contains($0.id) }
-        contentRevision += 1
-        selectedIDs.subtract(succeeded)
-        isRemoving = false
-        if selectedIDs.isEmpty { isSelecting = false }
-        return failure
+        return await list.removeBatch(ids: ids, canRemove: { $0.aid != nil },
+            isCurrent: { ownsList(session) }, confirm: confirm,
+            write: { try await client.remove($0.id, session) })
     }
 }

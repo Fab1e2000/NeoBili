@@ -1,7 +1,5 @@
 import Foundation
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 
 /// Frozen at process launch; saving a preference never changes an active feed.
 enum RecommendationSourcePreference {

@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 
@@ -17,7 +15,6 @@ extension View {
 }
 
 private struct CommentAuthorHost: ViewModifier {
-    @Environment(\.applicationServices) private var services
     @State private var author: FollowedUp?
     @State private var openAction = EnvironmentAction<CommentMember> { _ in }
 
@@ -30,7 +27,7 @@ private struct CommentAuthorHost: ViewModifier {
                     destination.wrappedValue = FollowedUp(mid: mid, uname: member.uname, face: member.avatar, hasUpdate: false)
                 }
             }
-            .navigationDestination(item: $author) { up in SpaceView(up: up, services: services) }
+            .navigationDestination(item: $author) { up in SpaceView(up: up) }
     }
 }
 

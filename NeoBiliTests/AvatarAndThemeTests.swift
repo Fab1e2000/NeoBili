@@ -1,9 +1,5 @@
-#if canImport(NeoBiliData)
 @testable import NeoBiliData
-#endif
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import XCTest
 import SwiftUI
 @testable import NeoBili

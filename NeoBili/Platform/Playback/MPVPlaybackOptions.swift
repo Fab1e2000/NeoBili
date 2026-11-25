@@ -1,9 +1,5 @@
-#if canImport(NeoBiliData)
 import NeoBiliData
-#endif
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 struct VideoPlaybackConfiguration: Sendable, Equatable {

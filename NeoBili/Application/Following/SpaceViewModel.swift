@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 /// UP 主空间页的数据：头部名片、投稿列表，以及他自己的动态流。
@@ -132,7 +130,7 @@ final class SpaceViewModel {
         isLoadingMoreVideos = false
         isLoadingVideos = true
         videosError = nil
-        defer { isLoadingVideos = false }
+        defer { if videosRequestID == request { isLoadingVideos = false } }
 
         do {
             let result = try await services.community.spaceVideos(mid: mid, page: 1)
@@ -142,7 +140,7 @@ final class SpaceViewModel {
             page = 1
             hasMoreVideos = result.hasMore(after: videos.count)
         } catch {
-            guard !Task.isCancelled, !error.isCancellation else { return }
+            guard videosRequestID == request, !Task.isCancelled, !error.isCancellation else { return }
             // 刷新失败保留已可读的投稿和分页游标；首屏失败仍展示错误页。
             if videos.isEmpty { hasMoreVideos = false }
             videosError = error.loadFailureDescription
@@ -158,7 +156,7 @@ final class SpaceViewModel {
         isLoadingVideos = true
         videosError = nil
         stagedVideos = nil
-        defer { isLoadingVideos = false }
+        defer { if videosRequestID == request { isLoadingVideos = false } }
         do {
             let result = try await services.community.spaceVideos(mid: mid, page: 1)
             guard videosRequestID == request, !Task.isCancelled else { return false }
@@ -166,7 +164,7 @@ final class SpaceViewModel {
             stagedVideos = (list, result.hasMore(after: list.count))
             return true
         } catch {
-            guard !Task.isCancelled, !error.isCancellation else { return false }
+            guard videosRequestID == request, !Task.isCancelled, !error.isCancellation else { return false }
             videosError = error.loadFailureDescription
             return false
         }

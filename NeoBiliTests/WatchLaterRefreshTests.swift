@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import SwiftUI
 import XCTest
 @testable import NeoBili
@@ -31,20 +29,33 @@ final class WatchLaterRefreshTests: XCTestCase {
         XCTAssertGreaterThan(model.entranceGeneration, generation, "cards re-time their entrance after a refresh")
     }
 
-    func testFailedStagedRefreshKeepsListAndReportsError() async throws {
+    func testFailedStagedRefreshKeepsListAndRetriesFromFirstPage() async throws {
         let session = UUID(); let old = try [item(1), item(2)]
-        var fail = false
-        let model = WatchLaterModel(client: .init(load: { _, _, _ in
-            if fail { throw URLError(.notConnectedToInternet) }
-            return .init(items: old)
+        let fresh = try item(3)
+        var loads = 0
+        let model = WatchLaterModel(client: .init(load: { nextKey, splitKey, _ in
+            XCTAssertEqual(nextKey, "")
+            XCTAssertEqual(splitKey, "")
+            loads += 1
+            if loads == 2 { throw URLError(.notConnectedToInternet) }
+            if loads == 1 {
+                return .init(items: old, nextKey: "next", splitKey: "split", hasMore: true)
+            }
+            return .init(items: [fresh])
         }, remove: { _, _ in }, session: { session }))
         await model.load()
-        fail = true
         let staged = await model.stageRefresh()
         XCTAssertFalse(staged)
         model.commitStagedRefresh()
         XCTAssertEqual(model.items.map(\.id), [1, 2])
         XCTAssertNotNil(model.errorMessage)
+        XCTAssertTrue(model.failedRefresh)
+
+        await model.load()
+        XCTAssertEqual(loads, 3)
+        XCTAssertEqual(model.items.map(\.id), [3])
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.failedRefresh)
     }
 
     func testRemovalInvalidatesTheStagedRefresh() async throws {

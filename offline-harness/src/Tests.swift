@@ -1,4 +1,6 @@
 import Foundation
+@testable import NeoBiliDomain
+@testable import NeoBiliData
 
 // MARK: - 测试基础设施
 
