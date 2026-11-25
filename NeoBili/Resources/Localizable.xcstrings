@@ -5872,6 +5872,16 @@
         }
       }
     },
+    "视频章节": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video Chapters"
+          }
+        }
+      }
+    },
     "视频详情页": {
       "localizations": {
         "en": {
@@ -6027,6 +6037,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "第%1$lld名，%2$@"
+          }
+        }
+      }
+    },
+    "章节": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chapters"
           }
         }
       }

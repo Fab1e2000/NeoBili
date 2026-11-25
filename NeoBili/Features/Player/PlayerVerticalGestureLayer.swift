@@ -13,6 +13,7 @@ struct PlayerVerticalGestureLayer: View {
     var canSeek = true
     var canLongPress = false
     var feedbackTopInset: CGFloat = 0
+    var chapters: [VideoChapter] = []
     var onDoubleTap: () -> Void = {}
     var onLongPressChanged: (Bool) -> Void = { _ in }
     let onTap: () -> Void
@@ -98,6 +99,9 @@ struct PlayerVerticalGestureLayer: View {
                       systemImage: seek.isCancelled ? "xmark" : (seek.delta >= 0 ? "forward.fill" : "backward.fill"))
                 Text("\(PlaybackTime.text(seek.target)) / \(PlaybackTime.text(seek.duration))")
                     .font(.app(.headline)).monospacedDigit()
+                if let chapter = chapters.chapter(at: seek.target) {
+                    Text(chapter.title).lineLimit(1).truncationMode(.tail)
+                }
                 Text(seek.isCancelled ? String(localized: "移回画面继续调整") : String(localized: "\(seek.delta >= 0 ? "+" : "−")\(Int(abs(seek.delta).rounded())) 秒 · 松开跳转"))
                     .font(.app(.caption))
                     .foregroundStyle(.secondary)

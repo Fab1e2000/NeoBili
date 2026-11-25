@@ -377,6 +377,7 @@ public actor OfflineCacheRepository {
                 return old
             }
             entry.audioQuality = result.audioQuality; entry.width = result.width; entry.height = result.height
+            entry.chapters = result.chapters
             entry.state = .queued
             try FileManager.default.createDirectory(at: folder(entry.generation), withIntermediateDirectories: true,
                 attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])

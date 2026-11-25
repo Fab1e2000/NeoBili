@@ -240,7 +240,8 @@ struct PlayerGlassChrome<MenuContent: View>: View {
                             },
                             isLive: isLive, isWaiting: isWaiting, canControlPlayback: canControlPlayback,
                             showsTimeLabels: layout.showsTimeLabels, isMinimal: layout.mode == .minimal,
-                            onScrub: onScrub, onScrubEnd: onScrubEnd
+                            width: layout.timeline.width, isFullScreen: isFullScreen,
+                            onScrub: onScrub, onScrubEnd: onScrubEnd, onMenuInteraction: onMenuInteraction
                         )
                         .chromeFrame(layout.timeline)
                         if !layout.secondaryActions.isEmpty {
@@ -588,7 +589,7 @@ private struct PlayerChromeScrim: View {
     }
 }
 
-private struct PlayerMenuButtonStyle: ButtonStyle {
+struct PlayerMenuButtonStyle: ButtonStyle {
     let onPress: () -> Void
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
