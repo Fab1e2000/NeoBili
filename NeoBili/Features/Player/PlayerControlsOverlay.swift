@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 原生按钮、菜单与滑杆组成媒体控制层；手势区域与稳定的视频渲染层分别管理。
@@ -9,6 +7,7 @@ struct PlayerControlsOverlay: View {
     @Environment(AccountStore.self) private var account
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.playbackModePreferences) private var modePreferences
     let viewModel: PlayerViewModel
     @Binding var controlsVisible: Bool
     let isFullScreen: Bool
@@ -24,6 +23,7 @@ struct PlayerControlsOverlay: View {
     var shareURL: URL?
     var onCache: (() -> Void)? = nil
     var onCast: (() -> Void)? = nil
+    var hasEpisodes = false
 
     @State private var isScrubbing = false
     @State private var scrubTime: Double = 0
@@ -44,7 +44,8 @@ struct PlayerControlsOverlay: View {
             .init(position: isScrubbing ? scrubTime : viewModel.currentTime,
                   duration: viewModel.duration, buffered: viewModel.bufferedTime,
                   previewStore: viewModel.storyboardStore,
-                  previewVideo: viewModel.isOffline ? nil : VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid))
+                  previewVideo: viewModel.isOffline ? nil : VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid),
+                  chapters: viewModel.chapters)
         }
     }
 
@@ -84,7 +85,8 @@ struct PlayerControlsOverlay: View {
             if showsControls {
                 PlayerGlassChrome(
                     title: videoTitle, subtitle: videoSubtitle, shareURL: shareURL,
-                    videoQualityControl: videoQualityControl, audioQualityControl: audioQualityControl,
+                    videoQualityControl: videoQualityControl, hiResControl: hiResControl,
+                    playbackModeControl: playbackModeControl,
                     progressSource: progressSource,
                     isPlaying: viewModel.isPlaying, canControlPlayback: canControlPlayback, isWaiting: isWaiting,
                     isFullScreen: isFullScreen, isCompact: isCompact,
@@ -147,6 +149,22 @@ struct PlayerControlsOverlay: View {
         }
     }
 
+    private var playbackModeControl: PlayerPlaybackModeControl {
+        PlayerPlaybackModeControl(
+            loopEnabled: modePreferences.loopEnabled,
+            autoAdvanceEnabled: modePreferences.autoAdvanceEnabled,
+            autoAdvanceTitle: PlaybackModeSettings.autoAdvanceTitle(hasEpisodes: hasEpisodes),
+            onToggleLoop: {
+                modePreferences.toggleLoop()
+                scheduleAutoHide()
+            },
+            onSetAutoAdvance: { enabled in
+                modePreferences.setAutoAdvanceEnabled(enabled)
+                scheduleAutoHide()
+            }
+        )
+    }
+
     private var videoQualityControl: PlayerQualityControl {
         PlayerQualityControl(
             title: viewModel.selectedVideoQuality.map(PlaybackQuality.videoTitle) ?? String(localized: "分辨率"),
@@ -158,14 +176,26 @@ struct PlayerControlsOverlay: View {
         )
     }
 
-    private var audioQualityControl: PlayerQualityControl {
-        PlayerQualityControl(
-            title: viewModel.selectedAudioQuality.map(PlaybackQuality.audioTitle) ?? String(localized: "音质"),
-            accessibilityLabel: String(localized: "音质"),
-            options: viewModel.availableAudioQualities.map { .init(id: $0, title: PlaybackQuality.audioTitle($0)) },
-            selectedID: viewModel.selectedAudioQuality ?? 0,
-            isEnabled: !viewModel.availableAudioQualities.isEmpty && canControlPlayback && !isScrubbing,
-            onSelect: { changeQuality(audio: $0) }
+    private var hiResControl: PlayerHiResControl? {
+        guard !viewModel.isOffline,
+              viewModel.availableAudioQualities.contains(PlaybackQuality.hiResAudioQuality) else {
+            return nil
+        }
+        let isActive = viewModel.selectedAudioQuality == PlaybackQuality.hiResAudioQuality
+        let fallbackAudio = viewModel.availableAudioQualities.first(where: { $0 != PlaybackQuality.hiResAudioQuality })
+        return PlayerHiResControl(
+            isActive: isActive,
+            isEnabled: canControlPlayback && !isScrubbing && (isActive ? fallbackAudio != nil : true),
+            onToggle: {
+                if isActive {
+                    guard let fallbackAudio else { return }
+                    PlaybackQuality.setHiResEnabled(false)
+                    changeQuality(audio: fallbackAudio)
+                } else {
+                    PlaybackQuality.setHiResEnabled(true)
+                    changeQuality(audio: PlaybackQuality.hiResAudioQuality)
+                }
+            }
         )
     }
 

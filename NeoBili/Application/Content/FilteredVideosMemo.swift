@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 /// 列表页的过滤结果缓存。body 会在刷新淡入、选择模式等无关状态变化时反复求值，

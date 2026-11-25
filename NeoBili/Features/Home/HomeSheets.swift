@@ -1,25 +1,22 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 推荐流里点开的图文卡：按编号取动态详情，复用关注页的动态详情页。
 /// 图文详情通过 sheet 呈现，右上角关闭按钮收起面板。
 struct RecommendedDynamicSheet: View {
     @Environment(\.applicationServices) private var services
+    @Environment(\.applicationStores) private var stores
     let id: String
-    @State private var entry: DynamicEntry?
+    @State private var detail: (entry: DynamicEntry, feed: DynamicFeedModel)?
     @State private var errorMessage: String?
     @State private var canRetry = false
     @State private var retryGeneration = 0
-    /// 详情页的点赞状态挂在一个动态列表模型上；这里单独给一个。
-    @State private var feed = DynamicFeedModel(source: .following)
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            if let entry {
-                DynamicDetailView(entry: entry, feed: feed)
+            if let detail {
+                DynamicDetailView(entry: detail.entry, feed: detail.feed, services: services)
             } else {
                 Group {
                     if let errorMessage {
@@ -44,14 +41,14 @@ struct RecommendedDynamicSheet: View {
             }
         }
         .task(id: [id, String(retryGeneration)]) {
-            entry = nil
+            detail = nil
             errorMessage = nil
             canRetry = false
             do {
                 let item = try await services.community.dynamicDetail(id: id)
                 try Task.checkCancellation()
                 if let loaded = item.asEntry {
-                    entry = loaded
+                    detail = (loaded, DynamicFeedModel(source: .following, likeStore: stores.likes, services: services))
                 } else {
                     errorMessage = String(localized: "暂不支持这种动态")
                 }

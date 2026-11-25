@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 全屏的视频页。
@@ -20,6 +18,8 @@ struct VideoPage: View {
     /// 横屏全屏仍以实际方向为准；竖屏全屏不旋转，单独记录它的显示意图。
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var isPortraitFullScreen = false
+    @State private var orientationOwner = UUID()
+    @State private var requestsFullscreenOrientation = false
     @State private var controlsSafeArea = EdgeInsets()
     @State private var playerControlsVisible = false
     @State private var commentTimeJump = EnvironmentAction<Double> { _ in }
@@ -101,6 +101,12 @@ struct VideoPage: View {
         .task { if store.offline != nil { offlineCache.connect() } }
         .onAppear {
             installCommentTimeJump()
+            if let session = castSession {
+                session.onPlaybackEnded = { [store, weak session] mediaID in
+                    guard let session else { return }
+                    store.handleCastPlaybackEnded(mediaID: mediaID, castSession: session)
+                }
+            }
             commentAuthor.setHandler { [path = $spacePath] member in
                 guard let mid = member.mid else { return }
                 path.wrappedValue.append(FollowedUp(mid: mid, uname: member.uname, face: member.avatar, hasUpdate: false))
@@ -108,7 +114,7 @@ struct VideoPage: View {
         }
         .onDisappear {
             // 播放画面由 cover 的 onDismiss 在原生缩小动画完成后交给小窗。
-            OrientationController.enterPortrait()
+            endFullScreenOrientation()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { store.player?.savePlaybackProgress() }
@@ -359,7 +365,8 @@ struct VideoPage: View {
                 videoTitle: viewModel?.detail?.title ?? store.route?.title ?? "",
                 videoSubtitle: viewModel?.detail?.owner.name ?? store.route?.artist ?? "",
                 shareURL: onlineShareURL,
-                onCache: onlineCacheAction
+                onCache: onlineCacheAction,
+                hasEpisodes: store.hasCurrentEpisodes
             )
         } else {
             // 等待详情或等待用户点播放时都保留列表封面。
@@ -394,8 +401,6 @@ struct VideoPage: View {
                         title: viewModel?.detail?.title ?? store.route?.title ?? "",
                         subtitle: viewModel?.detail?.owner.name ?? store.route?.artist ?? "",
                         videoQualityControl: PlayerQualityControl(title: String(localized: "分辨率"), accessibilityLabel: String(localized: "分辨率"), options: [],
-                                                                 selectedID: 0, isEnabled: false, onSelect: { _ in }),
-                        audioQualityControl: PlayerQualityControl(title: String(localized: "音质"), accessibilityLabel: String(localized: "音质"), options: [],
                                                                  selectedID: 0, isEnabled: false, onSelect: { _ in }),
                         canControlPlayback: store.isWaitingForPlayback && viewModel?.errorMessage == nil,
                         isWaiting: !store.isWaitingForPlayback && viewModel?.errorMessage == nil,
@@ -698,27 +703,34 @@ struct VideoPage: View {
         guard now.timeIntervalSince(lastFullScreenToggle) > Self.fullScreenToggleCooldown else { return }
         lastFullScreenToggle = now
 
-        if isFullScreen {
-            withAnimation(.easeInOut(duration: 0.25)) { isPortraitFullScreen = false }
-            OrientationController.enterPortrait()
-        } else if isPortraitVideo {
-            withAnimation(.easeInOut(duration: 0.25)) { isPortraitFullScreen = true }
-            OrientationController.enterPortrait()
+        if isFullScreen || requestsFullscreenOrientation {
+            withAnimation(.easeInOut(duration: 0.25)) { endFullScreenOrientation() }
         } else {
-            OrientationController.enterLandscape()
+            requestsFullscreenOrientation = true
+            if isPortraitVideo {
+                withAnimation(.easeInOut(duration: 0.25)) { isPortraitFullScreen = true }
+            }
+            OrientationController.setPlaybackOrientation(isPortraitVideo ? .portrait : .landscape, owner: orientationOwner)
         }
+    }
+
+    private func endFullScreenOrientation() {
+        // Aspect-ratio updates may arrive before UIKit finishes the return to portrait.
+        requestsFullscreenOrientation = false
+        isPortraitFullScreen = false
+        OrientationController.endPlaybackOrientation(owner: orientationOwner)
     }
 
     /// 播放内核补齐旋转元数据或切换分P后，让全屏方向跟随当前画幅。
     private func updateFullScreenOrientation() {
-        guard isFullScreen, let ratio = inlineAspectRatio, ratio.isFinite, ratio > 0 else { return }
+        guard requestsFullscreenOrientation, let ratio = inlineAspectRatio, ratio.isFinite, ratio > 0 else { return }
         if isPortraitVideo {
             guard !isPortraitFullScreen else { return }
             isPortraitFullScreen = true
-            OrientationController.enterPortrait()
-        } else if isPortraitFullScreen {
+            OrientationController.setPlaybackOrientation(.portrait, owner: orientationOwner)
+        } else {
             // 等实际横屏后再清除竖屏全屏标记，方向请求失败时仍保留完整播放器。
-            OrientationController.enterLandscape()
+            OrientationController.setPlaybackOrientation(.landscape, owner: orientationOwner)
         }
     }
 }

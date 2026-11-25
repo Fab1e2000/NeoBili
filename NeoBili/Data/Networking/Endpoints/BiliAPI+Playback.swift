@@ -1,9 +1,12 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 extension BiliAPI {
+    static func playerVideoInfo(bvid: String, cid: Int, client: APIClient, expectedSessionID: UUID) async throws -> PlayerVideoInfo {
+        try await client.get(path: "x/player/v2", params: ["bvid": bvid, "cid": String(cid)],
+                             expectedSessionID: expectedSessionID)
+    }
+
     /// 优先请求 DASH；无可播放流或服务端返回 -400 时尝试下一组格式参数。
     /// 双轨由 PlaybackSourceBuilder.edlURL 组合，最终兼容路径请求合并流。
     static func playURL(bvid: String, cid: Int, quality: Int = 127, client: APIClient, identity: DeviceIdentity) async throws -> PlayURLData {

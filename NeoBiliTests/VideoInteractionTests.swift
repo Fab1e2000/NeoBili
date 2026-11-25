@@ -1,9 +1,5 @@
-#if canImport(NeoBiliData)
 @testable import NeoBiliData
-#endif
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import XCTest
 @testable import NeoBili
 
@@ -178,6 +174,7 @@ final class VideoInteractionTests: XCTestCase {
     func testCancellationErrorsAreRecognised() {
         XCTAssertTrue(CancellationError().isCancellation)
         XCTAssertTrue(URLError(.cancelled).isCancellation)
+        XCTAssertTrue(NSError(domain: NSPOSIXErrorDomain, code: Int(ECANCELED)).isCancellation)
         XCTAssertFalse(URLError(.timedOut).isCancellation)
         XCTAssertFalse(BiliAPIError.riskControlled.isCancellation)
     }

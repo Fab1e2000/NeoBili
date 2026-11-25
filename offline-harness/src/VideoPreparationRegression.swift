@@ -1,17 +1,17 @@
 import Foundation
 import Synchronization
+@testable import NeoBiliDomain
 
-// Only API payload and network boundaries are stubs; scheduling/cache code is
-// compiled directly from the app's VideoPreparationCache.swift.
-struct VideoDetail: Sendable { let cid: Int }
-struct PlayURLData: Sendable { let quality: Int }
-actor DeviceIdentity {
-    static let shared = DeviceIdentity()
-    nonisolated let loginSessionID = UUID()
+private func detailFixture(cid: Int) -> VideoDetail {
+    VideoDetail(bvid: "BVfixture", aid: 1, cid: cid, title: "", desc: "", pic: "", duration: 1, pubdate: 0,
+                owner: .init(mid: 1, name: "", face: ""),
+                stat: .init(view: 0, danmaku: 0, like: 0, favorite: 0, coin: 0, share: 0, reply: 0),
+                pages: [], dimension: nil, tname: nil, copyright: nil, ugcSeason: nil)
 }
-enum BiliAPI {
-    static func videoDetail(bvid: String) async throws -> VideoDetail { throw URLError(.unsupportedURL) }
-    static func playURL(bvid: String, cid: Int) async throws -> PlayURLData { throw URLError(.unsupportedURL) }
+
+private func playbackFixture(quality: Int) -> PlayURLData {
+    PlayURLData(quality: quality, acceptQuality: nil, acceptDescription: nil, durl: nil,
+                dash: nil, vVoucher: nil)
 }
 
 private actor Requests {
@@ -23,15 +23,15 @@ private actor Requests {
     func detail(_ bvid: String) async -> VideoDetail {
         details.append(bvid)
         await withCheckedContinuation { held.append($0) }
-        return VideoDetail(cid: 1)
+        return detailFixture(cid: 1)
     }
     func play(_ bvid: String) -> PlayURLData {
         playback.append(bvid)
-        return PlayURLData(quality: 64)
+        return playbackFixture(quality: 64)
     }
     func immediateDetail(_ bvid: String) -> VideoDetail {
         details.append(bvid)
-        return VideoDetail(cid: 1)
+        return detailFixture(cid: 1)
     }
     func markCompleted(_ id: String) { completed.insert(id) }
     func release() {
@@ -205,18 +205,9 @@ private actor ControlledRequests {
         return await withCheckedContinuation { detailWaiters[index] = $0 }
     }
     func releasePlay(_ index: Int, quality: Int) {
-        playWaiters.removeValue(forKey: index)?.resume(returning: PlayURLData(quality: quality))
+        playWaiters.removeValue(forKey: index)?.resume(returning: playbackFixture(quality: quality))
     }
     func releaseDetail(_ index: Int, cid: Int) {
-        detailWaiters.removeValue(forKey: index)?.resume(returning: VideoDetail(cid: cid))
-    }
-}
-
-struct ApplicationServices: Sendable {
-    static let live = ApplicationServices()
-    var video: BiliAPI.Type { BiliAPI.self }
-    var session: Session { Session() }
-    struct Session: Sendable {
-        func currentID() -> UUID { DeviceIdentity.shared.loginSessionID }
+        detailWaiters.removeValue(forKey: index)?.resume(returning: detailFixture(cid: cid))
     }
 }

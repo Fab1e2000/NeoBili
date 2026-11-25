@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 
@@ -15,6 +13,7 @@ struct PlayerGestureDrag {
 /// disambiguation is explicitly bounded rather than delegated to UIKit timing.
 struct PlayerGestureInput: UIViewRepresentable {
     let canLongPress: Bool
+    var allowsHorizontalPan = true
     let onTap: () -> Void
     let onDoubleTap: () -> Void
     let onLongPressChanged: (Bool) -> Void
@@ -30,6 +29,7 @@ struct PlayerGestureInput: UIViewRepresentable {
         view.onDrag = onDrag
         view.onCancel = onCancel
         view.hold.isEnabled = canLongPress
+        view.allowsHorizontalPan = allowsHorizontalPan
     }
 
     static func dismantleUIView(_ view: PlayerGestureInputView, coordinator: ()) {
@@ -41,6 +41,7 @@ final class PlayerGestureInputView: UIView, UIGestureRecognizerDelegate {
     let tap = PlayerTapGestureRecognizer()
     let hold = UILongPressGestureRecognizer()
     let pan = UIPanGestureRecognizer()
+    var allowsHorizontalPan = true
     var onTap: () -> Void = {}
     var onDoubleTap: () -> Void = {}
     var onLongPressChanged: (Bool) -> Void = { _ in }
@@ -67,6 +68,16 @@ final class PlayerGestureInputView: UIView, UIGestureRecognizerDelegate {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === pan else { return super.gestureRecognizerShouldBegin(gestureRecognizer) }
+        return canBeginPan(velocity: pan.velocity(in: self), translation: pan.translation(in: self))
+    }
+
+    func canBeginPan(velocity: CGPoint, translation: CGPoint) -> Bool {
+        let direction = hypot(velocity.x, velocity.y) > 1 ? velocity : translation
+        return allowsHorizontalPan || abs(direction.y) > 2 * abs(direction.x)
+    }
 
     @objc func held(_ recognizer: UILongPressGestureRecognizer) {
         switch recognizer.state {

@@ -3,10 +3,17 @@ import SwiftUI
 /// Headers, request coalescing and a decoded bitmap sized to the actual view.
 /// Geometry observation leaves the caller's aspect ratio and layout untouched.
 struct BiliImage: View {
+    enum Placeholder {
+        case standard
+        case symbol(String)
+        case hidden
+    }
+
     let url: URL?
     /// 调用方已经知道的显示尺寸（点）。给了就不用等布局测量：第一帧就能按这个
     /// 尺寸取缓存或开始加载，也和列表预取用同一个缓存键。
     var targetSize: CGSize? = nil
+    var placeholder: Placeholder = .standard
     @Environment(\.displayScale) private var displayScale
     @Environment(\.imagePipeline) private var pipeline
     @State private var image: Image?
@@ -36,21 +43,33 @@ struct BiliImage: View {
         Group {
             if let image = displayedImage {
                 image.resizable()
-            } else if failed {
-                ZStack {
-                    Rectangle().fill(.quaternary)
-                    Image(systemName: "photo")
-                        .foregroundStyle(.tertiary)
-                }
             } else {
-                Rectangle().fill(.quaternary)
-                    .overlay(LoadingTaskAnchor().controlSize(.small))
+                placeholderView
             }
         }
         .modifier(MeasuredPixelSize(enabled: targetSize == nil, scale: displayScale, size: $measuredSize))
         .task(id: Request(url: url, pixelSize: pixelSize)) {
             await load()
         }
+    }
+
+    @ViewBuilder private var placeholderView: some View {
+        switch placeholder {
+        case .standard where !failed:
+            Rectangle().fill(.quaternary)
+                .overlay(LoadingTaskAnchor().controlSize(.small))
+        case .standard:
+            symbolPlaceholder("photo")
+        case .symbol(let name):
+            symbolPlaceholder(name)
+        case .hidden:
+            Color.clear
+        }
+    }
+
+    private func symbolPlaceholder(_ name: String) -> some View {
+        Rectangle().fill(.quaternary)
+            .overlay { Image(systemName: name).foregroundStyle(.tertiary) }
     }
 
     private func load() async {

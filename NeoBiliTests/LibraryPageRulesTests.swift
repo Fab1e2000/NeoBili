@@ -1,10 +1,8 @@
-#if canImport(NeoBiliData)
 @testable import NeoBiliData
-#endif
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import XCTest
+import SwiftUI
+import UIKit
 import Synchronization
 @testable import NeoBili
 
@@ -87,6 +85,46 @@ final class LibraryPageRulesTests: XCTestCase {
         XCTAssertTrue(FavFolder(id: 2, title: "私密默认", mediaCount: 0, attr: 1).isDefaultFolder)
         XCTAssertFalse(FavFolder(id: 3, title: "自建", mediaCount: 0, attr: 2).isDefaultFolder)
         XCTAssertFalse(FavFolder(id: 4, title: "缺标记", mediaCount: 0).isDefaultFolder)
+        XCTAssertFalse(FavFolder(id: 1, title: "默认", mediaCount: 0, attr: 0).isPrivate)
+        XCTAssertTrue(FavFolder(id: 2, title: "私密默认", mediaCount: 0, attr: 1).isPrivate)
+        XCTAssertFalse(FavFolder(id: 3, title: "公开自建", mediaCount: 0, attr: 2).isPrivate)
+        XCTAssertTrue(FavFolder(id: 5, title: "私密自建", mediaCount: 0, attr: 3).isPrivate)
+        XCTAssertFalse(FavFolder(id: 4, title: "缺标记", mediaCount: 0).isPrivate)
+    }
+
+    @MainActor
+    func testEditFavoriteFolderSendsMediaIDTitleIntroPrivacyCoverAndCSRF() async throws {
+        let suite = "neobili.folder-update.tests.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let identity = DeviceIdentity(defaults: defaults, credentials: .memory(), allowsNetwork: false, purgeCookies: {})
+        await identity.saveLogin(.init(sessdata: "fixture-one", biliJct: "csrf-one", dedeUserID: "1"), accessKey: nil)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FolderDeletionProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        FolderDeletionProtocol.requests.withLock { $0 = [] }
+        let client = APIClient(session: session, authentication: { await identity.authenticatedRequestSnapshot() })
+
+        let updated = try await BiliAPI.editFavoriteFolder(
+            folderID: 9, title: "新名字", intro: "更新简介", isPublic: false, cover: "https://i0.hdslb.com/a.jpg",
+            expectedSessionID: identity.loginSessionID, client: client, identity: identity
+        )
+        XCTAssertEqual(updated.id, 9)
+        XCTAssertEqual(updated.title, "新名字")
+        XCTAssertEqual(updated.intro, "更新简介")
+        XCTAssertTrue(updated.isPrivate)
+
+        let requests = FolderDeletionProtocol.requests.withLock { $0 }
+        let edit = try XCTUnwrap(requests.first)
+        let query = URLComponents(url: try XCTUnwrap(edit.url), resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(edit.url?.path, "/x/v3/fav/folder/edit")
+        XCTAssertEqual(query?.first { $0.name == "media_id" }?.value, "9")
+        XCTAssertEqual(query?.first { $0.name == "title" }?.value, "新名字")
+        XCTAssertEqual(query?.first { $0.name == "intro" }?.value, "更新简介")
+        XCTAssertEqual(query?.first { $0.name == "privacy" }?.value, "1")
+        XCTAssertEqual(query?.first { $0.name == "cover" }?.value, "https://i0.hdslb.com/a.jpg")
+        XCTAssertEqual(query?.first { $0.name == "csrf" }?.value, "csrf-one")
     }
 
     @MainActor
@@ -126,6 +164,82 @@ final class LibraryPageRulesTests: XCTestCase {
         XCTAssertFalse(LibraryPageRules.hasMoreFavorites(rawCount: 19))
         XCTAssertFalse(LibraryPageRules.hasMoreFavorites(rawCount: 0))
     }
+
+    @MainActor
+    func testFavoritesWindowRendersPlainListWithInlineCreateRowAndNoToolbarAccessory() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+
+        let session = UUID()
+        var services = ApplicationServices(session: .init(currentID: { session }, homeAccount: { .init(accountID: 42, hasAppCredential: false) }))
+        services.library.favoriteFoldersOperation = { _, _ in
+            [
+                FavFolder(id: 1, title: "默认收藏夹", mediaCount: 12, attr: 0),
+                FavFolder(id: 2, title: "技术分享", mediaCount: 8, attr: 2),
+                FavFolder(id: 3, title: "私密清单", mediaCount: 3, attr: 3)
+            ]
+        }
+
+        let suite = "neobili.favorites.plain.\(UUID())"
+        let accountDefaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { accountDefaults.removePersistentDomain(forName: suite) }
+        let client = AccountSessionClient(
+            credentials: { .init(hasCredentials: true, accountID: 42) },
+            save: { _, _ in },
+            clear: {},
+            profile: { throw URLError(.notConnectedToInternet) }
+        )
+        let account = AccountStore(client: client, defaults: accountDefaults, likeStore: VideoLikeStore(), monitorNetwork: false)
+        await account.restoreSessionIfNeeded()
+        let feedback = ActionFeedback()
+        let accessory = RootToolbarAccessory()
+
+        let host = UIHostingController(
+            rootView: NavigationStack { FavoritesView(isTabRoot: true) }
+                .environment(\.applicationServices, services)
+                .environment(account)
+                .environment(feedback)
+                .environment(accessory)
+        )
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        try await TestWindowTransition.wait(for: host)
+
+        let collectionView = try await waitForCollectionView(in: host.view) { view in
+            view.numberOfSections >= 1 && view.numberOfItems(inSection: 0) == 4
+        }
+        collectionView.layoutIfNeeded()
+
+        XCTAssertNil(accessory.button, "收藏页不应在顶部系统工具栏注入新建按钮")
+        XCTAssertEqual(collectionView.numberOfItems(inSection: 0), 4, "应包含 3 个收藏夹与 1 行页面内新建入口")
+    }
+
+    @MainActor
+    private func waitForCollectionView(
+        in root: UIView,
+        matching predicate: (UICollectionView) -> Bool
+    ) async throws -> UICollectionView {
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if let found = findCollectionView(in: root), predicate(found) {
+                return found
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTFail("未能等到收藏夹原生列表完成布局")
+        throw CancellationError()
+    }
+
+    @MainActor
+    private func findCollectionView(in view: UIView) -> UICollectionView? {
+        if let collection = view as? UICollectionView { return collection }
+        for child in view.subviews {
+            if let found = findCollectionView(in: child) { return found }
+        }
+        return nil
+    }
 }
 
 private final class FolderDeletionProtocol: URLProtocol, @unchecked Sendable {
@@ -136,9 +250,14 @@ private final class FolderDeletionProtocol: URLProtocol, @unchecked Sendable {
         Self.requests.withLock { $0.append(request) }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        let body = request.url?.path.contains("folder/add") == true
-            ? Data(#"{"code":0,"data":{"id":9,"title":"新收藏","media_count":0,"attr":2}}"#.utf8)
-            : Data(#"{"code":0,"data":{}}"#.utf8)
+        let body: Data
+        if request.url?.path.contains("folder/add") == true {
+            body = Data(#"{"code":0,"data":{"id":9,"title":"新收藏","media_count":0,"attr":2}}"#.utf8)
+        } else if request.url?.path.contains("folder/edit") == true {
+            body = Data(#"{"code":0,"data":{"id":9,"title":"新名字","intro":"更新简介","media_count":3,"attr":3}}"#.utf8)
+        } else {
+            body = Data(#"{"code":0,"data":{}}"#.utf8)
+        }
         client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }

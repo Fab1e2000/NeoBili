@@ -1,11 +1,8 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 与视频详情共用独立容器的主播信息。
 struct LiveRoomOwnerRow: View {
-    @Environment(\.appThemeColor) private var themeColor
     let room: LiveRoom
     let card: SpaceCard?
     let isFollowing: Bool?
@@ -55,26 +52,12 @@ struct LiveRoomOwnerRow: View {
         .accessibilityIdentifier("live.owner")
     }
 
-    @ViewBuilder
     private var followButton: some View {
-        let button = Button(action: onToggleFollow) {
-            Text(followTitle)
-                .font(.app(.subheadline, weight: .semibold))
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 4)
-        }
-        .buttonBorderShape(.capsule)
-        .disabled(room.uid <= 0 || isOwnAccount || isToggling || isFollowing == nil && isLoading)
-        .accessibilityLabel(isFollowing == true ? "取消关注 \(name)" : "\(followTitle) \(name)")
-        .accessibilityIdentifier("live.owner.follow")
-        if isFollowing == true || isOwnAccount {
-            button.buttonStyle(.glass).foregroundStyle(.secondary)
-        } else {
-            button.buttonStyle(.glassProminent).tint(themeColor)
-        }
+        FollowCapsuleButton(title: followTitle, isActive: isFollowing == true || isOwnAccount, action: onToggleFollow)
+            .disabled(room.uid <= 0 || isOwnAccount || isToggling || isFollowing == nil && isLoading)
+            .accessibilityLabel(isFollowing == true ? "取消关注 \(name)" : "\(followTitle) \(name)")
+            .accessibilityIdentifier("live.owner.follow")
     }
-
 }
 
 /// 标题与直播元信息的独立容器，轻点展开简介/公告。

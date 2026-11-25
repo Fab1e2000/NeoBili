@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 
@@ -83,7 +81,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         controller.collectionView = view
         coordinator.update(environment: context.environment, hidesPortraitVideos: hidesPortraitVideos)
         coordinator.apply(rows)
-        DispatchQueue.main.async { [weak coordinator] in coordinator?.updateExposure() }
+        coordinator.scheduleExposureUpdate()
     }
 
     private func applyInsets(to view: UICollectionView) {
@@ -104,7 +102,7 @@ struct HomeFeedCollection: UIViewRepresentable {
         coordinator.pull.detach()
         coordinator.cancelImagePrefetches()
         coordinator.exposureEnabled = false
-        coordinator.preview.stop()
+        coordinator.inlinePlaybackEnabled = false
         coordinator.updateExposure()
         #if PERFORMANCE_DEMO
         coordinator.scrollProbe.stop()
@@ -160,7 +158,12 @@ struct HomeFeedCollection: UIViewRepresentable {
         var onOpenLastSeen: () -> Void = {}
         var contentOpacity: CGFloat = 1
         var exposureEnabled = false
-        var inlinePlaybackEnabled = false
+        var inlinePlaybackEnabled = false {
+            didSet {
+                // A pending dwell can expire before the next visibility sample.
+                if oldValue && !inlinePlaybackEnabled { preview.stop() }
+            }
+        }
         let preview = HomeInlinePreview()
         private let exposure = RecommendationExposureTracker()
         let state = HomeFeedCellState()
@@ -197,7 +200,11 @@ struct HomeFeedCollection: UIViewRepresentable {
         var removalAnimationDuration: Double?
         /// 滚动回调里的曝光与内联预览采样按固定间隔合并；滚动停止时再补一次最终位置。
         private var lastObservationSample: CFTimeInterval = 0
+        private var pendingObservationSample: Task<Void, Never>?
         private static let observationInterval: CFTimeInterval = 0.1
+        #if NEOBILI_REGRESSION
+        private(set) var observationSampleCount = 0
+        #endif
 
         func attach(_ view: UICollectionView) {
             collectionView = view
@@ -520,10 +527,10 @@ struct HomeFeedCollection: UIViewRepresentable {
         // MARK: UICollectionViewDelegate
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            let now = CACurrentMediaTime()
-            if now - lastObservationSample >= Self.observationInterval {
-                lastObservationSample = now
+            if CACurrentMediaTime() - lastObservationSample >= Self.observationInterval {
                 updateExposure()
+            } else {
+                scheduleExposureUpdate()
             }
         }
 
@@ -545,7 +552,7 @@ struct HomeFeedCollection: UIViewRepresentable {
 
         func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
                             forItemAt indexPath: IndexPath) {
-            DispatchQueue.main.async { [weak self] in self?.updateExposure() }
+            scheduleExposureUpdate()
             // Keep the prefetch consumer cancellable until this cell leaves.
             // Key visible handles by cell identity: a snapshot may reuse the
             // old index path for a different card before didEndDisplaying.
@@ -568,10 +575,28 @@ struct HomeFeedCollection: UIViewRepresentable {
         func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell,
                             forItemAt indexPath: IndexPath) {
             imagePrefetcher.didEndDisplaying(cellID: ObjectIdentifier(cell))
-            updateExposure()
+            scheduleExposureUpdate()
+        }
+
+        func scheduleExposureUpdate() {
+            guard pendingObservationSample == nil else { return }
+            let delay = max(0, Self.observationInterval - (CACurrentMediaTime() - lastObservationSample))
+            // Cell callbacks can precede UIKit's visible-item update. Sample after layout yields.
+            pendingObservationSample = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                guard !Task.isCancelled, let self else { return }
+                pendingObservationSample = nil
+                updateExposure()
+            }
         }
 
         func updateExposure() {
+            pendingObservationSample?.cancel()
+            pendingObservationSample = nil
+            lastObservationSample = CACurrentMediaTime()
+            #if NEOBILI_REGRESSION
+            observationSampleCount += 1
+            #endif
             let timestamp = Int(Date().timeIntervalSince1970 * 1000)
             updateInlinePreview()
             guard exposureEnabled, contentOpacity > 0.99, let collectionView,

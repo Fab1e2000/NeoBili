@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 import SwiftUI
 
@@ -132,10 +130,13 @@ final class NowPlayingStore {
 
     /// 视频页里点相关视频是就地替换，这里记着来路，供左上角返回按钮逐级回退。
     private var history = PlaybackNavigationHistory()
+    /// 当前会话已播过的稿件，用于自动连播跳过重复推荐。
+    private var visitedBvids: Set<String> = []
     private var loadTasks: [Task<Void, Never>] = []
     private var playerLoadTask: Task<Void, Never>?
     private var detailLoadTask: Task<Void, Never>?
     private let detailModelFactory: @MainActor (VideoDetailRoute) -> VideoDetailViewModel
+    private let offlineGroupEntryIDsProvider: @MainActor (String) -> [String]
 
     var preparationCache: VideoPreparationCache { dependencies.preparation }
     private let dependencies: PlaybackDependencies
@@ -143,11 +144,15 @@ final class NowPlayingStore {
 
     init(configuration: VideoPlaybackConfiguration = .fastStart, defaults: UserDefaults = .standard,
          detailModelFactory: (@MainActor (VideoDetailRoute) -> VideoDetailViewModel)? = nil,
+         offlineGroupEntryIDsProvider: (@MainActor (String) -> [String])? = nil,
          dependencies: PlaybackDependencies = .live) {
         // configuration 形参保留给测试注入使用；线上路径每次都读 `.current`。
         _ = configuration
         self.defaults = defaults
         self.dependencies = dependencies
+        self.offlineGroupEntryIDsProvider = offlineGroupEntryIDsProvider ?? { groupID in
+            OfflineCacheStore.shared.entries(in: groupID).map(\.id)
+        }
         self.detailModelFactory = detailModelFactory ?? { route in
             VideoDetailViewModel(bvid: route.bvid, aid: route.aid ?? 0, playbackEntry: route.playbackEntry,
                 likeStore: dependencies.likes, services: dependencies.services,
@@ -179,6 +184,7 @@ final class NowPlayingStore {
             return
         }
         history.reset()
+        visitedBvids.removeAll()
         start(newRoute)
         requestPageExpansion(from: sourceID)
     }
@@ -196,6 +202,10 @@ final class NowPlayingStore {
 
     /// 视频页里点相关视频：就地换掉当前视频，旧的压进历史。
     func openRelated(_ video: VideoSummary) {
+        openRelated(video, forceAutoPlay: false)
+    }
+
+    func openRelated(_ video: VideoSummary, forceAutoPlay: Bool) {
         if let route {
             history.record(route, activeCid: activeCid)
         }
@@ -206,13 +216,18 @@ final class NowPlayingStore {
                 cover: video.pic,
                 title: video.title,
                 artist: video.owner.name, aid: video.aid, playbackEntry: video.playbackEntry.source == .other ? .related : video.playbackEntry
-            )
+            ),
+            forceAutoPlay: forceAutoPlay
         )
     }
 
     /// 合集里选另一集：和点相关视频一样就地换片，旧的压进历史，
     /// 所以左上角返回能一级级退回原来那一集。
     func openEpisode(_ episode: UgcSeasonEpisode) {
+        openEpisode(episode, forceAutoPlay: false)
+    }
+
+    func openEpisode(_ episode: UgcSeasonEpisode, forceAutoPlay: Bool) {
         guard let bvid = episode.bvid else { return }
         if let route {
             history.record(route, activeCid: activeCid)
@@ -224,7 +239,8 @@ final class NowPlayingStore {
                 cover: episode.arc?.pic,
                 title: episode.title,
                 artist: detailViewModel?.detail?.owner.name, playbackEntry: .collection
-            )
+            ),
+            forceAutoPlay: forceAutoPlay
         )
     }
 
@@ -324,6 +340,7 @@ final class NowPlayingStore {
         commentsViewModel = nil
         route = nil
         history.reset()
+        visitedBvids.removeAll()
         isExpanded = false
         isMiniPlayerPresented = false
         isVideoPageDismissalInProgress = false
@@ -370,7 +387,7 @@ final class NowPlayingStore {
     // MARK: - 内部
 
     /// 换一个视频。整份状态归零后重新开始加载。
-    private func start(_ newRoute: VideoDetailRoute) {
+    private func start(_ newRoute: VideoDetailRoute, forceAutoPlay: Bool = false) {
         releaseOffline()
         cancelLoads()
         player?.stop()
@@ -378,7 +395,8 @@ final class NowPlayingStore {
         isMiniPlayerPresented = false
 
         route = newRoute
-        hasRequestedPlayback = DetailPlaybackSettings.isAutoPlayEnabled(in: defaults)
+        visitedBvids.insert(newRoute.bvid)
+        hasRequestedPlayback = forceAutoPlay || DetailPlaybackSettings.isAutoPlayEnabled(in: defaults)
         selectedCid = newRoute.cid
         section = .description
         isDescriptionExpanded = false
@@ -441,6 +459,10 @@ final class NowPlayingStore {
             aid: route.aid ?? detailViewModel?.detail?.aid ?? 0, playbackEntry: route.playbackEntry,
             configuration: playbackConfiguration, dependencies: dependencies
         )
+        newPlayer.onPlaybackEnded = { [weak self, weak newPlayer] in
+            guard let self, let newPlayer else { return }
+            self.handlePlaybackEnded(for: newPlayer)
+        }
         newPlayer.session.surfacePresentation = isMiniPlayerPresented && !isVideoPageDismissalInProgress ? .mini : .page
         player = newPlayer
         refreshSystemMediaMetadata()
@@ -510,10 +532,90 @@ final class NowPlayingStore {
             configuration: playbackConfiguration,
             progressStore: dependencies.offlineProgress ?? PlaybackProgressStore(defaults: defaults, storageNamespace: "offline"),
             dependencies: dependencies)
+        model.onPlaybackEnded = { [weak self, weak model] in
+            guard let self, let model else { return }
+            self.handlePlaybackEnded(for: model)
+        }
         player = model
         model.updateSystemMediaMetadata(title: video.displayTitle, artist: video.author, artworkURL: descriptor.coverURL)
         playerLoadTask = Task { await model.load() }
         requestPageExpansion(from: sourceID)
+    }
+
+    // MARK: - 播放模式与播完切换
+
+    /// 当前视频是否存在分 P / 合集（或离线多 P），用于区分「自动切集」与「自动连播」。
+    var hasCurrentEpisodes: Bool {
+        if let offline {
+            return offlineGroupEntryIDsProvider(offline.entry.video.groupID).count > 1
+        }
+        let partsCount = detailViewModel?.detail?.pages.count ?? 0
+        if partsCount > 1 { return true }
+        return detailViewModel?.detail?.ugcSeason?.episodes.isEmpty == false
+    }
+
+    func handlePlaybackEnded(for endedPlayer: PlayerViewModel) {
+        guard player === endedPlayer else { return }
+        let action = resolveEndAction(sleepsAfterVideoEnd: endedPlayer.sleepsAfterVideoEnd, player: endedPlayer)
+        applyEndAction(action, onLoop: { endedPlayer.play() })
+    }
+
+    func handleCastPlaybackEnded(mediaID: String, castSession: CastSessionModel) {
+        guard let player else { return }
+        let expectedID = player.isOffline ? "offline:\(player.bvid):\(player.cid)" : "video:\(player.bvid):\(player.cid)"
+        guard expectedID == mediaID else { return }
+        let action = resolveEndAction(sleepsAfterVideoEnd: player.sleepsAfterVideoEnd, player: player)
+        applyEndAction(action, onSleep: { player.cancelSleepTimer() },
+                       onLoop: { Task { await castSession.replayCurrentMedia() } })
+    }
+
+    private func applyEndAction(
+        _ action: PlaybackModeSettings.EndAction, onSleep: () -> Void = {}, onLoop: () -> Void
+    ) {
+        switch action {
+        case .sleep:
+            onSleep()
+        case .pause:
+            break
+        case .loop:
+            onLoop()
+        case .nextPart(let cid):
+            hasRequestedPlayback = true
+            selectPart(cid: cid)
+        case .nextSeasonEpisode(let episode):
+            openEpisode(episode, forceAutoPlay: true)
+        case .nextOfflineEntry(let id):
+            switchOfflineEntry(to: id)
+        case .nextRelated(let video):
+            openRelated(video, forceAutoPlay: true)
+        }
+    }
+
+    private func resolveEndAction(sleepsAfterVideoEnd: Bool, player: PlayerViewModel) -> PlaybackModeSettings.EndAction {
+        let offlineIDs = offline.map { offlineGroupEntryIDsProvider($0.entry.video.groupID) } ?? []
+        return PlaybackModeSettings.resolveEndAction(
+            sleepsAfterVideoEnd: sleepsAfterVideoEnd,
+            loopEnabled: PlaybackModeSettings.isLoopEnabled(in: defaults),
+            autoAdvanceEnabled: PlaybackModeSettings.isAutoAdvanceEnabled(in: defaults),
+            isOffline: player.isOffline,
+            currentBvid: player.bvid,
+            currentCid: player.cid,
+            parts: detailViewModel?.detail?.pages ?? [],
+            season: detailViewModel?.detail?.ugcSeason,
+            related: detailViewModel?.related ?? [],
+            visitedBvids: visitedBvids,
+            offlineEntryIDs: offlineIDs,
+            currentOfflineEntryID: offline?.entry.id
+        )
+    }
+
+    private func switchOfflineEntry(to id: String) {
+        guard let service = offlineService else { return }
+        let sourceID = presentationState.entrySourceID
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await self.openOffline(id, service: service, from: sourceID)
+        }
     }
 
     private func releaseOffline() {

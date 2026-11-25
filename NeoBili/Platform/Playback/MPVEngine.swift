@@ -1,8 +1,7 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 import Libmpv
+import Synchronization
 import UIKit
 
 /// UIKit 和播放回调留在 MainActor。句柄、命令、事件读取和销毁都归串行队列。
@@ -12,6 +11,7 @@ final class MPVEngine: @unchecked Sendable {
     @MainActor private var hasReportedFirstFrame = false
     @MainActor private var lastKnownPosition: TimeInterval = 0
     private let eventQueue = DispatchQueue(label: "com.neobili.mpv.events", qos: .userInitiated)
+    private let eventDrainScheduled = Atomic(false)
     private var mpv: OpaquePointer?
     /// The queue uses only the layer's address and retains it until native shutdown.
     /// UIKit continues to own layer geometry.
@@ -202,8 +202,12 @@ final class MPVEngine: @unchecked Sendable {
     /// 由 `mpv_set_wakeup_callback` 从 mpv 自己的线程触发，转发到我们自己的
     /// 串行队列上排空事件，不在 mpv 的线程上做任何事。
     private func scheduleEventDrain() {
+        guard !eventDrainScheduled.exchange(true, ordering: .relaxed) else { return }
         eventQueue.async { [weak self] in
-            self?.drainEvents()
+            guard let self else { return }
+            // Clear before polling so a wakeup racing the final empty poll can enqueue another drain.
+            eventDrainScheduled.store(false, ordering: .relaxed)
+            drainEvents()
         }
     }
 

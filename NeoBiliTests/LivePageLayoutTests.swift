@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 import XCTest
@@ -74,7 +72,7 @@ final class LivePageLayoutTests: XCTestCase {
         }
     }
 
-    func testLivePageFollowedCardStripAndRecommendationLayoutsInForegroundWindow() async throws {
+    func testLivePageFollowedAvatarBarAndRecommendationLayoutsInForegroundWindow() async throws {
         let host = try LivePageSnapshotHost()
         defer { host.close() }
         let rooms = await makeRooms()
@@ -102,8 +100,15 @@ final class LivePageLayoutTests: XCTestCase {
             }
             await directory.refresh(force: true)
 
+            let opened = XCTestExpectation(description: "Open followed live room")
+            var openedRoomID: Int?
+            var openedSourceID: String?
             try await host.show(
-                LivePageFixtureTabs(model: model, directory: directory)
+                LivePageFixtureTabs(model: model, directory: directory) { room, sourceID in
+                    openedRoomID = room.roomID
+                    openedSourceID = sourceID
+                    opened.fulfill()
+                }
                     .environment(account)
                     .defaultAppStorage(defaults)
                     .dynamicTypeSize(.large)
@@ -127,9 +132,32 @@ final class LivePageLayoutTests: XCTestCase {
             for list in lists {
                 XCTAssertEqual(list.bounds.width, host.window.bounds.width, accuracy: 1, name)
             }
-            // 关注直播只以列表顶部的横向房间卡片出现，不是第二个纵向列表。
             let strips = scrollViews.filter { !$0.alwaysBounceVertical && $0.bounds.width > $0.bounds.height }
             XCTAssertEqual(strips.count, loggedIn && !followedRooms.isEmpty ? 1 : 0, name)
+            if loggedIn, let room = followedRooms.first {
+                let strip = try XCTUnwrap(strips.first)
+                XCTAssertTrue(lists.allSatisfy { !strip.isDescendant(of: $0) },
+                              "The avatar bar stays outside the scrolling recommendation list")
+                // The safe area bar extends the scroll view bounds behind the navigation bar.
+                let contentHeight = strip.contentSize.height
+                XCTAssertTrue((52..<100).contains(contentHeight),
+                              "Expected one avatar row, content height=\(contentHeight)")
+
+                let identifierGetter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
+                let avatar = try XCTUnwrap(accessibilityItem(in: host.window) { item in
+                    guard item.accessibilityTraits.contains(.button),
+                          item.responds(to: identifierGetter),
+                          let identifier = item.perform(identifierGetter)?.takeUnretainedValue() as? String else {
+                        return false
+                    }
+                    return identifier == "live.followed.\(room.roomID)"
+                })
+                XCTAssertEqual(avatar.accessibilityLabel, "\(room.username)，正在直播")
+                XCTAssertTrue(avatar.accessibilityActivate())
+                await fulfillment(of: [opened], timeout: 1)
+                XCTAssertEqual(openedRoomID, room.roomID)
+                XCTAssertEqual(openedSourceID, "live-followed-avatar-\(room.roomID)")
+            }
             XCTAssertTrue(descendants(of: host.controller.view).compactMap { $0 as? UISegmentedControl }.isEmpty,
                           "The page no longer switches sources with a segmented control: \(name)")
 
@@ -224,13 +252,14 @@ private enum LivePageFixtureError: LocalizedError {
 private struct LivePageFixtureTabs: View {
     let model: LiveFeedModel
     let directory: FollowedLiveDirectory
+    let onOpenRoom: (LiveRoom, String) -> Void
 
     var body: some View {
         TabView(selection: .constant(2)) {
             Tab("推荐", systemImage: "house.fill", value: 0) { Color.clear }
             Tab("关注", systemImage: "person.2.fill", value: 1) { Color.clear }
             Tab("直播", systemImage: "dot.radiowaves.left.and.right", value: 2) {
-                LiveView(model: model, liveDirectory: directory) { _, _ in }
+                LiveView(model: model, liveDirectory: directory, onOpenRoom: onOpenRoom)
             }
             Tab("我的", systemImage: "person.crop.circle", value: 3) { Color.clear }
         }

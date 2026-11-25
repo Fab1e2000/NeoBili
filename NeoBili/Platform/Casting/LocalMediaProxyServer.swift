@@ -1,8 +1,7 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 import Network
+import Synchronization
 
 /// 本地轻量 HTTP 媒体代理：
 /// 1. 向上游 B 站 CDN 注入 Referer / User-Agent，解决 DLNA 电视直连 403；
@@ -89,21 +88,15 @@ actor LocalMediaProxyServer {
             }
 
             let session = upstreamSession
-            newListener.newConnectionHandler = { [weak self] connection in
-                guard let self else {
-                    connection.cancel()
-                    return
-                }
+            newListener.newConnectionHandler = { [weak self, weak newListener] connection in
                 let box = SendableConnectionBox(connection)
-                let id = UUID()
-                let task = Task.detached(priority: .userInitiated) { [weak self] in
-                    let conn = box.connection
-                    conn.start(queue: DispatchQueue.global(qos: .userInitiated))
-                    await Self.handleConnection(conn, server: self, upstreamSession: session)
-                    conn.cancel()
-                    await self?.removeConnection(id)
+                Task { [weak self, weak newListener] in
+                    guard let self, let newListener else {
+                        box.connection.cancel()
+                        return
+                    }
+                    await self.startConnection(box, from: newListener, upstreamSession: session)
                 }
-                Task { await self.registerConnection(id: id, task: task) }
             }
 
             newListener.start(queue: queue)
@@ -147,8 +140,22 @@ actor LocalMediaProxyServer {
         port = nil
     }
 
-    private func registerConnection(id: UUID, task: Task<Void, Never>) {
-        activeConnections[id] = task
+    private func startConnection(_ box: SendableConnectionBox, from source: NWListener,
+                                 upstreamSession: URLSession) {
+        guard listener === source else { box.connection.cancel(); return }
+        let id = UUID()
+        activeConnections[id] = Task.detached(priority: .userInitiated) { [weak self] in
+            let connection = box.connection
+            await withTaskCancellationHandler {
+                guard !Task.isCancelled else { return }
+                connection.start(queue: DispatchQueue.global(qos: .userInitiated))
+                await Self.handleConnection(connection, server: self, upstreamSession: upstreamSession)
+            } onCancel: {
+                box.connection.cancel()
+            }
+            connection.cancel()
+            await self?.removeConnection(id)
+        }
     }
 
     private func removeConnection(_ id: UUID) {
@@ -454,9 +461,19 @@ actor LocalMediaProxyServer {
             return
         }
 
+        let (events, continuation) = AsyncThrowingStream<UpstreamEvent, any Error>.makeStream()
+        let delegate = UpstreamDelegate(continuation: continuation)
+        let task = upstreamSession.dataTask(with: upstreamRequest)
+        task.delegate = delegate
+        defer { task.cancel() }
+        var sentHeaders = false
         do {
-            let (bytes, response) = try await upstreamSession.bytes(for: upstreamRequest)
-            guard let http = response as? HTTPURLResponse else {
+            try Task.checkCancellation()
+            task.resume()
+            var stream = events.makeAsyncIterator()
+            let response = try await stream.next()
+            try Task.checkCancellation()
+            guard case .response(let http)? = response else {
                 await sendSimpleResponse(connection, status: "502 Bad Gateway")
                 return
             }
@@ -479,27 +496,79 @@ actor LocalMediaProxyServer {
             headerLines.append("")
             headerLines.append("")
 
+            sentHeaders = true
             guard await send(Data(headerLines.joined(separator: "\r\n").utf8), over: connection) else { return }
             guard !isHead else { return }
 
-            var buffer = Data()
-            buffer.reserveCapacity(65_536)
-            for try await byte in bytes {
-                if Task.isCancelled { break }
-                buffer.append(byte)
-                if buffer.count >= 65_536 {
-                    let chunk = buffer
-                    buffer.removeAll(keepingCapacity: true)
-                    guard await send(chunk, over: connection) else { return }
-                }
-            }
-            if !buffer.isEmpty, !Task.isCancelled {
-                _ = await send(buffer, over: connection)
+            while case .chunk(let data)? = try await stream.next() {
+                try Task.checkCancellation()
+                guard await send(data, over: connection) else { return }
+                delegate.didForward(data.count, from: task)
             }
         } catch {
-            if !Task.isCancelled {
+            if !sentHeaders, !Task.isCancelled {
                 await sendSimpleResponse(connection, status: "502 Bad Gateway")
             }
+        }
+    }
+
+    private enum UpstreamEvent: Sendable {
+        case response(HTTPURLResponse)
+        case chunk(Data)
+    }
+
+    private final class UpstreamDelegate: NSObject, URLSessionDataDelegate {
+        private struct Flow {
+            var pendingBytes = 0
+            var suspended = false
+            var finished = false
+        }
+
+        private let flow = Mutex(Flow())
+        private let continuation: AsyncThrowingStream<UpstreamEvent, any Error>.Continuation
+
+        init(continuation: AsyncThrowingStream<UpstreamEvent, any Error>.Continuation) {
+            self.continuation = continuation
+        }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+                        didReceive response: URLResponse,
+                        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void) {
+            guard let response = response as? HTTPURLResponse else {
+                continuation.finish(throwing: URLError(.badServerResponse))
+                completionHandler(.cancel)
+                return
+            }
+            continuation.yield(.response(response))
+            completionHandler(.allow)
+        }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+            flow.withLock { flow in
+                flow.pendingBytes += data.count
+                // URLSession may already have queued more callbacks. Keep those chunks
+                // and pause new reads until the downstream sends catch up.
+                if !flow.suspended, flow.pendingBytes >= 256 * 1024 {
+                    flow.suspended = true
+                    dataTask.suspend()
+                }
+            }
+            continuation.yield(.chunk(data))
+        }
+
+        func didForward(_ count: Int, from task: URLSessionDataTask) {
+            flow.withLock { flow in
+                flow.pendingBytes -= count
+                if !flow.finished, flow.suspended, flow.pendingBytes <= 128 * 1024 {
+                    flow.suspended = false
+                    task.resume()
+                }
+            }
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+            flow.withLock { $0.finished = true }
+            continuation.finish(throwing: error)
         }
     }
 

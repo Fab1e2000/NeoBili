@@ -1,25 +1,9 @@
 import Foundation
+@testable import NeoBiliDomain
 
-// Minimal non-UI dependencies only. swiftc compiles LiveRoomFollowModel.swift
-// directly from production; no follow-state algorithm is duplicated here.
-struct SpaceCard: Hashable, Sendable {
-    let mid: Int
-    let isFollowing: Bool
-}
-
-enum BiliAPI {
-    static func spaceCard(mid: Int) async throws -> SpaceCard {
-        preconditionFailure("Offline follow regression must not use a network reader")
-    }
-    static func modifyRelation(mid: Int, follow: Bool) async throws {
-        preconditionFailure("Offline follow regression must not mutate a real account")
-    }
-}
-
-extension Error {
-    var isCancellation: Bool {
-        self is CancellationError || (self as NSError).domain == NSURLErrorDomain && (self as NSError).code == NSURLErrorCancelled
-    }
+private func spaceCard(mid: Int, isFollowing: Bool) -> SpaceCard {
+    SpaceCard(mid: mid, name: "Fixture", face: "", sign: "", level: 0, isVIP: false, banner: nil,
+              follower: 0, followingCount: 0, likeCount: 0, archiveCount: 0, isFollowing: isFollowing)
 }
 
 @MainActor
@@ -32,7 +16,7 @@ private final class FollowAPI {
     func card(_ mid: Int) async throws -> SpaceCard {
         reads.append(mid)
         if readFails { throw URLError(.cannotConnectToHost) }
-        return SpaceCard(mid: mid, isFollowing: following)
+        return spaceCard(mid: mid, isFollowing: following)
     }
     func write(_ mid: Int, _ follows: Bool) async throws {
         writes.append((mid, follows))
@@ -137,18 +121,18 @@ enum LiveRoomFollowRegression {
         await waitUntil { reads.count == 1 }
         let current = Task { await model.load(context(accountID: 100)) }
         await waitUntil { reads.count == 2 }
-        reads.succeed(1, SpaceCard(mid: 42, isFollowing: true))
+        reads.succeed(1, spaceCard(mid: 42, isFollowing: true))
         await first.value
         precondition(model.isFollowing == nil && model.isLoading,
                      "Old cleanup must not end the new account's pending load")
-        reads.succeed(2, SpaceCard(mid: 42, isFollowing: false))
+        reads.succeed(2, spaceCard(mid: 42, isFollowing: false))
         await current.value
         precondition(model.isFollowing == false && !model.isLoading)
     }
 
     private static func duplicateTapAndLateWriteCannotAffectNewAccount() async {
         let writes = FollowGate<Bool>()
-        let model = LiveRoomFollowModel(cardLoader: { mid in SpaceCard(mid: mid, isFollowing: true) },
+        let model = LiveRoomFollowModel(cardLoader: { mid in spaceCard(mid: mid, isFollowing: true) },
                                         relationWriter: { _, _ in _ = try await writes.load() })
         let oldAccount = context()
         await model.load(oldAccount)
@@ -177,13 +161,13 @@ enum LiveRoomFollowRegression {
         let current = context()
         let initial = Task { await model.load(current) }
         await waitUntil { reads.count == 1 }
-        reads.succeed(1, SpaceCard(mid: 42, isFollowing: true))
+        reads.succeed(1, spaceCard(mid: 42, isFollowing: true))
         await initial.value
         let refresh = Task { await model.load(current, force: true) }
         await waitUntil { reads.count == 2 }
         let action = Task { await model.toggleFollow(current) }
         await waitUntil { writes.count == 1 }
-        reads.succeed(2, SpaceCard(mid: 42, isFollowing: true))
+        reads.succeed(2, spaceCard(mid: 42, isFollowing: true))
         await refresh.value
         precondition(model.isFollowing == false && model.isToggling,
                      "A pre-write profile response cannot overwrite the optimistic relation")
@@ -194,7 +178,7 @@ enum LiveRoomFollowRegression {
 
     private static func logoutClearsRelationAndRejectsOldWrite() async {
         let writes = FollowGate<Bool>()
-        let model = LiveRoomFollowModel(cardLoader: { mid in SpaceCard(mid: mid, isFollowing: false) },
+        let model = LiveRoomFollowModel(cardLoader: { mid in spaceCard(mid: mid, isFollowing: false) },
                                         relationWriter: { _, _ in _ = try await writes.load() })
         let current = context()
         await model.load(current)
@@ -208,10 +192,4 @@ enum LiveRoomFollowRegression {
         precondition(message == nil && model.isFollowing == false && !model.isToggling,
                      "A completed old follow must not reappear after logout")
     }
-}
-
-struct ApplicationServices {
-    static let live = ApplicationServices()
-    var community: BiliAPI.Type { BiliAPI.self }
-    var video: BiliAPI.Type { BiliAPI.self }
 }

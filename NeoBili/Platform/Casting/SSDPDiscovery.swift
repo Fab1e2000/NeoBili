@@ -1,8 +1,7 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Darwin
 import Foundation
+import Synchronization
 
 enum LocalNetworkAddress {
     /// 返回当前设备的局域网 IPv4 地址（优先 Wi-Fi `en0`，其次其他活跃以太网/桥接网卡）。
@@ -54,6 +53,11 @@ enum LocalNetworkAddress {
 }
 
 enum SSDPDiscovery {
+    private static let discoveryQueue = DispatchQueue(label: "com.neobili.cast.ssdp", qos: .userInitiated,
+                                                       attributes: .concurrent)
+    private final class DiscoveryCancellation: Sendable {
+        let cancelled = Atomic(false)
+    }
     private static let multicastHost = "239.255.255.250"
     private static let multicastPort: UInt16 = 1900
 
@@ -64,12 +68,22 @@ enum SSDPDiscovery {
 
     /// 通过 UDP SSDP M-SEARCH 发现局域网内支持投屏的设备描述 URL 列表。
     static func discoverLocations(timeout: TimeInterval = 3.0) async throws -> [URL] {
-        try await Task.detached(priority: .userInitiated) {
-            try discoverSync(timeout: max(0.5, min(timeout, 10.0)))
-        }.value
+        let cancellation = DiscoveryCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                discoveryQueue.async {
+                    continuation.resume(with: Result {
+                        try discoverSync(timeout: max(0.5, min(timeout, 10.0)), cancellation: cancellation)
+                    })
+                }
+            }
+        } onCancel: {
+            cancellation.cancelled.store(true, ordering: .relaxed)
+        }
     }
 
-    private static func discoverSync(timeout: TimeInterval) throws -> [URL] {
+    private static func discoverSync(timeout: TimeInterval, cancellation: DiscoveryCancellation) throws -> [URL] {
+        guard !cancellation.cancelled.load(ordering: .relaxed) else { throw CancellationError() }
         let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
         guard fd >= 0 else {
             throw CastError.localNetworkUnavailable
@@ -122,11 +136,11 @@ enum SSDPDiscovery {
         var buffer = [UInt8](repeating: 0, count: 4096)
 
         while true {
-            if Task.isCancelled { break }
+            guard !cancellation.cancelled.load(ordering: .relaxed) else { throw CancellationError() }
             let now = Date()
             if !didSendUnicast, results.isEmpty, now >= unicastTriggerTime {
                 didSendUnicast = true
-                if sendUnicastSubnetSearch(fd: fd, mx: mx) {
+                if sendUnicastSubnetSearch(fd: fd, mx: mx, cancellation: cancellation) {
                     sentAny = true
                 }
             }
@@ -187,7 +201,7 @@ enum SSDPDiscovery {
     }
 
     /// 针对未开通 multicast entitlement 的 iOS 自签真机：向当前 /24 局域网主机 1900 端口发单播 M-SEARCH。
-    private static func sendUnicastSubnetSearch(fd: Int32, mx: Int) -> Bool {
+    private static func sendUnicastSubnetSearch(fd: Int32, mx: Int, cancellation: DiscoveryCancellation) -> Bool {
         guard let lanIP = LocalNetworkAddress.lanIPv4Address() else { return false }
         let octets = lanIP.split(separator: ".")
         guard octets.count == 4, let selfHost = Int(octets[3]) else { return false }
@@ -202,7 +216,7 @@ enum SSDPDiscovery {
         destAddr.sin_port = multicastPort.bigEndian
 
         for host in 1...254 where host != selfHost {
-            if Task.isCancelled { break }
+            if cancellation.cancelled.load(ordering: .relaxed) { break }
             let ip = "\(prefix)\(host)"
             guard inet_pton(AF_INET, ip, &destAddr.sin_addr) == 1 else { continue }
             let sent = payload.withUnsafeBytes { rawBuffer in

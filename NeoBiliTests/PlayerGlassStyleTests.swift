@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 import XCTest
@@ -46,6 +44,63 @@ final class PlayerGlassStyleTests: XCTestCase {
         XCTAssertEqual(recorder.lastMenuQuality, 64)
     }
 
+    func testChapterMenuLeavesUsableScrubberWidthInInlineAndFullscreenChrome() async throws {
+        let host = try PlayerGlassWindowHost()
+        defer { host.close() }
+        let chapters: [VideoChapter] = [
+            .init(from: 5, to: 40, title: "开场"),
+            .init(from: 45, to: 120, title: "一段需要在小窗截断的很长很长的章节标题")
+        ]
+        func control(_ id: String) -> NSObject? {
+            let getter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
+            return accessibilityItem(in: host.controller.view) { item in
+                item.responds(to: getter) && (item.perform(getter)?.takeUnretainedValue() as? String) == id
+            }
+        }
+        func chrome(chapters: [VideoChapter], fullScreen: Bool, isLive: Bool = false, position: Double = 45) -> some View {
+            PlayerGlassChrome(progressSource: PlayerProgressSource {
+                .init(position: position, duration: 120, buffered: 80, chapters: chapters)
+            }, isLive: isLive, isFullScreen: fullScreen) { EmptyView() }
+                .frame(height: fullScreen ? nil : 230)
+        }
+        for fullScreen in [false, true] {
+            try await host.show(chrome(chapters: [], fullScreen: fullScreen), landscape: fullScreen)
+            XCTAssertNil(control("player.chapters"))
+            let fullTimeline = try XCTUnwrap(control("player.timeline")).accessibilityFrame
+            let fullScrubber = try XCTUnwrap(control("player.scrubber")).accessibilityFrame
+
+            try await host.show(chrome(chapters: chapters, fullScreen: fullScreen), landscape: fullScreen)
+            let menu = try XCTUnwrap(control("player.chapters"))
+            let menuFrame = menu.accessibilityFrame
+            let timeline = try XCTUnwrap(control("player.timeline")).accessibilityFrame
+            let slider = try XCTUnwrap(control("player.scrubber"))
+            let scrubber = slider.accessibilityFrame
+            XCTAssertEqual(menu.accessibilityValue, chapters[1].title)
+            XCTAssertTrue(slider.accessibilityTraits.contains(.adjustable))
+            XCTAssertEqual(menuFrame.height, 48, accuracy: 0.5)
+            XCTAssertEqual(menuFrame.midY, timeline.midY, accuracy: 0.5)
+            XCTAssertLessThanOrEqual(menuFrame.maxX, timeline.minX + 0.5)
+            XCTAssertLessThan(timeline.width, fullTimeline.width)
+            XCTAssertEqual(timeline.maxX, fullTimeline.maxX, accuracy: 1)
+            XCTAssertTrue(timeline.insetBy(dx: -1, dy: -1).contains(scrubber))
+            XCTAssertLessThan(scrubber.width, fullScrubber.width)
+            XCTAssertGreaterThan(scrubber.width, fullScrubber.width * 0.5)
+
+            try await host.show(chrome(chapters: chapters, fullScreen: fullScreen, position: 20), landscape: fullScreen)
+            let shortTitleMenu = try XCTUnwrap(control("player.chapters"))
+            XCTAssertEqual(shortTitleMenu.accessibilityValue, chapters[0].title)
+            assertEqualFrames(shortTitleMenu.accessibilityFrame, menuFrame, "Chapter titles must not change menu size")
+        }
+        for position: Double in [0, 42] {
+            try await host.show(chrome(chapters: chapters, fullScreen: false, position: position))
+            XCTAssertEqual(try XCTUnwrap(control("player.chapters")).accessibilityValue, "章节")
+        }
+        try await host.show(chrome(chapters: chapters, fullScreen: false, isLive: true))
+        XCTAssertNil(control("player.chapters"))
+        XCTAssertNil(control("player.timeline"))
+        XCTAssertNil(control("player.scrubber"))
+    }
+
     func testDanmakuUsesTopRowAndFooterFillsWidthForEveryAspectRatio() {
         // The chrome spaces visible 32pt circles inside their 48pt hit areas.
         // Since the uniform-spacing redesign, neighbouring hit areas can touch;
@@ -65,7 +120,7 @@ final class PlayerGlassStyleTests: XCTestCase {
                     let danmakuCircle = layout.danmaku.insetBy(dx: circleInset, dy: circleInset)
                     let moreCircle = layout.more.insetBy(dx: circleInset, dy: circleInset)
                     let fullScreenCircle = layout.fullScreen.insetBy(dx: circleInset, dy: circleInset)
-                    XCTAssertEqual(danmakuCircle.minX - layout.audioQuality.maxX, visualSpacing, accuracy: 0.001)
+                    XCTAssertEqual(danmakuCircle.minX - layout.videoQuality.maxX, visualSpacing, accuracy: 0.001)
                     XCTAssertEqual(moreCircle.minX - danmakuCircle.maxX, visualSpacing, accuracy: 0.001)
                     XCTAssertLessThanOrEqual(layout.danmaku.maxX, layout.more.minX)
                     XCTAssertEqual(layout.timeline.minX, backCircle.minX)
@@ -74,7 +129,8 @@ final class PlayerGlassStyleTests: XCTestCase {
                     XCTAssertEqual(layout.timeline.midY, layout.fullScreen.midY)
                     XCTAssertTrue(layout.secondaryActions.isEmpty)
                     XCTAssertGreaterThanOrEqual(layout.videoQuality.width, 48)
-                    XCTAssertLessThan(layout.back.maxX, layout.videoQuality.minX)
+                    XCTAssertLessThan(layout.back.maxX, layout.audioQuality.minX)
+                    XCTAssertLessThan(layout.audioQuality.maxX, layout.videoQuality.minX)
                 }
             }
         }
@@ -97,8 +153,9 @@ final class PlayerGlassStyleTests: XCTestCase {
                                        videoQualityWidth: 180, audioQualityWidth: 130)
         XCTAssertGreaterThanOrEqual(narrow.audioQuality.width, 48)
         XCTAssertGreaterThan(narrow.videoQuality.width, narrow.audioQuality.width)
-        XCTAssertLessThan(narrow.back.maxX, narrow.videoQuality.minX)
-        XCTAssertLessThan(narrow.audioQuality.maxX, narrow.more.minX)
+        XCTAssertLessThan(narrow.back.maxX, narrow.audioQuality.minX)
+        XCTAssertLessThan(narrow.audioQuality.maxX, narrow.videoQuality.minX)
+        XCTAssertLessThan(narrow.videoQuality.maxX, narrow.more.minX)
     }
 
     func testVisibleControlRegionsRemainInsideBoundsAndDoNotOverlap() {
@@ -166,9 +223,9 @@ final class PlayerGlassStyleTests: XCTestCase {
         XCTAssertLessThan(layout.more.maxY, layout.fullScreen.minY)
         XCTAssertEqual(layout.videoQuality.minY, bounds.minY)
         XCTAssertEqual(layout.audioQuality.minY, bounds.minY)
-        XCTAssertLessThan(layout.back.maxX, layout.videoQuality.minX)
-        XCTAssertLessThan(layout.videoQuality.maxX, layout.audioQuality.minX)
-        XCTAssertLessThan(layout.audioQuality.maxX, layout.more.minX)
+        XCTAssertLessThan(layout.back.maxX, layout.audioQuality.minX)
+        XCTAssertLessThan(layout.audioQuality.maxX, layout.videoQuality.minX)
+        XCTAssertLessThan(layout.videoQuality.maxX, layout.more.minX)
         XCTAssertTrue(layout.showsTimeLabels)
     }
 
@@ -201,7 +258,31 @@ final class PlayerGlassStyleTests: XCTestCase {
         let landscape = PlayerChromeLayout(bounds: CGRect(x: 28, y: 12, width: 818, height: 361),
                                             isFullScreen: true, hasVideoQuality: true, hasAudioQuality: true)
         XCTAssertGreaterThanOrEqual(landscape.metadata.width, 120)
-        XCTAssertLessThan(landscape.metadata.maxX, landscape.videoQuality.minX)
+        XCTAssertLessThan(landscape.metadata.maxX, landscape.audioQuality.minX)
+        XCTAssertLessThan(landscape.audioQuality.maxX, landscape.videoQuality.minX)
+    }
+
+    func testPlaybackModeSitsBetweenDanmakuAndMoreWithUniformSpacing() {
+        let circleInset: CGFloat = 8
+        let visualSpacing: CGFloat = 16
+        let bounds = CGRect(x: 28, y: 12, width: 788, height: 361)
+        let layout = PlayerChromeLayout(
+            bounds: bounds, isFullScreen: true,
+            hasVideoQuality: true, hasAudioQuality: true,
+            hasPlaybackMode: true, hasDanmaku: true,
+            videoQualityWidth: 100, audioQualityWidth: 80,
+            spacing: visualSpacing
+        )
+        XCTAssertFalse(layout.playbackMode.isEmpty)
+        XCTAssertEqual(layout.playbackMode.midY, layout.more.midY)
+        XCTAssertEqual(layout.danmaku.midY, layout.playbackMode.midY)
+        let danmakuCircle = layout.danmaku.insetBy(dx: circleInset, dy: circleInset)
+        let modeCircle = layout.playbackMode.insetBy(dx: circleInset, dy: circleInset)
+        let moreCircle = layout.more.insetBy(dx: circleInset, dy: circleInset)
+        XCTAssertEqual(moreCircle.minX - modeCircle.maxX, visualSpacing, accuracy: 0.001)
+        XCTAssertEqual(modeCircle.minX - danmakuCircle.maxX, visualSpacing, accuracy: 0.001)
+        XCTAssertEqual(danmakuCircle.minX - layout.videoQuality.maxX, visualSpacing, accuracy: 0.001)
+        XCTAssertEqual(layout.videoQuality.minX - layout.audioQuality.maxX, visualSpacing, accuracy: 0.001)
     }
 
     func testGlassChromeAcrossWindowOrientationsSizesAndLoadingStates() async throws {
@@ -391,7 +472,7 @@ private struct PlayerGlassScreenFixture: View {
             PlayerGlassChrome(title: "海边的日落 · 一起去看世界", subtitle: "NeoBili · 1080P",
                               shareURL: URL(string: "https://example.invalid/static-player-fixture"),
                               videoQualityControl: videoQualityControl,
-                              audioQualityControl: isLive ? nil : audioQualityControl,
+                              hiResControl: isLive ? nil : PlayerHiResControl(isActive: true, isEnabled: state == .playing, onToggle: {}),
                               position: 37, duration: 184, buffered: 92,
                               isPlaying: state == .playing,
                               canControlPlayback: state == .playing,
@@ -589,7 +670,8 @@ private struct PlayerProgressIsolationFixture: View {
             progressSource: PlayerProgressSource {
                 recorder.lastPosition = progress.position
                 recorder.lastBuffered = progress.buffered
-                return .init(position: progress.position, duration: 600, buffered: progress.buffered)
+                return .init(position: progress.position, duration: 600, buffered: progress.buffered,
+                             chapters: [.init(from: 0, to: 5, title: "开场"), .init(from: 5, to: 600, title: "正片")])
             },
             isPlaying: true
         ) {

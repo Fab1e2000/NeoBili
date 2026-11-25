@@ -1,15 +1,25 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
-/// UP 主空间页。头图 + 名片在上，下面用分段控件在「投稿」和「动态」之间切换。
+/// UP 主空间页。头图 + 名片在上，下面用分段控件在「投稿」「合集」「动态」之间切换。
 ///
 /// 排版参考 B 站客户端的空间页，但只保留看内容需要的部分：充电、大航海、
 /// 特别关注这些和播放无关的入口都不做。
 struct SpaceView: View {
+    let up: FollowedUp
+    @Environment(\.applicationServices) private var services
+    @Environment(\.applicationStores) private var stores
+    @Environment(\.videoFiltering) private var filtering
+
+    var body: some View {
+        SpacePage(up: up, services: services, filtering: filtering, likeStore: stores.likes)
+    }
+}
+
+private struct SpacePage: View {
     @Environment(\.appThemeColor) private var themeColor
     let up: FollowedUp
+    private let services: ApplicationServices
 
     @Environment(\.videoPreparation) private var preparation
     @Environment(NowPlayingStore.self) private var nowPlaying
@@ -21,11 +31,14 @@ struct SpaceView: View {
     private var videoAnimations = VideoCardAnimationPreferences(source: .space)
     @AppStorage(CardAnimationSettings.masterKey) private var cardAnimationsEnabled = CardAnimationSettings.defaultValue
     @AppStorage(CardAnimationSettings.dynamicExitKey) private var dynamicExitEnabled = CardAnimationSettings.defaultValue
-    /// 两个分页各自刷新、各自淡出，互不影响。
+    /// 每个分页单独管理刷新。
     @State private var videoRefresh = ListRefreshController()
+    @State private var collectionRefresh = ListRefreshController()
     @State private var dynamicRefresh = ListRefreshController()
     @State private var viewModel: SpaceViewModel
     @State private var tab: Tab = .videos
+    @State private var hasVisitedCollections = false
+    private let dynamicTransitionPrefix = "space-dynamic-"
     @Namespace private var dynamicTransition
     @State private var detailEntry: DynamicEntry?
     @State private var headerHeight: CGFloat = 0
@@ -36,14 +49,20 @@ struct SpaceView: View {
     @State private var pickerHeight: CGFloat = 0
     @State private var scrollingPages: Set<Tab> = []
     @State private var videoPosition = ScrollPosition(edge: .top)
+    @State private var collectionPosition = ScrollPosition(edge: .top)
     @State private var dynamicPosition = ScrollPosition(edge: .top)
 
     private enum Tab: String, CaseIterable, Identifiable {
-        case videos = "投稿"
-        case dynamics = "动态"
+        case videos, collections, dynamics
 
-        var id: String { rawValue }
-        var title: String { self == .videos ? String(localized: "投稿") : String(localized: "动态") }
+        var id: Self { self }
+        var title: LocalizedStringKey {
+            switch self {
+            case .videos: "投稿"
+            case .collections: "合集"
+            case .dynamics: "动态"
+            }
+        }
     }
 
     /// 滚动位置的引用盒子，见 `pageOffsets` 的说明。
@@ -51,9 +70,9 @@ struct SpaceView: View {
         var storage: [Tab: CGFloat] = [:]
     }
 
-    init(up: FollowedUp, filtering: VideoFilterDependencies = .live,
-         services: ApplicationServices = .live, likeStore: VideoLikeStore = .shared) {
+    init(up: FollowedUp, services: ApplicationServices, filtering: VideoFilterDependencies, likeStore: VideoLikeStore) {
         self.up = up
+        self.services = services
         _viewModel = State(initialValue: SpaceViewModel(mid: up.mid, services: services, filtering: filtering, likeStore: likeStore))
     }
 
@@ -105,7 +124,13 @@ struct SpaceView: View {
         .task { await viewModel.loadVideosIfNeeded() }
         .task(id: followContext) { await viewModel.loadCard(followContext) }
         .onChange(of: followContext) { _, context in viewModel.setFollowContext(context) }
-        .onChange(of: tab) { _, selected in synchronizeHeader(in: selected) }
+        .onChange(of: tab) { _, selected in
+            synchronizeHeader(in: selected)
+            if selected == .collections { hasVisitedCollections = true }
+        }
+        .task(id: hasVisitedCollections) {
+            if hasVisitedCollections { await viewModel.collections.loadIfNeeded() }
+        }
         .task(id: tab) {
             // 切到动态那一栏才去加载它，进页面时不白跑一次请求。
             if tab == .dynamics {
@@ -115,15 +140,16 @@ struct SpaceView: View {
         .onAppear { OrientationController.enterPortrait() }
         .onDisappear {
             videoRefresh.reset(discard: viewModel.discardVideosRefresh)
+            collectionRefresh.reset(discard: viewModel.collections.discardRefresh)
             dynamicRefresh.reset(discard: viewModel.dynamics.discardStagedRefresh)
         }
         .fullScreenCover(item: $detailEntry) { entry in
             NavigationStack {
-                    DynamicDetailView(entry: entry, feed: viewModel.dynamics)
+                    DynamicDetailView(entry: entry, feed: viewModel.dynamics, services: services)
                 }
                 .appTextSize()
                 .actionFeedbackOverlay()
-                .navigationTransition(.zoom(sourceID: "space-dynamic-\(entry.id)", in: dynamicTransition))
+                .navigationTransition(.zoom(sourceID: dynamicTransitionPrefix + entry.id, in: dynamicTransition))
         }
 
     }
@@ -141,10 +167,12 @@ struct SpaceView: View {
                             return viewModel.videos
                         }
                         .videoCardAnimationSource(.space)
+                case .collections:
+                    collectionList
                 case .dynamics:
                     dynamicList
                         .resolvePortraitVideos(viewModel.dynamics.entries.compactMap(\.video),
-                                               batchID: viewModel.dynamics.entriesGeneration, animationCategory: .dynamic) {
+                                               batchID: viewModel.dynamics.entriesGeneration, providesEntrance: false) {
                             await viewModel.dynamics.loadReplacementPage()
                             return viewModel.dynamics.entries.compactMap(\.video)
                         }
@@ -163,7 +191,7 @@ struct SpaceView: View {
             .padding(.top, headerHeight + pickerHeight)
         }
         .modifier(SpaceScrollIndicators(motion: headerMotion, headerHeight: headerHeight, pickerHeight: pickerHeight))
-        .scrollPosition(pageTab == .videos ? $videoPosition : $dynamicPosition)
+        .scrollPosition(position(for: pageTab))
         .scrollBounceBehavior(.always, axes: .vertical)
         .onScrollPhaseChange { _, phase in
             if phase == .interacting || phase == .decelerating {
@@ -171,7 +199,9 @@ struct SpaceView: View {
             } else {
                 scrollingPages.remove(pageTab)
                 if pageTab == tab {
-                    synchronizeHeader(in: pageTab == .videos ? .dynamics : .videos)
+                    for other in Tab.allCases where other != pageTab {
+                        synchronizeHeader(in: other)
+                    }
                 }
             }
         }
@@ -186,22 +216,34 @@ struct SpaceView: View {
             headerMotion.collapse = collapse
         }
         .onAppear {
-            if pageTab != tab { synchronizeHeader(in: pageTab) }
+            synchronizeHeader(in: pageTab)
         }
         .leftEdgeTapDeadZone()
     }
 
     private func refreshController(for pageTab: Tab) -> ListRefreshController {
-        pageTab == .videos ? videoRefresh : dynamicRefresh
+        switch pageTab {
+        case .videos: videoRefresh
+        case .collections: collectionRefresh
+        case .dynamics: dynamicRefresh
+        }
     }
 
     private func animatesExit(in pageTab: Tab) -> Bool {
         guard !reduceMotion else { return false }
-        return pageTab == .videos ? videoAnimations.isEnabled(phase: .exit) : cardAnimationsEnabled && dynamicExitEnabled
+        switch pageTab {
+        case .videos: return videoAnimations.isEnabled(phase: .exit)
+        case .collections: return false
+        case .dynamics: return cardAnimationsEnabled && dynamicExitEnabled
+        }
     }
 
     private func canRefresh(_ pageTab: Tab) -> Bool {
-        pageTab == .videos ? !viewModel.isLoadingVideos : !viewModel.dynamics.isLoading
+        switch pageTab {
+        case .videos: !viewModel.isLoadingVideos
+        case .collections: !viewModel.collections.list.isLoading
+        case .dynamics: !viewModel.dynamics.isLoading
+        }
     }
 
     /// 手动下拉刷新：旧内容淡出的同时重新取第一页，两者都结束后一次换入。
@@ -213,6 +255,11 @@ struct SpaceView: View {
                                fetch: { await viewModel.stageVideosRefresh() },
                                commit: viewModel.commitVideosRefresh,
                                discard: viewModel.discardVideosRefresh)
+        case .collections:
+            let model = viewModel.collections
+            collectionRefresh.start(hasContent: !model.collections.isEmpty, animatesExit: false, source: .space,
+                                    fetch: model.stageRefresh, commit: model.commitRefresh,
+                                    discard: model.discardRefresh)
         case .dynamics:
             let stagingID = UUID()
             dynamicRefresh.start(hasContent: !viewModel.dynamics.entries.isEmpty, animatesExit: animatesExit(in: .dynamics),
@@ -226,8 +273,8 @@ struct SpaceView: View {
         }
     }
 
-    /// 横向手势开始前，另一页已处于相同的头部折叠位置。
-    /// 头部完全收起时保留各页更深的阅读位置；展开时两页共同露出头部。
+    /// 横向手势开始前，其他页已处于相同的头部折叠位置。
+    /// 头部完全收起时保留各页更深的阅读位置。
     private func synchronizeHeader(in pageTab: Tab) {
         let offset = SpaceHeaderLayout.synchronizedOffset(
             pageOffset: pageOffsets.storage[pageTab] ?? 0,
@@ -235,10 +282,15 @@ struct SpaceView: View {
             headerHeight: headerHeight
         )
         pageOffsets.storage[pageTab] = offset
-        if pageTab == .videos {
-            videoPosition.scrollTo(y: offset)
-        } else {
-            dynamicPosition.scrollTo(y: offset)
+        let position = position(for: pageTab)
+        position.wrappedValue.scrollTo(y: offset)
+    }
+
+    private func position(for pageTab: Tab) -> Binding<ScrollPosition> {
+        switch pageTab {
+        case .videos: $videoPosition
+        case .collections: $collectionPosition
+        case .dynamics: $dynamicPosition
         }
     }
 
@@ -284,35 +336,19 @@ struct SpaceView: View {
                     }
                 }
             } else {
-                glassFollowStyle(
-                    Button {
-                        Task {
-                            if let message = await viewModel.toggleFollow(followContext) {
-                                feedback.show(message)
-                            }
+                FollowCapsuleButton(
+                    title: viewModel.isFollowing == true ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"),
+                    isActive: viewModel.isFollowing == true, compact: true
+                ) {
+                    Task {
+                        if let message = await viewModel.toggleFollow(followContext) {
+                            feedback.show(message)
                         }
-                    } label: {
-                        Text(viewModel.isFollowing == true ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
-                            .font(.app(.footnote, weight: .medium))
-                            .frame(minWidth: 56)
-                    },
-                    isActive: viewModel.isFollowing == true
-                )
+                    }
+                }
                 .controlSize(.small)
                 .disabled(viewModel.isTogglingFollow)
             }
-        }
-    }
-
-    /// 关注按钮用系统液态玻璃样式：未关注是实底玻璃（吸引点击），已关注退成
-    /// 清透玻璃配灰字（不再抢注意力）。两种样式类型不同，没法用三目表达式
-    /// 带过，和视频操作栏的按钮走同一个分支写法。
-    @ViewBuilder
-    private func glassFollowStyle(_ button: some View, isActive: Bool) -> some View {
-        if isActive {
-            button.buttonStyle(.glass).foregroundStyle(.secondary)
-        } else {
-            button.buttonStyle(.glassProminent).tint(themeColor)
         }
     }
 
@@ -394,62 +430,77 @@ struct SpaceView: View {
         }
     }
 
-    // MARK: - 动态
+    // MARK: - 合集和系列
 
     @ViewBuilder
-    private var dynamicList: some View {
-        let feed = viewModel.dynamics
+    private var collectionList: some View {
+        let model = viewModel.collections
+        let list = model.list
 
-        if feed.isLoading, feed.entries.isEmpty {
-            LoadingTaskAnchor().padding(.vertical, 40)
-        } else if let message = feed.errorMessage, feed.entries.isEmpty {
-            ContentUnavailableView {
-                Label("动态加载失败", systemImage: "wifi.slash")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("重试") { Task { await feed.refresh() } }
+        if let message = list.errorMessage {
+            InlineLoadFailure(title: "合集和系列加载失败", message: message, isRetryDisabled: list.isLoading) {
+                Task { await model.reload() }
             }
-            .padding(.vertical, 20)
-        } else if feed.entries.isEmpty {
-            ContentUnavailableView("还没有动态", systemImage: "bell.slash")
-                .padding(.vertical, 20)
-        } else {
-            if let message = feed.errorMessage {
-                InlineLoadFailure(title: "动态未能刷新", message: message) {
-                    Task { await feed.refresh() }
-                }
-            }
-            let visibleEntries = feed.entries.filter { $0.video?.canDisplayVideo(hidingPortrait: hidesPortraitVideos, filtering: viewModel.filtering) ?? true }
-            if visibleEntries.isEmpty {
-                if feed.entries.compactMap(\.video).hasPendingVideoDimensions(hidesPortraitVideos, filtering: viewModel.filtering) {
-                    LoadingTaskAnchor().padding()
-                } else {
-                    Button("继续加载动态") { Task { await feed.loadReplacementPage() } }
-                        .padding()
-                }
-            }
-            ForEach(visibleEntries) { entry in
-                DynamicFeedCard(
-                    entry: entry,
-                    feed: feed,
-                    lastVisibleID: visibleEntries.last?.id,
-                    onOpenVideo: { open(entry) },
-                    // 已经在这个 UP 的空间里了，头像不再是入口。
-                    onOpenAuthor: nil,
-                    onLike: { like(entry) },
-                    onOpenDetail: { detailEntry = entry }
-                )
-                .videoEntranceIdentity(entry.video?.bvid)
-                .videoTransitionSource("space-dynamic-\(entry.id)", in: dynamicTransition)
-                .padding(.horizontal, DynamicCardLayout.pageHorizontalInset)
-                .padding(.vertical, DynamicCardLayout.cardVerticalSpacing)
-            }
-
-            if feed.isLoadingMore {
-                LoadingTaskAnchor().padding()
+        } else if model.collections.isEmpty {
+            if list.hasLoadedCurrentOrder && !list.isLoading {
+                ContentUnavailableView("没有合集和系列", systemImage: "rectangle.stack")
+                    .padding(.vertical, 20)
+            } else {
+                LoadingTaskAnchor().padding(.vertical, 40)
             }
         }
+
+        ForEach(model.collections) { collection in
+            NavigationLink {
+                SpaceCollectionDetailView(collection: collection, hostMID: up.mid,
+                                          authorName: viewModel.card?.name ?? up.uname,
+                                          services: services, filtering: viewModel.filtering)
+            } label: {
+                let description = collection.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                let badge = collection.kind == .season
+                    ? String(localized: "合集 · \(collection.total) 集")
+                    : String(localized: "系列 · \(collection.total) 集")
+                VideoListCard(
+                    coverURL: URL.biliSecure(collection.cover),
+                    title: collection.name,
+                    author: description.isEmpty
+                        ? (collection.updatedAt > 0 ? collection.updatedAt.biliRelativeTimeText : "")
+                        : description,
+                    playCount: -1,
+                    durationText: badge,
+                    animatesEntrance: false,
+                    showsDurationOnCover: true
+                )
+            }
+            .buttonStyle(CardPressStyle(cornerRadius: VideoListCardLayout.cardCornerRadius))
+            .padding(.horizontal, VideoListCardLayout.pageHorizontalInset)
+            .padding(.vertical, VideoListCardLayout.cardVerticalSpacing)
+            .task(id: list.generation) { await model.loadMoreIfNeeded(current: collection) }
+        }
+
+        if list.isLoadingMore {
+            LoadingTaskAnchor().padding()
+        } else if let message = list.paginationError {
+            InlineLoadFailure(title: "更多合集和系列加载失败", message: message, isRetryDisabled: list.isLoading) {
+                Task { await model.loadMore() }
+            }
+        } else if model.collections.isEmpty && list.canLoadMore {
+            Button("加载更多") { Task { await model.loadMore() } }
+                .padding()
+        }
+    }
+
+    // MARK: - 动态
+
+    private var dynamicList: some View {
+        let feed = viewModel.dynamics
+        return FollowingFeedContent(feed: feed, showsAuthor: true,
+            hidesPortraitVideos: hidesPortraitVideos, filtering: viewModel.filtering,
+            dynamicTransition: dynamicTransition, transitionPrefix: dynamicTransitionPrefix, emptyTitle: "还没有动态",
+            placeholderLayout: .padded,
+            onRetry: { Task { await feed.refresh() } },
+            onLoadReplacement: { Task { await feed.loadReplacementPage() } },
+            onOpenVideo: open, onOpenAuthor: nil, onLike: like, onOpenDetail: { detailEntry = $0 })
     }
 
     private func open(_ entry: DynamicEntry) {

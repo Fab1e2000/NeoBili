@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 视频渲染层与自绘控件。VideoPage 在内联和全屏布局间保留同一播放会话。
@@ -25,6 +23,7 @@ struct InlineVideoPlayer: View {
     var videoSubtitle = ""
     var shareURL: URL?
     var onCache: (() -> Void)? = nil
+    var hasEpisodes = false
 
     @AppStorage(DanmakuSettings.videoEnabledKey) private var danmakuEnabled = DanmakuSettings.defaultValue
     @State private var isCastPickerPresented = false
@@ -87,7 +86,9 @@ struct InlineVideoPlayer: View {
                     isFullScreen: isFullScreen,
                     safeAreaInsets: controlsSafeAreaInsets,
                     videoQualityControl: castVideoQualityControl,
-                    audioQualityControl: castAudioQualityControl,
+                    hiResControl: castHiResControl,
+                    hasEpisodes: hasEpisodes,
+                    supportsPlaybackMode: true,
                     onBack: { if isFullScreen { onToggleFullScreen() } else { onDismiss?() } },
                     onSwitchDevice: { isCastPickerPresented = true },
                     onExitCast: exitCasting
@@ -108,8 +109,10 @@ struct InlineVideoPlayer: View {
                     videoSubtitle: videoSubtitle,
                     shareURL: shareURL,
                     onCache: onCache,
-                    onCast: castSession == nil ? nil : { isCastPickerPresented = true }
+                    onCast: castSession == nil ? nil : { isCastPickerPresented = true },
+                    hasEpisodes: hasEpisodes
                 )
+                .id(ObjectIdentifier(viewModel))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -170,20 +173,28 @@ struct InlineVideoPlayer: View {
         )
     }
 
-    private var castAudioQualityControl: PlayerQualityControl? {
+    private var castHiResControl: PlayerHiResControl? {
         guard !viewModel.isOffline else { return nil }
         let dashAudios = castVideoPayload?.dash?.allAudio.filter { URL.biliSecure($0.baseUrl) != nil } ?? []
         let audioIDs = Array(Set(dashAudios.map(\.id)))
             .sorted { PlaybackQuality.audioRank($0) > PlaybackQuality.audioRank($1) }
-        guard !audioIDs.isEmpty else { return nil }
+        guard audioIDs.contains(PlaybackQuality.hiResAudioQuality) else { return nil }
         let selected = castSelectedAudioQuality ?? viewModel.selectedAudioQuality ?? audioIDs.first ?? 0
-        return PlayerQualityControl(
-            title: PlaybackQuality.audioTitle(selected),
-            accessibilityLabel: String(localized: "投屏音质"),
-            options: audioIDs.map { .init(id: $0, title: PlaybackQuality.audioTitle($0)) },
-            selectedID: selected,
-            isEnabled: !audioIDs.isEmpty,
-            onSelect: { switchCastQuality(video: nil, audio: $0) }
+        let isActive = selected == PlaybackQuality.hiResAudioQuality
+        let fallbackAudio = audioIDs.first(where: { $0 != PlaybackQuality.hiResAudioQuality })
+        return PlayerHiResControl(
+            isActive: isActive,
+            isEnabled: isActive ? fallbackAudio != nil : true,
+            onToggle: {
+                if isActive {
+                    guard let fallbackAudio else { return }
+                    PlaybackQuality.setHiResEnabled(false)
+                    switchCastQuality(video: nil, audio: fallbackAudio)
+                } else {
+                    PlaybackQuality.setHiResEnabled(true)
+                    switchCastQuality(video: nil, audio: PlaybackQuality.hiResAudioQuality)
+                }
+            }
         )
     }
 
@@ -270,7 +281,7 @@ struct InlineVideoPlayer: View {
         let subtitle = videoSubtitle
         let startPosition = viewModel.currentTime
         let desiredVideo = castSelectedVideoQuality ?? viewModel.selectedVideoQuality ?? 116
-        let desiredAudio = castSelectedAudioQuality ?? viewModel.selectedAudioQuality ?? 0
+        let desiredAudio = PlaybackQuality.preferredAudioQuality(hiResEnabled: PlaybackQuality.isHiResEnabled())
         let offline = viewModel.offline
         let bvid = viewModel.bvid
         let cid = viewModel.cid

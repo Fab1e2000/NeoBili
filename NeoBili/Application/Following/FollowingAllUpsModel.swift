@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 import Observation
 
@@ -18,9 +16,13 @@ final class FollowingAllUpsModel {
     private let loader: Loader
     private var pageSignatures: Set<Set<Int>> = []
 
-    init(mid: Int, loader: @escaping Loader = { mid, page in
-        try await ApplicationServices.live.community.followings(mid: mid, page: page)
-    }) {
+    convenience init(mid: Int, services: ApplicationServices) {
+        self.init(mid: mid) { mid, page in
+            try await services.community.followings(mid: mid, page: page)
+        }
+    }
+
+    init(mid: Int, loader: @escaping Loader) {
         self.mid = mid
         self.loader = loader
     }

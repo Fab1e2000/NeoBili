@@ -1,14 +1,12 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 播放时间的统一写法（`分:秒`），进度条和时间文字共用，避免两处显示不一致。
 enum PlaybackTime {
-    static func text(_ seconds: Double) -> String {
+    static func text(_ seconds: Double, minimumMinuteDigits: Int = 1) -> String {
         guard seconds.isFinite, seconds >= 0, seconds < Double(Int.max) else { return "0:00" }
         let total = Int(seconds)
-        return String(format: "%d:%02d", total / 60, total % 60)
+        return String(format: "%0*lld:%02lld", Int32(minimumMinuteDigits), total / 60, total % 60)
     }
 }
 
@@ -21,6 +19,9 @@ struct VideoScrubber: View {
     let onScrub: (Double) -> Void
     let onScrubEnd: (Double) -> Void
     var previewVideo: VideoPreviewID? = nil
+    var chapters: [VideoChapter] = []
+    let onEditingChanged: (Bool) -> Void
+    @Environment(\.layoutDirection) private var layoutDirection
     @State private var isEditing = false
     @State private var draft: Double = 0
 
@@ -37,25 +38,41 @@ struct VideoScrubber: View {
                 if !isEditing { onScrubEnd(draft) }
             }
         ), in: 0...total, onEditingChanged: { editing in
+            guard editing != isEditing else { return }
             if editing {
                 draft = clamped(position)
-                isEditing = true
-            } else if isEditing {
-                isEditing = false
-                onScrubEnd(draft)
             }
+            isEditing = editing
+            if !editing { onScrubEnd(draft) }
+            onEditingChanged(editing)
         })
-        // 官方媒体样式不需要透明 Slider 叠加自绘轨道，避免两份坐标／状态不同步。
         .sliderThumbVisibility(isEditing ? .visible : .hidden)
         .controlSize(.small)
         .tint(.white)
         .frame(height: 48)
+        .overlay {
+            if !chapters.isEmpty, duration.isFinite, duration > 0 {
+                Canvas { context, size in
+                    let inset: CGFloat = isEditing ? 9 : 3
+                    let trackWidth = max(0, size.width - inset * 2)
+                    for chapter in chapters where chapter.from > 0 && chapter.from < duration {
+                        let offset = trackWidth * (chapter.from / duration)
+                        let x = layoutDirection == .rightToLeft ? size.width - inset - offset : inset + offset
+                        let marker = CGRect(x: x - 0.75, y: size.height / 2 - 2.5, width: 1.5, height: 5)
+                        context.fill(Path(roundedRect: marker, cornerRadius: 0.75), with: .color(.black.opacity(0.56)))
+                    }
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
         .anchorPreference(key: VideoScrubPreviewPreference.self, value: .bounds) { anchor in
-            guard isEditing, let previewVideo else { return nil }
+            guard isEditing, previewVideo != nil || !chapters.isEmpty else { return nil }
             return VideoScrubPreviewPosition(bounds: anchor, video: previewVideo, seconds: draft, duration: total)
         }
         .contentShape(Rectangle())
         .accessibilityLabel("播放进度")
+        .accessibilityIdentifier("player.scrubber")
         .accessibilityValue(String(localized: "\(PlaybackTime.text(isEditing ? draft : position))，共 \(PlaybackTime.text(duration))"))
     }
 }

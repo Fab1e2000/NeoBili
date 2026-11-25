@@ -1,4 +1,5 @@
 import Foundation
+@testable import NeoBiliData
 import Compression
 
 /// 直播弹幕 WS 包编解码的离线回归。

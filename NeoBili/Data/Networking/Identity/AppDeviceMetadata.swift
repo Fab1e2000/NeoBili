@@ -1,6 +1,7 @@
 import Foundation
 #if canImport(UIKit)
 import UIKit
+import Synchronization
 #endif
 
 /// Network Device metadata, distinct from the Neuron AppInfo and fingerprint material.
@@ -10,21 +11,34 @@ import UIKit
 /// come from this installation, never from a captured official-device snapshot.
 enum AppDeviceMetadata {
     struct LocalSnapshot: Sendable {
-        var device: String
-        var model: String
-        var osVersion: String
+        let device: String
+        let model: String
+        let osVersion: String
     }
 
-    static func localSnapshot() async -> LocalSnapshot {
-        #if canImport(UIKit)
-        return await MainActor.run {
-            LocalSnapshot(device: UIDevice.current.userInterfaceIdiom == .pad ? "pad" : "phone",
-                          model: AppClientIdentity.deviceName, osVersion: UIDevice.current.systemVersion)
-        }
-        #else
+    #if canImport(UIKit)
+    private static let snapshotCache = Mutex<LocalSnapshot?>(nil)
+    #else
+    private static let hostSnapshot: LocalSnapshot = {
         let os = ProcessInfo.processInfo.operatingSystemVersion
         return LocalSnapshot(device: "phone", model: AppClientIdentity.deviceName,
                              osVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)")
+    }()
+    #endif
+
+    static func localSnapshot() async -> LocalSnapshot {
+        #if canImport(UIKit)
+        if let cached = snapshotCache.withLock({ $0 }) { return cached }
+        return await MainActor.run {
+            if let cached = snapshotCache.withLock({ $0 }) { return cached }
+            let device = UIDevice.current
+            let snapshot = LocalSnapshot(device: device.userInterfaceIdiom == .pad ? "pad" : "phone",
+                                         model: AppClientIdentity.deviceName, osVersion: device.systemVersion)
+            snapshotCache.withLock { $0 = snapshot }
+            return snapshot
+        }
+        #else
+        return hostSnapshot
         #endif
     }
 

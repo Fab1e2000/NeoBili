@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 稍后再看按 v2 游标分页，批量操作只覆盖选中条目；转场源挂在卡片 Button 上。
@@ -170,7 +168,10 @@ struct WatchLaterView: View {
             )
         } label: {
             if dynamicTypeSize.isAccessibilitySize {
-                accessibleCard(item, summary: summary)
+                AccessibleVideoListCard(coverURL: summary?.secureCoverURL, title: item.title,
+                                        author: item.upper?.name ?? "", durationText: summary?.formattedDuration ?? "") { field in
+                    layoutProbe("\(field.rawValue)-\(item.id)")
+                }
             } else {
                 VideoListCard(
                     coverURL: summary?.secureCoverURL,
@@ -195,31 +196,6 @@ struct WatchLaterView: View {
                 )
             }
         }
-    }
-
-    private func accessibleCard(_ item: WatchLaterItem, summary: VideoSummary?) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CoverThumbnail(url: summary?.secureCoverURL)
-                .frame(maxWidth: 240)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
-            Text(item.title)
-                .font(.app(.subheadline, weight: .medium))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-                .background(layoutProbe("title-\(item.id)"))
-            Text(item.upper?.name ?? "")
-                .font(.app(.caption)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .background(layoutProbe("author-\(item.id)"))
-            Label(summary?.formattedDuration ?? "", systemImage: "clock")
-                .font(.app(.caption2)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .background(layoutProbe("duration-\(item.id)"))
-        }
-        .multilineTextAlignment(.leading)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous))
     }
 
     /// Geometry observation is injected only by rendering tests; normal scrolling has no probes.

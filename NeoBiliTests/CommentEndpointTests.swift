@@ -1,9 +1,5 @@
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
-#if canImport(NeoBiliData)
 @testable import NeoBiliData
-#endif
 import XCTest
 import Synchronization
 @testable import NeoBili

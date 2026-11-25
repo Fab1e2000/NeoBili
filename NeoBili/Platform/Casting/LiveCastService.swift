@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 /// 生产环境的 DLNA 投屏服务组装：SSDP 发现 + UPnP SOAP 控制 + 本地 HTTP Range 代理 + 离线双轨快速封装。

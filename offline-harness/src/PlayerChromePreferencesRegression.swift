@@ -1,4 +1,5 @@
 import Foundation
+@testable import NeoBiliDomain
 
 /// 播放器控件位置：设置对象读取旧的 @AppStorage 键，且只写入改动的那一项。
 @main struct PlayerChromePreferencesRegression {

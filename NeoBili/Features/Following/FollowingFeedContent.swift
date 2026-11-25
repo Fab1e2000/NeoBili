@@ -1,44 +1,49 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// Content only: the parent retains its scroll container, navigation and refresh tasks.
 struct FollowingFeedContent: View {
+    enum PlaceholderLayout {
+        case centered
+        case padded
+    }
+
     let feed: DynamicFeedModel
     let showsAuthor: Bool
     let hidesPortraitVideos: Bool
     let filtering: VideoFilterDependencies
     let dynamicTransition: Namespace.ID
+    let transitionPrefix: String
+    let emptyTitle: LocalizedStringKey
+    var placeholderLayout: PlaceholderLayout = .centered
     let onRetry: () -> Void
     let onLoadReplacement: () -> Void
     let onOpenVideo: (DynamicEntry) -> Void
-    let onOpenAuthor: (DynamicEntry) -> Void
+    let onOpenAuthor: ((DynamicEntry) -> Void)?
     let onLike: (DynamicEntry) -> Void
     let onOpenDetail: (DynamicEntry) -> Void
 
     @ViewBuilder
     var body: some View {
-
         if feed.isLoading, feed.entries.isEmpty {
-            loadingPlaceholder
+            LoadingTaskAnchor()
+                .padding(.vertical, placeholderLayout == .padded ? 40 : 0)
         } else if let message = feed.errorMessage, feed.entries.isEmpty {
             ContentUnavailableView {
                 Label("动态加载失败", systemImage: "wifi.slash")
             } description: {
                 Text(message)
             } actions: {
-                Button("重试") {
-                    onRetry()
+                if placeholderLayout == .padded {
+                    Button("重试", action: onRetry)
+                } else {
+                    Button("重试", action: onRetry).buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
             }
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 300)
-        } else if !feed.isLoading, feed.entries.isEmpty {
-            ContentUnavailableView("还没有新动态", systemImage: "bell.slash")
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 300)
+            .modifier(placeholderSpacing)
+        } else if feed.entries.isEmpty {
+            ContentUnavailableView(emptyTitle, systemImage: "bell.slash")
+                .modifier(placeholderSpacing)
         } else {
             if let message = feed.errorMessage {
                 InlineLoadFailure(title: "动态未能刷新", message: message, onRetry: onRetry)
@@ -54,7 +59,6 @@ struct FollowingFeedContent: View {
             }
             ForEach(visibleEntries) { entry in
                 card(for: entry, lastVisibleID: visibleEntries.last?.id)
-                    .videoEntranceIdentity(entry.video?.bvid)
                     .padding(.horizontal, DynamicCardLayout.pageHorizontalInset)
                     .padding(.vertical, DynamicCardLayout.cardVerticalSpacing)
             }
@@ -66,8 +70,18 @@ struct FollowingFeedContent: View {
         }
     }
 
-    private var loadingPlaceholder: some View {
-        LoadingTaskAnchor()
+    private var placeholderSpacing: PlaceholderSpacing { .init(layout: placeholderLayout) }
+
+    private struct PlaceholderSpacing: ViewModifier {
+        let layout: PlaceholderLayout
+
+        func body(content: Content) -> some View {
+            if layout == .padded {
+                content.padding(.vertical, 20)
+            } else {
+                content.frame(maxWidth: .infinity).frame(minHeight: 300)
+            }
+        }
     }
 
     private func card(for entry: DynamicEntry, lastVisibleID: String?) -> some View {
@@ -76,12 +90,11 @@ struct FollowingFeedContent: View {
             feed: feed,
             lastVisibleID: lastVisibleID,
             onOpenVideo: { onOpenVideo(entry) },
-            // 点击卡片头像进入 UP 主页；头像条再次点击已选 UP 时使用同一入口。
-            onOpenAuthor: { onOpenAuthor(entry) },
+            onOpenAuthor: onOpenAuthor.map { open in { open(entry) } },
             onLike: { onLike(entry) },
             onOpenDetail: { onOpenDetail(entry) },
             showsAuthor: showsAuthor
         )
-        .videoTransitionSource("following-dynamic-\(entry.id)", in: dynamicTransition)
+        .videoTransitionSource(transitionPrefix + entry.id, in: dynamicTransition)
     }
 }

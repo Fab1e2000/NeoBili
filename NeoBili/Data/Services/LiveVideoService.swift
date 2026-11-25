@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 extension VideoService {
@@ -9,6 +7,9 @@ extension VideoService {
             try await client.get(path: "x/player/videoshot", params: ["bvid": bvid, "cid": String(cid), "index": "1"],
                                  additionalHeaders: ["Referer": "https://www.bilibili.com/video/\(bvid)"])
         },
+            chaptersOperation: { bvid, cid, sessionID in
+                try await BiliAPI.playerVideoInfo(bvid: bvid, cid: cid, client: client, expectedSessionID: sessionID).chapters
+            },
             playURLOperation: { bvid, cid, quality in
                 try await BiliAPI.playURL(bvid: bvid, cid: cid, quality: quality, client: client, identity: identity)
             },

@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 extension LibraryService {
@@ -35,6 +33,9 @@ extension LibraryService {
             },
             addFavoriteFolderOperation: { title, intro, isPublic, expectedSessionID in
                 try await BiliAPI.addFavoriteFolder(title: title, intro: intro, isPublic: isPublic, expectedSessionID: expectedSessionID, client: client, identity: identity)
+            },
+            editFavoriteFolderOperation: { folderID, title, intro, isPublic, cover, expectedSessionID in
+                try await BiliAPI.editFavoriteFolder(folderID: folderID, title: title, intro: intro, isPublic: isPublic, cover: cover, expectedSessionID: expectedSessionID, client: client, identity: identity)
             },
             addWatchLaterOperation: { aid, bvid in
                 try await BiliAPI.addWatchLater(aid: aid, bvid: bvid, client: client, identity: identity)

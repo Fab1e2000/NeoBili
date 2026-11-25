@@ -1,11 +1,33 @@
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import SwiftUI
 import XCTest
 @testable import NeoBili
 
 final class CommentLinksTests: XCTestCase {
+    func testLinkPrefilterPreservesUnfilteredResults() throws {
+        let plain = ["", "测试内容 👩🏽‍💻", "A short comment with no URLs", "742 314 \n下一行"]
+        for text in plain { XCTAssertFalse(CommentLinks.mayContainLink(text)) }
+
+        let metadata = try JSONDecoder().decode([String: CommentJumpLink].self, from: Data(
+            #"{"查看视频":{"title":"片段","appUrlSchema":"bilibili://video/170001"}}"#.utf8
+        ))
+        let samples = plain + ["https://localhost/path", "www.example.com", "例子．测试", "https://example.com/12:34",
+                               "BV17x411w7KC", "av170001", "03:10", "02：35", "1：04:55", "查看视频"]
+        for text in samples {
+            for includesTimes in [false, true] {
+                for links in [[:], metadata] {
+                    let fast = CommentLinks.links(in: text, metadata: links, includesTimes: includesTimes)
+                    let baseline = CommentLinks.detectLinks(in: text, metadata: links, includesTimes: includesTimes)
+                    XCTAssertEqual(fast.map(\.range), baseline.map(\.range), text)
+                    XCTAssertEqual(fast.map(\.title), baseline.map(\.title), text)
+                    XCTAssertEqual(fast.map(\.url), baseline.map(\.url), text)
+                }
+            }
+        }
+        XCTAssertFalse(CommentLinks.mayContainLink("查看视频"))
+        XCTAssertEqual(CommentLinks.links(in: "查看视频", metadata: metadata, includesTimes: false).first?.title, "片段")
+    }
+
     func testMetadataReplacesAllOccurrencesWithoutLinkingTitleTimestamps() throws {
         let metadata = try JSONDecoder().decode([String: CommentJumpLink].self, from: Data(#"{"https://b23.tv/demo":{"title":"视频 02:35 &amp; 更多","appUrlSchema":"bilibili://video/170001"}}"#.utf8))
         let text = "👨‍👩‍👧‍👦 https://b23.tv/demo 和 https://b23.tv/demo 03:10"

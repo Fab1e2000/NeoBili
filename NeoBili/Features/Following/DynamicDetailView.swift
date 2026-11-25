@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 动态详情页。点文字/图文动态本身，或者点任意动态的评论按钮进来。
@@ -13,6 +11,7 @@ struct DynamicDetailView: View {
     /// 点赞状态直接读写所属列表的 DynamicFeedModel：详情页点完返回
     /// 列表、或在列表点完再进详情，两边看到的是同一份本地叠加状态。
     let feed: DynamicFeedModel
+    private let services: ApplicationServices
 
     @Environment(\.dismiss) private var dismiss
     @Environment(NowPlayingStore.self) private var nowPlaying
@@ -24,12 +23,13 @@ struct DynamicDetailView: View {
     @State private var isLiking = false
     @State private var commentsPosition = ScrollPosition(edge: .top)
 
-    init(entry: DynamicEntry, feed: DynamicFeedModel) {
+    init(entry: DynamicEntry, feed: DynamicFeedModel, services: ApplicationServices) {
         self.entry = entry
         self.feed = feed
+        self.services = services
         _comments = State(
             initialValue: CommentsViewModel(oid: entry.commentOid, type: entry.commentType, uploaderID: entry.authorMid,
-                                           initialCount: entry.commentCount)
+                                           initialCount: entry.commentCount, services: services)
         )
     }
 
@@ -84,6 +84,7 @@ struct DynamicDetailView: View {
                 OrientationController.enterPortrait()
             }
         }
+        .environment(\.applicationServices, services)
     }
 
     // MARK: - 动态原文
@@ -204,6 +205,7 @@ struct DynamicDetailView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("dynamic.detail.like")
         }
         .padding(.top, 14)
         .padding(.bottom, 12)

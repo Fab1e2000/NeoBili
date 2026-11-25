@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 观看历史按游标分页；转场源挂在每张卡片的 Button 上。

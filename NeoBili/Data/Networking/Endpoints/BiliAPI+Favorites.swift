@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 extension BiliAPI {
@@ -62,6 +60,26 @@ extension BiliAPI {
                 "intro": intro,
                 "privacy": isPublic ? "0" : "1",
                 "cover": "",
+                "csrf": csrf
+            ],
+            expectedSessionID: sessionID
+        )
+    }
+
+    /// 编辑收藏夹名称、简介与公开状态。`cover` 透传原封面避免被服务端清空。
+    static func editFavoriteFolder(folderID: Int, title: String, intro: String, isPublic: Bool, cover: String,
+                                   expectedSessionID: UUID? = nil,
+                                   client: APIClient, identity: DeviceIdentity) async throws -> FavFolder {
+        let sessionID = expectedSessionID ?? identity.loginSessionID
+        let csrf = await identity.csrfToken ?? ""
+        return try await client.post(
+            path: "x/v3/fav/folder/edit",
+            form: [
+                "media_id": String(folderID),
+                "title": title,
+                "intro": intro,
+                "privacy": isPublic ? "0" : "1",
+                "cover": cover,
                 "csrf": csrf
             ],
             expectedSessionID: sessionID

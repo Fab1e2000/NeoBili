@@ -60,6 +60,9 @@ targets:
         NSLocalNetworkUsageDescription: "用于发现局域网内的投屏设备并将视频投送到电视"
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        LSApplicationQueriesSchemes:
+          - sidestore
+          - altstore
         UILaunchScreen: {}
         # 宋体风格使用的内置思源宋体（SIL OFL），随应用注册。
         UIAppFonts:
@@ -68,8 +71,8 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         CFBundleDisplayName: NeoBili
-        CFBundleShortVersionString: "1.3.5"
-        CFBundleVersion: "22"
+        CFBundleShortVersionString: "1.3.6"
+        CFBundleVersion: "23"
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

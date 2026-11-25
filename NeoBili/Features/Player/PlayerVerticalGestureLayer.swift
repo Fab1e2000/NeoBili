@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 import MediaPlayer
@@ -15,13 +13,14 @@ struct PlayerVerticalGestureLayer: View {
     var canSeek = true
     var canLongPress = false
     var feedbackTopInset: CGFloat = 0
+    var chapters: [VideoChapter] = []
     var onDoubleTap: () -> Void = {}
     var onLongPressChanged: (Bool) -> Void = { _ in }
     let onTap: () -> Void
     let onToggleFullScreen: () -> Void
-    let onSeekChanged: (Double) -> Void
-    let onSeekEnded: (Double) -> Void
-    let onSeekCancelled: () -> Void
+    var onSeekChanged: (Double) -> Void = { _ in }
+    var onSeekEnded: (Double) -> Void = { _ in }
+    var onSeekCancelled: () -> Void = {}
     @AppStorage(PlayerGestureSettings.leftKey) private var left = 0.33
     @AppStorage(PlayerGestureSettings.rightKey) private var right = 0.67
     @AppStorage(PlayerGestureSettings.reverseKey) private var reversed = false
@@ -43,8 +42,9 @@ struct PlayerVerticalGestureLayer: View {
         GeometryReader { geometry in
             PlayerGestureInput(
                 canLongPress: canLongPress,
+                allowsHorizontalPan: canSeek,
                 onTap: onTap,
-                onDoubleTap: { if canSeek { onDoubleTap() } },
+                onDoubleTap: onDoubleTap,
                 onLongPressChanged: { active in
                     if active {
                         isLongPressActive = true
@@ -99,6 +99,9 @@ struct PlayerVerticalGestureLayer: View {
                       systemImage: seek.isCancelled ? "xmark" : (seek.delta >= 0 ? "forward.fill" : "backward.fill"))
                 Text("\(PlaybackTime.text(seek.target)) / \(PlaybackTime.text(seek.duration))")
                     .font(.app(.headline)).monospacedDigit()
+                if let chapter = chapters.chapter(at: seek.target) {
+                    Text(chapter.title).lineLimit(1).truncationMode(.tail)
+                }
                 Text(seek.isCancelled ? String(localized: "移回画面继续调整") : String(localized: "\(seek.delta >= 0 ? "+" : "−")\(Int(abs(seek.delta).rounded())) 秒 · 松开跳转"))
                     .font(.app(.caption))
                     .foregroundStyle(.secondary)

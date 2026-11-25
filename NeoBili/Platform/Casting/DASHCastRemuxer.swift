@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 import Libavcodec
 import Libavformat
@@ -11,6 +9,14 @@ import Libavutil
 /// 支持任意画质（含 1080P60/4K）与独立音质（含 Hi-Res/杜比），并支持按时间偏移精准起播。
 enum DASHCastRemuxer {
     private static let avNoPTSValue: Int64 = Int64(bitPattern: 0x8000_0000_0000_0000)
+
+    private final class InterruptState {
+        let isCancelled: () -> Bool
+
+        init(isCancelled: @escaping () -> Bool) {
+            self.isCancelled = isCancelled
+        }
+    }
 
     final class ChunkWriter: @unchecked Sendable {
         private let onChunk: (Data) -> Bool
@@ -38,9 +44,13 @@ enum DASHCastRemuxer {
         audioURL: URL?,
         headers: [String: String],
         startPosition: TimeInterval = 0,
-        isCancelled: () -> Bool = { false },
+        isCancelled: @escaping () -> Bool = { false },
         onChunk: @escaping (Data) -> Bool
     ) throws {
+        guard !isCancelled() else { return }
+        let interrupt = InterruptState(isCancelled: isCancelled)
+        // The native callbacks borrow this context until both inputs have closed.
+        defer { withExtendedLifetime(interrupt) {} }
         var videoCtx: UnsafeMutablePointer<AVFormatContext>?
         var audioCtx: UnsafeMutablePointer<AVFormatContext>?
         var outCtx: UnsafeMutablePointer<AVFormatContext>?
@@ -70,7 +80,11 @@ enum DASHCastRemuxer {
             }
         }
 
-        videoCtx = try openInput(url: videoURL, headers: headers)
+        do {
+            videoCtx = try openInput(url: videoURL, headers: headers, interrupt: interrupt)
+        } catch where isCancelled() {
+            return
+        }
         guard let vCtx = videoCtx else {
             throw CastError.transportFailed(String(localized: "无法打开 DASH 视频流"))
         }
@@ -82,7 +96,12 @@ enum DASHCastRemuxer {
         var audioInIndex: Int32 = -1
         var aInStream: UnsafeMutablePointer<AVStream>?
         if let audioURL {
-            audioCtx = try openInput(url: audioURL, headers: headers)
+            guard !isCancelled() else { return }
+            do {
+                audioCtx = try openInput(url: audioURL, headers: headers, interrupt: interrupt)
+            } catch where isCancelled() {
+                return
+            }
             if let aCtx = audioCtx {
                 let idx = av_find_best_stream(aCtx, AVMEDIA_TYPE_AUDIO, -1, -1, nil, 0)
                 if idx >= 0, let aStreams = aCtx.pointee.streams {
@@ -102,6 +121,7 @@ enum DASHCastRemuxer {
                 _ = av_seek_frame(aCtx, -1, targetUS, AVSEEK_FLAG_BACKWARD)
             }
         }
+        guard !isCancelled() else { return }
 
         let allocStatus = avformat_alloc_output_context2(&outCtx, nil, "mp4", nil)
         guard allocStatus >= 0, let oCtx = outCtx else {
@@ -242,8 +262,17 @@ enum DASHCastRemuxer {
         }
     }
 
-    private static func openInput(url: URL, headers: [String: String]) throws -> UnsafeMutablePointer<AVFormatContext> {
-        var ctx: UnsafeMutablePointer<AVFormatContext>?
+    private static func openInput(url: URL, headers: [String: String],
+                                  interrupt: InterruptState) throws -> UnsafeMutablePointer<AVFormatContext> {
+        guard let allocated = avformat_alloc_context() else {
+            throw CastError.transportFailed(String(localized: "无法分配媒体流上下文"))
+        }
+        allocated.pointee.interrupt_callback = AVIOInterruptCB(callback: { opaque in
+            guard let opaque else { return 0 }
+            let state = Unmanaged<InterruptState>.fromOpaque(opaque).takeUnretainedValue()
+            return state.isCancelled() ? 1 : 0
+        }, opaque: Unmanaged.passUnretained(interrupt).toOpaque())
+        var ctx: UnsafeMutablePointer<AVFormatContext>? = allocated
         var opts: OpaquePointer?
         defer { av_dict_free(&opts) }
 

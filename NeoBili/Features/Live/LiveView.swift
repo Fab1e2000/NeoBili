@@ -1,10 +1,7 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
-/// 「直播」Tab：一条纵向列表。顶部是关注中正在直播的房间，下面是推荐直播；
-/// 两个来源不再分成两页，所以页面只有一个滚动视图。
+/// 「直播」Tab：导航栏下方常驻关注中正在直播的主播头像条，下方纵向滚动推荐直播。
 struct LiveView: View {
     @Environment(AccountStore.self) private var account
     @State private var model: LiveFeedModel
@@ -21,14 +18,15 @@ struct LiveView: View {
 
     var body: some View {
         NavigationStack {
-            // 导航栈下只挂载单一纵向滚动视图：iOS 27 的导航栏收缩只观察一个滚动视图，
-            // 横向分页容器放在外层会让大标题再也收不起来。
             LiveFeedPage(model: model, directory: directory, onOpenRoom: onOpenRoom)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(uiColor: .systemGroupedBackground))
-                // 导航栏与吸顶标题共用同一不透明底色，收起后拼成一条连续的顶栏。
-                .scrollEdgeEffectHidden(true, for: .top)
-                .opaqueNavigationBarBackground()
+                .safeAreaBar(edge: .top, spacing: 0) {
+                    if account.isLoggedIn && !directory.rooms.isEmpty {
+                        LiveFollowedStrip(rooms: directory.rooms, onOpen: onOpenRoom)
+                    }
+                }
+                .scrollEdgeEffectStyle(.hard, for: .top)
                 .rootPageChrome(title: String(localized: "直播"), barFollowsCollapse: true)
         }
         .onChange(of: account.sessionID) { directory.reset() }
@@ -48,11 +46,8 @@ private struct LiveFeedPage: View {
     @Environment(\.videoTransitionNamespace) private var videoTransition
     @Environment(\.tabContentOpacity) private var tabContentOpacity
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
     private var animations = VideoCardAnimationPreferences(source: .live)
 
-    @State private var entranceClock = VideoEntranceClock()
-    @State private var previousEntranceGeneration: Int?
     /// 暂存刷新由统一控制器持有任务；页面只提供取回、提交与丢弃。
     @State private var refresh = ListRefreshController()
     @State private var scrollPosition = ScrollPosition(edge: .top)
@@ -75,22 +70,11 @@ private struct LiveFeedPage: View {
         let isLoggedIn: Bool
     }
 
-    private struct EntranceBatch: Hashable {
-        let ids: [String]
-        let generation: Int
+    private var entranceIDs: [String] {
+        model.rooms.map { "live:\($0.roomID)" }
     }
 
-    private var entranceBatch: EntranceBatch {
-        EntranceBatch(
-            ids: model.rooms.map { "live:\($0.roomID)" }
-                + directory.rooms.map { "live:followed:\($0.roomID)" },
-            generation: model.entranceGeneration
-        )
-    }
-
-    private var animatesEnter: Bool { !reduceMotion && animations.isEnabled(phase: .enter) }
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
-    private var showsFollowedLive: Bool { account.isLoggedIn && !directory.rooms.isEmpty }
 
     var body: some View {
         feed
@@ -112,21 +96,8 @@ private struct LiveFeedPage: View {
             OrientationController.enterPortrait()
             isVisible = true
         }
-        .transformEnvironment(\.videoEntranceClocks) {
-            $0.append(VideoEntranceScope(ids: Set(entranceBatch.ids),
-                                        generation: entranceBatch.generation, clock: entranceClock))
-        }
+        .listEntrance(ids: entranceIDs, generation: model.entranceGeneration, source: .live)
         .videoCardAnimationSource(.live)
-        .task(id: entranceBatch) {
-            let batch = entranceBatch
-            entranceClock.prepare(ids: Set(batch.ids), generation: batch.generation,
-                                  reset: previousEntranceGeneration != batch.generation)
-            entranceClock.admit(batch.ids, animated: animatesEnter)
-            previousEntranceGeneration = batch.generation
-        }
-        .onChange(of: animatesEnter) { _, enabled in
-            if !enabled { entranceClock.finishAnimations() }
-        }
         .onChange(of: animatesExit) { _, enabled in
             if !enabled { refresh.restoreContent() }
         }
@@ -153,8 +124,7 @@ private struct LiveFeedPage: View {
 
     private var feed: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                followedSection
+            LazyVStack(alignment: .leading, spacing: 0) {
                 recommendedSection
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -162,10 +132,8 @@ private struct LiveFeedPage: View {
             // 切换标签只淡入内容；列表本身保持不透明，顶部模糊立即出现。
             .opacity(tabContentOpacity)
             .background {
-                ShortPullRefresh(threshold: refreshDistance,
-                                 enabled: !refresh.isRefreshing && !model.isLoading,
-                                 onProgress: { _, _ in },
-                                 onRefresh: startRefresh)
+                ListPullRefresh(enabled: !refresh.isRefreshing && !model.isLoading,
+                                onRefresh: startRefresh)
             }
         }
         .scrollPosition($scrollPosition)
@@ -178,61 +146,33 @@ private struct LiveFeedPage: View {
     }
 
     @ViewBuilder
-    private var followedSection: some View {
-        if showsFollowedLive {
-            Section {
-                LiveFollowedStrip(rooms: directory.rooms) { room in
-                    onOpenRoom(room, "live-followed-card-\(room.roomID)")
-                }
-                .padding(.bottom, 8)
-            } header: {
-                sectionHeader("正在直播")
-            }
-        }
-    }
-
     private var recommendedSection: some View {
-        Section {
-            if model.rooms.isEmpty {
-                initialState
-                    .frame(maxWidth: .infinity, minHeight: 330)
-                    .padding(.horizontal, 8)
-            } else {
-                if let message = model.errorMessage, !refresh.isRefreshing {
-                    InlineLoadFailure(title: "直播列表未能刷新", message: message, onRetry: startRefresh)
-                }
-                LazyVGrid(columns: columns, spacing: 10) {
-                    ForEach(model.rooms) { room in
-                        Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
-                            .buttonStyle(.plain)
-                            .videoTransitionSource("live-\(model.source.rawValue)-card-\(room.roomID)", in: videoTransition)
-                            .videoEntranceIdentity("live:\(room.roomID)")
-                            .accessibilityIdentifier("live.room.\(room.roomID)")
-                            .task { await model.loadMoreIfNeeded(current: room) }
-                    }
-                }
+        if model.rooms.isEmpty {
+            initialState
+                .frame(maxWidth: .infinity, minHeight: 330)
                 .padding(.horizontal, 8)
-                .opacity(refresh.contentOpacity)
-                .allowsHitTesting(refresh.contentOpacity == 1)
-                pagination
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 8)
+        } else {
+            if let message = model.errorMessage, !refresh.isRefreshing {
+                InlineLoadFailure(title: "直播列表未能刷新", message: message, onRetry: startRefresh)
             }
-        } header: {
-            sectionHeader("推荐直播")
-        }
-    }
-
-    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
-        Text(title)
-            .font(.app(.subheadline, weight: .semibold))
-            .foregroundStyle(.secondary)
+            LazyVGrid(columns: columns, spacing: 10) {
+                ForEach(model.rooms) { room in
+                    Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
+                        .buttonStyle(.plain)
+                        .videoTransitionSource("live-\(model.source.rawValue)-card-\(room.roomID)", in: videoTransition)
+                        .videoEntranceIdentity("live:\(room.roomID)")
+                        .accessibilityIdentifier("live.room.\(room.roomID)")
+                        .task { await model.loadMoreIfNeeded(current: room) }
+                }
+            }
             .padding(.horizontal, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
-            .background(Color(uiColor: .systemGroupedBackground))
-            .accessibilityAddTraits(.isHeader)
+            .padding(.top, 8)
+            .opacity(refresh.contentOpacity)
+            .allowsHitTesting(refresh.contentOpacity == 1)
+            pagination
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 8)
+        }
     }
 
     @ViewBuilder
@@ -299,31 +239,64 @@ private struct LiveFeedPage: View {
     }
 }
 
-/// 关注中正在直播的房间，横向一行；卡片与推荐列表同款，只收窄宽度。
+/// 关注中正在直播的主播，头像尺寸与间距沿用关注页顶部的头像条。
 private struct LiveFollowedStrip: View {
     let rooms: [LiveRoom]
-    let onOpen: (LiveRoom) -> Void
+    let onOpen: (LiveRoom, String) -> Void
 
     @Environment(\.videoTransitionNamespace) private var videoTransition
-    @ScaledMetric(relativeTo: .subheadline) private var cardWidth: CGFloat = 148
+    private static let cellWidth: CGFloat = 64
 
     var body: some View {
         ScrollView(.horizontal) {
-            LazyHStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 2) {
                 ForEach(rooms) { room in
-                    Button { onOpen(room) } label: {
-                        LiveRoomCard(room: room)
-                            .frame(width: cardWidth)
+                    let sourceID = "live-followed-avatar-\(room.roomID)"
+                    Button { onOpen(room, sourceID) } label: {
+                        VStack(spacing: 4) {
+                            LiveFollowedAvatar(url: room.faceURL)
+                            Text(room.username)
+                                .font(.app(.caption2))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .frame(width: Self.cellWidth)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .videoTransitionSource("live-followed-card-\(room.roomID)", in: videoTransition)
-                    .videoEntranceIdentity("live:followed:\(room.roomID)")
+                    .videoTransitionSource(sourceID, in: videoTransition)
+                    .accessibilityLabel(Text("\(room.username)，正在直播"))
+                    .accessibilityHint("进入直播间")
                     .accessibilityIdentifier("live.followed.\(room.roomID)")
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .scrollIndicators(.hidden)
         .accessibilityIdentifier("live.followed.strip")
+    }
+}
+
+/// 头像条里的主播均在直播，沿用历史设计的圆形头像与细边框。
+private struct LiveFollowedAvatar: View {
+    let url: URL?
+
+    var body: some View {
+        Group {
+            if let url {
+                BiliImage(url: url).aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(Circle())
+        .overlay { Circle().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5) }
+        .padding(3)
     }
 }

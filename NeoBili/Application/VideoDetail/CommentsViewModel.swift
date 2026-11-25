@@ -1,15 +1,18 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 @MainActor @Observable
 final class CommentsViewModel {
+    static let paginationWindow = 8
+
     @ObservationIgnored private let services: ApplicationServices
     let oid: Int
     let type: Int
     private(set) var uploaderID: Int?
     private(set) var comments: [Comment] = []
+    private(set) var rootRowModels: [CommentRowModel] = []
+    private(set) var rowsRevision = 0
+    @ObservationIgnored private var rootRowIndices: [Int: Int] = [:]
     private(set) var pinnedIDs: Set<Int> = []
     private(set) var totalCount = 0
     private var allCount: Int?
@@ -88,10 +91,11 @@ final class CommentsViewModel {
     func isExpanded(_ comment: Comment) -> Bool { expandedIDs.contains(comment.id) }
     func toggleExpanded(_ comment: Comment) {
         if !expandedIDs.insert(comment.id).inserted { expandedIDs.remove(comment.id) }
+        updateRootRows([comment.id])
     }
     func currentRoot(_ root: Comment) -> Comment { latestRoots[root.id] ?? root }
 
-    /// 行显示所需的完整快照；父级一次求值内构建，行本身不再读模型。
+    /// 详情等独立调用方也可以构建自己的快照。
     func rowModel(for comment: Comment, root: Comment? = nil, showsReplies: Bool = true) -> CommentRowModel {
         let previews: [CommentRowModel.Reply]
         if showsReplies {
@@ -102,6 +106,7 @@ final class CommentsViewModel {
         } else {
             previews = []
         }
+        let count = replyCount(for: comment)
         return CommentRowModel(
             comment: comment, root: root, showsReplies: showsReplies,
             isUploader: isUploader(comment),
@@ -109,10 +114,54 @@ final class CommentsViewModel {
             isDeleting: deletingIDs.contains(comment.id),
             isExpanded: expandedIDs.contains(comment.id),
             isLiked: isLiked(comment), likeCount: likeCount(comment),
-            replyCount: replyCount(for: comment),
+            replyCount: count,
             previewReplies: previews,
-            showsAllReplies: showsReplies && shouldShowAllReplies(comment)
+            showsAllReplies: showsReplies && count > 0
         )
+    }
+
+    private func resetRootRows() {
+        let rows = comments.map { rowModel(for: $0) }
+        guard rows != rootRowModels else { return }
+        rootRowModels = rows
+        indexRootRows(startingAt: 0)
+        rowsRevision += 1
+    }
+
+    private func indexRootRows(startingAt start: Int) {
+        if start == 0 { rootRowIndices.removeAll(keepingCapacity: true) }
+        for index in start..<rootRowModels.count {
+            rootRowIndices[rootRowModels[index].comment.id] = index
+        }
+    }
+
+    private func updateRootRows(_ ids: Set<Int>, inserting inserted: [Comment] = [], at start: Int = 0,
+                                appending appended: [Comment] = []) {
+        var rows = rootRowModels
+        var changed = !inserted.isEmpty || !appended.isEmpty
+        for id in ids {
+            guard let index = rootRowIndices[id] else { continue }
+            let row = rowModel(for: rows[index].comment)
+            if row != rows[index] {
+                rows[index] = row
+                changed = true
+            }
+        }
+        guard changed else { return }
+        let oldCount = rows.count
+        rows.insert(contentsOf: inserted.map { rowModel(for: $0) }, at: start)
+        rows.append(contentsOf: appended.map { rowModel(for: $0) })
+        rootRowModels = rows
+        if !inserted.isEmpty { indexRootRows(startingAt: start) }
+        else if !appended.isEmpty { indexRootRows(startingAt: oldCount) }
+        rowsRevision += 1
+    }
+
+    private func removeRootRow(_ id: Int) {
+        guard let index = rootRowIndices.removeValue(forKey: id) else { return }
+        rootRowModels.remove(at: index)
+        indexRootRows(startingAt: index)
+        rowsRevision += 1
     }
 
     func commentDraft(root: Int) -> CommentDraft {
@@ -140,11 +189,14 @@ final class CommentsViewModel {
             loadedReplies[root] = visibleUnique(replies)
             replyIDs[root] = Set(replies.map(\.id))
             if let count = replyCountOverrides[root] { replyCountOverrides[root] = count + 1 }
+            updateRootRows([root])
         } else if commentIDs.insert(comment.id).inserted {
             submittedRoots.insert(comment, at: 0)
-            comments.insert(comment, at: comments.prefix(while: { pinnedIDs.contains($0.id) }).count)
+            let index = comments.prefix(while: { pinnedIDs.contains($0.id) }).count
+            comments.insert(comment, at: index)
             latestRoots[comment.id] = comment
             totalCount += 1
+            updateRootRows([], inserting: [comment], at: index)
         }
     }
 
@@ -176,6 +228,8 @@ final class CommentsViewModel {
         }
         do {
             let page = try await fetchComments(oid, type, 1, requestedSort)
+            guard request == generation else { return }
+            try await CommentEmoteSegments.warmComments(page.pinnedReplies + (page.replies ?? []))
             try Task.checkCancellation()
             guard request == generation else { return }
             sort = requestedSort
@@ -198,6 +252,7 @@ final class CommentsViewModel {
             absorbRoots(page.pinnedReplies + incoming, revision: revision)
             submittedRoots.removeAll { serverCommentIDs.contains($0.id) || deletedIDs.contains($0.id) }
             if uploaderID == nil { uploaderID = page.uploaderID }
+            resetRootRows()
             totalCount = max(comments.count, reconciledCount(page.page.count, root: nil,
                 incoming: serverCommentIDs.union(page.pinnedReplies.map(\.id)), since: revision))
             updateAllCount(page, revision: revision)
@@ -213,10 +268,15 @@ final class CommentsViewModel {
 
     func loadMoreIfNeeded(current comment: Comment) async {
         guard hasMore, !isLoading, !isRefreshing, !isLoadingMore, errorMessage == nil,
-              comments.suffix(5).contains(where: { $0.id == comment.id }) else { return }
+              isInPaginationWindow(comment.id) else { return }
         // A tail row leaving the viewport does not cancel a page already in flight.
         let task = Task { await self.loadNextPage() }
         await task.value
+    }
+
+    func isInPaginationWindow(_ id: Int) -> Bool {
+        guard let index = rootRowIndices[id] else { return false }
+        return index >= rootRowModels.count - Self.paginationWindow
     }
 
     func retry() async {
@@ -236,22 +296,21 @@ final class CommentsViewModel {
         defer { if request == generation { isLoadingMore = false } }
         do {
             let page = try await fetchComments(oid, type, number, requestedSort)
+            guard request == generation else { return }
+            try await CommentEmoteSegments.warmComments(page.pinnedReplies + (page.replies ?? []))
             try Task.checkCancellation()
             guard request == generation else { return }
             let incoming = page.replies ?? []
+            let incomingIDs = Set(incoming.map(\.id))
             let previousCoverage = serverCommentIDs.count
-            serverCommentIDs.formUnion(incoming.map(\.id))
+            serverCommentIDs.formUnion(incomingIDs)
 
             // 本页只做尾部增量：整列不重新拼接、不重扫去重。
-            var updated = comments
-            if !page.pinnedReplies.isEmpty {
-                pinnedIDs.formUnion(page.pinnedReplies.map(\.id).filter { !deletedIDs.contains($0) })
-                var insertedPinned: [Comment] = []
-                for pinned in page.pinnedReplies
-                where !deletedIDs.contains(pinned.id) && commentIDs.insert(pinned.id).inserted {
-                    insertedPinned.append(pinned)
-                }
-                if !insertedPinned.isEmpty { updated.insert(contentsOf: insertedPinned, at: 0) }
+            var newlyPinned: Set<Int> = []
+            var insertedPinned: [Comment] = []
+            for pinned in page.pinnedReplies where !deletedIDs.contains(pinned.id) {
+                if pinnedIDs.insert(pinned.id).inserted { newlyPinned.insert(pinned.id) }
+                if commentIDs.insert(pinned.id).inserted { insertedPinned.append(pinned) }
             }
             var fresh: [Comment] = []
             fresh.reserveCapacity(incoming.count)
@@ -259,17 +318,17 @@ final class CommentsViewModel {
             where !deletedIDs.contains(comment.id) && commentIDs.insert(comment.id).inserted {
                 fresh.append(comment)
             }
-            updated.append(contentsOf: fresh)
-
-            absorbRoots(page.pinnedReplies + incoming, revision: revision)
+            let affected = absorbRoots(page.pinnedReplies + incoming, revision: revision).union(newlyPinned)
+            if !insertedPinned.isEmpty { comments.insert(contentsOf: insertedPinned, at: 0) }
+            if !fresh.isEmpty { comments.append(contentsOf: fresh) }
+            updateRootRows(affected, inserting: insertedPinned, appending: fresh)
             submittedRoots.removeAll { serverCommentIDs.contains($0.id) }
             nextPage = number + 1
-            let newTotal = max(updated.count, reconciledCount(page.page.count, root: nil,
-                incoming: Set(incoming.map(\.id)), since: revision))
+            let newTotal = max(comments.count, reconciledCount(page.page.count, root: nil,
+                incoming: incomingIDs, since: revision))
             updateAllCount(page, revision: revision)
             let more = Self.hasNextPage(incoming: incoming, covered: serverCommentIDs.count,
                                         previousCoverage: previousCoverage, page: number, info: page.page)
-            comments = updated
             totalCount = newTotal
             hasMore = more
         } catch {
@@ -349,6 +408,8 @@ final class CommentsViewModel {
         defer { if replyGeneration[root, default: 0] == request { loadingReplyIDs.remove(root) } }
         do {
             let page = try await fetchReplies(oid, type, root, number)
+            guard replyGeneration[root, default: 0] == request, !deletedIDs.contains(root) else { return }
+            try await CommentEmoteSegments.warmComments(page.replies ?? [])
             try Task.checkCancellation()
             guard replyGeneration[root, default: 0] == request, !deletedIDs.contains(root) else { return }
             let incoming = page.replies ?? []
@@ -369,6 +430,7 @@ final class CommentsViewModel {
             if Self.hasNextPage(incoming: incoming, covered: covered.count, previousCoverage: previousCoverage,
                                 page: number, info: page.page) { moreRepliesIDs.insert(root) }
             else { moreRepliesIDs.remove(root) }
+            updateRootRows([root])
         } catch {
             guard replyGeneration[root, default: 0] == request, !deletedIDs.contains(root), !error.isCancellation else { return }
             replyErrors[root] = error.loadFailureDescription
@@ -406,7 +468,12 @@ final class CommentsViewModel {
         let comment = deletion.comment
         guard canDelete(comment, accountID: accountID, isLoggedIn: isLoggedIn),
               deletion.sessionID == services.session.currentID(), deletingIDs.insert(comment.id).inserted else { return }
-        defer { deletingIDs.remove(comment.id) }
+        let rowID = deletion.root?.id ?? comment.id
+        updateRootRows([rowID])
+        defer {
+            deletingIDs.remove(comment.id)
+            updateRootRows([rowID])
+        }
         do {
             try await services.comment.deleteComment(oid: oid, type: type, rpid: comment.id, expectedSessionID: deletion.sessionID)
             guard deletion.sessionID == services.session.currentID() else { return }
@@ -425,6 +492,7 @@ final class CommentsViewModel {
                 replyCountOverrides[root.id] = max(0, (oldReplyCount ?? 1) - 1)
             } else {
                 comments.removeAll { $0.id == comment.id }
+                removeRootRow(comment.id)
                 submittedRoots.removeAll { $0.id == comment.id }
                 pinnedIDs.remove(comment.id)
                 commentIDs.remove(comment.id)
@@ -459,10 +527,12 @@ final class CommentsViewModel {
         defer { likingRpids.remove(comment.id) }
         let wasLiked = isLiked(comment)
         likeOverrides[comment.id] = !wasLiked
+        updateRootRows([comment.id])
         do { try await services.comment.likeComment(oid: oid, type: type, rpid: comment.id, like: !wasLiked) }
         catch {
             guard !deletedIDs.contains(comment.id) else { return }
             likeOverrides[comment.id] = wasLiked
+            updateRootRows([comment.id])
             if !error.isCancellation { actionMessage = error.localizedDescription }
         }
     }
@@ -472,16 +542,29 @@ final class CommentsViewModel {
         return values.filter { !deletedIDs.contains($0.id) && known.insert($0.id).inserted }
     }
 
-    private func absorbRoots(_ roots: [Comment], revision: Int) {
+    @discardableResult
+    private func absorbRoots(_ roots: [Comment], revision: Int) -> Set<Int> {
+        var affected: Set<Int> = []
         for root in roots where !deletedIDs.contains(root.id) {
             // 内容没有变化的根评论不写回，避免一次分页把整批条目标脏。
-            if latestRoots[root.id] != root { latestRoots[root.id] = root }
+            if latestRoots[root.id] != root {
+                latestRoots[root.id] = root
+                affected.insert(root.id)
+            }
+            if submittedReplies[root.id]?.isEmpty == false, rootCountRevisions[root.id] != revision {
+                affected.insert(root.id)
+            }
             rootCountRevisions[root.id] = revision
             if replyCountOverrides[root.id] != nil {
-                replyCountOverrides[root.id] = reconciledCount(root.rcount, root: root.id,
+                let count = reconciledCount(root.rcount, root: root.id,
                     incoming: Set((root.replies ?? []).map(\.id)), since: revision)
+                if replyCountOverrides[root.id] != count {
+                    replyCountOverrides[root.id] = count
+                    affected.insert(root.id)
+                }
             }
         }
+        return affected
     }
 
     private func reconciledCount(_ count: Int, root: Int?, incoming: Set<Int>, since revision: Int) -> Int {

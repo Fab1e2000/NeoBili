@@ -44,10 +44,12 @@ public struct FavFolder: Decodable, Identifiable, Hashable, Sendable {
     /// 查询时带上 `rid`（稿件 avid）才有这个字段：1 表示这个收藏夹里已经有该视频。
     /// 收藏夹选择弹窗据此决定哪几项默认打勾。
     public let favState: Int?
-    /// 收藏夹属性。bit 1（值为 2）未设置时是默认收藏夹，不能删除，也不能改顺序。
+    /// 收藏夹属性。bit 0（值为 1）为私密；bit 1（值为 2）未设置时是默认收藏夹，不能删除，也不能改顺序。
     public let attr: Int?
-    /// 列表接口有时带封面。没有或为空时收藏页改用文件夹图标。
+    /// 列表接口有时带封面。
     public let cover: String?
+    /// 收藏夹简介，编辑收藏夹时回填使用。
+    public let intro: String?
 
     /// 这个收藏夹当前是否已收藏了所查询的视频。
     public var containsQueriedVideo: Bool { favState == 1 }
@@ -60,17 +62,24 @@ public struct FavFolder: Decodable, Identifiable, Hashable, Sendable {
         return attr & 2 == 0
     }
 
-    public init(id: Int, title: String, mediaCount: Int, favState: Int? = nil, attr: Int? = nil, cover: String? = nil) {
+    /// bit 0 为 1 表示私密收藏夹；缺省 `attr` 时按公开处理。
+    public var isPrivate: Bool {
+        guard let attr else { return false }
+        return attr & 1 == 1
+    }
+
+    public init(id: Int, title: String, mediaCount: Int, favState: Int? = nil, attr: Int? = nil, cover: String? = nil, intro: String? = nil) {
         self.id = id
         self.title = title
         self.mediaCount = mediaCount
         self.favState = favState
         self.attr = attr
         self.cover = cover
+        self.intro = intro
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, attr, cover
+        case id, title, attr, cover, intro
         case mediaCount = "media_count"
         case favState = "fav_state"
     }

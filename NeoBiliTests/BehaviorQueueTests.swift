@@ -1,6 +1,4 @@
-#if canImport(NeoBiliData)
 @testable import NeoBiliData
-#endif
 import XCTest
 import Synchronization
 @testable import NeoBili
@@ -30,7 +28,13 @@ final class BehaviorQueueTests: XCTestCase {
         let session = URLSession(configuration: config)
         defer { session.invalidateAndCancel() }
         QueueTransport.requests.withLock { $0 = [] }
-        let client = APIClient(session: session, appAuthentication: { await identity.appAccount() })
+        let headerReads = Mutex(0)
+        let client = APIClient(session: session, appAuthentication: { await identity.appAccount() }, appHeaders: { session in
+            headerReads.withLock { $0 += 1 }
+            var headers = try await identity.appRequestHeaders(expectedSessionID: session)
+            headers["x-bili-device-bin"] = "transport-device-fixture"
+            return headers
+        })
         let queue = AppBehaviorReporter(identity: identity, client: client, automaticScheduling: false)
         for category in [9, 3] {
             for _ in 0..<23 {
@@ -40,9 +44,11 @@ final class BehaviorQueueTests: XCTestCase {
         }
         await queue.flush()
         let requests = QueueTransport.requests.withLock { $0 }
+        XCTAssertEqual(headerReads.withLock { $0 }, 4)
         XCTAssertEqual(requests.map { $0.url?.lastPathComponent }, ["unrealtime", "unrealtime", "realtime", "realtime"])
         var counts: [Int] = []
         for request in requests {
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-bili-device-bin"), "transport-device-fixture")
             let bytes = [UInt8](try AppProto.gunzip(XCTUnwrap(request.httpBody)))
             var offset = 0, count = 0
             while offset < bytes.count {

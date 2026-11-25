@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import XCTest
 @testable import NeoBili
 
@@ -24,6 +22,39 @@ final class SpaceInteractionRepairTests: XCTestCase {
         XCTAssertEqual(other.dynamics.likeCount(entry), 3)
         firstLikes.resetSession()
         XCTAssertFalse(first.dynamics.isLiked(entry))
+    }
+
+    func testFailedDynamicLikeRestoresThePreviousOverrideOrEachListsSnapshot() async {
+        let stale = dynamicEntry(serverLiked: false, likeCount: 3)
+        let fresh = dynamicEntry(serverLiked: true, likeCount: 4)
+        let target = VideoLikeStore.Target.dynamic(stale.id)
+        for previousOverride in [nil, false, true] as [Bool?] {
+            let likes = VideoLikeStore()
+            likes.setOverride(target, liked: previousOverride, sessionID: likes.sessionID)
+            var services = services()
+            let expectedWrite = !(previousOverride ?? stale.isLikedByServer)
+            services.community.likeDynamicOperation = { id, liked in
+                XCTAssertEqual(id, stale.id)
+                XCTAssertEqual(liked, expectedWrite)
+                throw URLError(.timedOut)
+            }
+            let following = DynamicFeedModel(source: .following, likeStore: likes, services: services)
+            let space = SpaceViewModel(mid: 42, services: services, likeStore: likes)
+
+            let failure = await following.toggleLike(stale, isLoggedIn: true)
+
+            XCTAssertNotNil(failure)
+            XCTAssertEqual(likes.overrideValue(for: target), previousOverride)
+            XCTAssertEqual(following.isLiked(stale), previousOverride ?? false)
+            XCTAssertEqual(space.dynamics.isLiked(fresh), previousOverride ?? true)
+            XCTAssertEqual(space.dynamics.likeCount(fresh), previousOverride == false ? 3 : 4)
+        }
+    }
+
+    private func dynamicEntry(serverLiked: Bool, likeCount: Int) -> DynamicEntry {
+        DynamicEntry(id: "fixture-post", authorMid: 42, authorName: "Fixture", authorFace: "",
+                     publishedText: "", text: "Fixture", images: [], video: nil, likeCount: likeCount,
+                     commentCount: 0, forwardCount: 0, isLikedByServer: serverLiked, commentOid: 0, commentType: 0)
     }
 
     func testOlderCardReadCannotUndoSuccessfulFollow() async throws {

@@ -1,4 +1,6 @@
 import Foundation
+@testable import NeoBiliDomain
+@testable import NeoBiliData
 import Synchronization
 
 /// Compile with the production networking sources and offline Stubs.swift.
@@ -21,8 +23,9 @@ struct BehaviorIdentityPerformance {
             if key == epochKey { reads.withLock { $0 += 1 } }
             return memory.read(key)
         }, write: memory.write)
-        let identity = DeviceIdentity(defaults: defaults, credentials: credentials,
-            allowsNetwork: false, eventSerialDefaults: serialDefaults, purgeCookies: {})
+        // Each actor receives its own handles to the same isolated preference suites.
+        let identity = DeviceIdentity(defaults: UserDefaults(suiteName: name)!, credentials: credentials,
+            allowsNetwork: false, eventSerialDefaults: UserDefaults(suiteName: serialName), purgeCookies: {})
         let cookies = LoginModels.LoginCookies(sessdata: "fixture", biliJct: "fixture", dedeUserID: "42")
         await identity.saveLogin(cookies, accessKey: "fixture")
         func snapshot(_ identity: DeviceIdentity) async throws -> AppDeviceSnapshot {
@@ -55,8 +58,8 @@ struct BehaviorIdentityPerformance {
         try await identity.saveSMSLogin(login, expectedSessionID: identity.loginSessionID, authorizationOnly: false)
         let sms = try await snapshot(identity)
         precondition(sms.accountEpoch != authorized.accountEpoch)
-        let restarted = DeviceIdentity(defaults: defaults, credentials: credentials,
-            allowsNetwork: false, eventSerialDefaults: serialDefaults, purgeCookies: {})
+        let restarted = DeviceIdentity(defaults: UserDefaults(suiteName: name)!, credentials: credentials,
+            allowsNetwork: false, eventSerialDefaults: UserDefaults(suiteName: serialName), purgeCookies: {})
         let resumed = try await restarted.nextBehaviorSnapshot(expectedSessionID: restarted.loginSessionID)
         precondition(resumed.eventSerial == 1058, "restart must continue the migrated sequence without gaps")
         let restored = try await snapshot(restarted)

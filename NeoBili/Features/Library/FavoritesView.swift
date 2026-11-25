@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 import UIKit
 
@@ -13,9 +11,6 @@ struct FavoritesView: View {
     @Environment(ActionFeedback.self) private var feedback
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var animations = VideoCardAnimationPreferences(source: .favorites)
-    @State private var refresh = ListRefreshController()
-    /// 取回的收藏夹及取回时的移除状态；换入前若又发生过移除，这份快照已过期。
-    @State private var stagedFolders: (folders: [FavFolder], revision: UUID)?
     @State private var folders: [FavFolder] = []
     @State private var folderRemovals = ListRemovalState<Int>()
     @State private var isLoading = false
@@ -24,11 +19,7 @@ struct FavoritesView: View {
     @State private var errorMessage: String?
     /// 待删除的收藏夹。提交后不可恢复，保留确认和短暂撤销窗口。
     @State private var folderPendingDeletion: FavFolder?
-    @State private var showsCreator = false
-    @State private var openedFolder: FavFolder?
-    /// 列表铺满全屏后要避让的上下距离（状态栏、大标题、标签栏），量好交给列表。
-    @State private var safeInsets = EdgeInsets()
-    @Environment(RootToolbarAccessory.self) private var toolbarAccessory: RootToolbarAccessory?
+    @State private var folderEditorMode: FavoriteFolderEditorMode?
 
     var body: some View {
         Group {
@@ -41,49 +32,52 @@ struct FavoritesView: View {
                     Button("重试") { Task { await load() } }
                 }
             } else if !isLoading, folders.isEmpty {
-                ContentUnavailableView("还没有收藏夹", systemImage: "star")
+                ContentUnavailableView {
+                    Label("还没有收藏夹", systemImage: "star")
+                } description: {
+                    Text("新建收藏夹来分类整理喜欢的视频")
+                } actions: {
+                    Button("新建收藏夹") { folderEditorMode = .create }
+                        .accessibilityIdentifier("favorites.create")
+                }
             } else {
-                // 列表铺到标题栏和标签栏下面，边距用量出的安全区，标题栏才能随下滑收起。
                 FavoriteFolderList(
                     folders: folders,
-                    contentOpacity: animatesExit ? refresh.contentOpacity : 1,
-                    animatesRemoval: animatesExit,
-                    safeInsets: safeInsets,
-                    refreshDistance: CGFloat(refreshDistance),
-                    onRefresh: startRefresh,
-                    onOpen: { openedFolder = $0 },
+                    animatesChanges: animatesExit,
+                    onRefresh: refreshFolders,
+                    onCreate: { folderEditorMode = .create },
+                    onEdit: { folderEditorMode = .edit($0) },
                     onDelete: { folderPendingDeletion = $0 }
                 )
-                .ignoresSafeArea()
-                .onGeometryChange(for: EdgeInsets.self, of: \.safeAreaInsets) { safeInsets = $0 }
             }
         }
         // 左缘一小条是触控死区：点击不生效，避免滑动返回时误触条目。
         .leftEdgeTapDeadZone()
         .navigationTitle("收藏")
-        .navigationDestination(item: $openedFolder) { folder in
+        .navigationDestination(for: FavFolder.self) { folder in
             FavoriteFolderView(folder: folder)
         }
         .toolbar {
-            // 标签页的头像由根页统一画在最右侧。新建按钮交给它放在头像左边，避免把头像挤偏。
-            if !isTabRoot {
-                ToolbarItem(placement: .topBarTrailing) {
-                    createFolderButton
-                }
-            }
             // 从「我的服务」进入时右上角提供刷新。
             if !isTabRoot {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("刷新", systemImage: "arrow.clockwise", action: startRefresh)
-                        .labelStyle(.iconOnly)
-                        .disabled(!canRefresh)
-                        .accessibilityIdentifier("favorites.refresh")
+                    Button("刷新", systemImage: "arrow.clockwise") {
+                        Task { await refreshFolders() }
+                    }
+                    .labelStyle(.iconOnly)
+                    .disabled(!canRefresh)
+                    .accessibilityIdentifier("favorites.refresh")
                 }
             }
         }
-        .sheet(isPresented: $showsCreator) {
-            NewFavoriteFolderSheet { title, intro, isPublic in
-                try await createFolder(title: title, intro: intro, isPublic: isPublic)
+        .sheet(item: $folderEditorMode) { mode in
+            FavoriteFolderEditorSheet(mode: mode) { title, intro, isPublic in
+                switch mode {
+                case .create:
+                    try await createFolder(title: title, intro: intro, isPublic: isPublic)
+                case .edit(let folder):
+                    try await editFolder(folder, title: title, intro: intro, isPublic: isPublic)
+                }
             }
             .appTextSize()
         }
@@ -96,18 +90,12 @@ struct FavoritesView: View {
                 loadID = UUID()
                 folders = []
                 folderPendingDeletion = nil
+                folderEditorMode = nil
                 folderRemovals = ListRemovalState<Int>()
                 isLoading = false
             }
             await load()
         }
-        .onAppear { publishCreateButton() }
-        .onChange(of: isLoading || folders.isEmpty) { publishCreateButton() }
-        .onDisappear {
-            if isTabRoot { toolbarAccessory?.button = nil }
-            refresh.reset(discard: { stagedFolders = nil })
-        }
-        .onChange(of: account.sessionID) { refresh.reset(discard: { stagedFolders = nil }) }
         // 居中提示。确认框会锚在来源上，从列表长按菜单弹出时会贴到标签栏。
         .alert(
             "删除收藏夹",
@@ -145,26 +133,37 @@ struct FavoritesView: View {
         folders = next
     }
 
-    private var createFolderButton: some View {
-        Button("新建收藏夹", systemImage: "folder.badge.plus") { showsCreator = true }
-            .labelStyle(.iconOnly)
-            .disabled(isLoading && folders.isEmpty)
-            .accessibilityIdentifier("favorites.create")
-    }
-
-    private func publishCreateButton() {
-        guard isTabRoot, let toolbarAccessory else { return }
-        toolbarAccessory.button = RootToolbarAccessory.ButtonSpec(
-            title: "新建收藏夹",
-            systemImage: "folder.badge.plus",
-            identifier: "favorites.create",
-            disabled: isLoading && folders.isEmpty,
-            action: { showsCreator = true }
+    private func editFolder(_ original: FavFolder, title: String, intro: String, isPublic: Bool) async throws {
+        guard account.accountID != nil else {
+            throw FavoriteFolderEditError(message: String(localized: "登录状态已失效，请重新登录"))
+        }
+        let sessionID = account.sessionID
+        let identitySession = services.session.currentID()
+        let updated = try await services.library.editFavoriteFolder(
+            folderID: original.id,
+            title: title,
+            intro: intro,
+            isPublic: isPublic,
+            cover: original.cover ?? "",
+            expectedSessionID: identitySession
         )
+        guard account.sessionID == sessionID else { return }
+        let merged = FavFolder(
+            id: original.id,
+            title: updated.title.isEmpty ? title : updated.title,
+            mediaCount: updated.mediaCount > 0 ? updated.mediaCount : original.mediaCount,
+            favState: updated.favState ?? original.favState,
+            attr: updated.attr ?? ((original.attr ?? 2) & ~1 | (isPublic ? 0 : 1)),
+            cover: (updated.cover?.isEmpty == false ? updated.cover : nil) ?? original.cover,
+            intro: updated.intro ?? intro
+        )
+        if let index = folders.firstIndex(where: { $0.id == original.id }) {
+            folders[index] = merged
+        }
     }
 
     private func delete(_ folder: FavFolder) async {
-        guard !refresh.isRefreshing, folderRemovals.begin(folder.id) else { return }
+        guard folderRemovals.begin(folder.id) else { return }
         let sessionID = account.sessionID
         let identitySession = services.session.currentID()
         defer { if account.sessionID == sessionID { folderRemovals.finish(folder.id) } }
@@ -183,45 +182,30 @@ struct FavoritesView: View {
 
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
 
-    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
+    private var canRefresh: Bool { !isLoading && !folderRemovals.hasPending }
 
-    private var canRefresh: Bool { !refresh.isRefreshing && !isLoading && !folderRemovals.hasPending }
-
-    /// 「我的」里的刷新按钮：旧内容淡出的同时重新取收藏夹，两者都结束后一次换入。
-    private func startRefresh() {
+    private func refreshFolders() async {
         guard canRefresh else { return }
-        refresh.start(hasContent: !folders.isEmpty, animatesExit: animatesExit, source: .favorites,
-                      fetch: { await stageFolders() },
-                      commit: {
-                          guard let staged = stagedFolders else { return }
-                          stagedFolders = nil
-                          guard staged.revision == folderRemovals.revision, !folderRemovals.hasPending else { return }
-                          folders = staged.folders
-                      },
-                      discard: { stagedFolders = nil })
-    }
-
-    private func stageFolders() async -> Bool {
         guard let mid = account.accountID else {
             feedback.show(String(localized: "登录状态已失效，请重新登录"))
-            return false
+            return
         }
         let requestID = UUID()
         loadID = requestID
         let sessionID = account.sessionID
         let revision = folderRemovals.revision
-        stagedFolders = nil
         isLoading = true
         defer { if loadID == requestID { isLoading = false } }
         do {
             let result = try await services.library.favoriteFolders(ownerMid: mid)
-            guard loadID == requestID, account.sessionID == sessionID, folderRemovals.revision == revision, !Task.isCancelled else { return false }
-            stagedFolders = (LibraryPageRules.unique(result), revision)
-            return true
+            guard loadID == requestID, account.sessionID == sessionID,
+                  folderRemovals.revision == revision, !folderRemovals.hasPending,
+                  !Task.isCancelled else { return }
+            folders = LibraryPageRules.unique(result)
+            errorMessage = nil
         } catch {
-            guard loadID == requestID, account.sessionID == sessionID, !error.isCancellation else { return false }
+            guard loadID == requestID, account.sessionID == sessionID, !error.isCancellation else { return }
             feedback.show(error.localizedDescription)
-            return false
         }
     }
 
@@ -254,14 +238,56 @@ private struct FavoriteFolderEditError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-private struct NewFavoriteFolderSheet: View {
+private enum FavoriteFolderEditorMode: Identifiable {
+    case create
+    case edit(FavFolder)
+
+    var id: String {
+        switch self {
+        case .create: "create"
+        case .edit(let folder): "edit-\(folder.id)"
+        }
+    }
+
+    var navigationTitle: String {
+        switch self {
+        case .create: String(localized: "新建收藏夹")
+        case .edit: String(localized: "编辑收藏夹")
+        }
+    }
+
+    var confirmTitle: String {
+        switch self {
+        case .create: String(localized: "完成")
+        case .edit: String(localized: "保存")
+        }
+    }
+}
+
+private struct FavoriteFolderEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var intro = ""
-    @State private var isPublic = true
+    let mode: FavoriteFolderEditorMode
+    @State private var title: String
+    @State private var intro: String
+    @State private var isPublic: Bool
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     let submit: (String, String, Bool) async throws -> Void
+
+    init(mode: FavoriteFolderEditorMode, submit: @escaping (String, String, Bool) async throws -> Void) {
+        self.mode = mode
+        self.submit = submit
+        switch mode {
+        case .create:
+            _title = State(initialValue: "")
+            _intro = State(initialValue: "")
+            _isPublic = State(initialValue: true)
+        case .edit(let folder):
+            _title = State(initialValue: folder.title)
+            _intro = State(initialValue: folder.intro ?? "")
+            _isPublic = State(initialValue: !folder.isPrivate)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -276,7 +302,7 @@ private struct NewFavoriteFolderSheet: View {
                         .foregroundStyle(.red)
                 }
             }
-            .navigationTitle("新建收藏夹")
+            .navigationTitle(mode.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -284,7 +310,7 @@ private struct NewFavoriteFolderSheet: View {
                         .disabled(isSubmitting)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { Task { await commit() } }
+                    Button(mode.confirmTitle) { Task { await commit() } }
                         .disabled(trimmedTitle.isEmpty || isSubmitting)
                 }
             }
@@ -502,8 +528,6 @@ struct FavoriteFolderView: View {
     }
 
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
-
-    @AppStorage(HomeRefreshSettings.storageKey) private var refreshDistance = HomeRefreshSettings.defaultDistance
 
     private var canRefresh: Bool {
         !refresh.isRefreshing && !model.isLoading && !model.isLoadingMore && !model.removals.hasPending && !model.isRemovingSelected

@@ -1,9 +1,5 @@
-#if canImport(NeoBiliCore)
 import NeoBiliCore
-#endif
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// Shared decoded bitmap cache. Both immediate UI reads and async image loads

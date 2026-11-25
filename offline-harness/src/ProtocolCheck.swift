@@ -1,4 +1,6 @@
 import Foundation
+@testable import NeoBiliDomain
+@testable import NeoBiliData
 
 /// This executable never reads Keychain, dumps requests or rotates credentials.
 /// Optional context is a private JSON file supplied by the caller, not a capture search.
@@ -21,15 +23,18 @@ import Foundation
         let encoder = AppRequestEncoder(timestamp: { 1_700_000_000 })
         let fixture = AppRequestContext(account: .init(accessKey: "fixture-access", mid: 42, sessionID: login))
         let encoded = try encoder.encode(.get(path: "x/v2/feed/index", parameters: ["q": "A+B & 测试", "empty": ""], requiresAccountCredential: true), context: fixture)
-        guard encoded.url?.query == "access_key=fixture-access&appkey=27eb53fc9058f8c3&empty=&q=A%2BB%20%26%20%E6%B5%8B%E8%AF%95&sign=8df05bb434a5daa7bd271a1b2aadfe76&ts=1700000000" else { throw CheckFailure.contract }
+        let query = encoded.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.percentEncodedQuery }
+        guard query == "access_key=fixture-access&appkey=27eb53fc9058f8c3&empty=&q=A%2BB%20%26%20%E6%B5%8B%E8%AF%95&sign=8df05bb434a5daa7bd271a1b2aadfe76&ts=1700000000" else { throw CheckFailure.contract }
+        let refreshFlush = AppClientIdentity.isInternationalProfile ? "14" : "6"
+        let autoRefreshState = AppClientIdentity.isInternationalProfile ? "1" : "4"
         for (request, flush, pull) in [
             (RecommendationRequest(source: .app), "0", "1"),
-            (RecommendationRequest(source: .app, appCursor: 900, isRefresh: true), "6", "1"),
+            (RecommendationRequest(source: .app, appCursor: 900, isRefresh: true), refreshFlush, "1"),
             (RecommendationRequest(source: .app, pageIndex: 1, appCursor: 700), "8", "0")
         ] {
             let fields = AppRecommendationProtocol.parameters(for: request)
             guard fields["flush"] == flush, fields["pull"] == pull,
-                  fields["idx"] == String(request.appCursor), fields["auto_refresh_state"] == "4" else { throw CheckFailure.contract }
+                  fields["idx"] == String(request.appCursor), fields["auto_refresh_state"] == autoRefreshState else { throw CheckFailure.contract }
         }
         print("PASS production encoding golden + initial/refresh/pagination policy")
         guard CommandLine.arguments.dropFirst().allSatisfy({ $0 == "--network" }) else { throw CheckFailure.arguments }

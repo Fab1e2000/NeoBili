@@ -3,9 +3,29 @@ import Foundation
 public enum PlaybackQuality {
     public static let videoStorageKey = "neobili.preferredQuality"
     public static let audioStorageKey = "neobili.preferredAudioQuality"
+    public static let hiResEnabledStorageKey = "neobili.playback.hiResEnabled"
     // 1080P 60帧、Hi-Res 无损；账号或视频没有这一档时自动降到可用的最高档。
     public static let defaultVideoQuality = 116
     public static let defaultAudioQuality = 30251
+    public static let hiResAudioQuality = 30251
+    /// 关闭 Hi-Res 时使用的最高音质上限（杜比全景声及以下自动选最高）。
+    public static let nonHiResAudioCeiling = 30250
+
+    public static func isHiResEnabled(in defaults: UserDefaults = .standard) -> Bool {
+        if let stored = defaults.object(forKey: hiResEnabledStorageKey) as? Bool {
+            return stored
+        }
+        return true
+    }
+
+    public static func setHiResEnabled(_ enabled: Bool, in defaults: UserDefaults = .standard) {
+        defaults.set(enabled, forKey: hiResEnabledStorageKey)
+    }
+
+    /// 根据 Hi-Res 开关返回播放配置应使用的音质上限（`0` 为含 Hi-Res 的最高可用音质）。
+    public static func preferredAudioQuality(hiResEnabled: Bool) -> Int {
+        hiResEnabled ? 0 : nonHiResAudioCeiling
+    }
     public static let videoOptions: [(id: Int, title: String)] = [
         (16, "360P"), (32, "480P"), (64, "720P"), (74, String(localized: "720P 60帧")),
         (80, "1080P"), (112, String(localized: "1080P 高码率")), (116, String(localized: "1080P 60帧")),

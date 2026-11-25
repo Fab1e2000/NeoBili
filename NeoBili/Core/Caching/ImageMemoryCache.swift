@@ -34,10 +34,11 @@ public final class ImageMemoryCache<Key: Hashable & Sendable, Value: Sendable>: 
             entries[key] = entry
         }
 
-        mutating func remove(_ key: Key) {
-            guard let entry = entries.removeValue(forKey: key) else { return }
+        mutating func remove(_ key: Key) -> Entry? {
+            guard let entry = entries.removeValue(forKey: key) else { return nil }
             unlink(key, entry: entry)
             bytes -= entry.cost
+            return entry
         }
     }
     private let state = Mutex(State())
@@ -64,20 +65,26 @@ public final class ImageMemoryCache<Key: Hashable & Sendable, Value: Sendable>: 
 
     public func insert(_ value: Value, for key: Key, cost: Int) {
         guard cost >= 0, cost <= maximumBytes else { return }
-        state.withLock { state in
-            state.remove(key)
+        let retired = state.withLock { state in
+            var evicted: [Entry] = []
+            if let replaced = state.remove(key) { evicted.append(replaced) }
             while state.bytes > maximumBytes - cost || state.entries.count >= maximumEntries {
-                guard let oldest = state.oldest else { break }
-                state.remove(oldest)
+                guard let oldest = state.oldest, let entry = state.remove(oldest) else { break }
+                evicted.append(entry)
             }
             state.append(key, entry: Entry(value: value, cost: cost))
             state.bytes += cost
+            return evicted
         }
+        withExtendedLifetime(retired) {}
     }
 
     public func removeAll() {
-        state.withLock { state in
-            state = State()
+        let retired = state.withLock { state in
+            var empty = State()
+            swap(&state, &empty)
+            return empty
         }
+        withExtendedLifetime(retired) {}
     }
 }

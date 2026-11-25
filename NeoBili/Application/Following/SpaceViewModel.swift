@@ -1,17 +1,14 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
-/// UP 主空间页的数据：头部名片、投稿列表，以及他自己的动态流。
-///
-/// 动态那一栏交给共用的 `DynamicFeedModel`，这里只管名片、关注状态和投稿。
+/// 持有空间名片、关注状态与投稿，合集和动态各自管理列表状态。
 @MainActor
 @Observable
 final class SpaceViewModel {
     @ObservationIgnored let filtering: VideoFilterDependencies
     @ObservationIgnored private let services: ApplicationServices
     let mid: Int
+    let collections: SpaceCollectionsModel
     let dynamics: DynamicFeedModel
 
     private(set) var card: SpaceCard?
@@ -48,6 +45,7 @@ final class SpaceViewModel {
         self.filtering = filtering
         self.services = services
         self.mid = mid
+        collections = SpaceCollectionsModel(mid: mid, services: services)
         dynamics = DynamicFeedModel(source: .space(hostMid: mid), likeStore: likeStore, services: services)
     }
 
@@ -132,7 +130,7 @@ final class SpaceViewModel {
         isLoadingMoreVideos = false
         isLoadingVideos = true
         videosError = nil
-        defer { isLoadingVideos = false }
+        defer { if videosRequestID == request { isLoadingVideos = false } }
 
         do {
             let result = try await services.community.spaceVideos(mid: mid, page: 1)
@@ -142,7 +140,7 @@ final class SpaceViewModel {
             page = 1
             hasMoreVideos = result.hasMore(after: videos.count)
         } catch {
-            guard !Task.isCancelled, !error.isCancellation else { return }
+            guard videosRequestID == request, !Task.isCancelled, !error.isCancellation else { return }
             // 刷新失败保留已可读的投稿和分页游标；首屏失败仍展示错误页。
             if videos.isEmpty { hasMoreVideos = false }
             videosError = error.loadFailureDescription
@@ -158,7 +156,7 @@ final class SpaceViewModel {
         isLoadingVideos = true
         videosError = nil
         stagedVideos = nil
-        defer { isLoadingVideos = false }
+        defer { if videosRequestID == request { isLoadingVideos = false } }
         do {
             let result = try await services.community.spaceVideos(mid: mid, page: 1)
             guard videosRequestID == request, !Task.isCancelled else { return false }
@@ -166,7 +164,7 @@ final class SpaceViewModel {
             stagedVideos = (list, result.hasMore(after: list.count))
             return true
         } catch {
-            guard !Task.isCancelled, !error.isCancellation else { return false }
+            guard videosRequestID == request, !Task.isCancelled, !error.isCancellation else { return false }
             videosError = error.loadFailureDescription
             return false
         }

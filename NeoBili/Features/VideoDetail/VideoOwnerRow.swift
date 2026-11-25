@@ -1,11 +1,8 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 简介顶部的 UP 主行，平铺在页面上，不再套灰色圆角底。
 struct VideoOwnerRow: View {
-    @Environment(\.appThemeColor) private var themeColor
     let owner: VideoOwner
     let avatarURL: URL?
     /// 粉丝数。名片还没回来时这一行不显示。
@@ -56,23 +53,12 @@ struct VideoOwnerRow: View {
         card?.follower.map { String(localized: "\($0.biliCountText)粉丝") }
     }
 
-    /// 系统液态玻璃胶囊按钮，和 UP 主空间页一致：未关注是主题色实底玻璃，已关注退成普通玻璃配灰字。
-    @ViewBuilder
     private var followButton: some View {
-        let button = Button(action: onToggleFollow) {
-            Text(isFollowing ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"))
-                .font(.app(.subheadline, weight: .semibold))
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 4)
-        }
-        .buttonBorderShape(.capsule)
+        FollowCapsuleButton(
+            title: isFollowing ? String(localized: "已关注") : String(localized: "follow.action", defaultValue: "关注"),
+            isActive: isFollowing, action: onToggleFollow
+        )
         .accessibilityLabel(isFollowing ? "取消关注 \(owner.name)" : "关注 \(owner.name)")
         .accessibilityIdentifier("video.owner.follow")
-        if isFollowing {
-            button.buttonStyle(.glass).foregroundStyle(.secondary)
-        } else {
-            button.buttonStyle(.glassProminent).tint(themeColor)
-        }
     }
 }

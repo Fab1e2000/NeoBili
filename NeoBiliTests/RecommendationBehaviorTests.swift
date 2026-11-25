@@ -1,9 +1,5 @@
-#if canImport(NeoBiliData)
 @testable import NeoBiliData
-#endif
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import XCTest
 import Synchronization
 @testable import NeoBili
@@ -236,7 +232,8 @@ final class RecommendationBehaviorTests: XCTestCase {
         let transport = URLSession(configuration: configuration)
         defer { transport.invalidateAndCancel() }
         BehaviorProtocol.state.withLock { $0 = .init(failsOffline: true) }
-        let client = APIClient(session: transport, appAuthentication: { await first.appAccount() })
+        let client = APIClient(session: transport, appAuthentication: { await first.appAccount() },
+                               appHeaders: { try await first.appRequestHeaders(expectedSessionID: $0) })
         let reporter = RecommendationClickReporter(directory: directory, identity: first, client: client)
         await reporter.record(video(session: login), session: login, timestamp: Int(Date().timeIntervalSince1970 * 1000))
         let file = directory.appendingPathComponent("pending.json")
@@ -246,7 +243,8 @@ final class RecommendationBehaviorTests: XCTestCase {
         let current = try await second.appDeviceSnapshot(expectedSessionID: second.loginSessionID)
         XCTAssertNotEqual(current.requestSession, original.requestSession)
         BehaviorProtocol.state.withLock { $0 = .init(failsOffline: false) }
-        let secondClient = APIClient(session: transport, appAuthentication: { await second.appAccount() })
+        let secondClient = APIClient(session: transport, appAuthentication: { await second.appAccount() },
+                                     appHeaders: { try await second.appRequestHeaders(expectedSessionID: $0) })
         let restored = RecommendationClickReporter(directory: directory, identity: second, client: secondClient)
         await restored.flush()
         let request = try XCTUnwrap(BehaviorProtocol.state.withLock { $0.requests.first })
@@ -274,7 +272,8 @@ final class RecommendationBehaviorTests: XCTestCase {
         await restored.record(video(session: oldLogin), session: oldLogin, timestamp: Int(Date().timeIntervalSince1970 * 1000))
         await second.saveLogin(.init(sessdata: "new-login", biliJct: "csrf", dedeUserID: "42"), accessKey: "new-token")
         let third = DeviceIdentity(defaults: settings, credentials: credentials, allowsNetwork: false, purgeCookies: {})
-        let thirdClient = APIClient(session: transport, appAuthentication: { await third.appAccount() })
+        let thirdClient = APIClient(session: transport, appAuthentication: { await third.appAccount() },
+                                    appHeaders: { try await third.appRequestHeaders(expectedSessionID: $0) })
         BehaviorProtocol.state.withLock { $0 = .init(failsOffline: false) }
         let afterRelogin = RecommendationClickReporter(directory: directory, identity: third, client: thirdClient)
         await afterRelogin.flush()

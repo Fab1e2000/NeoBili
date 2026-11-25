@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 共用的短距离下拉刷新，阈值来自「浏览 → 滚动与防误触」。

@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 列表卡片需要用同一个命名空间登记自己是 zoom 转场的起点，
@@ -19,6 +17,7 @@ struct RootView: View {
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
     @State private var castSession = CastSessionModel(service: ApplicationServices.live.cast)
+    @State private var appUpdate: AppUpdateStore
     @State private var toolbarAccessory = RootToolbarAccessory()
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
@@ -52,10 +51,12 @@ struct RootView: View {
 
     init(nowPlaying: NowPlayingStore = NowPlayingStore(),
          cacheNavigation: OfflineCacheNavigation = OfflineCacheNavigation(),
-         offlineCache: OfflineCacheStore = .shared) {
+         offlineCache: OfflineCacheStore = .shared,
+         appUpdate: AppUpdateStore = AppUpdateStore(service: ApplicationServices.live.appUpdate)) {
         _nowPlaying = State(initialValue: nowPlaying)
         _cacheNavigation = State(initialValue: cacheNavigation)
         self.offlineCache = offlineCache
+        _appUpdate = State(initialValue: appUpdate)
     }
 
     private var onlinePlaybackActive: Bool {
@@ -75,7 +76,7 @@ struct RootView: View {
                 RootSearchPage(search: search, isFocused: $isSearchFocused, onSubmit: submitSearch)
                 .tint(.primary)
                 .background {
-                    Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+                    Color(uiColor: .systemBackground).ignoresSafeArea()
                 }
             }
         }
@@ -118,6 +119,7 @@ struct RootView: View {
         .environment(account)
         .environment(feedback)
         .environment(\.castSession, castSession)
+        .environment(appUpdate)
         .environment(toolbarAccessory)
         .environment(themeIcon)
         .environment(\.videoTransitionNamespace, videoTransition)
@@ -130,6 +132,7 @@ struct RootView: View {
         // 冷启动时用 Keychain 里可能存在的登录凭据恢复会话；
         // 「我的」页在恢复完成前不会闪出登录按钮。
         .task { await account.restoreSessionIfNeeded() }
+        .task { await appUpdate.checkAutomaticallyIfNeeded() }
         .task(id: onlinePlaybackActive) { [active = onlinePlaybackActive] in
             await offlineCache.service.setOnlinePlaybackActive(active)
         }
@@ -174,7 +177,6 @@ struct RootView: View {
                 .tint(.primary)
         case .following:
             FollowingView(onOpenLiveRoom: { openLiveRoom($0, sourceID: "following-live") })
-                .id(account.sessionID)
                 .tint(.primary)
         case .watchLater, .favorites, .history:
             // 列表只在首次出现时加载，换账号后要整页重建，否则会留着上个账号的内容。
@@ -201,8 +203,12 @@ struct RootView: View {
     private func submitSearch(_ keyword: String?) {
         search.submit(keyword: keyword)
         guard search.hasSubmittedSearch else { return }
-        // 提交后保留顶部搜索框，只收起键盘。
-        isSearchFocused = false
+        // 仅收起键盘，不退出搜索会话（把 isSearchFocused 置 false 会让系统清空 query）。
+        dismissKeyboard()
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func openLiveRoom(_ room: LiveRoom, sourceID: String) {
@@ -224,8 +230,8 @@ struct RootView: View {
 
         tabSwitchTask?.cancel()
 
-        // 新页面的内容淡入；搜索页保持输入框立即可用，不参与。
-        isSearchFocused = false
+        // 切换标签时仅收起键盘，保留搜索页会话状态与已搜结果。
+        dismissKeyboard()
         guard animatesPageEntrance, tab != .search else {
             finishTabEntrance()
             displayedTab = tab

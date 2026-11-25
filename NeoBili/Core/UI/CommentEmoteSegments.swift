@@ -1,12 +1,9 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 
 /// 只缓存文本分段，不缓存 Text 或表情图片，图片加载和字号变化仍由视图独立观察。
-@MainActor
 enum CommentEmoteSegments {
-    enum Segment: Equatable {
+    enum Segment: Equatable, Sendable {
         case text(String)
         case emote(String, CommentEmote)
     }
@@ -30,12 +27,28 @@ enum CommentEmoteSegments {
         init(_ segments: [Segment]) { self.segments = segments }
     }
 
-    private static let cache: NSCache<Key, Value> = {
+    // NSCache synchronizes accesses from the row bodies and background warmup.
+    nonisolated(unsafe) private static let cache: NSCache<Key, Value> = {
         let cache = NSCache<Key, Value>()
         cache.countLimit = 256
         cache.totalCostLimit = 2 * 1_024 * 1_024
         return cache
     }()
+
+    @concurrent
+    static func warmComments(_ comments: [Comment]) async throws {
+        var pending = Array(comments.reversed())
+        while let comment = pending.popLast() {
+            try Task.checkCancellation()
+            for segment in prepared(message: comment.message, emotes: comment.emotes) {
+                guard case .text(let text) = segment else { continue }
+                let metadata = comment.content.jumpURLs
+                _ = CommentLinks.attributed(text, metadata: metadata, includesTimes: false)
+                _ = CommentLinks.attributed(text, metadata: metadata, includesTimes: true)
+            }
+            if let replies = comment.replies { pending.append(contentsOf: replies.reversed()) }
+        }
+    }
 
     static func prepared(message: String, emotes: [String: CommentEmote]) -> [Segment] {
         guard !emotes.isEmpty else { return [.text(message)] }

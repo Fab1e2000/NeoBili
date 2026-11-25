@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 根页面和媒体详情共用的一句话操作反馈。
@@ -155,16 +153,6 @@ enum WatchLaterAction {
                 feedback.show(error.localizedDescription)
             }
         }
-    }
-}
-
-extension Error {
-    /// 统一识别 Swift 任务取消与 URLSession 取消，调用方据此跳过错误提示。
-    var isCancellation: Bool {
-        if self is CancellationError { return true }
-        let nsError = self as NSError
-        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled { return true }
-        return nsError.domain == "NSPOSIXErrorDomain" && nsError.code == 89
     }
 }
 

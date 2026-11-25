@@ -1,9 +1,5 @@
-#if canImport(NeoBiliData)
 import NeoBiliData
-#endif
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import Foundation
 import AVFAudio
 
@@ -40,7 +36,8 @@ extension ApplicationServices {
             recommendation: .live(client: client, identity: identity, session: recommendationSession,
                                   network: network, clickReporter: clickReporter, filter: filter),
             offlineCache: offlineCache,
-            cast: cast
+            cast: cast,
+            appUpdate: .live(session: session)
         )
     }
 }
@@ -96,12 +93,9 @@ extension SystemNowPlayingCenter {
         output: .system(), notifications: .default,
         interruptionObject: AVAudioSession.sharedInstance(), idleTimer: PlaybackIdleTimer(),
         artworkLoader: { url in
-            if url.isFileURL { return try Data(contentsOf: url) }
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 8
-            request.setValue(BiliHeaders.userAgent, forHTTPHeaderField: "User-Agent")
-            request.setValue(BiliHeaders.referer, forHTTPHeaderField: "Referer")
-            return try await AppNetwork.session.data(for: request).0
+            // Lock-screen artwork needs a bounded bitmap for both cached files and network covers.
+            let pixels = ImagePixelSize(points: CGSize(width: 512, height: 512), scale: 1)
+            return try await BiliImageLoader.load(url, pixelSize: pixels)
         }
     )
 }
@@ -162,6 +156,9 @@ extension PlaybackAudioSession {
 extension PlayerChromePreferences {
     @MainActor static let shared = PlayerChromePreferences()
 }
+extension PlaybackModePreferences {
+    @MainActor static let shared = PlaybackModePreferences()
+}
 
 extension AppRecommendationSession {
     static let shared = AppRecommendationSession()
@@ -204,8 +201,14 @@ extension DeviceIdentity {
                                         UserDefaults(suiteName: "com.elsterlee.NeoBili.behavior-sequence"))
 }
 
-extension ImageFileCache {
-    static let shared = ImageFileCache(download: { try await AppNetwork.session.data(for: $0) })
+extension ImageViewerFileAccess {
+    static let live = cached(in: ImageFileCache(download: { try await AppNetwork.session.data(for: $0) }))
+
+    static func cached(in cache: ImageFileCache) -> Self {
+        Self(localFile: { try await cache.localFile(for: $0, owner: $1) },
+             invalidate: { await cache.invalidate($0, file: $1) },
+             release: { await cache.release(owner: $0) })
+    }
 }
 
 // The UI image graph shares one production budget and admits independent test graphs.

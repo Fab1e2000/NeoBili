@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 struct LiveRoomView: View {
@@ -20,7 +18,7 @@ struct LiveRoomView: View {
     @State private var isFullScreen = false
     @State private var orientationOwner = UUID()
     @State private var controlsVisible = false
-    @State private var controlsSafeArea = EdgeInsets()
+    @State private var controlsSafeAreaInsets = EdgeInsets()
     @State private var requestedQuality: Int?
     @State private var hideTask: Task<Void, Never>?
     @State private var keepsControlsForMenu = false
@@ -43,9 +41,18 @@ struct LiveRoomView: View {
               isLoggedIn: account.isLoggedIn, accountID: account.accountID)
     }
 
+    private var danmakuContext: LiveDanmakuModel.ConnectionContext {
+        .init(roomID: player.danmakuRoomID, hasRenderedFirstFrame: player.hasRenderedFirstFrame,
+              scenePhase: scenePhase)
+    }
+
     private var shareURL: URL { URL(string: "https://live.bilibili.com/\(player.room.roomID)")! }
     private var castMediaID: String { "live:\(player.danmakuRoomID)" }
     private var isCastingCurrentLive: Bool { castSession?.isCasting(mediaID: castMediaID) == true }
+    private var canControlPlayback: Bool {
+        player.hasRenderedFirstFrame && player.errorMessage == nil && !player.isOffline
+    }
+
     private var showsControls: Bool {
         controlsVisible || player.errorMessage != nil || player.isOffline
     }
@@ -81,26 +88,15 @@ struct LiveRoomView: View {
         .background(Color.black.ignoresSafeArea())
         .ignoresSafeArea(isFullScreen ? .all : [], edges: .all)
         .statusBarHidden(isFullScreen)
-        .background { PlayerSafeAreaReader { controlsSafeArea = $0 }.allowsHitTesting(false) }
+        .background { PlayerSafeAreaReader { controlsSafeAreaInsets = $0 }.allowsHitTesting(false) }
         .onAppear {
             if !keepsPlaybackOnDismiss { player.requestLoad(quality: requestedQuality) }
         }
         .task(id: followContext) { await following.load(followContext) }
         // 真实房间号在播放地址返回后才更新；跟着它（重）连弹幕服务器。
         // 列表常驻；飘幕开关只影响画面上的那层。
-        .task(id: "\(player.danmakuRoomID)-\(player.hasRenderedFirstFrame)") {
-            // Give the media request a short head start, but keep chat available if video stalls.
-            if !player.hasRenderedFirstFrame {
-                do { try await Task.sleep(for: .milliseconds(800)) } catch { return }
-            }
-            guard !Task.isCancelled else { return }
-            danmaku.start(roomID: player.danmakuRoomID)
-        }
-        // 退后台后直播 WS 必断，回前台主动重连，不等心跳超时才暴露。
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            danmaku.stop()
-            danmaku.start(roomID: player.danmakuRoomID)
+        .onChange(of: danmakuContext, initial: true) { previous, current in
+            danmaku.updateConnection(from: previous, to: current)
         }
         .actionFeedbackOverlay()
         .onChange(of: player.isPlaying) { _, playing in
@@ -151,14 +147,25 @@ struct LiveRoomView: View {
             // 全屏时弹幕直接铺在画面上；非全屏改用播放器下方的独立容器。
             if isFullScreen, liveDanmakuEnabled {
                 LiveDanmakuFlowView(model: danmaku)
+                    .padding(.top, isFullScreen ? controlsSafeAreaInsets.top : 0)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
-            Color.clear.contentShape(Rectangle())
-                .onTapGesture {
-                    controlsVisible.toggle()
-                    scheduleHide()
-                }
+            if !isCastingCurrentLive {
+                PlayerVerticalGestureLayer(
+                    isFullScreen: isFullScreen, currentTime: 0, duration: 0, canSeek: false, canLongPress: false,
+                    feedbackTopInset: isFullScreen ? controlsSafeAreaInsets.top : 0,
+                    onDoubleTap: {
+                        guard canControlPlayback else { return }
+                        togglePlayback()
+                    },
+                    onTap: {
+                        controlsVisible.toggle()
+                        scheduleHide()
+                    },
+                    onToggleFullScreen: toggleFullScreen
+                )
+            }
             if isFullScreen, liveDanmakuEnabled, let superChat = danmaku.superChats.first {
                 SuperChatBanner(item: superChat) { danmaku.hideSuperChat(superChat.id) }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
@@ -185,8 +192,9 @@ struct LiveRoomView: View {
                 CastPlaybackOverlay(
                     castSession: castSession,
                     isFullScreen: isFullScreen,
-                    safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
+                    safeAreaInsets: isFullScreen ? controlsSafeAreaInsets : EdgeInsets(),
                     videoQualityControl: castQualityControl,
+                    supportsPlaybackMode: false,
                     onBack: { if isFullScreen { toggleFullScreen() } else { if let onReturn { onReturn() } else { dismiss() } } },
                     onSwitchDevice: { isCastPickerPresented = true },
                     onExitCast: exitCasting
@@ -196,15 +204,15 @@ struct LiveRoomView: View {
                     title: player.room.title, subtitle: player.room.username, shareURL: shareURL,
                     videoQualityControl: qualityControl,
                     isPlaying: player.isPlaying,
-                    canControlPlayback: player.hasRenderedFirstFrame && player.errorMessage == nil && !player.isOffline,
+                    canControlPlayback: canControlPlayback,
                     isWaiting: player.isLoading || player.isBuffering,
                     isLive: true, isFullScreen: isFullScreen,
                     hasError: player.errorMessage != nil || player.isOffline,
-                    safeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
+                    safeAreaInsets: isFullScreen ? controlsSafeAreaInsets : EdgeInsets(),
                     isDanmakuEnabled: liveDanmakuEnabled, showsDanmakuToggle: true,
                     onToggleDanmaku: { liveDanmakuEnabled.toggle() },
                     onBack: { if isFullScreen { toggleFullScreen() } else { if let onReturn { onReturn() } else { dismiss() } } },
-                    onTogglePlayback: { player.togglePlayback(); scheduleHide() },
+                    onTogglePlayback: togglePlayback,
                     onToggleFullScreen: toggleFullScreen,
                     onMenuInteraction: { hideTask?.cancel(); keepsControlsForMenu = true; controlsVisible = true }
                 ) {
@@ -295,6 +303,11 @@ struct LiveRoomView: View {
         keepsControlsForMenu = false
         controlsVisible = true
         player.requestLoad(quality: requestedQuality)
+    }
+
+    private func togglePlayback() {
+        player.togglePlayback()
+        scheduleHide()
     }
 
     private func toggleFullScreen() {

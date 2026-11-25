@@ -19,6 +19,7 @@ public struct ApplicationServices: Sendable {
     public var recommendation = RecommendationService()
     public var offlineCache = OfflineCacheService()
     public var cast = CastService()
+    public var appUpdate = AppUpdateService()
 
     public init(
         currentAppBuvid: @escaping @Sendable () async -> String = { "" },
@@ -36,7 +37,8 @@ public struct ApplicationServices: Sendable {
         community: CommunityService = CommunityService(),
         recommendation: RecommendationService = RecommendationService(),
         offlineCache: OfflineCacheService = OfflineCacheService(),
-        cast: CastService = CastService()
+        cast: CastService = CastService(),
+        appUpdate: AppUpdateService = AppUpdateService()
     ) {
         self.currentAppBuvid = currentAppBuvid
         self.exportDiagnostics = exportDiagnostics
@@ -54,6 +56,7 @@ public struct ApplicationServices: Sendable {
         self.recommendation = recommendation
         self.offlineCache = offlineCache
         self.cast = cast
+        self.appUpdate = appUpdate
     }
 }
 

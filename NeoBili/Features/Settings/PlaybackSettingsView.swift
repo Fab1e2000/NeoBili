@@ -1,13 +1,10 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 struct PlaybackSettingsView: View {
     @AppStorage(DetailPlaybackSettings.storageKey) private var detailAutoPlay = DetailPlaybackSettings.defaultValue
     @AppStorage(PlaybackWindowSettings.storageKey) private var miniPlayerEnabled = PlaybackWindowSettings.defaultValue
     @AppStorage(PlaybackQuality.videoStorageKey) private var preferredQuality = PlaybackQuality.defaultVideoQuality
-    @AppStorage(PlaybackQuality.audioStorageKey) private var preferredAudioQuality = PlaybackQuality.defaultAudioQuality
     @AppStorage(VideoPreparationCache.scrollPrefetchKey) private var prefetchesOnScroll = false
 
     var body: some View {
@@ -15,11 +12,6 @@ struct PlaybackSettingsView: View {
             Section("默认画质") {
                 Picker("分辨率", selection: $preferredQuality) {
                     ForEach(PlaybackQuality.videoOptions, id: \.id) { option in
-                        Text(option.title).tag(option.id)
-                    }
-                }
-                Picker("音质", selection: $preferredAudioQuality) {
-                    ForEach(PlaybackQuality.audioOptions, id: \.id) { option in
                         Text(option.title).tag(option.id)
                     }
                 }

@@ -36,13 +36,13 @@ flowchart LR
     Data --> Core
 ```
 
-App target 包含 App、Application、Features、Platform 和共享 UI。Application / Features 禁止导入 Data；生产组装位于 App，平台媒体适配可使用 Data 的窄接口。内部端点、编码器细节和队列模型不作为公共 API，测试通过 `@testable import NeoBiliData` 验证。
+App target 包含 App、Application、Features、Platform 和共享 UI。Application 禁止依赖 Features，Core/UI 禁止依赖 Features 与 Data，Application 和 Features 禁止依赖 Data。生产组装位于 App，平台媒体适配可使用 Data 的窄接口。图片查看器通过文件读写闭包访问由 App 组装的磁盘缓存。内部端点、编码器细节和队列模型不作为公共 API，测试通过 `@testable import NeoBiliData` 验证。
 
 ## 服务如何注入
 
 `ApplicationServices` 是按业务分组的值类型。`App/ApplicationServices+Live.swift` 组装生产实现；页面通过 `EnvironmentValues.applicationServices` 取得依赖。模型通过初始化参数接收服务或更小的 loader / writer 闭包。已有的默认初始化方式仍使用生产组装，方便普通页面创建。网络客户端、传输、WBI 签名器与身份的生产便利初始化器位于 `App/NetworkingDefaults.swift`，转发到 Data 的显式依赖初始化器。生产网络会话由 App 持有；Data 的会话工厂保留编译期 Regression 隔离，端点和缓存显式接收 session 或传输闭包。
 
-`ApplicationStores` 统一持有点赞差量、关注已读和搜索历史，生产图由 App 组装。关注父子模型共享注入的点赞状态；搜索页面显示与模型写入同一历史实例。
+`ApplicationStores` 统一持有点赞差量、关注已读和搜索历史，生产图由 App 组装。关注入口从环境取得服务和状态，全部关注、UP 主空间与动态详情沿导航链继承同一份依赖。关注和空间里的视频与图文动态使用同一会话的点赞差量，详情沿用打开它的动态模型。搜索页面显示与模型写入同一历史实例。
 
 测试为当前模型创建独立依赖，不替换全局单例。只实现该测试需要的操作；未配置操作抛出明确错误，不能假装成功。测试创建的服务应随模型传入其子模型，避免子模型意外使用生产默认值。`AccountSessionClient` 管理登录存储边界；`LiveDanmakuStreaming` 管理实时通道，展示模型接收连接状态、热度及消息事件。
 
@@ -52,11 +52,19 @@ App target 包含 App、Application、Features、Platform 和共享 UI。Applica
 
 `NowPlayingStore` 从打开到关闭持有当前媒体、详情模型和返回历史。`PlayerViewModel` 协调播放、画质、备用源与本地续播；`PlaybackReportingCoordinator` 管理观看累计、心跳和播放行为边界，平台会话负责内核。账号切换或媒体切换后，旧标识的回调不能修改新状态。
 
-收藏夹详情与历史记录各自由列表模型维护分页、暂存刷新、移除与回滚。页面控制刷新动画的提交时机。播放器首次打开与切换画质共用轨道选择逻辑，播放会话仍由播放器模型持有。
+在线章节由当前视频和分 P 的 `PlayerViewModel` 异步加载，请求随模型停止而取消。播放器控件中只有进度条读取高频播放位置，章节标题和选中状态在该视图内计算。
+
+本机播放和投屏分别校验结束事件的来源并处理睡眠与循环，需要切集时复用同一组导航动作。
+
+历史记录、收藏夹详情和稍后再看的列表模型分别定义分页规则，由 `LibraryListState` 协调刷新暂存与提交、旧请求失效、移除与回滚。页面在刷新动画完成后提交新列表。稍后再看的会话归属和刷新失败重试由其模型管理。播放器首次打开与切换画质共用轨道选择逻辑，播放会话仍由播放器模型持有。
 
 离线缓存的入队、暂停、取消及删除先写入清单，再执行对应的传输操作。旧文件通过清单记录清理，正在播放的版本保留至播放租约释放。
 
+缓存准备与在线播放共用 `x/player/v2` 的正式章节解析。缓存项随资源保存章节，离线播放器直接读取清单，旧清单缺少章节字段时按空列表处理。
+
 页面模型持有自己的加载任务。共享缓存持有共享下载任务，单张卡片退出只取消自己的等待。直播实时连接拥有认证、心跳和重连任务，`stop()` 统一终止；展示模型拥有列表合并和 SC 历史任务。
+
+离线封面、锁屏封面和列表图片共用 `BiliImageLoader` 的下采样与缓存。相关视频预取沿用可见卡片的图片管线，并受共用预取并发限制约束。
 
 详细规则按问题阅读：
 
@@ -73,11 +81,15 @@ App target 包含 App、Application、Features、Platform 和共享 UI。Applica
 4. 测试业务状态时注入受控服务；测试端点时使用受控传输。不要为了运行单元测试读写真实账号。
 5. 移动源码后同步离线测试的输入路径，并运行 `python3 scripts/check-architecture.py` 和开发指南中的相关检查。
 
-`project.yml` 是工程配置来源；各层分别采用 synchronized folder。Domain 文件只属于 `NeoBiliDomain`，Core/Caching 与 Core/Formatting 属于 `NeoBiliCore`，Data 属于 `NeoBiliData`，其余层属于 App；同一层新增或移动 Swift 文件无需手工登记。跨模块移动需同步配置并重新生成工程。测试显式 `@testable import NeoBiliDomain` / `NeoBiliCore` / `NeoBiliData`；离线 harness 继续直接编译选定源码，条件导入保留这一入口。
+`project.yml` 是工程配置来源；各层分别采用 synchronized folder。Domain 文件只属于 `NeoBiliDomain`，Core/Caching 与 Core/Formatting 属于 `NeoBiliCore`，Data 属于 `NeoBiliData`，其余层属于 App；同一层新增或移动 Swift 文件无需手工登记。跨模块移动需同步配置并重新生成工程。App、测试和离线 harness 都直接导入项目模块。离线 harness 从同一批源码构建三个同名静态库，再链接所需的 App 层源码和场景入口。
 
 播放器事件、画质与手势设置值属于 Domain；mpv 加载和渲染宿主、窗口方向属于 Platform。观看上报、列表删除/入场状态以及设置持久化属于 Application。Domain 不持有 UserDefaults；设备偏好的读取适配位于 Data，纯 URL 归一化位于 Domain。
 
-空间页资料头部和关注动态内容使用独立展示组件；滚动协调、导航和刷新任务仍由父页面持有。全部关注分页状态由 Application 的 `FollowingAllUpsModel` 管理。首页图片预取消费者由 `HomeFeedImagePrefetcher` 在索引路径与显示中的 cell 之间转交，并沿用快照切换和离屏取消入口。
+UP 主空间按「投稿 / 合集 / 动态」组织三栏，各栏独立滚动和刷新，共享资料头部的折叠位置。
+`SpaceViewModel` 组合 `SpaceCollectionsModel` 和 `DynamicFeedModel`，首次进入「合集」时加载合集和系列。
+`SpaceCollectionDetailModel` 随导航继承服务与视频过滤依赖，根据合集或系列类型调用 `CommunityService` 的分集操作，
+与目录共用分页和暂存刷新，排序切换使前一排序的请求失效。目录和分集均复用 `VideoListCard`。
+空间页资料头部和关注动态内容使用独立展示组件，滚动协调、导航和刷新任务由空间页持有。全部关注分页状态由 Application 的 `FollowingAllUpsModel` 管理。首页图片预取消费者由 `HomeFeedImagePrefetcher` 在索引路径与显示中的 cell 之间转交，并沿用快照切换和离屏取消入口。
 
 显式启用的性能演示和搜索诊断属于 App 诊断组装。首页模型始终使用传入的 loader，App 根据演示启动参数选择生产默认 loader；诊断模式不会覆盖调用方注入的数据源。窗口方向锁仍是 AppDelegate 与窗口适配共用的进程级系统状态，由 App 创建。
 

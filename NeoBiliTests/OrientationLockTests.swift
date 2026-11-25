@@ -31,8 +31,9 @@ final class OrientationLockTests: XCTestCase {
     func testDisappearingOldPlayerCannotReleaseNewPlayersOrientation() {
         let lock = OrientationLock()
         let old = UUID(), current = UUID()
-        XCTAssertTrue(lock.request(.landscape, owner: old))
-        XCTAssertFalse(lock.request(.landscape, owner: current))
+        XCTAssertFalse(lock.request(.portrait, owner: old))
+        XCTAssertEqual(lock.playbackOwner, old, "Portrait fullscreen must claim the lock without rotating")
+        XCTAssertTrue(lock.request(.landscape, owner: current))
         XCTAssertFalse(lock.endPlayback(owner: old))
         XCTAssertEqual(lock.playbackOwner, current)
         XCTAssertEqual(lock.supportedOrientations, .landscape)

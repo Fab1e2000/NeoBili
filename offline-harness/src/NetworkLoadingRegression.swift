@@ -1,4 +1,6 @@
 import Foundation
+@testable import NeoBiliDomain
+@testable import NeoBiliData
 import Synchronization
 
 /// 全部请求停在本地 URLProtocol；不读取/修改登录凭据，也不访问远端服务。

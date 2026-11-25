@@ -1,10 +1,7 @@
-#if canImport(NeoBiliData)
 @testable import NeoBiliData
-#endif
-#if canImport(NeoBiliDomain)
 @testable import NeoBiliDomain
-#endif
 import MediaPlayer
+import SwiftUI
 import XCTest
 @testable import NeoBili
 
@@ -488,6 +485,41 @@ private actor LivePlayerQualityLog {
 
 @MainActor
 final class LiveDanmakuLifecycleTests: XCTestCase {
+    func testReturningFromBackgroundConnectsOnceWhenActive() {
+        let stream = RecordingDanmakuStream()
+        let model = LiveDanmakuModel(stream: stream, superChatLoader: { _ in [] })
+        defer { model.stop() }
+        func context(_ phase: ScenePhase) -> LiveDanmakuModel.ConnectionContext {
+            .init(roomID: 42, hasRenderedFirstFrame: true, scenePhase: phase)
+        }
+        let active = context(.active)
+        let background = context(.background)
+        let inactive = context(.inactive)
+
+        model.updateConnection(from: active, to: active)
+        model.append(message: message("before background"))
+        model.flushMessages()
+        XCTAssertEqual(stream.startedRooms, [42])
+        let initialStops = stream.stops
+
+        model.updateConnection(from: active, to: background)
+        XCTAssertEqual(stream.stops, initialStops + 1)
+        XCTAssertTrue(model.messages.isEmpty)
+        model.updateConnection(from: background, to: inactive)
+        XCTAssertEqual(stream.startedRooms, [42])
+
+        model.updateConnection(from: inactive, to: active)
+        model.append(message: message("after foreground"))
+        model.flushMessages()
+        XCTAssertEqual(stream.startedRooms, [42, 42])
+        let foregroundStops = stream.stops
+        model.updateConnection(from: active, to: inactive)
+        model.updateConnection(from: inactive, to: active)
+        XCTAssertEqual(stream.startedRooms, [42, 42])
+        XCTAssertEqual(stream.stops, foregroundStops)
+        XCTAssertEqual(model.messages.map(\.text), ["after foreground"])
+    }
+
     func testConnectionResetKeepsMountedFlowEngineAndClearsPreviousComments() {
         let model = LiveDanmakuModel()
         let engine = DanmakuEngine(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
@@ -606,6 +638,18 @@ final class LiveDanmakuLifecycleTests: XCTestCase {
     private func message(_ id: String) -> LiveDanmakuModel.Message {
         .init(id: id, name: "tester", text: id, color: nil, emoteURL: nil, emoteSize: nil, medal: nil)
     }
+}
+
+@MainActor
+private final class RecordingDanmakuStream: LiveDanmakuStreaming {
+    private(set) var startedRooms: [Int] = []
+    private(set) var stops = 0
+
+    func start(roomID: Int, onEvent: @escaping @MainActor (LiveDanmakuEvent) -> Void) {
+        startedRooms.append(roomID)
+    }
+
+    func stop() { stops += 1 }
 }
 
 @MainActor

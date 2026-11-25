@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 单条评论。显示输入是父级一次求值得到的快照，行内不再观察评论模型；
@@ -196,8 +194,40 @@ struct ExpandableCommentMessage: View {
 
     // MARK: - 正文展开折叠
 
-    /// 正文与展开按钮使用独立 VStack，统一管理它们与外层区块的间距。
     var body: some View {
+        if Self.canTryUnwrappedLayout(comment) {
+            // Only use the probe-free branch if every explicit line fits at
+            // the actual font and width, including accessibility sizes.
+            ViewThatFits(in: .horizontal) {
+                messageBody
+                    .foregroundStyle(.primary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: true, vertical: true)
+                probedMessage
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            probedMessage
+        }
+    }
+
+    static func canTryUnwrappedLayout(_ comment: Comment) -> Bool {
+        guard comment.emotes.isEmpty, comment.content.jumpURLs.isEmpty,
+              comment.message.utf8.prefix(513).count <= 512 else { return false }
+        var lines = 1
+        var previousWasCR = false
+        for scalar in comment.message.unicodeScalars {
+            if CharacterSet.newlines.contains(scalar), !(scalar == "\n" && previousWasCR) {
+                lines += 1
+                if lines > CommentLayout.collapsedMessageLines { return false }
+            }
+            previousWasCR = scalar == "\r"
+        }
+        return true
+    }
+
+    /// 正文与展开按钮使用独立 VStack，统一管理它们与外层区块的间距。
+    private var probedMessage: some View {
         let key = measurementKey
         let hasCachedResult = key.map { Self.cachedCanExpand($0) != nil } ?? false
         return VStack(alignment: .leading, spacing: CommentLayout.textVerticalSpacing) {

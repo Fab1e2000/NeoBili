@@ -1,6 +1,4 @@
-#if canImport(NeoBiliDomain)
 import NeoBiliDomain
-#endif
 import SwiftUI
 
 /// 头像条与「全部关注」共用的圆形头像：选中描主题色环，未读标红点，开播标 LIVE。
@@ -45,6 +43,7 @@ struct FollowingUpAvatar: View {
                     .offset(y: 3)
             }
         }
+        .accessibilityHidden(true)
     }
 }
 

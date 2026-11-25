@@ -1,6 +1,4 @@
-#if canImport(NeoBiliData)
 @testable import NeoBiliData
-#endif
 import XCTest
 import UIKit
 import ImageIO
@@ -11,7 +9,7 @@ final class ImageDecodeRecoveryTests: XCTestCase {
     func testOriginalDecodeFailurePreservesPreviewAndRedownloadsSameURL() async throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let model = ImageViewerModel(images: [fixture.image], cache: fixture.cache)
+        let model = ImageViewerModel(images: [fixture.image], fileAccess: .cached(in: fixture.cache))
         await model.load(0)
         let preview = try XCTUnwrap(model.previews[0])
         await model.loadOriginal(0)
@@ -37,7 +35,7 @@ final class ImageDecodeRecoveryTests: XCTestCase {
     func testBaseDecodeFailureInvalidatesCacheBeforeRetry() async throws {
         let fixture = try makeFixture(baseFails: true)
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let model = ImageViewerModel(images: [fixture.image], cache: fixture.cache)
+        let model = ImageViewerModel(images: [fixture.image], fileAccess: .cached(in: fixture.cache))
         await model.load(0)
         let broken = try XCTUnwrap(model.previews[0])
         await assertCannotDecode(broken)
@@ -56,8 +54,8 @@ final class ImageDecodeRecoveryTests: XCTestCase {
     func testLateFailureFromSecondViewerCannotInvalidateRecoveredFile() async throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let first = ImageViewerModel(images: [fixture.image], cache: fixture.cache)
-        let second = ImageViewerModel(images: [fixture.image], cache: fixture.cache)
+        let first = ImageViewerModel(images: [fixture.image], fileAccess: .cached(in: fixture.cache))
+        let second = ImageViewerModel(images: [fixture.image], fileAccess: .cached(in: fixture.cache))
         await first.loadOriginal(0)
         await second.loadOriginal(0)
         let old = try XCTUnwrap(first.originals[0])

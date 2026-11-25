@@ -12,6 +12,9 @@ public struct CommunityService: Sendable {
     public var spaceCardOperation: @Sendable (Int) async throws -> SpaceCard = { _ in throw ServiceError.unconfigured("Community.spaceCard") }
     public var spaceProfileOperation: @Sendable (Int) async throws -> SpaceCard = { _ in throw ServiceError.unconfigured("Community.spaceProfile") }
     public var spaceVideosOperation: @Sendable (Int, Int) async throws -> SpaceVideoPage = { _, _ in throw ServiceError.unconfigured("Community.spaceVideos") }
+    public var spaceCollectionsOperation: @Sendable (Int, Int) async throws -> SpaceCollectionListPage = { _, _ in throw ServiceError.unconfigured("Community.spaceCollections") }
+    public var spaceSeasonArchivesOperation: @Sendable (Int, Int, Int, Bool) async throws -> SpaceCollectionArchivePage = { _, _, _, _ in throw ServiceError.unconfigured("Community.spaceSeasonArchives") }
+    public var spaceSeriesArchivesOperation: @Sendable (Int, Int, Int, Bool) async throws -> SpaceCollectionArchivePage = { _, _, _, _ in throw ServiceError.unconfigured("Community.spaceSeriesArchives") }
 
     public func dynamicVoteInfo(id: Int) async throws -> DynamicVoteResponse {
         try await dynamicVoteInfoOperation(id)
@@ -57,6 +60,18 @@ public struct CommunityService: Sendable {
         try await spaceVideosOperation(mid, page)
     }
 
+    public func spaceCollections(mid: Int, page: Int) async throws -> SpaceCollectionListPage {
+        try await spaceCollectionsOperation(mid, page)
+    }
+
+    public func spaceSeasonArchives(mid: Int, seasonID: Int, page: Int, sortReverse: Bool) async throws -> SpaceCollectionArchivePage {
+        try await spaceSeasonArchivesOperation(mid, seasonID, page, sortReverse)
+    }
+
+    public func spaceSeriesArchives(mid: Int, seriesID: Int, page: Int, sortReverse: Bool) async throws -> SpaceCollectionArchivePage {
+        try await spaceSeriesArchivesOperation(mid, seriesID, page, sortReverse)
+    }
+
     public init(
         dynamicVoteInfoOperation: @escaping @Sendable (Int) async throws -> DynamicVoteResponse = { _ in throw ServiceError.unconfigured("Community.dynamicVoteInfo") },
         submitDynamicVoteOperation: @escaping @Sendable (Int, [Int], Int, String) async throws -> Void = { _, _, _, _ in throw ServiceError.unconfigured("Community.submitDynamicVote") },
@@ -68,7 +83,10 @@ public struct CommunityService: Sendable {
         likeDynamicOperation: @escaping @Sendable (String, Bool) async throws -> Void = { _, _ in throw ServiceError.unconfigured("Community.likeDynamic") },
         spaceCardOperation: @escaping @Sendable (Int) async throws -> SpaceCard = { _ in throw ServiceError.unconfigured("Community.spaceCard") },
         spaceProfileOperation: @escaping @Sendable (Int) async throws -> SpaceCard = { _ in throw ServiceError.unconfigured("Community.spaceProfile") },
-        spaceVideosOperation: @escaping @Sendable (Int, Int) async throws -> SpaceVideoPage = { _, _ in throw ServiceError.unconfigured("Community.spaceVideos") }
+        spaceVideosOperation: @escaping @Sendable (Int, Int) async throws -> SpaceVideoPage = { _, _ in throw ServiceError.unconfigured("Community.spaceVideos") },
+        spaceCollectionsOperation: @escaping @Sendable (Int, Int) async throws -> SpaceCollectionListPage = { _, _ in throw ServiceError.unconfigured("Community.spaceCollections") },
+        spaceSeasonArchivesOperation: @escaping @Sendable (Int, Int, Int, Bool) async throws -> SpaceCollectionArchivePage = { _, _, _, _ in throw ServiceError.unconfigured("Community.spaceSeasonArchives") },
+        spaceSeriesArchivesOperation: @escaping @Sendable (Int, Int, Int, Bool) async throws -> SpaceCollectionArchivePage = { _, _, _, _ in throw ServiceError.unconfigured("Community.spaceSeriesArchives") }
     ) {
         self.dynamicVoteInfoOperation = dynamicVoteInfoOperation
         self.submitDynamicVoteOperation = submitDynamicVoteOperation
@@ -81,5 +99,8 @@ public struct CommunityService: Sendable {
         self.spaceCardOperation = spaceCardOperation
         self.spaceProfileOperation = spaceProfileOperation
         self.spaceVideosOperation = spaceVideosOperation
+        self.spaceCollectionsOperation = spaceCollectionsOperation
+        self.spaceSeasonArchivesOperation = spaceSeasonArchivesOperation
+        self.spaceSeriesArchivesOperation = spaceSeriesArchivesOperation
     }
 }
