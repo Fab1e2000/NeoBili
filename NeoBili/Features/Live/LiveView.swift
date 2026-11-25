@@ -1,8 +1,7 @@
 import NeoBiliDomain
 import SwiftUI
 
-/// 「直播」Tab：一条纵向列表。顶部是关注中正在直播的房间，下面是推荐直播；
-/// 两个来源不再分成两页，所以页面只有一个滚动视图。
+/// 「直播」Tab：导航栏下方常驻关注中正在直播的主播头像条，下方纵向滚动推荐直播。
 struct LiveView: View {
     @Environment(AccountStore.self) private var account
     @State private var model: LiveFeedModel
@@ -19,12 +18,16 @@ struct LiveView: View {
 
     var body: some View {
         NavigationStack {
-            // 导航栈下只挂载单一纵向滚动视图：iOS 27 的导航栏收缩只观察一个滚动视图，
-            // 横向分页容器放在外层会让大标题再也收不起来。
             LiveFeedPage(model: model, directory: directory, onOpenRoom: onOpenRoom)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(uiColor: .systemGroupedBackground))
-                .rootPageChrome(title: String(localized: "直播"))
+                .safeAreaBar(edge: .top, spacing: 0) {
+                    if account.isLoggedIn && !directory.rooms.isEmpty {
+                        LiveFollowedStrip(rooms: directory.rooms, onOpen: onOpenRoom)
+                    }
+                }
+                .scrollEdgeEffectStyle(.hard, for: .top)
+                .rootPageChrome(title: String(localized: "直播"), barFollowsCollapse: true)
         }
         .onChange(of: account.sessionID) { directory.reset() }
         .onChange(of: account.isLoggedIn) { _, loggedIn in
@@ -69,11 +72,9 @@ private struct LiveFeedPage: View {
 
     private var entranceIDs: [String] {
         model.rooms.map { "live:\($0.roomID)" }
-            + directory.rooms.map { "live:followed:\($0.roomID)" }
     }
 
     private var animatesExit: Bool { !reduceMotion && animations.isEnabled(phase: .exit) }
-    private var showsFollowedLive: Bool { account.isLoggedIn && !directory.rooms.isEmpty }
 
     var body: some View {
         feed
@@ -124,7 +125,6 @@ private struct LiveFeedPage: View {
     private var feed: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                followedSection
                 recommendedSection
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -143,17 +143,6 @@ private struct LiveFeedPage: View {
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollEdgeEffectHidden(true, for: .bottom)
         .accessibilityAction(named: "刷新直播", startRefresh)
-    }
-
-    @ViewBuilder
-    private var followedSection: some View {
-        if showsFollowedLive {
-            sectionHeader("正在直播")
-            LiveFollowedStrip(rooms: directory.rooms) { room in
-                onOpenRoom(room, "live-followed-card-\(room.roomID)")
-            }
-            .padding(.bottom, 12)
-        }
     }
 
     @ViewBuilder
@@ -177,24 +166,13 @@ private struct LiveFeedPage: View {
                 }
             }
             .padding(.horizontal, 8)
-            .padding(.top, showsFollowedLive ? 0 : 8)
+            .padding(.top, 8)
             .opacity(refresh.contentOpacity)
             .allowsHitTesting(refresh.contentOpacity == 1)
             pagination
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 8)
         }
-    }
-
-    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
-        Text(title)
-            .font(.app(.subheadline, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
-            .accessibilityAddTraits(.isHeader)
     }
 
     @ViewBuilder
@@ -261,31 +239,64 @@ private struct LiveFeedPage: View {
     }
 }
 
-/// 关注中正在直播的房间，横向一行；卡片与推荐列表同款，只收窄宽度。
+/// 关注中正在直播的主播，头像尺寸与间距沿用关注页顶部的头像条。
 private struct LiveFollowedStrip: View {
     let rooms: [LiveRoom]
-    let onOpen: (LiveRoom) -> Void
+    let onOpen: (LiveRoom, String) -> Void
 
     @Environment(\.videoTransitionNamespace) private var videoTransition
-    @ScaledMetric(relativeTo: .subheadline) private var cardWidth: CGFloat = 148
+    private static let cellWidth: CGFloat = 64
 
     var body: some View {
         ScrollView(.horizontal) {
-            LazyHStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 2) {
                 ForEach(rooms) { room in
-                    Button { onOpen(room) } label: {
-                        LiveRoomCard(room: room)
-                            .frame(width: cardWidth)
+                    let sourceID = "live-followed-avatar-\(room.roomID)"
+                    Button { onOpen(room, sourceID) } label: {
+                        VStack(spacing: 4) {
+                            LiveFollowedAvatar(url: room.faceURL)
+                            Text(room.username)
+                                .font(.app(.caption2))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .frame(width: Self.cellWidth)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .videoTransitionSource("live-followed-card-\(room.roomID)", in: videoTransition)
-                    .videoEntranceIdentity("live:followed:\(room.roomID)")
+                    .videoTransitionSource(sourceID, in: videoTransition)
+                    .accessibilityLabel(Text("\(room.username)，正在直播"))
+                    .accessibilityHint("进入直播间")
                     .accessibilityIdentifier("live.followed.\(room.roomID)")
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .scrollIndicators(.hidden)
         .accessibilityIdentifier("live.followed.strip")
+    }
+}
+
+/// 头像条里的主播均在直播，沿用历史设计的圆形头像与细边框。
+private struct LiveFollowedAvatar: View {
+    let url: URL?
+
+    var body: some View {
+        Group {
+            if let url {
+                BiliImage(url: url).aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(Circle())
+        .overlay { Circle().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5) }
+        .padding(3)
     }
 }
