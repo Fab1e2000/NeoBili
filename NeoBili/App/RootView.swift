@@ -78,7 +78,7 @@ struct RootView: View {
                 RootSearchPage(search: search, isFocused: $isSearchFocused, onSubmit: submitSearch)
                 .tint(.primary)
                 .background {
-                    Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+                    Color(uiColor: .systemBackground).ignoresSafeArea()
                 }
             }
         }
@@ -206,8 +206,12 @@ struct RootView: View {
     private func submitSearch(_ keyword: String?) {
         search.submit(keyword: keyword)
         guard search.hasSubmittedSearch else { return }
-        // 提交后保留顶部搜索框，只收起键盘。
-        isSearchFocused = false
+        // 仅收起键盘，不退出搜索会话（把 isSearchFocused 置 false 会让系统清空 query）。
+        dismissKeyboard()
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func openLiveRoom(_ room: LiveRoom, sourceID: String) {
@@ -229,8 +233,8 @@ struct RootView: View {
 
         tabSwitchTask?.cancel()
 
-        // 新页面的内容淡入；搜索页保持输入框立即可用，不参与。
-        isSearchFocused = false
+        // 切换标签时仅收起键盘，保留搜索页会话状态与已搜结果。
+        dismissKeyboard()
         guard animatesPageEntrance, tab != .search else {
             finishTabEntrance()
             displayedTab = tab

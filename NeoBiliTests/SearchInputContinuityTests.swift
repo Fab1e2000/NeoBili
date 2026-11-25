@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import XCTest
+import NeoBiliDomain
 @testable import NeoBili
 
 @MainActor
@@ -74,6 +75,49 @@ final class SearchInputContinuityTests: XCTestCase {
         XCTAssertTrue(input(host.view) === field)
         XCTAssertTrue(field.isFirstResponder)
         XCTAssertEqual(field.text, "你")
+    }
+
+    func testCancelSearchSessionClearsSubmittedQueryAndResults() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first(where: { $0.activationState == .foregroundActive }))
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let model = SearchViewModel(
+            searchVideos: { _, _ in SearchResultPage(result: [], numPages: 1) },
+            recordHistory: { _ in }
+        )
+        let suite = "neobili.search.cancel.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dependencies = PlaybackDependencies.isolated(defaults: defaults)
+        let player = NowPlayingStore(defaults: defaults, dependencies: dependencies)
+        defer { player.close() }
+        let focus = SearchFocusFixture()
+        let host = UIHostingController(rootView: NavigationStack {
+            SearchPage(viewModel: model, isFocused: Binding(get: { focus.focused }, set: { focus.focused = $0 }), onSubmit: { keyword in
+                model.submit(keyword: keyword)
+            })
+        }
+        .environment(\.videoPreparation, dependencies.preparation)
+        .environment(AccountStore(monitorNetwork: false))
+        .environment(player))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; previous?.makeKey() }
+
+        focus.focused = true
+        try await Task.sleep(for: .milliseconds(150))
+        model.submit(keyword: "SwiftUI")
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(model.hasSubmittedSearch)
+        XCTAssertEqual(model.submittedKeyword, "SwiftUI")
+        XCTAssertFalse(model.isShowingSuggestions)
+
+        // 模拟用户点击取消退出搜索会话：应清空 query 与已提交状态，干净回到发现页。
+        focus.focused = false
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(model.hasSubmittedSearch)
+        XCTAssertTrue(model.query.isEmpty)
     }
 }
 
