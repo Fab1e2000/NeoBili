@@ -6,40 +6,30 @@ struct OfflinePreparedResources: Sendable {
     var audioQuality: Int?
     var width: Int?
     var height: Int?
+    var chapters: [VideoChapter] = []
 }
 
 enum OfflineCachePreparation {
-    struct PlayerInfo: Decodable {
-        struct Subtitle: Decodable {
-            struct Track: Decodable {
-                let lan: String
-                let lanDoc: String
-                let subtitleURL: String
-                enum CodingKeys: String, CodingKey { case lan; case lanDoc = "lan_doc"; case subtitleURL = "subtitle_url" }
-            }
-            let subtitles: [Track]
-        }
-        let subtitle: Subtitle
-    }
-
     static func prepare(_ entry: OfflineCacheEntry, client: APIClient, identity: DeviceIdentity) async throws -> OfflinePreparedResources {
         let sessionID = identity.loginSessionID
         async let playback = BiliAPI.playURL(bvid: entry.video.bvid, cid: entry.video.cid,
             quality: entry.quality, client: client, identity: identity)
-        async let info: PlayerInfo = client.get(path: "x/player/v2",
-            params: ["bvid": entry.video.bvid, "cid": String(entry.video.cid)], expectedSessionID: sessionID)
+        async let info = BiliAPI.playerVideoInfo(bvid: entry.video.bvid, cid: entry.video.cid,
+            client: client, expectedSessionID: sessionID)
         let (payload, playerInfo) = try await (playback, info)
         guard sessionID == identity.loginSessionID else { throw CancellationError() }
         let seconds = payload.dash.map { Double($0.duration) }
             ?? payload.durl.map { Double($0.reduce(0) { $0 + ($1.length ?? 0) }) / 1_000 } ?? 0
         if seconds > 0, entry.video.duration > seconds + 1 { throw OfflineCacheError.partialPlayback }
         var result = try mediaResources(payload, quality: entry.quality, audioQuality: entry.audioQuality ?? 0)
+        result.chapters = playerInfo.chapters
         if let cover = entry.video.cover {
             result.resources.append(.init(id: "cover", kind: .cover, url: cover, filename: "cover.image"))
         }
         result.resources.append(.init(id: "danmaku", kind: .danmaku,
             url: URL(string: "https://api.bilibili.com/x/v1/dm/list.so?oid=\(entry.video.cid)")!, filename: "danmaku.xml"))
-        for track in playerInfo.subtitle.subtitles {
+        guard let subtitle = playerInfo.subtitle else { throw OfflineCacheError.invalidResource }
+        for track in subtitle.subtitles {
             guard let url = URL.biliSecure(track.subtitleURL) else { throw OfflineCacheError.invalidResource }
             result.resources.append(.init(id: "subtitle-\(track.lan)", kind: .subtitle, url: url,
                 filename: "subtitle-\(UUID().uuidString).json", language: track.lan, title: track.lanDoc))

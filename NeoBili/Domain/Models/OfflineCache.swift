@@ -76,10 +76,33 @@ public struct OfflineCacheEntry: Codable, Hashable, Sendable, Identifiable {
     public var createdAt: Date
     public var width: Int?
     public var height: Int?
+    public var chapters: [VideoChapter] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case video, generation, quality, audioQuality, state, resources, allowsCellular, accountID
+        case message, createdAt, width, height, chapters
+    }
 
     public init(video: OfflineVideo, quality: Int, accountID: String?, generation: UUID = UUID()) {
         self.video = video; self.quality = quality; self.accountID = accountID; self.generation = generation
         state = .queued; resources = []; createdAt = Date()
+    }
+
+    public init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        video = try fields.decode(OfflineVideo.self, forKey: .video)
+        generation = try fields.decode(UUID.self, forKey: .generation)
+        quality = try fields.decode(Int.self, forKey: .quality)
+        audioQuality = try fields.decodeIfPresent(Int.self, forKey: .audioQuality)
+        state = try fields.decode(OfflineCacheState.self, forKey: .state)
+        resources = try fields.decode([OfflineResource].self, forKey: .resources)
+        allowsCellular = try fields.decode(Bool.self, forKey: .allowsCellular)
+        accountID = try fields.decodeIfPresent(String.self, forKey: .accountID)
+        message = try fields.decodeIfPresent(String.self, forKey: .message)
+        createdAt = try fields.decode(Date.self, forKey: .createdAt)
+        width = try fields.decodeIfPresent(Int.self, forKey: .width)
+        height = try fields.decodeIfPresent(Int.self, forKey: .height)
+        chapters = try fields.decodeIfPresent([VideoChapter].self, forKey: .chapters) ?? []
     }
     public func matches(videoID: String, quality: Int) -> Bool {
         id == videoID && self.quality == quality

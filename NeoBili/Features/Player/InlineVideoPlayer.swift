@@ -112,6 +112,7 @@ struct InlineVideoPlayer: View {
                     onCast: castSession == nil ? nil : { isCastPickerPresented = true },
                     hasEpisodes: hasEpisodes
                 )
+                .id(ObjectIdentifier(viewModel))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

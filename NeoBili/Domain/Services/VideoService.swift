@@ -4,6 +4,11 @@ public struct VideoService: Sendable {
     public var storyboardOperation: @Sendable (String, Int) async throws -> VideoStoryboard = { _, _ in throw ServiceError.unconfigured("Video.storyboard") }
     public func storyboard(bvid: String, cid: Int) async throws -> VideoStoryboard { try await storyboardOperation(bvid, cid) }
 
+    public var chaptersOperation: @Sendable (String, Int, UUID) async throws -> [VideoChapter]
+    public func chapters(bvid: String, cid: Int, expectedSessionID: UUID) async throws -> [VideoChapter] {
+        try await chaptersOperation(bvid, cid, expectedSessionID)
+    }
+
     public var playURLOperation: @Sendable (String, Int, Int) async throws -> PlayURLData = { _, _, _ in throw ServiceError.unconfigured("Video.playURL") }
     public var castPlayURLOperation: @Sendable (String, Int, Int) async throws -> PlayURLData = { _, _, _ in throw ServiceError.unconfigured("Video.castPlayURL") }
     public var videoDetailOperation: @Sendable (String) async throws -> VideoDetail = { _ in throw ServiceError.unconfigured("Video.videoDetail") }
@@ -82,6 +87,7 @@ public struct VideoService: Sendable {
 
     public init(
         storyboardOperation: @escaping @Sendable (String, Int) async throws -> VideoStoryboard = { _, _ in throw ServiceError.unconfigured("Video.storyboard") },
+        chaptersOperation: @escaping @Sendable (String, Int, UUID) async throws -> [VideoChapter] = { _, _, _ in throw ServiceError.unconfigured("Video.chapters") },
         playURLOperation: @escaping @Sendable (String, Int, Int) async throws -> PlayURLData = { _, _, _ in throw ServiceError.unconfigured("Video.playURL") },
         castPlayURLOperation: @escaping @Sendable (String, Int, Int) async throws -> PlayURLData = { _, _, _ in throw ServiceError.unconfigured("Video.castPlayURL") },
         videoDetailOperation: @escaping @Sendable (String) async throws -> VideoDetail = { _ in throw ServiceError.unconfigured("Video.videoDetail") },
@@ -99,6 +105,7 @@ public struct VideoService: Sendable {
         modifyRelationOperation: @escaping @Sendable (Int, Bool) async throws -> Void = { _, _ in throw ServiceError.unconfigured("Video.modifyRelation") }
     ) {
         self.storyboardOperation = storyboardOperation
+        self.chaptersOperation = chaptersOperation
         self.playURLOperation = playURLOperation
         self.castPlayURLOperation = castPlayURLOperation
         self.videoDetailOperation = videoDetailOperation

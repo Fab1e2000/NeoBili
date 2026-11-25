@@ -142,6 +142,7 @@ final class OfflineCacheTests: XCTestCase {
     func testRequiresAllResourcesAndRestoresCompletedCacheWithoutNetwork() async throws {
         let root = try directory(), transfer = CacheTestTransport()
         var plan = resources()
+        plan.chapters = [.init(from: 0, to: 5, title: "开场"), .init(from: 5, to: 12, title: "正片")]
         plan.resources.append(.init(id: "cover", kind: .cover, url: URL(string: "https://example.invalid/cover.png")!, filename: "cover.png"))
         let prepared = plan
         let repo = OfflineCacheRepository(directory: root, transport: transfer, prepare: { _ in prepared }, accountID: { nil })
@@ -160,6 +161,7 @@ final class OfflineCacheTests: XCTestCase {
         XCTAssertTrue(descriptor.videoURLs.allSatisfy(\.isFileURL))
         XCTAssertEqual(descriptor.danmaku.count, 1)
         XCTAssertEqual(descriptor.subtitles.first?.text(at: 2), "字幕")
+        XCTAssertEqual(descriptor.entry.chapters, prepared.chapters)
         await repo.service.releasePlayback(descriptor.leaseID)
 
         let restoredTransfer = CacheTestTransport()
@@ -168,6 +170,7 @@ final class OfflineCacheTests: XCTestCase {
         await restored.start()
         let saved = try await restored.service.playback(video().id)
         XCTAssertEqual(saved.entry.quality, 80)
+        XCTAssertEqual(saved.entry.chapters, prepared.chapters)
         let restoredSnapshot = await restored.snapshot()
         let cover = try XCTUnwrap(restoredSnapshot.coverURLs[saved.entry.generation])
         XCTAssertEqual(cover, saved.coverURL)
@@ -175,6 +178,23 @@ final class OfflineCacheTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: cover.path))
         let starts = await restoredTransfer.count()
         XCTAssertEqual(starts, 0)
+    }
+
+    func testRestoresLegacyManifestWithoutChapters() async throws {
+        let root = try directory()
+        var entry = OfflineCacheEntry(video: video(), quality: 80, accountID: nil)
+        entry.state = .completed
+        var legacyEntry = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(entry)) as? [String: Any])
+        legacyEntry.removeValue(forKey: "chapters")
+        let manifest: [String: Any] = ["completed": [entry.id: legacyEntry], "pending": [:], "retired": []]
+        try JSONSerialization.data(withJSONObject: manifest).write(to: root.appendingPathComponent("manifest.json"))
+
+        let repo = OfflineCacheRepository(directory: root, transport: CacheTestTransport(),
+            prepare: { _ in throw OfflineCacheError.unconfigured }, accountID: { nil })
+        await repo.start()
+        let snapshot = await repo.snapshot()
+        XCTAssertNil(snapshot.error)
+        XCTAssertEqual(snapshot.completed, [entry])
     }
 
     func testSubtitleFailureStaysPendingAndOtherVideoCompletes() async throws {

@@ -15,6 +15,8 @@ final class PlayerViewModel {
     let cid: Int
     let offline: OfflinePlaybackDescriptor?
     var isOffline: Bool { offline != nil }
+    private(set) var chapters: [VideoChapter]
+    @ObservationIgnored private var chaptersTask: Task<Void, Never>?
     var selectedSubtitleID: String?
     private(set) var configuration: VideoPlaybackConfiguration
     private(set) var session: MPVPlayerSession
@@ -249,6 +251,7 @@ final class PlayerViewModel {
     ) {
         self.dependencies = dependencies
         self.offline = offline
+        self.chapters = offline?.entry.chapters ?? []
         selectedSubtitleID = offline?.subtitles.first(where: { $0.language.hasPrefix("zh") })?.id ?? offline?.subtitles.first?.id
         let telemetry = offline == nil ? (telemetry ?? dependencies.services.telemetry) : TelemetryService()
         let progressStore = progressStore ?? dependencies.progress
@@ -317,6 +320,7 @@ final class PlayerViewModel {
 
     deinit {
         MainActor.assumeIsolated {
+            chaptersTask?.cancel()
             savePlaybackProgress()
             reporting.enqueueLegacyCheckpoint()
             reporting.finishWatchReport(context: reportingContext)
@@ -347,7 +351,8 @@ final class PlayerViewModel {
     }
 
     func load() async {
-        guard !isStopped, !isFetchingSource else { return }
+        guard !isStopped, !isFetchingSource, !Task.isCancelled else { return }
+        loadChaptersIfNeeded()
         reporting.checkpointWatchProgress(context: reportingContext)
         reporting.interrupt(discontinuity: true)
         isFetchingSource = true
@@ -404,6 +409,21 @@ final class PlayerViewModel {
             guard !isStopped else { return }
             isLoading = false
             if !error.isCancellation { showPlaybackError(error.localizedDescription) }
+        }
+    }
+
+    private func loadChaptersIfNeeded() {
+        guard !isOffline, chapters.isEmpty, chaptersTask == nil else { return }
+        let services = dependencies.services
+        let bvid = self.bvid, cid = self.cid, sessionID = loginSessionID
+        // Each model owns a single video part. Stopping it cancels the request
+        // and prevents a late response from populating an outgoing timeline.
+        chaptersTask = Task { [weak self] in
+            let chapters = (try? await services.video.chapters(bvid: bvid, cid: cid, expectedSessionID: sessionID)) ?? []
+            guard let self, !Task.isCancelled, !isStopped else { return }
+            chaptersTask = nil
+            guard services.session.currentID() == sessionID else { return }
+            self.chapters = chapters
         }
     }
 
@@ -507,6 +527,9 @@ final class PlayerViewModel {
         guard !isStopped else { session.stop(afterStopped: afterStopped); return }
         savePlaybackProgress()
         isStopped = true
+        chaptersTask?.cancel()
+        chaptersTask = nil
+        chapters = []
         qualityRequestID = UUID()
         qualityFetchTask?.cancel()
         qualityFetchTask = nil

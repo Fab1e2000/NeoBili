@@ -44,7 +44,8 @@ struct PlayerControlsOverlay: View {
             .init(position: isScrubbing ? scrubTime : viewModel.currentTime,
                   duration: viewModel.duration, buffered: viewModel.bufferedTime,
                   previewStore: viewModel.storyboardStore,
-                  previewVideo: viewModel.isOffline ? nil : VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid))
+                  previewVideo: viewModel.isOffline ? nil : VideoPreviewID(bvid: viewModel.bvid, cid: viewModel.cid),
+                  chapters: viewModel.chapters)
         }
     }
 

@@ -4,10 +4,10 @@ import Foundation
 
 @MainActor
 extension PlaybackDependencies {
-    static func isolated(defaults: UserDefaults) -> Self {
+    static func isolated(defaults: UserDefaults, video: VideoService = .init()) -> Self {
         let sessionID = UUID()
         let services = ApplicationServices(session: .init(currentID: { sessionID },
-            homeAccount: { .init(accountID: nil, hasAppCredential: false) }))
+            homeAccount: { .init(accountID: nil, hasAppCredential: false) }), video: video)
         return Self(services: services,
             preparation: VideoPreparationCache(
                 detailLoader: { _ in throw URLError(.notConnectedToInternet) },

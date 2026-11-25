@@ -2,18 +2,19 @@ import NeoBiliDomain
 import SwiftUI
 
 struct VideoSeekPreview: View {
-    let video: VideoPreviewID
+    let video: VideoPreviewID?
     let seconds: Double
     let store: VideoStoryboardStore
+    var chapter: VideoChapter? = nil
 
     var body: some View {
-        let tile = store.storyboard?.tile(at: seconds)
+        let tile = video == nil ? nil : store.storyboard?.tile(at: seconds)
         VStack(spacing: 4) {
-            if let frame = store.frame(at: seconds) {
+            if video != nil, let frame = store.frame(at: seconds) {
                 Image(uiImage: frame).resizable().scaledToFit()
                     .frame(height: 74)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-            } else {
+            } else if video != nil {
                 // Do not present a generic picture as if it were a video frame.
                 // The timestamp remains useful even if the server has no shots.
                 Group {
@@ -29,6 +30,12 @@ struct VideoSeekPreview: View {
                 .frame(height: 74)
             }
             Text(PlaybackTime.text(seconds)).font(.app(.caption, weight: .semibold)).monospacedDigit()
+            if let chapter {
+                Text(chapter.title)
+                    .font(.app(.caption2))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
         }
         .padding(5)
         // 和播放器控件同一层，跟着用透明变体；下面有控件层的调暗层托底。
@@ -36,17 +43,20 @@ struct VideoSeekPreview: View {
         .environment(\.colorScheme, .dark)
         .accessibilityHidden(true)
         .task(id: video) {
+            guard let video else { return }
             // A failed preload must not disable previews for the whole session.
             // Cached/in-flight metadata is reused; a later drag can retry failure.
             await store.load(video)
         }
-        .task(id: tile?.url) { await store.prepare(at: seconds) }
+        .task(id: tile?.url) {
+            if video != nil { await store.prepare(at: seconds) }
+        }
     }
 }
 
 struct VideoScrubPreviewPosition {
     let bounds: Anchor<CGRect>
-    let video: VideoPreviewID
+    let video: VideoPreviewID?
     let seconds: Double
     let duration: Double
 }

@@ -18,6 +18,7 @@ final class OfflinePlaybackTests: XCTestCase {
             author: "NeoBili", cover: nil, duration: 6, groupID: "fixture", groupTitle: "离线测试", order: 0)
         var entry = OfflineCacheEntry(video: item, quality: 80, accountID: nil)
         entry.state = .completed; entry.width = 320; entry.height = 180
+        entry.chapters = [.init(from: 0, to: 6, title: "离线章节")]
         return .init(leaseID: UUID(), entry: entry, videoURLs: [video], audioURL: audio, coverURL: nil,
             danmaku: [.init(time: 1, text: "本地弹幕", mode: 1, color: 0xFFFFFF)],
             subtitles: [.init(id: "zh", language: "zh-CN", title: "中文", cues: [.init(from: 0, to: 6, content: "离线字幕同步测试")]),
@@ -25,7 +26,11 @@ final class OfflinePlaybackTests: XCTestCase {
     }
 
     func testOfflineLoadUsesFilesAndNeverCallsOnlineLoadersOrReporters() async throws {
-        let defaults = defaults(), dependencies = PlaybackDependencies.isolated(defaults: defaults)
+        let defaults = defaults()
+        let dependencies = PlaybackDependencies.isolated(defaults: defaults, video: .init(chaptersOperation: { _, _, _ in
+            XCTFail("Offline playback fetched chapters")
+            return []
+        }))
         var opened: PlaybackSource?
         let player = PlayerViewModel(bvid: "BV-offline", cid: 1, offline: Self.descriptor(),
             playbackURLLoader: { _, _ in XCTFail("Offline playback fetched a play URL"); throw URLError(.badURL) },
@@ -39,6 +44,7 @@ final class OfflinePlaybackTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(opened?.audio).primary.isFileURL)
         XCTAssertEqual(player.selectedVideoQuality, 80)
         XCTAssertEqual(player.selectedSubtitleID, "zh")
+        XCTAssertEqual(player.chapters, Self.descriptor().entry.chapters)
         XCTAssertTrue(player.availableVideoQualities.isEmpty)
         player.session.onEvent?(.firstFrame)
         player.session.onEvent?(.playing(true))

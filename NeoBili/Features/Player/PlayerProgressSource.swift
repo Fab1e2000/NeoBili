@@ -7,6 +7,7 @@ struct PlayerProgressSnapshot {
     let buffered: Double
     var previewStore: VideoStoryboardStore? = nil
     var previewVideo: VideoPreviewID? = nil
+    var chapters: [VideoChapter] = []
 }
 
 /// Pass the read operation, not a periodically changing snapshot, through chrome.
@@ -33,7 +34,7 @@ struct PlayerProgressGestureLayer: View {
         let progress = progressSource.read()
         PlayerVerticalGestureLayer(
             isFullScreen: isFullScreen, currentTime: progress.position, duration: progress.duration, canSeek: canSeek, canLongPress: canLongPress,
-            feedbackTopInset: feedbackTopInset,
+            feedbackTopInset: feedbackTopInset, chapters: progress.chapters,
             onDoubleTap: { if canSeek { onDoubleTap() } }, onLongPressChanged: onLongPressChanged,
             onTap: onTap, onToggleFullScreen: onToggleFullScreen,
             onSeekChanged: onSeekChanged, onSeekEnded: onSeekEnded, onSeekCancelled: onSeekCancelled
