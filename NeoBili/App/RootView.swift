@@ -19,6 +19,7 @@ struct RootView: View {
     @State private var account = AccountStore()
     @State private var feedback = ActionFeedback()
     @State private var castSession = CastSessionModel(service: ApplicationServices.live.cast)
+    @State private var appUpdate: AppUpdateStore
     @State private var toolbarAccessory = RootToolbarAccessory()
     @State private var themeIcon = ThemeIconController(endpoint: .uiKit)
     @AppStorage(MainTabSettings.orderKey) private var tabOrder = MainTabSettings.stored(MainTabSettings.defaultOrder)
@@ -52,10 +53,12 @@ struct RootView: View {
 
     init(nowPlaying: NowPlayingStore = NowPlayingStore(),
          cacheNavigation: OfflineCacheNavigation = OfflineCacheNavigation(),
-         offlineCache: OfflineCacheStore = .shared) {
+         offlineCache: OfflineCacheStore = .shared,
+         appUpdate: AppUpdateStore = AppUpdateStore(service: ApplicationServices.live.appUpdate)) {
         _nowPlaying = State(initialValue: nowPlaying)
         _cacheNavigation = State(initialValue: cacheNavigation)
         self.offlineCache = offlineCache
+        _appUpdate = State(initialValue: appUpdate)
     }
 
     private var onlinePlaybackActive: Bool {
@@ -118,6 +121,7 @@ struct RootView: View {
         .environment(account)
         .environment(feedback)
         .environment(\.castSession, castSession)
+        .environment(appUpdate)
         .environment(toolbarAccessory)
         .environment(themeIcon)
         .environment(\.videoTransitionNamespace, videoTransition)
@@ -130,6 +134,7 @@ struct RootView: View {
         // 冷启动时用 Keychain 里可能存在的登录凭据恢复会话；
         // 「我的」页在恢复完成前不会闪出登录按钮。
         .task { await account.restoreSessionIfNeeded() }
+        .task { await appUpdate.checkAutomaticallyIfNeeded() }
         .task(id: onlinePlaybackActive) { [active = onlinePlaybackActive] in
             await offlineCache.service.setOnlinePlaybackActive(active)
         }

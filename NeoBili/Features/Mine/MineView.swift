@@ -8,6 +8,7 @@ struct MineView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AccountStore.self) private var account
     @Environment(NowPlayingStore.self) private var nowPlaying
+    @Environment(AppUpdateStore.self) private var appUpdate: AppUpdateStore?
 
     private enum LoginSheet: String, Identifiable {
         case sms
@@ -49,9 +50,21 @@ struct MineView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("系统设置", systemImage: "gearshape") { presentService(.settings) }
-                        .labelStyle(.iconOnly)
-                        .accessibilityIdentifier("mine.settings")
+                    Button { presentService(.settings) } label: {
+                        Image(systemName: "gearshape")
+                            .overlay(alignment: .topTrailing) {
+                                if appUpdate?.showsUpdateBadge == true {
+                                    Circle()
+                                        .fill(.red)
+                                        .frame(width: 8, height: 8)
+                                        .offset(x: 3, y: -3)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+                    }
+                    .accessibilityLabel("系统设置")
+                    .accessibilityValue(appUpdate?.showsUpdateBadge == true ? String(localized: "有可用更新") : "")
+                    .accessibilityIdentifier("mine.settings")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("关闭", systemImage: "xmark") { dismiss() }

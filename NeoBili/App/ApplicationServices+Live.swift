@@ -40,7 +40,8 @@ extension ApplicationServices {
             recommendation: .live(client: client, identity: identity, session: recommendationSession,
                                   network: network, clickReporter: clickReporter, filter: filter),
             offlineCache: offlineCache,
-            cast: cast
+            cast: cast,
+            appUpdate: .live(session: session)
         )
     }
 }

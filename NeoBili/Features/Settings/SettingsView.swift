@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage(RecommendationFilter.titleBanWordKey) private var titleKeywords = ""
     @AppStorage(RecommendationFilter.zoneBanWordKey) private var zoneKeywords = ""
     @Environment(\.videoFiltering) private var filtering
+    @Environment(AppUpdateStore.self) private var appUpdate: AppUpdateStore?
     private var durationFilter: VideoDurationFilterSettings { filtering.duration }
     @AppStorage(AppLanguage.storageKey) private var language = AppLanguage.system
 
@@ -28,7 +29,19 @@ struct SettingsView: View {
                         NavigationLink {
                             destinationView(destination)
                         } label: {
-                            if let summary = summary(for: destination) {
+                            if destination == .about,
+                               appUpdate?.showsUpdateBadge == true,
+                               let release = appUpdate?.availableRelease {
+                                LabeledContent(destination.title) {
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(.red)
+                                            .frame(width: 8, height: 8)
+                                        Text("v\(release.version)")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            } else if let summary = summary(for: destination) {
                                 LabeledContent(destination.title, value: summary)
                             } else { Text(destination.title) }
                         }

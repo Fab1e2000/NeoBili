@@ -31,6 +31,7 @@ struct RootPageChrome: ViewModifier {
     @Environment(AccountStore.self) private var account
     @Environment(\.openMine) private var openMine
     @Environment(RootToolbarAccessory.self) private var toolbarAccessory: RootToolbarAccessory?
+    @Environment(AppUpdateStore.self) private var appUpdate: AppUpdateStore?
 
     func body(content: Content) -> some View {
         content
@@ -79,6 +80,17 @@ struct RootPageChrome: ViewModifier {
         .contentShape(Circle())
         .background { Circle().fill(.clear).glassEffect(.clear.interactive(), in: .circle) }
         .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5).allowsHitTesting(false) }
+        .overlay(alignment: .topTrailing) {
+            if appUpdate?.showsUpdateBadge == true {
+                Circle()
+                    .fill(.red)
+                    .frame(width: 9, height: 9)
+                    .overlay { Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5) }
+                    .offset(x: -1, y: 1)
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("root.mine.updateBadge")
+            }
+        }
     }
 }
 
