@@ -64,16 +64,17 @@ struct VideoListCard: View {
     let author: String
     /// 播放量。传负数表示该页面没有播放数据（历史、稍后再看），整段隐藏。
     let playCount: Int
-    /// 已经排好版的时长文字，例如 `12:34`。留空则不显示这一项。
+    /// 已排版的时长或封面角标文字。留空则隐藏。
     let durationText: String
     /// 是否显示卡面底色、圆角和边线。
     var showsCardChrome = true
     var animatesEntrance = true
+    var showsDurationOnCover = false
 
     var body: some View {
         VideoListCardContent(coverURL: coverURL, title: title, author: author,
                              playCount: playCount, durationText: durationText,
-                             showsCardChrome: showsCardChrome)
+                             showsCardChrome: showsCardChrome, showsDurationOnCover: showsDurationOnCover)
             .equatable()
             .videoCardEntrance(enabled: animatesEntrance)
     }
@@ -88,14 +89,22 @@ private struct VideoListCardContent: View, Equatable {
     let playCount: Int
     let durationText: String
     let showsCardChrome: Bool
+    let showsDurationOnCover: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: VideoListCardLayout.imageTextSpacing) {
-            CoverThumbnail(url: coverURL)
-                .frame(width: VideoListCardLayout.imageWidth)
-                .clipShape(
-                    RoundedRectangle(cornerRadius: VideoListCardLayout.imageCornerRadius, style: .continuous)
-                )
+            Group {
+                if showsDurationOnCover, !durationText.isEmpty {
+                    VideoCoverThumbnail(url: coverURL, duration: durationText, playText: "",
+                                        cornerRadius: VideoListCardLayout.imageCornerRadius)
+                } else {
+                    CoverThumbnail(url: coverURL)
+                        .clipShape(
+                            RoundedRectangle(cornerRadius: VideoListCardLayout.imageCornerRadius, style: .continuous)
+                        )
+                }
+            }
+            .frame(width: VideoListCardLayout.imageWidth)
 
             VStack(alignment: .leading, spacing: VideoListCardLayout.textVerticalSpacing) {
                 Text(title)
@@ -123,7 +132,7 @@ private struct VideoListCardContent: View, Equatable {
                         }
                     }
 
-                    if !durationText.isEmpty {
+                    if !showsDurationOnCover, !durationText.isEmpty {
                         HStack(spacing: VideoListCardLayout.metadataIconTextSpacing) {
                             Image(systemName: "clock")
                             Text(durationText)

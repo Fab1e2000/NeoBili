@@ -2421,6 +2421,116 @@
         }
       }
     },
+    "合集 · %lld 集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collection · %lld ep."
+          }
+        }
+      }
+    },
+    "系列 · %lld 集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Series · %lld ep."
+          }
+        }
+      }
+    },
+    "没有合集和系列": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Collections or Series"
+          }
+        }
+      }
+    },
+    "合集和系列加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t load collections and series"
+          }
+        }
+      }
+    },
+    "更多合集和系列加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t load more collections or series"
+          }
+        }
+      }
+    },
+    "分集排序": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episode Order"
+          }
+        }
+      }
+    },
+    "正序": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ascending"
+          }
+        }
+      }
+    },
+    "倒序": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descending"
+          }
+        }
+      }
+    },
+    "分集加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t load episodes"
+          }
+        }
+      }
+    },
+    "更多分集加载失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t load more episodes"
+          }
+        }
+      }
+    },
+    "没有分集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Episodes"
+          }
+        }
+      }
+    },
     "合集 · %@": {
       "localizations": {
         "en": {

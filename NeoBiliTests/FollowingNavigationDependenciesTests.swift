@@ -98,7 +98,9 @@ final class FollowingNavigationDependenciesTests: XCTestCase {
             guard let view = settledView(in: space) else { return nil }
             return accessibilityItem(in: view) { $0 is UISegmentedControl } as? UISegmentedControl
         }
-        segment.selectedSegmentIndex = 1
+        segment.selectedSegmentIndex = try XCTUnwrap((0..<segment.numberOfSegments).first {
+            segment.titleForSegment(at: $0) == "动态"
+        })
         segment.sendActions(for: .valueChanged)
         try await wait("injected Space dynamics") { recorder.contains("space:42") }
         try await activate("dynamic.comments.1001", in: space)

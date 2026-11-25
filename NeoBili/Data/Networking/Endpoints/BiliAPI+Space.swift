@@ -50,4 +50,40 @@ extension BiliAPI {
             ]
         )
     }
+
+    static func spaceCollections(mid: Int, page: Int, client: APIClient) async throws -> SpaceCollectionListPage {
+        try await client.get(
+            path: "x/polymer/web-space/seasons_series_list",
+            params: ["mid": String(mid), "page_num": String(page), "page_size": "20"],
+            requiresWBI: true,
+            additionalHeaders: spaceListHeaders(mid: mid)
+        )
+    }
+
+    static func spaceSeasonArchives(mid: Int, seasonID: Int, page: Int, sortReverse: Bool,
+                                    client: APIClient) async throws -> SpaceCollectionArchivePage {
+        // true 反转合集的默认编排，分集页面会按发布时间排序已加载的稿件。
+        try await client.get(
+            path: "x/polymer/web-space/seasons_archives_list",
+            params: ["mid": String(mid), "season_id": String(seasonID), "page_num": String(page),
+                     "page_size": "30", "sort_reverse": sortReverse ? "true" : "false"],
+            requiresWBI: true,
+            additionalHeaders: spaceListHeaders(mid: mid)
+        )
+    }
+
+    static func spaceSeriesArchives(mid: Int, seriesID: Int, page: Int, sortReverse: Bool,
+                                    client: APIClient) async throws -> SpaceCollectionArchivePage {
+        try await client.get(
+            path: "x/series/archives",
+            params: ["mid": String(mid), "series_id": String(seriesID), "only_normal": "true",
+                     "pn": String(page), "ps": "30", "sort": sortReverse ? "desc" : "asc"],
+            requiresWBI: true,
+            additionalHeaders: spaceListHeaders(mid: mid)
+        )
+    }
+
+    private static func spaceListHeaders(mid: Int) -> [String: String] {
+        ["Origin": "https://space.bilibili.com", "Referer": "https://space.bilibili.com/\(mid)/lists"]
+    }
 }

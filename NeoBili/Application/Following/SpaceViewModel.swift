@@ -1,15 +1,14 @@
 import NeoBiliDomain
 import Foundation
 
-/// UP 主空间页的数据：头部名片、投稿列表，以及他自己的动态流。
-///
-/// 动态那一栏交给共用的 `DynamicFeedModel`，这里只管名片、关注状态和投稿。
+/// 持有空间名片、关注状态与投稿，合集和动态各自管理列表状态。
 @MainActor
 @Observable
 final class SpaceViewModel {
     @ObservationIgnored let filtering: VideoFilterDependencies
     @ObservationIgnored private let services: ApplicationServices
     let mid: Int
+    let collections: SpaceCollectionsModel
     let dynamics: DynamicFeedModel
 
     private(set) var card: SpaceCard?
@@ -46,6 +45,7 @@ final class SpaceViewModel {
         self.filtering = filtering
         self.services = services
         self.mid = mid
+        collections = SpaceCollectionsModel(mid: mid, services: services)
         dynamics = DynamicFeedModel(source: .space(hostMid: mid), likeStore: likeStore, services: services)
     }
 

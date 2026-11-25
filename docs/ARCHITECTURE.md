@@ -81,7 +81,11 @@ App target 包含 App、Application、Features、Platform 和共享 UI。Applica
 
 播放器事件、画质与手势设置值属于 Domain；mpv 加载和渲染宿主、窗口方向属于 Platform。观看上报、列表删除/入场状态以及设置持久化属于 Application。Domain 不持有 UserDefaults；设备偏好的读取适配位于 Data，纯 URL 归一化位于 Domain。
 
-空间页资料头部和关注动态内容使用独立展示组件；滚动协调、导航和刷新任务仍由父页面持有。全部关注分页状态由 Application 的 `FollowingAllUpsModel` 管理。首页图片预取消费者由 `HomeFeedImagePrefetcher` 在索引路径与显示中的 cell 之间转交，并沿用快照切换和离屏取消入口。
+UP 主空间按「投稿 / 合集 / 动态」组织三栏，各栏独立滚动和刷新，共享资料头部的折叠位置。
+`SpaceViewModel` 组合 `SpaceCollectionsModel` 和 `DynamicFeedModel`，首次进入「合集」时加载合集和系列。
+`SpaceCollectionDetailModel` 随导航继承服务与视频过滤依赖，根据合集或系列类型调用 `CommunityService` 的分集操作，
+与目录共用分页和暂存刷新，排序切换使前一排序的请求失效。目录和分集均复用 `VideoListCard`。
+空间页资料头部和关注动态内容使用独立展示组件，滚动协调、导航和刷新任务由空间页持有。全部关注分页状态由 Application 的 `FollowingAllUpsModel` 管理。首页图片预取消费者由 `HomeFeedImagePrefetcher` 在索引路径与显示中的 cell 之间转交，并沿用快照切换和离屏取消入口。
 
 显式启用的性能演示和搜索诊断属于 App 诊断组装。首页模型始终使用传入的 loader，App 根据演示启动参数选择生产默认 loader；诊断模式不会覆盖调用方注入的数据源。窗口方向锁仍是 AppDelegate 与窗口适配共用的进程级系统状态，由 App 创建。
 

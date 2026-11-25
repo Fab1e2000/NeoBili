@@ -36,6 +36,17 @@ extension CommunityService {
             },
             spaceVideosOperation: { mid, page in
                 try await BiliAPI.spaceVideos(mid: mid, page: page, client: client)
+            },
+            spaceCollectionsOperation: { mid, page in
+                try await BiliAPI.spaceCollections(mid: mid, page: page, client: client)
+            },
+            spaceSeasonArchivesOperation: { mid, seasonID, page, sortReverse in
+                try await BiliAPI.spaceSeasonArchives(mid: mid, seasonID: seasonID, page: page,
+                                                     sortReverse: sortReverse, client: client)
+            },
+            spaceSeriesArchivesOperation: { mid, seriesID, page, sortReverse in
+                try await BiliAPI.spaceSeriesArchives(mid: mid, seriesID: seriesID, page: page,
+                                                     sortReverse: sortReverse, client: client)
             }
         )
     }

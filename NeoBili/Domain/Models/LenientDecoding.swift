@@ -7,6 +7,7 @@ import Foundation
 /// 「数据解析失败」。列表类接口一律走这个类型。
 struct LenientList<Element: Decodable>: Decodable {
     let elements: [Element]
+    let rawCount: Int
 
     init(from decoder: Decoder) throws {
         var container = try decoder.unkeyedContainer()
@@ -23,6 +24,7 @@ struct LenientList<Element: Decodable>: Decodable {
             if container.currentIndex == indexBefore { break }
         }
         elements = collected
+        rawCount = container.count ?? container.currentIndex
     }
 }
 
