@@ -1,7 +1,7 @@
 import NeoBiliDomain
 import Foundation
 
-/// 评论行显示所需的全部值。父级在一次求值里快照出它，行本身不再观察模型；
+/// 评论行显示所需的全部值。列表模型增量维护根评论快照，行本身不再观察模型；
 /// 输入不变的行由 `Equatable` 跳过 body 重建。
 struct CommentRowModel: Equatable, Sendable {
     struct Reply: Equatable, Sendable {

@@ -6,8 +6,8 @@ import UIKit
 /// 只有值快照变化的行会重新配置。滚动位置、折叠距离、分页与下拉刷新都在这里衔接。
 struct CommentCollectionView: UIViewRepresentable {
     let viewModel: CommentsViewModel
-    /// 父级一次求值得到的行快照；用于比较变化并配置单元格内容。
     let rows: [CommentRowModel]
+    let rowsRevision: Int
     let scrollRevision: Int
     var initialOffset: CGFloat = 0
     var onOffsetChanged: ((CGFloat) -> Void)? = nil
@@ -67,7 +67,8 @@ struct CommentCollectionView: UIViewRepresentable {
         private var rowsByID: [Int: CommentRowModel] = [:]
         private var appliedCommentIDs: [Int] = []
         private var environment = EnvironmentValues()
-        private var actions: CommentRowActions?
+        private var actions: CommentRowActions
+        private var appliedRowsRevision: Int?
         private var lastScrollRevision = 0
         private var restoredOffset = false
         private struct Prefetch {
@@ -86,6 +87,7 @@ struct CommentCollectionView: UIViewRepresentable {
 
         init(worker: CommentCollectionView) {
             self.worker = worker
+            actions = CommentRowActions(viewModel: worker.viewModel)
         }
 
         func attach(_ view: UICollectionView) {
@@ -93,7 +95,6 @@ struct CommentCollectionView: UIViewRepresentable {
             view.refreshControl = refreshControl
             view.addSubview(collapse)
             collapse.isUserInteractionEnabled = false
-            actions = CommentRowActions(viewModel: worker.viewModel)
             let registration = UICollectionView.CellRegistration<UICollectionViewCell, ItemID> { [weak self] cell, _, id in
                 self?.configure(cell, id: id)
             }
@@ -109,9 +110,14 @@ struct CommentCollectionView: UIViewRepresentable {
         }
 
         func update(worker: CommentCollectionView, environment: EnvironmentValues) {
+            let modelChanged = self.worker.viewModel !== worker.viewModel
             self.worker = worker
             self.environment = environment
-            actions = CommentRowActions(viewModel: worker.viewModel)
+            if modelChanged {
+                actions = CommentRowActions(viewModel: worker.viewModel)
+                prefetches.values.forEach { $0.tasks.forEach { $0.cancel() } }
+                prefetches.removeAll()
+            }
             let geometry = environment.videoScrollContext
             minimumContentHeight = geometry?.minimumContentHeight ?? 0
             let nextReservation = geometry?.reservation ?? 0
@@ -119,7 +125,7 @@ struct CommentCollectionView: UIViewRepresentable {
                 reservation = nextReservation
                 collectionView?.collectionViewLayout.invalidateLayout()
             }
-            apply(rows: worker.rows)
+            apply(rows: worker.rows, revision: worker.rowsRevision, modelChanged: modelChanged)
             updateMinimumHeightInset()
             configureCollapse()
             guard let collectionView else { return }
@@ -130,24 +136,29 @@ struct CommentCollectionView: UIViewRepresentable {
             }
         }
 
-        private func apply(rows: [CommentRowModel]) {
-            guard let dataSource else { return }
+        private func apply(rows: [CommentRowModel], revision: Int, modelChanged: Bool) {
+            guard let dataSource, modelChanged || appliedRowsRevision != revision else { return }
+            let hadSnapshot = appliedRowsRevision != nil
+            appliedRowsRevision = revision
             let previousRows = rowsByID
             let previousIDs = appliedCommentIDs
             var newByID: [Int: CommentRowModel] = [:]
             newByID.reserveCapacity(rows.count)
+            var commentIDs: [Int] = []
+            commentIDs.reserveCapacity(rows.count)
             var ids: [ItemID] = [.header]
             ids.reserveCapacity(rows.count + 2)
-            var changed: [ItemID] = []
+            var changed: [ItemID] = modelChanged && hadSnapshot ? [.header, .footer] : []
             for row in rows {
-                newByID[row.comment.id] = row
-                ids.append(.comment(row.comment.id))
-                if rowsByID[row.comment.id] != row { changed.append(.comment(row.comment.id)) }
+                let id = row.comment.id
+                newByID[id] = row
+                commentIDs.append(id)
+                ids.append(.comment(id))
+                if let previous = previousRows[id], modelChanged || previous != row { changed.append(.comment(id)) }
             }
             ids.append(.footer)
-            let previousRowIDs = Set(rowsByID.keys)
             rowsByID = newByID
-            appliedCommentIDs = rows.map(\.comment.id)
+            appliedCommentIDs = commentIDs
             if previousIDs != appliedCommentIDs {
                 for (indexPath, prefetch) in prefetches
                 where !ids.indices.contains(indexPath.item) || ids[indexPath.item] != prefetch.id {
@@ -159,11 +170,11 @@ struct CommentCollectionView: UIViewRepresentable {
             snapshot.appendSections([0])
             snapshot.appendItems(ids, toSection: 0)
             // 新出现的行由 cell 配置自然补齐；已有行只有快照变化时才重新配置。
-            let reconfigure = changed.filter { previousRowIDs.contains(reconfigureID($0)) }
-            if !reconfigure.isEmpty { snapshot.reconfigureItems(reconfigure) }
-            let removal = RemovalFill.isRemovalOnly(previousIDs, appliedCommentIDs)
-            let nested = previousIDs == appliedCommentIDs && Self.removedPreviewReplies(from: previousRows, to: rows)
-            if worker.animatesRemoval, !previousIDs.isEmpty, removal || nested,
+            if !changed.isEmpty { snapshot.reconfigureItems(changed) }
+            let animate = worker.animatesRemoval && !modelChanged && !previousIDs.isEmpty
+            let removal = animate && RemovalFill.isRemovalOnly(previousIDs, appliedCommentIDs)
+            let nested = animate && previousIDs == appliedCommentIDs && Self.removedPreviewReplies(from: previousRows, to: rows)
+            if removal || nested,
                let layout = collectionView?.collectionViewLayout as? RemovalFillLayout {
                 layout.shrinksDeletedItems = removal
                 RemovalFill.perform {
@@ -206,13 +217,6 @@ struct CommentCollectionView: UIViewRepresentable {
             return shrank
         }
 
-        private func reconfigureID(_ id: ItemID) -> Int {
-            switch id {
-            case .comment(let id): return id
-            default: return -1
-            }
-        }
-
         private func configureCollapse() {
             collapse.consume = worker.collapseConsume
             collapse.end = { [weak self] in self?.worker.collapseEnd?() }
@@ -252,9 +256,10 @@ struct CommentCollectionView: UIViewRepresentable {
                     }
                 }
             case .comment(let commentID):
-                if let model = rowsByID[commentID], let actions {
+                if let model = rowsByID[commentID] {
                     CommentRow(model: model, actions: actions)
                         .equatable()
+                        .id(ObjectIdentifier(actions))
                         .padding(.horizontal, CommentLayout.pageHorizontalInset)
                         .padding(.vertical, CommentLayout.rowVerticalPadding)
                 }
@@ -287,7 +292,7 @@ struct CommentCollectionView: UIViewRepresentable {
                   case .comment(let commentID) = id,
                   let comment = rowsByID[commentID]?.comment else { return }
             let viewModel = worker.viewModel
-            guard viewModel.comments.suffix(5).contains(where: { $0.id == commentID }) else { return }
+            guard viewModel.isInPaginationWindow(commentID) else { return }
             Task { await viewModel.loadMoreIfNeeded(current: comment) }
         }
 
@@ -295,6 +300,8 @@ struct CommentCollectionView: UIViewRepresentable {
 
         func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
             let scale = collectionView.traitCollection.displayScale
+            let typeSize = environment.dynamicTypeSize
+            let emoteScale = environment.displayScale
             let pipeline = environment.imagePipeline
             let emoteStore = environment.commentEmoteStore
             for indexPath in indexPaths {
@@ -310,7 +317,10 @@ struct CommentCollectionView: UIViewRepresentable {
                     tasks.append(task)
                 }
                 if !comment.emotes.isEmpty {
-                    tasks.append(Task { await emoteStore.preload(Array(comment.emotes.values)) })
+                    tasks.append(Task {
+                        await CommentEmoteText.preload(comment.emotes, store: emoteStore, textStyle: .subheadline,
+                                                       typeSize: typeSize, scale: emoteScale)
+                    })
                 }
                 if !tasks.isEmpty { prefetches[indexPath] = Prefetch(id: id, tasks: tasks) }
             }

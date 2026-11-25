@@ -24,7 +24,9 @@ final class CommentPerformanceTests: XCTestCase {
          "content":{"message":"[doge]","emote":{"[doge]":{"url":"https://example.invalid/doge.png","meta":{"size":1}}}}}
         """.utf8))
         let model = CommentsViewModel(aid: 1)
-        let worker = CommentCollectionView(viewModel: model, rows: [model.rowModel(for: comment)], scrollRevision: 0)
+        model.acceptSubmission(comment, root: nil)
+        let worker = CommentCollectionView(viewModel: model, rows: model.rootRowModels,
+                                           rowsRevision: model.rowsRevision, scrollRevision: 0)
         let coordinator = worker.makeCoordinator()
         let view = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
         var environment = EnvironmentValues()
@@ -98,9 +100,81 @@ final class CommentPerformanceTests: XCTestCase {
         model.acceptSubmission(a, root: nil)
         await model.retry()
         XCTAssertEqual(model.comments.map(\.id), [1, 2])
+        let initial = model.rootRowModels
         await model.loadMoreIfNeeded(current: b)
         XCTAssertEqual(model.comments.map(\.id), [1, 2, 3])
+        XCTAssertEqual(Array(model.rootRowModels.prefix(2)), initial)
+        XCTAssertEqual(model.rootRowModels.last, model.rowModel(for: c))
         XCTAssertFalse(model.hasMore)
+    }
+
+    func testRootRowsKeepRevisionForDuplicatePageAndUpdateOnlyAffectedRows() async throws {
+        let roots = try (1...9).map { try comment($0) }
+        let pin = try comment(100), reply = try comment(101)
+        var requests: [Int] = []
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, page, _ in
+            requests.append(page)
+            let replies = page == 1 ? roots : [roots[1]]
+            return .init(page: .init(num: page, size: 9, count: 27), replies: replies,
+                         pinnedReplies: page == 3 ? [pin, roots[1]] : [])
+        })
+        await model.loadInitial()
+        let initial = model.rootRowModels
+        let revision = model.rowsRevision
+
+        await model.loadMoreIfNeeded(current: roots[0])
+        XCTAssertEqual(requests, [1])
+        await model.loadMoreIfNeeded(current: roots[1])
+        XCTAssertEqual(requests, [1, 2])
+        XCTAssertEqual(model.rowsRevision, revision)
+        XCTAssertEqual(model.rootRowModels, initial)
+
+        await model.loadMoreIfNeeded(current: roots[1])
+        XCTAssertEqual(model.rootRowModels.map(\.comment.id), [pin.id] + roots.map(\.id))
+        XCTAssertTrue(model.rootRowModels[0].isPinned)
+        XCTAssertTrue(model.rootRowModels[2].isPinned)
+        XCTAssertEqual(model.rowsRevision, revision + 1)
+        XCTAssertFalse(model.isInPaginationWindow(roots[0].id))
+        XCTAssertTrue(model.isInPaginationWindow(roots[1].id))
+
+        model.toggleExpanded(roots[1])
+        model.acceptSubmission(reply, root: roots[1].id)
+        XCTAssertTrue(model.rootRowModels[2].isExpanded)
+        XCTAssertTrue(model.rootRowModels[2].showsAllReplies)
+        XCTAssertEqual(model.rootRowModels[2].replyCount, 3)
+        XCTAssertEqual(model.rootRowModels[2].previewReplies.map(\.comment.id), [reply.id])
+        XCTAssertEqual(Array(model.rootRowModels.suffix(7)), Array(initial.suffix(7)))
+        XCTAssertEqual(model.rowsRevision, revision + 3)
+    }
+
+    func testProbeFreeShortTextMatchesUnrestrictedLayout() throws {
+        for message in ["简短评论", "Short words", "宽字\r\n再来一行", "回看 02：35"] {
+            let comment = try comment(1, message: message)
+            XCTAssertTrue(ExpandableCommentMessage.canTryUnwrappedLayout(comment))
+            for size in [DynamicTypeSize.large, .accessibility5] {
+                let row = ExpandableCommentMessage(comment: comment, isExpanded: false) {}
+                    .frame(width: 390).environment(\.dynamicTypeSize, size)
+                let text = CommentEmoteText(message: message, emotes: [:], font: .app(.subheadline), textStyle: .subheadline)
+                    .frame(width: 390).environment(\.dynamicTypeSize, size)
+                XCTAssertEqual(try XCTUnwrap(ImageRenderer(content: row).cgImage).height,
+                               try XCTUnwrap(ImageRenderer(content: text).cgImage).height)
+            }
+        }
+        let sevenLines = try comment(1, message: Array(repeating: "宽", count: 7).joined(separator: "\u{2028}"))
+        XCTAssertFalse(ExpandableCommentMessage.canTryUnwrappedLayout(sevenLines))
+
+        // The candidate may fit on a large screen, but must still wrap and
+        // truncate at accessibility sizes on a narrow proposal.
+        for message in [String(repeating: "W", count: 48), String(repeating: "宽", count: 48)] {
+            let longWord = try comment(1, message: message)
+            XCTAssertTrue(ExpandableCommentMessage.canTryUnwrappedLayout(longWord))
+            let row = ExpandableCommentMessage(comment: longWord, isExpanded: false) {}
+                .frame(width: 100).environment(\.dynamicTypeSize, .accessibility5)
+            let full = CommentEmoteText(message: message, emotes: [:], font: .app(.subheadline), textStyle: .subheadline)
+                .frame(width: 100).environment(\.dynamicTypeSize, .accessibility5)
+            let rowImage = try XCTUnwrap(ImageRenderer(content: row).cgImage)
+            XCTAssertLessThan(rowImage.height, try XCTUnwrap(ImageRenderer(content: full).cgImage).height)
+        }
     }
 
     func testRepliesDeduplicateWithinAndAcrossPagesAndStopAtEnd() async throws {
@@ -110,12 +184,17 @@ final class CommentPerformanceTests: XCTestCase {
             pages.append(page)
             return CommentReplyPage(page: .init(num: page, size: 2, count: 3), replies: page == 1 ? [a, a, b] : [b, c, c])
         })
+        model.acceptSubmission(root, root: nil)
+        let revision = model.rowsRevision
         await model.loadRepliesIfNeeded(for: root)
         XCTAssertEqual(model.allReplies(for: root).map(\.id), [1, 2])
+        XCTAssertEqual(model.rootRowModels.first?.replyCount, 3)
+        XCTAssertEqual(model.rowsRevision, revision + 1)
         await model.loadMoreRepliesIfNeeded(current: b, root: root)
         await model.loadMoreReplies(for: root)
         XCTAssertEqual(model.allReplies(for: root).map(\.id), [1, 2, 3])
         XCTAssertEqual(pages, [1, 2])
+        XCTAssertEqual(model.rowsRevision, revision + 1)
         XCTAssertFalse(model.hasMoreReplies(root))
     }
 
@@ -287,10 +366,11 @@ final class CommentPerformanceTests: XCTestCase {
         }
     }
 
-    private func comment(_ id: Int) throws -> Comment {
-        let data = Data("""
-        {"rpid":\(id),"ctime":1,"like":0,"rcount":2,"member":{"uname":"测试","avatar":""},"content":{"message":"正文"}}
-        """.utf8)
+    private func comment(_ id: Int, message: String = "正文") throws -> Comment {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "rpid": id, "ctime": 1, "like": 0, "rcount": 2, "member": ["uname": "测试", "avatar": ""],
+            "content": ["message": message]
+        ])
         return try JSONDecoder().decode(Comment.self, from: data)
     }
 }

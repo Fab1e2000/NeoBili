@@ -21,6 +21,8 @@ final class ServiceBoundaryTests: XCTestCase {
         let received = await requests.values
         XCTAssertEqual(received, ["read:42:1:1", "like:42:1:7:true"])
         XCTAssertTrue(model.isLiked(comment))
+        XCTAssertEqual(model.rootRowModels.first?.isLiked, true)
+        XCTAssertEqual(model.rootRowModels.first?.likeCount, 1)
     }
 
     func testCancelledCommentLikeRollsBackWithoutErrorMessage() async throws {
@@ -32,8 +34,13 @@ final class ServiceBoundaryTests: XCTestCase {
                 throw CancellationError()
             }
             let model = CommentsViewModel(oid: 42, type: 1, services: services)
+            model.acceptSubmission(comment, root: nil)
+            let originalRows = model.rootRowModels
+            let revision = model.rowsRevision
             await model.toggleLike(comment, isLoggedIn: true)
             XCTAssertFalse(model.isLiked(comment))
+            XCTAssertEqual(model.rootRowModels, originalRows)
+            XCTAssertEqual(model.rowsRevision, revision + 2)
             XCTAssertNil(model.actionMessage)
         }
     }

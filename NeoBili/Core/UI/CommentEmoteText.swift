@@ -7,36 +7,36 @@ import UIKit
 ///
 /// 表情要嵌在文字行里，所以不能用普通的异步图片视图——`Text` 只接受已经就绪、
 /// 且尺寸正确的 `Image`。这里按 URL 合并加载，将原图归一化到最长 512 像素并
-/// 有界缓存；拼进 `Text` 前再按当时的字号与显示缩放生成小图。
-///
-/// 缩放结果按「URL + 目标高度 + 显示缩放」记忆化（NSCache，内存压力下自动淘汰）：
-/// 滚动期同一行会随列表重建反复求值，每次都重绘小图会叠成持续的主线程
-/// CPU。文字档位变了 key 随之变化，不存在旧档位图冒充新档位的问题。
+/// 有界缓存。后台按「URL + 目标高度 + 显示缩放」生成小图，正文读取对应缓存。
 @MainActor
 @Observable
 final class CommentEmoteStore {
+    private nonisolated static let scaledByteBudget = 32 * 1024 * 1024
 
     @Observable
-    final class Original {
-        // The bounded cache owns originals; observation slots do not retain
-        // every bitmap ever seen during a long comments session.
-        weak var image: UIImage?
+    final class EmoteState {
+        // The original cache owns even the bitmaps injected for layout tests.
+        @ObservationIgnored weak var fixture: UIImage?
+        var renderRevision = 0
     }
     // Each comment observes only the URLs it renders, not the whole image dictionary.
-    @ObservationIgnored private var originals: [URL: Original] = [:]
+    @ObservationIgnored private var emoteStates: [URL: EmoteState] = [:]
+    private(set) var memoryWarningRevision = 0
 
-    private func original(for url: URL) -> Original {
-        if let existing = originals[url] { return existing }
-        let entry = Original()
-        originals[url] = entry
+    private func state(for url: URL) -> EmoteState {
+        if let existing = emoteStates[url] { return existing }
+        let entry = EmoteState()
+        emoteStates[url] = entry
         return entry
     }
     @ObservationIgnored private let originalsCache: ImageMemoryCache<URL, UIImage>
     private let notifications: NotificationCenter
     @ObservationIgnored private nonisolated(unsafe) var memoryPressureObserver: (any NSObjectProtocol)?
     @ObservationIgnored private let requests = ImageRequestPool<URL, UIImage>()
+    @ObservationIgnored private let renderRequests = ImageRequestPool<RenderRequest, Void>()
     @ObservationIgnored private let loader: @Sendable (URL) async throws -> UIImage
     @ObservationIgnored private let maximumPixelDimension: CGFloat
+    @ObservationIgnored private let scaledCache: ImageMemoryCache<RenderRequest, UIImage>
 
     init(maximumOriginalBytes: Int = 16 * 1024 * 1024,
          notifications: NotificationCenter = .default,
@@ -45,14 +45,20 @@ final class CommentEmoteStore {
          }) {
         let budget = max(4096, maximumOriginalBytes)
         let cache = ImageMemoryCache<URL, UIImage>(maximumBytes: budget, maximumEntries: 256)
+        let variants = ImageMemoryCache<RenderRequest, UIImage>(maximumBytes: Self.scaledByteBudget, maximumEntries: 800)
         originalsCache = cache
+        scaledCache = variants
         self.notifications = notifications
         // Align to 16 pixels so a 64-byte-aligned RGBA row also fits the budget.
         maximumPixelDimension = min(512, floor(sqrt(CGFloat(budget) / 4) / 16) * 16)
         self.loader = loader
         memoryPressureObserver = notifications.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil
-        ) { _ in cache.removeAll() }
+        ) { [weak self] _ in
+            cache.removeAll()
+            variants.removeAll()
+            Task { @MainActor in self?.memoryWarningRevision &+= 1 }
+        }
     }
 
     deinit {
@@ -61,68 +67,104 @@ final class CommentEmoteStore {
 
     var cachedOriginalByteCount: Int { originalsCache.cachedByteCount }
     var loadingConsumerCount: Int { get async { await requests.consumerCount } }
-    private let scaledCache: NSCache<NSString, UIImage> = {
-        let cache = NSCache<NSString, UIImage>()
-        cache.countLimit = 800
-        cache.totalCostLimit = 32 * 1024 * 1024
-        return cache
-    }()
+    struct RenderSize: Hashable, Sendable {
+        let height: CGFloat
+        let scale: CGFloat
+    }
 
-    /// 已经就绪的表情，按目标高度缩放好。原图没就绪时返回 nil，调用方按原文显示。
-    func image(for url: URL, height: CGFloat, scale: CGFloat = 1) -> Image? {
-        let key = "\(url.absoluteString)|\(Int(height * 100))|\(scale)" as NSString
-        if let cached = scaledCache.object(forKey: key) {
-            return Image(uiImage: cached)
-        }
-        guard let original = original(for: url).image else { return nil }
-        _ = originalsCache.value(for: url)
-        let scaled = Self.scaled(original, toHeight: height, scale: scale)
-        scaledCache.setObject(scaled, forKey: key, cost: Self.pixelCost(scaled))
-        return Image(uiImage: scaled)
+    private struct RenderRequest: Hashable, Sendable {
+        let url: URL
+        let size: RenderSize
+    }
+
+    /// 返回已按目标高度缩放的表情。未就绪时调用方显示原文。
+    func image(for url: URL, height: CGFloat, scale: CGFloat = 1) -> UIImage? {
+        let request = RenderRequest(url: url, size: RenderSize(height: height, scale: scale))
+        if let cached = scaledCache.value(for: request) { return cached }
+        let entry = state(for: url)
+        _ = entry.renderRevision
+        // Layout fixtures can supply bitmaps without a view lifecycle.
+        guard let fixture = entry.fixture else { return nil }
+        let rendered = Self.scaled(fixture, toHeight: height, scale: scale)
+        scaledCache.insert(rendered, for: request, cost: Self.pixelCost(rendered))
+        return rendered
     }
 
     /// Each row joins the shared load. A disappearing row cancels only its
     /// own wait, so another visible comment cannot lose its pending emote.
-    func preload(_ emotes: [CommentEmote]) async {
+    func preload(_ emotes: [CommentEmote], target: ((CommentEmote) -> RenderSize)? = nil) async {
         guard !Task.isCancelled else { return }
-        let urls = Set(emotes.compactMap(\.secureURL))
+        var sizesByURL: [URL: Set<RenderSize>] = [:]
+        for emote in emotes {
+            guard let url = emote.secureURL else { continue }
+            if let target { sizesByURL[url, default: []].insert(target(emote)) }
+            else if sizesByURL[url] == nil { sizesByURL[url] = [] }
+        }
         await withTaskGroup(of: Void.self) { group in
-            for url in urls {
-                guard original(for: url).image == nil else { continue }
-                group.addTask { [weak self] in await self?.load(url: url) }
+            for (url, sizes) in sizesByURL {
+                if sizes.isEmpty {
+                    guard originalsCache.value(for: url) == nil else { continue }
+                } else {
+                    guard sizes.contains(where: {
+                        scaledCache.value(for: RenderRequest(url: url, size: $0)) == nil
+                    }) else { continue }
+                }
+                group.addTask { [weak self] in await self?.load(url: url, sizes: sizes) }
             }
         }
     }
 
     /// 仅供间距测试：把现成图片塞进原图缓存，让渲染不依赖网络。
     func insertOriginalForTesting(_ image: UIImage, for url: URL) {
-        scaledCache.removeAllObjects()
-        install(Self.prepared(image, maximumDimension: maximumPixelDimension), for: url)
+        scaledCache.removeAll()
+        let prepared = Self.prepared(image, maximumDimension: maximumPixelDimension)
+        originalsCache.insert(prepared, for: url, cost: Self.pixelCost(prepared))
+        let entry = state(for: url)
+        entry.fixture = prepared
+        entry.renderRevision &+= 1
     }
 
-    private func install(_ image: UIImage, for url: URL) {
-        originalsCache.insert(image, for: url, cost: Self.pixelCost(image))
-        if original(for: url).image !== image { original(for: url).image = image }
-    }
-
-    private func load(url: URL) async {
+    private func load(url: URL, sizes: Set<RenderSize>) async {
         do {
-            let prepared = try await requests.value(for: url) { [loader, maximumPixelDimension] in
-                let image = try await loader(url)
-                try Task.checkCancellation()
-                // Trimming scans all pixels, so keep it off the main actor and
-                // coalesce it along with the transfer for duplicate comments.
-                let task = Task.detached(priority: .userInitiated) {
-                    try Task.checkCancellation()
-                    return Self.prepared(image, maximumDimension: maximumPixelDimension)
+            let prepared: UIImage
+            if let cached = originalsCache.value(for: url) {
+                prepared = cached
+            } else {
+                prepared = try await requests.value(for: url) { [loader, maximumPixelDimension] in
+                    let image = try await loader(url)
+                    return try await Self.prepareOriginal(image, maximumDimension: maximumPixelDimension)
                 }
-                return try await withTaskCancellationHandler {
-                    try await task.value
-                } onCancel: { task.cancel() }
+                try Task.checkCancellation()
+                originalsCache.insert(prepared, for: url, cost: Self.pixelCost(prepared))
             }
-            guard !Task.isCancelled else { return }
-            install(prepared, for: url)
+            for size in sizes { try await prepareRender(RenderRequest(url: url, size: size), from: prepared) }
         } catch { /* Keep the textual emote until a later appearance can retry. */ }
+    }
+
+    private func prepareRender(_ request: RenderRequest, from image: UIImage) async throws {
+        guard scaledCache.value(for: request) == nil else { return }
+        defer {
+            if scaledCache.value(for: request) != nil { state(for: request.url).renderRevision &+= 1 }
+        }
+        try await renderRequests.value(for: request) { [scaledCache] in
+            try await Self.render(image, request: request, cache: scaledCache)
+        }
+    }
+
+    @concurrent
+    private static func prepareOriginal(_ image: UIImage, maximumDimension: CGFloat) async throws -> UIImage {
+        try Task.checkCancellation()
+        return prepared(image, maximumDimension: maximumDimension)
+    }
+
+    @concurrent
+    private static func render(_ image: UIImage, request: RenderRequest,
+                               cache: ImageMemoryCache<RenderRequest, UIImage>) async throws {
+        try Task.checkCancellation()
+        guard cache.value(for: request) == nil else { return }
+        let bitmap = scaled(image, toHeight: request.size.height, scale: request.size.scale)
+        try Task.checkCancellation()
+        cache.insert(bitmap, for: request, cost: pixelCost(bitmap))
     }
 
     private nonisolated static func prepared(_ image: UIImage, maximumDimension: CGFloat) -> UIImage {
@@ -143,7 +185,7 @@ final class CommentEmoteStore {
         return trimmed(normalized) ?? normalized
     }
 
-    private static func pixelCost(_ image: UIImage) -> Int {
+    private nonisolated static func pixelCost(_ image: UIImage) -> Int {
         guard let cg = image.cgImage else { return 0 }
         return cg.bytesPerRow * cg.height
     }
@@ -202,9 +244,23 @@ final class CommentEmoteStore {
 
     /// `Text` 里的图片是按点尺寸原样画的，没法再 resize，所以在这里就缩到位。
     private nonisolated static func scaled(_ image: UIImage, toHeight height: CGFloat, scale: CGFloat) -> UIImage {
-        let size = CGSize(width: height * image.size.width / image.size.height, height: height)
+        let width = height * image.size.width / image.size.height
+        let pixelWidth = width * scale
+        let pixelHeight = height * scale
+        let maximumSide: CGFloat = 4096
+        // Standard RGBA uses four bytes per pixel. Leave room for row
+        // alignment and pixel rounding before allocating the canvas.
+        let rowPaddingAllowance: CGFloat = 256
+        let pixelBudget = (CGFloat(scaledByteBudget) - rowPaddingAllowance * maximumSide) / 4
+        let reduction = min(1, maximumSide / max(pixelWidth, pixelHeight),
+                            sqrt(pixelBudget / (ceil(pixelWidth) * ceil(pixelHeight))))
+        let size = reduction == 1 ? CGSize(width: width, height: height) : CGSize(
+            width: max(1, floor(pixelWidth * reduction)) / scale,
+            height: max(1, floor(pixelHeight * reduction)) / scale
+        )
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = scale
+        format.preferredRange = .standard
         format.opaque = false
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
@@ -250,13 +306,23 @@ struct CommentEmoteText: View {
     }
 
     private struct LoadIdentity: Equatable {
+        let store: ObjectIdentifier?
         let emotes: [String: CommentEmote]
+        let textStyle: Font.TextStyle
         let typeSize: DynamicTypeSize
         let scale: CGFloat
+        let memoryWarningRevision: Int?
+        let needsImages: Bool
     }
 
     var body: some View {
-        composed
+        let store = emotes.isEmpty ? nil : resolvedStore
+        let content = composed(using: store)
+        let identity = LoadIdentity(store: store.map(ObjectIdentifier.init), emotes: emotes, textStyle: textStyle,
+                                    typeSize: typeSize, scale: displayScale,
+                                    memoryWarningRevision: loadsEmotes ? store?.memoryWarningRevision : nil,
+                                    needsImages: loadsEmotes && content.hasMissingImages)
+        return content.text
             .font(font)
             .environment(\.openURL, OpenURLAction { url in
                 guard let seconds = CommentTimeLinks.seconds(from: url) else {
@@ -266,15 +332,22 @@ struct CommentEmoteText: View {
                 timeJump?(seconds)
                 return .handled
             })
-            .task(id: LoadIdentity(emotes: emotes, typeSize: typeSize, scale: displayScale)) {
-                guard loadsEmotes, !emotes.isEmpty else { return }
-                await resolvedStore.preload(Array(emotes.values))
+            .task(id: identity) {
+                guard identity.needsImages, let store else { return }
+                await Self.preload(emotes, store: store, textStyle: textStyle,
+                                   typeSize: typeSize, scale: displayScale)
             }
     }
 
-    private var composed: Text {
+    static func preload(_ emotes: [String: CommentEmote], store: CommentEmoteStore, textStyle: Font.TextStyle,
+                        typeSize: DynamicTypeSize, scale: CGFloat) async {
+        let font = scaledFont(textStyle: textStyle, typeSize: typeSize)
+        await store.preload(Array(emotes.values)) { .init(height: emoteHeight(for: $0, font: font), scale: scale) }
+    }
+
+    private func composed(using store: CommentEmoteStore?) -> (text: Text, hasMissingImages: Bool) {
         // 一次组合只求一次字号；每个表情不再反复创建 UIFontMetrics / traits。
-        let scaledFont = emotes.isEmpty ? nil : scaledFont
+        let scaledFont = emotes.isEmpty ? nil : Self.scaledFont(textStyle: textStyle, typeSize: typeSize)
         let baseline = ((scaledFont?.descender ?? 0) * Self.baselineOffsetRatio).rounded()
         var prefixText = AttributedString(prefix)
         prefixText.foregroundColor = prefixStyle.opacity.map { Color.primary.opacity($0) } ?? .secondary
@@ -283,26 +356,28 @@ struct CommentEmoteText: View {
         var decoratedPrefix = Text(prefixText)
         if let prefixBadge { decoratedPrefix = decoratedPrefix + Text(" ") + Text(prefixBadge).baselineOffset(-3) }
         decoratedPrefix = decoratedPrefix + Text(prefixSuffix)
-        if emotes.isEmpty {
-            return decoratedPrefix + Text(CommentLinks.attributed(message, metadata: jumpURLs, includesTimes: timeJump != nil))
+        guard let store else {
+            let text = CommentLinks.attributed(message, metadata: jumpURLs, includesTimes: timeJump != nil)
+            return (decoratedPrefix + Text(text), false)
         }
-        return CommentEmoteSegments.prepared(message: message, emotes: emotes)
+        var hasMissingImages = false
+        let text = CommentEmoteSegments.prepared(message: message, emotes: emotes)
             .reduce(decoratedPrefix) { partial, segment in
             switch segment {
             case .text(let value):
                 return partial + Text(CommentLinks.attributed(value, metadata: jumpURLs, includesTimes: timeJump != nil))
             case .emote(let literal, let emote):
-                guard let url = emote.secureURL,
-                      let font = scaledFont,
-                      let image = resolvedStore.image(for: url, height: emoteHeight(for: emote, font: font), scale: displayScale)
-                else {
+                guard let url = emote.secureURL, let font = scaledFont else { return partial + Text(literal) }
+                guard let image = store.image(for: url, height: Self.emoteHeight(for: emote, font: font), scale: displayScale) else {
+                    hasMissingImages = true
                     // 还没下载好就先显示原来那段文字，不留空洞。
                     return partial + Text(literal)
                 }
                 // 往下沉一点，见 `emoteBaselineOffset`。
-                return partial + Text(image).baselineOffset(baseline)
+                return partial + Text(Image(uiImage: image)).baselineOffset(baseline)
             }
         }
+        return (text, hasMissingImages)
     }
 
     /// 降部高度的取用比例。0 就是回到 SwiftUI 默认的基线对齐。
@@ -322,7 +397,7 @@ struct CommentEmoteText: View {
     /// 高度从 `UIFontMetrics` 按当前档位现算，不经过 `@ScaledMetric`——
     /// 后者不跟随本 App 注入的档位（文字在变、表情基准值不变），
     /// 表情大小会和文字脱节。
-    private func emoteHeight(for emote: CommentEmote, font: UIFont) -> CGFloat {
+    private static func emoteHeight(for emote: CommentEmote, font: UIFont) -> CGFloat {
         if emote.heightMultiplier >= 2 {
             return (font.pointSize * emote.heightMultiplier).rounded()
         }
@@ -330,33 +405,19 @@ struct CommentEmoteText: View {
     }
 
     /// 当前档位下这套样式的实际字体。
-    private var scaledFont: UIFont {
+    private static func scaledFont(textStyle: Font.TextStyle, typeSize: DynamicTypeSize) -> UIFont {
         let category = Self.contentCategory(typeSize)
         let traits = UITraitCollection(preferredContentSizeCategory: category)
-        return UIFontMetrics(forTextStyle: uiTextStyle)
+        let style: UIFont.TextStyle
+        let baseSize: CGFloat
+        switch textStyle {
+        case .caption, .caption2: (style, baseSize) = (.caption1, 12)
+        case .footnote: (style, baseSize) = (.footnote, 13)
+        case .body: (style, baseSize) = (.body, 17)
+        default: (style, baseSize) = (.subheadline, 15)
+        }
+        return UIFontMetrics(forTextStyle: style)
             .scaledFont(for: AppFont.uiFont(ofSize: baseSize), compatibleWith: traits)
-    }
-
-    /// `.large`（默认档）下这几种样式的字号，供 `UIFontMetrics` 起算。
-    ///
-    /// 认不出的样式退回 subheadline，和以前的行为一致。
-    private var baseSize: CGFloat {
-        switch textStyle {
-        case .caption, .caption2: 12
-        case .footnote: 13
-        case .body: 17
-        default: 15
-        }
-    }
-
-    /// SwiftUI 的文字样式翻成 UIKit 的同名样式。
-    private var uiTextStyle: UIFont.TextStyle {
-        switch textStyle {
-        case .caption, .caption2: .caption1
-        case .footnote: .footnote
-        case .body: .body
-        default: .subheadline
-        }
     }
 
     /// 把 SwiftUI 的档位枚举翻成 UIKit 的内容大小分类。

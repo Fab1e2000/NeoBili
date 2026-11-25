@@ -40,7 +40,7 @@ final class EmotePipelineTests: XCTestCase {
         let emote = CommentEmote(url: url.absoluteString, meta: .init(size: 1))
         let first = Task { await store.preload([emote, emote]) }
         try await until { await store.loadingConsumerCount == 1 }
-        let second = Task { await store.preload([emote]) }
+        let second = Task { await store.preload([emote]) { _ in .init(height: 16, scale: 2) } }
         try await until { await store.loadingConsumerCount == 2 }
         first.cancel()
         await first.value
@@ -54,6 +54,25 @@ final class EmotePipelineTests: XCTestCase {
         let starts = await probe.starts
         XCTAssertEqual(starts, 1)
         XCTAssertNotNil(store.image(for: url, height: 16, scale: 2))
+    }
+
+    func testPreloadCachesRequestedSizesAndPreparesNewSizesFromRetainedOriginal() async throws {
+        let probe = ImmediateEmoteProbe()
+        let store = CommentEmoteStore(loader: { _ in await probe.load() })
+        let url = URL(string: "https://example.invalid/emote-variants.png")!
+        let small = CommentEmote(url: url.absoluteString, meta: .init(size: 1))
+        let large = CommentEmote(url: url.absoluteString, meta: .init(size: 2))
+        await store.preload([small, large]) {
+            .init(height: $0.heightMultiplier >= 2 ? 32 : 16, scale: 3)
+        }
+        // An immediate read only succeeds when the asynchronous render already produced the bitmap.
+        XCTAssertNotNil(store.image(for: url, height: 16, scale: 3))
+        XCTAssertNotNil(store.image(for: url, height: 32, scale: 3))
+        XCTAssertNil(store.image(for: url, height: 16, scale: 2))
+        await store.preload([small]) { _ in .init(height: 16, scale: 2) }
+        XCTAssertNotNil(store.image(for: url, height: 16, scale: 2))
+        let starts = await probe.starts
+        XCTAssertEqual(starts, 1)
     }
 
     func testOversizedOriginalIsResizedBeforeBoundedRetention() {
@@ -71,6 +90,66 @@ final class EmotePipelineTests: XCTestCase {
         XCTAssertGreaterThan(store.cachedOriginalByteCount, 0)
         XCTAssertLessThanOrEqual(store.cachedOriginalByteCount, 8192)
         XCTAssertNotNil(store.image(for: url, height: 16, scale: 2))
+    }
+
+    func testWideAccessibilityEmoteFitsScaledCacheAndPreservesAspectRatio() async throws {
+        let size = CGSize(width: 320, height: 4)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let source = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        let store = CommentEmoteStore(loader: { _ in source })
+        let url = URL(string: "https://example.invalid/wide-emote.png")!
+        let emote = CommentEmote(url: url.absoluteString, meta: .init(size: 2))
+        let height: CGFloat = 110
+        let scale: CGFloat = 3
+
+        await store.preload([emote]) { _ in .init(height: height, scale: scale) }
+
+        let rendered = try XCTUnwrap(store.image(for: url, height: height, scale: scale))
+        let bitmap = try XCTUnwrap(rendered.cgImage)
+        XCTAssertLessThanOrEqual(bitmap.bytesPerRow * bitmap.height, 32 * 1024 * 1024)
+        XCTAssertLessThan(rendered.size.height, height)
+        XCTAssertEqual(rendered.size.width / rendered.size.height, size.width / size.height, accuracy: 1)
+        XCTAssertTrue(store.image(for: url, height: height, scale: scale) === rendered)
+    }
+
+    func testVisibleCommentRecoversAfterMemoryWarningWithoutChangingSizeOrReappearing() async throws {
+        let notifications = NotificationCenter()
+        let probe = ImmediateEmoteProbe()
+        let store = CommentEmoteStore(notifications: notifications, loader: { _ in await probe.load() })
+        let url = URL(string: "https://example.invalid/visible-emote.png")!
+        let emote = CommentEmote(url: url.absoluteString, meta: .init(size: 2))
+        let probeEmote = CommentEmote(url: "https://example.invalid/measurement-emote.png", meta: .init(size: 2))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previousWindow = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: VStack {
+            CommentEmoteText(message: "[doge]", emotes: ["[doge]": emote], font: .body,
+                             textStyle: .body, store: store)
+            CommentEmoteText(message: "[probe]", emotes: ["[probe]": probeEmote], font: .body,
+                             textStyle: .body, loadsEmotes: false, store: store)
+                .hidden()
+        }
+        .environment(\.dynamicTypeSize, .large)
+        .environment(\.displayScale, 2))
+        window.rootViewController = host
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previousWindow?.makeKey() }
+
+        let height = (AppFont.baseSize(.body) * emote.heightMultiplier).rounded()
+        try await until { store.image(for: url, height: height, scale: 2) != nil }
+        notifications.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+        XCTAssertEqual(store.cachedOriginalByteCount, 0)
+        XCTAssertNil(store.image(for: url, height: height, scale: 2))
+        try await until { store.image(for: url, height: height, scale: 2) != nil }
+        XCTAssertTrue(host.view.window === window)
+        let starts = await probe.starts
+        XCTAssertEqual(starts, 2, "Only the visible emote should load before and after the warning")
     }
 
     func testVisibleCommentReloadsEvictedOriginalAfterTextSizeChange() async throws {
@@ -107,6 +186,7 @@ final class EmotePipelineTests: XCTestCase {
         host.rootView = content(.accessibility3)
         try await until { await probe.starts == 2 }
         try await until { await store.loadingConsumerCount == 0 }
+        await store.preload(Array(emotes.values)) { _ in .init(height: 30, scale: 2) }
         XCTAssertNotNil(store.image(for: url, height: 30, scale: 2))
     }
 

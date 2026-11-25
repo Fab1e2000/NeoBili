@@ -19,18 +19,19 @@ struct CommentsList: View {
     }
 
     var body: some View {
-        let comments = viewModel.comments
-        let paginationIDs = Set(comments.suffix(5).map(\.id))
+        let rows = viewModel.rootRowModels
+        let paginationIDs = Set(rows.suffix(CommentsViewModel.paginationWindow).map(\.comment.id))
         LazyVStack(alignment: .leading, spacing: 0) {
             CommentSortHeader(viewModel: viewModel)
-            if let message = viewModel.errorMessage, !comments.isEmpty, viewModel.didFailReload {
+            if let message = viewModel.errorMessage, !rows.isEmpty, viewModel.didFailReload {
                 loadError(message)
             }
-            ForEach(comments) { comment in
+            ForEach(rows, id: \.comment.id) { row in
+                let comment = row.comment
                 // 评论之间不画分隔线，只靠上下留白分开。
                 // 分页触发由父级一次算好；行任务只在进入/离开末尾窗口时重启，
                 // 追加一页不会让所有行重新挂任务。
-                CommentRow(model: viewModel.rowModel(for: comment), actions: actions)
+                CommentRow(model: row, actions: actions)
                     .equatable()
                     .removalFillTransition()
                     .padding(.horizontal, CommentLayout.pageHorizontalInset)
@@ -46,11 +47,11 @@ struct CommentsList: View {
                     .frame(maxWidth: .infinity)
                     .padding()
             }
-            if let message = viewModel.errorMessage, !comments.isEmpty, !viewModel.didFailReload {
+            if let message = viewModel.errorMessage, !rows.isEmpty, !viewModel.didFailReload {
                 loadError(message)
             }
         }
-        .removalFill(ids: comments.map(\.id), enabled: cardAnimations && !reduceMotion)
+        .removalFill(ids: rows.map(\.comment.id), enabled: cardAnimations && !reduceMotion)
         .commentThreadHost(viewModel: viewModel)
         .commentLinkHost()
         // 和视频页一样走非模态浮层，别用 alert 去和 fullScreenCover 抢 present。
@@ -85,10 +86,10 @@ struct CommentsView: View {
     var collapseCanContinue: (() -> Bool)? = nil
 
     var body: some View {
-        let rows = viewModel.comments.map { viewModel.rowModel(for: $0) }
         CommentCollectionView(
             viewModel: viewModel,
-            rows: rows,
+            rows: viewModel.rootRowModels,
+            rowsRevision: viewModel.rowsRevision,
             scrollRevision: viewModel.scrollRevision,
             initialOffset: initialOffset,
             onOffsetChanged: onOffsetChanged,
@@ -98,15 +99,14 @@ struct CommentsView: View {
             animatesRemoval: cardAnimations && !reduceMotion
         )
         .overlay {
-            GeometryReader { proxy in
-                let hiddenTop = max(0, (geometry?.reservation ?? 0) - (geometry?.distance() ?? 0))
-                if viewModel.comments.isEmpty, !viewModel.isWaitingForFirstComments {
+            if viewModel.comments.isEmpty, !viewModel.isWaitingForFirstComments {
+                GeometryReader { proxy in
+                    let hiddenTop = max(0, (geometry?.reservation ?? 0) - (geometry?.distance() ?? 0))
                     CommentsPlaceholder(viewModel: viewModel)
                         .frame(width: proxy.size.width, height: max(0, proxy.size.height - hiddenTop))
                         .offset(y: hiddenTop)
                 }
             }
-            .allowsHitTesting(viewModel.comments.isEmpty && !viewModel.isWaitingForFirstComments)
         }
         .task { await viewModel.loadInitial() }
         .commentThreadHost(viewModel: viewModel, showsLoadingSkeleton: true)

@@ -225,6 +225,8 @@ final class CommentFeatureTests: XCTestCase {
         await model.delete(target, accountID: 42, isLoggedIn: true)
         XCTAssertEqual(model.replies(for: root).map(\.id), [12])
         XCTAssertEqual(model.replyCount(for: root), 1)
+        XCTAssertEqual(model.rootRowModels.first?.replyCount, 1)
+        XCTAssertEqual(model.rootRowModels.first?.previewReplies.map(\.comment.id), [12])
         pending?.resume(returning: .init(page: .init(num: 1, size: 20, count: 2), replies: [mine, other]))
         await request.value
         XCTAssertEqual(model.allReplies(for: root).map(\.id), [12])
@@ -251,6 +253,7 @@ final class CommentFeatureTests: XCTestCase {
         pending?.resume(returning: .init(page: .init(num: 1, size: 20, count: 1), replies: [root], pinnedReplies: [root]))
         await refresh.value
         XCTAssertTrue(model.comments.isEmpty)
+        XCTAssertTrue(model.rootRowModels.isEmpty)
         XCTAssertTrue(model.pinnedIDs.isEmpty)
         XCTAssertTrue(model.allReplies(for: root).isEmpty)
         XCTAssertTrue(model.deletedIDs.contains(root.id))
@@ -275,6 +278,7 @@ final class CommentFeatureTests: XCTestCase {
         XCTAssertEqual(model.comments.map(\.id), [1])
         XCTAssertFalse(model.deletedIDs.contains(1))
         XCTAssertTrue(model.deletingIDs.isEmpty)
+        XCTAssertEqual(model.rootRowModels, [model.rowModel(for: root)])
         XCTAssertNotNil(model.actionMessage)
     }
 

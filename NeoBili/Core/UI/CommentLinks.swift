@@ -60,6 +60,23 @@ enum CommentLinks {
     }
 
     static func links(in text: String, metadata: [String: CommentJumpLink], includesTimes: Bool) -> [Link] {
+        guard !metadata.isEmpty || mayContainLink(text) else { return [] }
+        return detectLinks(in: text, metadata: metadata, includesTimes: includesTimes)
+    }
+
+    static func mayContainLink(_ text: String) -> Bool {
+        var previous: Unicode.Scalar?
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case ".", ":", "：", "。", "．", "｡", "/", "@": return true
+            case "V" where previous == "B", "v" where previous == "a": return true
+            default: previous = scalar
+            }
+        }
+        return false
+    }
+
+    static func detectLinks(in text: String, metadata: [String: CommentJumpLink], includesTimes: Bool) -> [Link] {
         let source = text as NSString
         let full = NSRange(location: 0, length: source.length)
         var links: [Link] = []
@@ -103,18 +120,24 @@ enum CommentLinks {
             .flatMap { [$0.key, $0.value.title ?? "", $0.value.appURLSchema ?? ""] }
         let key = fields.map { "\($0.utf16.count):\($0)" }.joined() as NSString
         if let cached = cache.object(forKey: key) { return cached.value }
-        let source = text as NSString
-        var result = AttributedString()
-        var cursor = 0
-        for link in links(in: text, metadata: metadata, includesTimes: includesTimes) {
-            result += AttributedString(source.substring(with: NSRange(location: cursor, length: link.range.location - cursor)))
-            var span = AttributedString(link.title)
-            span.link = link.url
-            span.foregroundColor = .blue
-            result += span
-            cursor = NSMaxRange(link.range)
+        let links = links(in: text, metadata: metadata, includesTimes: includesTimes)
+        var result: AttributedString
+        if links.isEmpty {
+            result = AttributedString(text)
+        } else {
+            let source = text as NSString
+            result = AttributedString()
+            var cursor = 0
+            for link in links {
+                result += AttributedString(source.substring(with: NSRange(location: cursor, length: link.range.location - cursor)))
+                var span = AttributedString(link.title)
+                span.link = link.url
+                span.foregroundColor = .blue
+                result += span
+                cursor = NSMaxRange(link.range)
+            }
+            result += AttributedString(source.substring(from: cursor))
         }
-        result += AttributedString(source.substring(from: cursor))
         cache.setObject(CachedText(result), forKey: key, cost: key.length * 8 + 128)
         return result
     }
