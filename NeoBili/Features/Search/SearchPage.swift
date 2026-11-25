@@ -8,19 +8,11 @@ struct SearchPage: View {
     let onSubmit: (String?) -> Void
     private var history: SearchHistory { viewModel.history }
 
-    /// 只在搜索首页（历史/热搜）显示标题；输入、联想和结果页让搜索框顶到最上方。
-    private var showsHeader: Bool {
-        !isFocused && !viewModel.hasSubmittedSearch
-    }
-
     var body: some View {
-        // Keep the search bar and its lifecycle above a stable container.
-        // Group distributes modifiers onto the changing content branch, which
-        // can recreate the input and invoke onDisappear on the first character.
+        // Keep the searchable modifier above a stable container so switching
+        // between history, suggestions and results preserves input focus and IME state.
         VStack(spacing: 0) {
-            if isFocused && viewModel.trimmedQuery.isEmpty {
-                Color.clear
-            } else if isFocused {
+            if isFocused && !viewModel.trimmedQuery.isEmpty {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if viewModel.suggestions.isEmpty {
@@ -58,21 +50,15 @@ struct SearchPage: View {
             // 仅背景越过键盘安全区；列表仍正常避让键盘和搜索栏。
             Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
         }
-        .safeAreaBar(edge: .top, spacing: 0) {
-            HomeSearchBar(text: Binding(get: { viewModel.query }, set: { viewModel.query = $0 }),
-                          isFocused: $isFocused,
-                          onSubmit: { onSubmit(nil) },
-                          onCancel: { isFocused = false })
-                .frame(height: 56)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 2)
-        }
-        .scrollEdgeEffectStyle(.hard, for: .top)
+        .searchable(
+            text: Binding(get: { viewModel.query }, set: { viewModel.query = $0 }),
+            isPresented: $isFocused,
+            prompt: String(localized: "搜索视频")
+        )
+        .onSubmit(of: .search) { onSubmit(nil) }
         .task { await viewModel.loadHotSearches() }
         .onDisappear { isFocused = false }
-        // 输入、联想和结果页隐藏导航栏，让搜索框顶到最上方。
         .rootPageChrome(title: String(localized: "搜索"))
-        .toolbarVisibility(showsHeader ? .visible : .hidden, for: .navigationBar)
         .onAppear { OrientationController.enterPortrait() }
     }
 

@@ -26,10 +26,7 @@ struct LiveView: View {
             LiveFeedPage(model: model, directory: directory, onOpenRoom: onOpenRoom)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(uiColor: .systemGroupedBackground))
-                // 导航栏与吸顶标题共用同一不透明底色，收起后拼成一条连续的顶栏。
-                .scrollEdgeEffectHidden(true, for: .top)
-                .opaqueNavigationBarBackground()
-                .rootPageChrome(title: String(localized: "直播"), barFollowsCollapse: true)
+                .rootPageChrome(title: String(localized: "直播"))
         }
         .onChange(of: account.sessionID) { directory.reset() }
         .onChange(of: account.isLoggedIn) { _, loggedIn in
@@ -153,7 +150,7 @@ private struct LiveFeedPage: View {
 
     private var feed: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 followedSection
                 recommendedSection
             }
@@ -180,46 +177,41 @@ private struct LiveFeedPage: View {
     @ViewBuilder
     private var followedSection: some View {
         if showsFollowedLive {
-            Section {
-                LiveFollowedStrip(rooms: directory.rooms) { room in
-                    onOpenRoom(room, "live-followed-card-\(room.roomID)")
-                }
-                .padding(.bottom, 8)
-            } header: {
-                sectionHeader("正在直播")
+            sectionHeader("正在直播")
+            LiveFollowedStrip(rooms: directory.rooms) { room in
+                onOpenRoom(room, "live-followed-card-\(room.roomID)")
             }
+            .padding(.bottom, 12)
         }
     }
 
+    @ViewBuilder
     private var recommendedSection: some View {
-        Section {
-            if model.rooms.isEmpty {
-                initialState
-                    .frame(maxWidth: .infinity, minHeight: 330)
-                    .padding(.horizontal, 8)
-            } else {
-                if let message = model.errorMessage, !refresh.isRefreshing {
-                    InlineLoadFailure(title: "直播列表未能刷新", message: message, onRetry: startRefresh)
-                }
-                LazyVGrid(columns: columns, spacing: 10) {
-                    ForEach(model.rooms) { room in
-                        Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
-                            .buttonStyle(.plain)
-                            .videoTransitionSource("live-\(model.source.rawValue)-card-\(room.roomID)", in: videoTransition)
-                            .videoEntranceIdentity("live:\(room.roomID)")
-                            .accessibilityIdentifier("live.room.\(room.roomID)")
-                            .task { await model.loadMoreIfNeeded(current: room) }
-                    }
-                }
+        if model.rooms.isEmpty {
+            initialState
+                .frame(maxWidth: .infinity, minHeight: 330)
                 .padding(.horizontal, 8)
-                .opacity(refresh.contentOpacity)
-                .allowsHitTesting(refresh.contentOpacity == 1)
-                pagination
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 8)
+        } else {
+            if let message = model.errorMessage, !refresh.isRefreshing {
+                InlineLoadFailure(title: "直播列表未能刷新", message: message, onRetry: startRefresh)
             }
-        } header: {
-            sectionHeader("推荐直播")
+            LazyVGrid(columns: columns, spacing: 10) {
+                ForEach(model.rooms) { room in
+                    Button { onOpenRoom(room, "live-\(model.source.rawValue)-card-\(room.roomID)") } label: { LiveRoomCard(room: room) }
+                        .buttonStyle(.plain)
+                        .videoTransitionSource("live-\(model.source.rawValue)-card-\(room.roomID)", in: videoTransition)
+                        .videoEntranceIdentity("live:\(room.roomID)")
+                        .accessibilityIdentifier("live.room.\(room.roomID)")
+                        .task { await model.loadMoreIfNeeded(current: room) }
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, showsFollowedLive ? 0 : 8)
+            .opacity(refresh.contentOpacity)
+            .allowsHitTesting(refresh.contentOpacity == 1)
+            pagination
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 8)
         }
     }
 
@@ -231,7 +223,6 @@ private struct LiveFeedPage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 10)
             .padding(.bottom, 8)
-            .background(Color(uiColor: .systemGroupedBackground))
             .accessibilityAddTraits(.isHeader)
     }
 
