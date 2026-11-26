@@ -92,7 +92,7 @@ final class CommentSpacingTests: XCTestCase {
         let replies = model.rowModel(for: comment, root: nil, showsReplies: true).previewReplies
         XCTAssertEqual(replies.count, 2)
         for reply in replies {
-            let view = CommentPreviewMessage(reply: reply, root: comment, actions: CommentRowActions(viewModel: model))
+            let view = CommentPreviewMessage(reply: reply, root: comment)
                 .environment(AccountStore(monitorNetwork: false))
             let host = UIHostingController(rootView: view)
             host.safeAreaRegions = []

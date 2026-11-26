@@ -71,8 +71,13 @@ final class ResolvedMenuMarkerView<ID: Hashable>: UIView {
     var id: ID?
     weak var registry: ResolvedMenuRegistry<ID>?
 
+    var cornerRadius = VideoListCardLayout.cardCornerRadius
+    var previewBackground: UIColor = .secondarySystemGroupedBackground
+
+    var makeDarkPreview: (() -> UIView)?
+
     var cardPath: UIBezierPath {
-        let shape = RoundedRectangle(cornerRadius: VideoListCardLayout.cardCornerRadius, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         return UIBezierPath(cgPath: shape.path(in: bounds).cgPath)
     }
 }
@@ -80,6 +85,11 @@ final class ResolvedMenuMarkerView<ID: Hashable>: UIView {
 struct ResolvedMenuMarker<ID: Hashable>: UIViewRepresentable {
     var id: ID
     var registry: ResolvedMenuRegistry<ID>
+
+    var cornerRadius = VideoListCardLayout.cardCornerRadius
+    var previewBackground: UIColor = .secondarySystemGroupedBackground
+
+    var darkPreview: ((EnvironmentValues) -> UIView)?
 
     func makeUIView(context: Context) -> ResolvedMenuMarkerView<ID> {
         let view = ResolvedMenuMarkerView<ID>()
@@ -91,6 +101,13 @@ struct ResolvedMenuMarker<ID: Hashable>: UIViewRepresentable {
 
     func updateUIView(_ uiView: ResolvedMenuMarkerView<ID>, context: Context) {
         uiView.id = id
+        if uiView.registry !== registry { uiView.registry?.untrack(uiView) }
+        uiView.cornerRadius = cornerRadius
+        uiView.previewBackground = previewBackground
+        uiView.makeDarkPreview = darkPreview.map { make in
+            let values = context.environment
+            return { make(values) }
+        }
         uiView.registry = registry
         registry.track(uiView)
     }
@@ -200,9 +217,20 @@ struct ResolvedMenuInstaller<ID: Hashable>: UIViewRepresentable {
                 return preview.retargetedPreview(with: target)
             }
             // SwiftUI 卡面和透明标记可能不在同一层。只截取标记覆盖的内容，卡间距和勾选框留在原位。
-            guard let snapshot = scroll.resizableSnapshotView(from: rect, afterScreenUpdates: false, withCapInsets: .zero) else { return nil }
+            let snapshot: UIView
+            if marker.traitCollection.userInterfaceStyle == .dark, let make = marker.makeDarkPreview {
+                snapshot = make()
+                snapshot.overrideUserInterfaceStyle = .dark
+                snapshot.traitOverrides.userInterfaceLevel = .elevated
+                snapshot.frame = marker.bounds
+                snapshot.layoutIfNeeded()
+            } else {
+                guard let captured = scroll.resizableSnapshotView(from: rect, afterScreenUpdates: false, withCapInsets: .zero)
+                else { return nil }
+                snapshot = captured
+            }
             let parameters = UIPreviewParameters()
-            parameters.backgroundColor = .secondarySystemGroupedBackground
+            parameters.backgroundColor = marker.previewBackground
             parameters.visiblePath = marker.cardPath
             let preview = UITargetedPreview(view: snapshot, parameters: parameters, target: target)
             token.preview = preview

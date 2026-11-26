@@ -100,6 +100,40 @@ final class CommentFeatureLayoutTests: XCTestCase {
         XCTAssertEqual(scroll.contentOffset.y, offset, accuracy: 1)
     }
 
+    func testRootAndReplyResolveSeparateCopyActionsInOneListMenu() async throws {
+        let root = try comment(1, replies: true)
+        let model = CommentsViewModel(oid: 1, type: 1, fetchComments: { _, _, _, _ in
+            .init(page: .init(num: 1, size: 20, count: 1), replies: [root])
+        })
+        await model.loadInitial()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: AuthorNavigationFixture(model: model, probe: AuthorNavigationProbe())
+            .environment(AccountStore(monitorNetwork: false)).environment(ActionFeedback()).environment(NowPlayingStore()))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        try await TestWindowTransition.wait(for: host)
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(150))
+        let list = try XCTUnwrap(descendants(host.view).compactMap { $0 as? UICollectionView }.first { $0.refreshControl != nil })
+        let interactions = list.interactions.compactMap { $0 as? UIContextMenuInteraction }.filter {
+            $0.delegate is ResolvedMenuInstaller<CommentMenuTarget>.Coordinator
+        }
+        XCTAssertEqual(interactions.count, 1)
+        let coordinator = try XCTUnwrap(interactions.first?.delegate as? ResolvedMenuInstaller<CommentMenuTarget>.Coordinator)
+        let markers = descendants(list).compactMap { $0 as? ResolvedMenuMarkerView<CommentMenuTarget> }
+        for comment in [root, try XCTUnwrap(root.replies?.first)] {
+            let marker = try XCTUnwrap(markers.first { $0.id?.comment.id == comment.id })
+            let point = marker.convert(CGPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: list)
+            let target = try XCTUnwrap(coordinator.registry.marker(at: point, in: list)?.id)
+            XCTAssertEqual(target.comment.id, comment.id)
+            let actions = coordinator.registry.menu(target).children.compactMap { $0 as? UIAction }
+            XCTAssertEqual(actions.map(\.accessibilityIdentifier), ["comment.copy.\(comment.id)"])
+        }
+    }
+
     private func descendants(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(descendants) }
     private func controllers(_ controller: UIViewController) -> [UIViewController] {
         [controller] + controller.children.flatMap(controllers)

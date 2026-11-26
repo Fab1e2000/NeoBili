@@ -19,9 +19,20 @@ struct TappableImageGrid: View {
         if images.count == 1, let single = images.first {
             thumbnail(at: 0, url: single.url, aspectRatio: single.aspectRatio)
         } else {
-            LazyVGrid(columns: columns, spacing: spacing) {
-                ForEach(Array(images.prefix(displayLimit).enumerated()), id: \.offset) { position, image in
-                    thumbnail(at: position, url: image.url, aspectRatio: 1)
+            let count = min(max(0, displayLimit), images.count)
+            let columns = images.count == 2 || images.count == 4 ? 2 : 3
+            Grid(horizontalSpacing: spacing, verticalSpacing: spacing) {
+                ForEach(0..<((count + columns - 1) / columns), id: \.self) { row in
+                    GridRow {
+                        ForEach(0..<columns, id: \.self) { column in
+                            let index = row * columns + column
+                            if index < count {
+                                thumbnail(at: index, url: images[index].url, aspectRatio: 1)
+                            } else {
+                                Color.clear.aspectRatio(1, contentMode: .fit).accessibilityHidden(true)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -37,12 +48,6 @@ struct TappableImageGrid: View {
             }
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(String(localized: "第 \(position + 1) 张图片，共 \(images.count) 张"))
-    }
-
-    /// 和官方一致：2 张、4 张排两列，其余排三列。
-    private var columns: [GridItem] {
-        let count = images.count == 2 || images.count == 4 ? 2 : 3
-        return Array(repeating: GridItem(.flexible(), spacing: spacing), count: count)
     }
 }
 

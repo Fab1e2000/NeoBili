@@ -56,7 +56,7 @@ final class CommentPerformanceTests: XCTestCase {
         XCTAssertEqual(CommentEmoteSegments.prepared(message: unmatched, emotes: ["[doge]": small]), [.text(unmatched)])
     }
 
-    func testBoundedTextProbeMatchesFullMeasurement() throws {
+    func testCachedOverflowMatchesFullMeasurement() throws {
         let url = URL(string: "https://example.invalid/comment-measure.png")!
         let image = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32)).image { context in
             UIColor.red.setFill()
@@ -83,13 +83,33 @@ final class CommentPerformanceTests: XCTestCase {
                         return try XCTUnwrap(renderer.cgImage).height
                     }
                     let collapsed = try height(6)
-                    let bounded = try height(7)
+                    let metrics = CommentMessageMetrics(message: message, emotes: emotes, links: [:], size: size,
+                                                        scale: 2, includesTimes: false, bold: false)
                     let full = try height(nil)
-                    XCTAssertEqual(bounded > collapsed + 1, full > collapsed + 1,
+                    XCTAssertEqual(metrics.canExpand(at: width), full > collapsed + 1,
                                    "宽度 \(width)、字号 \(size)：\(message.prefix(30))")
                 }
             }
         }
+    }
+
+    func testBodyHeightCacheSeparatesWidthExpansionAndTextSize() {
+        let text = "测试高度缓存[图] \(UUID())"
+        var calls = 0
+        func measure(_ size: DynamicTypeSize, _ width: CGFloat, _ expanded: Bool) -> CGFloat {
+            let metrics = CommentMessageMetrics(message: text, emotes: [
+                "[图]": CommentEmote(url: "https://example.invalid/a.png", meta: .init(size: 2))
+            ], links: [:], size: size, scale: 3, includesTimes: true, bold: false)
+            return metrics.bodyHeight(width: width, expanded: expanded) {
+                calls += 1
+                return CGFloat(calls)
+            }
+        }
+        XCTAssertEqual(measure(.large, 235, false), measure(.large, 235, false))
+        XCTAssertNotEqual(measure(.large, 235, false), measure(.large, 235, true))
+        XCTAssertNotEqual(measure(.large, 235, false), measure(.large, 236, false))
+        XCTAssertNotEqual(measure(.large, 235, false), measure(.accessibility3, 235, false))
+        XCTAssertEqual(calls, 4)
     }
 
     func testRootPaginationDeduplicatesSubmissionsAndIncomingPages() async throws {
@@ -150,7 +170,6 @@ final class CommentPerformanceTests: XCTestCase {
     func testProbeFreeShortTextMatchesUnrestrictedLayout() throws {
         for message in ["简短评论", "Short words", "宽字\r\n再来一行", "回看 02：35"] {
             let comment = try comment(1, message: message)
-            XCTAssertTrue(ExpandableCommentMessage.canTryUnwrappedLayout(comment))
             for size in [DynamicTypeSize.large, .accessibility5] {
                 let row = ExpandableCommentMessage(comment: comment, isExpanded: false) {}
                     .frame(width: 390).environment(\.dynamicTypeSize, size)
@@ -161,13 +180,13 @@ final class CommentPerformanceTests: XCTestCase {
             }
         }
         let sevenLines = try comment(1, message: Array(repeating: "宽", count: 7).joined(separator: "\u{2028}"))
-        XCTAssertFalse(ExpandableCommentMessage.canTryUnwrappedLayout(sevenLines))
+        XCTAssertTrue(CommentMessageMetrics(message: sevenLines.message, emotes: [:], links: [:], size: .large,
+                                            scale: 2, includesTimes: false, bold: false).canExpand(at: 390))
 
         // The candidate may fit on a large screen, but must still wrap and
         // truncate at accessibility sizes on a narrow proposal.
         for message in [String(repeating: "W", count: 48), String(repeating: "宽", count: 48)] {
             let longWord = try comment(1, message: message)
-            XCTAssertTrue(ExpandableCommentMessage.canTryUnwrappedLayout(longWord))
             let row = ExpandableCommentMessage(comment: longWord, isExpanded: false) {}
                 .frame(width: 100).environment(\.dynamicTypeSize, .accessibility5)
             let full = CommentEmoteText(message: message, emotes: [:], font: .app(.subheadline), textStyle: .subheadline)

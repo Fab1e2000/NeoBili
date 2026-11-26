@@ -111,8 +111,14 @@ final class EmotePipelineTests: XCTestCase {
         let rendered = try XCTUnwrap(store.image(for: url, height: height, scale: scale))
         let bitmap = try XCTUnwrap(rendered.cgImage)
         XCTAssertLessThanOrEqual(bitmap.bytesPerRow * bitmap.height, 32 * 1024 * 1024)
-        XCTAssertLessThan(rendered.size.height, height)
-        XCTAssertEqual(rendered.size.width / rendered.size.height, size.width / size.height, accuracy: 1)
+        XCTAssertEqual(rendered.size, CGSize(width: height, height: height))
+        var pixels = [UInt8](repeating: 0, count: bitmap.width * bitmap.height * 4)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: bitmap.width, height: bitmap.height,
+            bitsPerComponent: 8, bytesPerRow: bitmap.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(bitmap, in: CGRect(x: 0, y: 0, width: bitmap.width, height: bitmap.height))
+        let filled = (0..<bitmap.height).filter { pixels[($0 * bitmap.width + bitmap.width / 2) * 4 + 3] > 127 }
+        XCTAssertEqual(CGFloat(filled.count), CGFloat(bitmap.width) * size.height / size.width, accuracy: 1)
         XCTAssertTrue(store.image(for: url, height: height, scale: scale) === rendered)
     }
 

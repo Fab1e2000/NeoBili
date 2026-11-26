@@ -3,11 +3,22 @@ import SwiftUI
 import UIKit
 
 /// Shared geometry only. Each native list retains its own scroll position and clock.
-struct VideoScrollContext {
-    let minimumContentHeight: CGFloat
-    let reservation: CGFloat
+@Observable final class VideoScrollContext {
+    var minimumContentHeight: CGFloat
+    var reservation: CGFloat
+    var enabled = true
     let distance: @MainActor () -> CGFloat
-    let isActive: @MainActor (VideoPageSection) -> Bool
+    private let selected: @MainActor (VideoPageSection) -> Bool
+
+    init(minimumContentHeight: CGFloat, reservation: CGFloat, distance: @escaping @MainActor () -> CGFloat,
+         isActive: @escaping @MainActor (VideoPageSection) -> Bool) {
+        self.minimumContentHeight = minimumContentHeight
+        self.reservation = reservation
+        self.distance = distance
+        self.selected = isActive
+    }
+
+    @MainActor func isActive(_ page: VideoPageSection) -> Bool { enabled && selected(page) }
 
     @MainActor var indicatorTopInset: CGFloat { max(0, reservation - distance()) }
 }
@@ -56,18 +67,26 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
         private(set) var readingOffset: CGFloat = 0
 
         func configure(_ geometry: VideoScrollContext?, page: VideoPageSection, ownsInsets: Bool) {
+            guard self.geometry !== geometry || self.page != page || self.ownsInsets != ownsInsets else { return }
+            setNeedsUpdateProperties()
             self.geometry = geometry; self.page = page; self.ownsInsets = ownsInsets
             synchronize()
         }
         override func didMoveToWindow() { super.didMoveToWindow(); attach() }
         override func didMoveToSuperview() { super.didMoveToSuperview(); attach() }
+        // UIKit tracks observable reads in updateProperties. Reconcile external
+        // playback changes and page switches without updating either list's data.
+        override func updateProperties() {
+            super.updateProperties()
+            synchronize()
+        }
         override func layoutSubviews() { super.layoutSubviews(); attach() }
 
         func attach() {
             var ancestor = superview
             while let view = ancestor {
                 if let target = view as? UIScrollView {
-                    guard scroll !== target else { synchronize(); return }
+                    guard scroll !== target else { return }
                     detach()
                     scroll = target; originalInsets = target.contentInset
                     originalIndicatorTop = target.verticalScrollIndicatorInsets.top
@@ -188,84 +207,22 @@ struct PausedVideoCollapseScroll: UIViewRepresentable {
     }
 }
 
-/// Fixed list canvas inside a persistent native viewport. UIKit rejects touches
-/// outside the visible bounds even on runtimes where SwiftUI clipping only draws.
+/// A native clipping viewport with no scrolling axis of its own. Its content
+/// occupies exactly one viewport; the taller page canvas overflows upwards.
+/// The inner scroll views keep their own gestures, environments and offsets.
 struct VideoScrollCanvas<Content: View>: View {
     let height: CGFloat
     let content: Content
+
     var body: some View {
-        GeometryReader { geometry in
-            VideoCanvasViewport(content: content, canvasSize: CGSize(width: geometry.size.width, height: height))
-                .frame(width: geometry.size.width, height: geometry.size.height)
+        ScrollView([]) {
+            Color.clear
+                .containerRelativeFrame([.horizontal, .vertical])
+                .overlay(alignment: .bottom) {
+                    content.frame(height: height)
+                }
+                .contentShape(.interaction, Rectangle())
         }
-    }
-}
-
-@MainActor @Observable
-private final class VideoCanvasState<Content: View> {
-    var content: Content
-    var values: EnvironmentValues
-    var size: CGSize
-    init(content: Content, values: EnvironmentValues, size: CGSize) {
-        self.content = content; self.values = values; self.size = size
-    }
-}
-
-private struct VideoCanvasContent<Content: View>: View {
-    let state: VideoCanvasState<Content>
-    var body: some View {
-        state.content.environment(\.self, state.values).frame(width: state.size.width, height: state.size.height)
-    }
-}
-
-private struct VideoCanvasViewport<Content: View>: UIViewControllerRepresentable {
-    let content: Content
-    let canvasSize: CGSize
-    func makeUIViewController(context: Context) -> CanvasController<Content> {
-        CanvasController(content: content, values: context.environment, size: canvasSize)
-    }
-    func updateUIViewController(_ controller: CanvasController<Content>, context: Context) {
-        withTransaction(context.transaction) {
-            controller.state.content = content
-            controller.state.values = context.environment
-            if controller.state.size != canvasSize { controller.state.size = canvasSize }
-        }
-        controller.canvasSize = canvasSize
-        controller.layoutCanvas()
-    }
-}
-
-private final class CanvasController<Content: View>: UIViewController {
-    let host: UIHostingController<VideoCanvasContent<Content>>
-    let state: VideoCanvasState<Content>
-    var canvasSize: CGSize
-    init(content: Content, values: EnvironmentValues, size: CGSize) {
-        let state = VideoCanvasState(content: content, values: values, size: size)
-        self.state = state
-        host = UIHostingController(rootView: VideoCanvasContent(state: state))
-        canvasSize = size
-        super.init(nibName: nil, bundle: nil)
-        host.safeAreaRegions = []
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .clear
-        view.clipsToBounds = true
-        addChild(host)
-        host.view.backgroundColor = .clear
-        view.addSubview(host.view)
-        host.didMove(toParent: self)
-        layoutCanvas()
-    }
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        layoutCanvas()
-    }
-    func layoutCanvas() {
-        guard isViewLoaded else { return }
-        let frame = CGRect(x: 0, y: view.bounds.height - canvasSize.height,
-                           width: canvasSize.width, height: canvasSize.height)
-        if host.view.frame != frame { host.view.frame = frame }
+        .contentMargins(0, for: .scrollContent)
     }
 }
