@@ -753,6 +753,7 @@ struct VideoSectionPager<Description: View, Comments: View>: View {
             }
             .scrollTargetLayout()
         }
+        .defaultScrollAnchor(showsComments && selection == .comments ? .trailing : .leading, for: .initialOffset)
         .scrollPosition(id: Binding(get: { selection }, set: {
             if let section = $0, section != selection { selection = section }
         }))

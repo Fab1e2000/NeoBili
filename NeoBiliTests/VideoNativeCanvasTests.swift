@@ -104,6 +104,10 @@ final class VideoNativeCanvasTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(300))
         window.layoutIfNeeded()
         let scroll = try XCTUnwrap(descendants(host.view).compactMap { $0 as? UICollectionView }.first { $0.refreshControl != nil })
+        let pager = try XCTUnwrap(descendants(host.view).compactMap { $0 as? UIScrollView }.first {
+            scroll.isDescendant(of: $0) && $0.contentSize.width > $0.bounds.width * 1.5
+        })
+        XCTAssertEqual(pager.contentOffset.x, pager.bounds.width, accuracy: 1)
         let canvasOrigin = scroll.convert(scroll.bounds.origin, to: window).y
         for distance: CGFloat in [0, 498, 333, 0] {
             model.distance = distance
