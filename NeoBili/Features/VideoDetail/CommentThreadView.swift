@@ -100,6 +100,7 @@ struct CommentThreadView: View {
 
                     footer
                 }
+                .commentMenuHost(viewModel: viewModel)
                 .removalFill(ids: replies.map(\.id), enabled: cardAnimations && !reduceMotion)
             }
             .scrollEdgeEffectStyle(.soft, for: .top)

@@ -23,7 +23,7 @@ struct CommentCollectionView: UIViewRepresentable {
         let coordinator = context.coordinator
         let layout = RemovalFillLayout { [weak coordinator] _, _ in
             let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1),
-                                              heightDimension: .estimated(220))
+                                              heightDimension: .estimated(120))
             let item = NSCollectionLayoutItem(layoutSize: size)
             let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [item])
             let section = NSCollectionLayoutSection(group: group)
@@ -76,6 +76,8 @@ struct CommentCollectionView: UIViewRepresentable {
             let tasks: [Task<Void, Never>]
         }
         private var prefetches: [IndexPath: Prefetch] = [:]
+        private var menuCoordinator: ResolvedMenuInstaller<CommentMenuTarget>.Coordinator?
+        private let menuHost = ResolvedMenuInstaller<CommentMenuTarget>.Host()
         var reservation: CGFloat = 0
         private var minimumContentHeight: CGFloat = 0
         let collapse = PausedVideoCollapseScroll.Observer()
@@ -93,6 +95,8 @@ struct CommentCollectionView: UIViewRepresentable {
         func attach(_ view: UICollectionView) {
             collectionView = view
             view.refreshControl = refreshControl
+            menuHost.isUserInteractionEnabled = false
+            view.addSubview(menuHost)
             view.addSubview(collapse)
             collapse.isUserInteractionEnabled = false
             let registration = UICollectionView.CellRegistration<UICollectionViewCell, ItemID> { [weak self] cell, _, id in
@@ -106,17 +110,30 @@ struct CommentCollectionView: UIViewRepresentable {
         func detach() {
             prefetches.values.forEach { $0.tasks.forEach { $0.cancel() } }
             prefetches.removeAll()
+            menuCoordinator?.detach()
             collapse.detach()
         }
 
         func update(worker: CommentCollectionView, environment: EnvironmentValues) {
             let modelChanged = self.worker.viewModel !== worker.viewModel
+            let previous = self.environment
+            let appearanceChanged = previous.dynamicTypeSize != environment.dynamicTypeSize
+                || previous.displayScale != environment.displayScale || previous.colorScheme != environment.colorScheme
+                || previous.legibilityWeight != environment.legibilityWeight || previous.locale != environment.locale
+                || previous.layoutDirection != environment.layoutDirection || previous.appThemeColor != environment.appThemeColor
+                || previous.commentMenuRegistry !== environment.commentMenuRegistry
             self.worker = worker
             self.environment = environment
             if modelChanged {
                 actions = CommentRowActions(viewModel: worker.viewModel)
                 prefetches.values.forEach { $0.tasks.forEach { $0.cancel() } }
                 prefetches.removeAll()
+            }
+            if let registry = environment.commentMenuRegistry?.markers, menuCoordinator?.registry !== registry {
+                menuCoordinator?.detach()
+                menuCoordinator = .init(registry: registry)
+                menuHost.coordinator = menuCoordinator
+                menuHost.attachIfNeeded()
             }
             let geometry = environment.videoScrollContext
             minimumContentHeight = geometry?.minimumContentHeight ?? 0
@@ -125,7 +142,7 @@ struct CommentCollectionView: UIViewRepresentable {
                 reservation = nextReservation
                 collectionView?.collectionViewLayout.invalidateLayout()
             }
-            apply(rows: worker.rows, revision: worker.rowsRevision, modelChanged: modelChanged)
+            apply(rows: worker.rows, revision: worker.rowsRevision, reconfigureAll: modelChanged || appearanceChanged)
             updateMinimumHeightInset()
             configureCollapse()
             guard let collectionView else { return }
@@ -136,8 +153,8 @@ struct CommentCollectionView: UIViewRepresentable {
             }
         }
 
-        private func apply(rows: [CommentRowModel], revision: Int, modelChanged: Bool) {
-            guard let dataSource, modelChanged || appliedRowsRevision != revision else { return }
+        private func apply(rows: [CommentRowModel], revision: Int, reconfigureAll: Bool) {
+            guard let dataSource, reconfigureAll || appliedRowsRevision != revision else { return }
             let hadSnapshot = appliedRowsRevision != nil
             appliedRowsRevision = revision
             let previousRows = rowsByID
@@ -148,13 +165,13 @@ struct CommentCollectionView: UIViewRepresentable {
             commentIDs.reserveCapacity(rows.count)
             var ids: [ItemID] = [.header]
             ids.reserveCapacity(rows.count + 2)
-            var changed: [ItemID] = modelChanged && hadSnapshot ? [.header, .footer] : []
+            var changed: [ItemID] = reconfigureAll && hadSnapshot ? [.header, .footer] : []
             for row in rows {
                 let id = row.comment.id
                 newByID[id] = row
                 commentIDs.append(id)
                 ids.append(.comment(id))
-                if let previous = previousRows[id], modelChanged || previous != row { changed.append(.comment(id)) }
+                if let previous = previousRows[id], reconfigureAll || previous != row { changed.append(.comment(id)) }
             }
             ids.append(.footer)
             rowsByID = newByID
@@ -171,7 +188,7 @@ struct CommentCollectionView: UIViewRepresentable {
             snapshot.appendItems(ids, toSection: 0)
             // 新出现的行由 cell 配置自然补齐；已有行只有快照变化时才重新配置。
             if !changed.isEmpty { snapshot.reconfigureItems(changed) }
-            let animate = worker.animatesRemoval && !modelChanged && !previousIDs.isEmpty
+            let animate = worker.animatesRemoval && !reconfigureAll && !previousIDs.isEmpty
             let removal = animate && RemovalFill.isRemovalOnly(previousIDs, appliedCommentIDs)
             let nested = animate && previousIDs == appliedCommentIDs && Self.removedPreviewReplies(from: previousRows, to: rows)
             if removal || nested,
@@ -309,7 +326,16 @@ struct CommentCollectionView: UIViewRepresentable {
                       case .comment(let commentID) = id,
                       prefetches[indexPath] == nil,
                       let comment = rowsByID[commentID]?.comment else { continue }
-                var tasks: [Task<Void, Never>] = []
+                let width = collectionView.bounds.width - 2 * CommentLayout.pageHorizontalInset
+                    - CommentLayout.avatarSize - 2 * CommentLayout.avatarTextSpacing
+                let metrics = CommentMessageMetrics(message: comment.message, emotes: comment.emotes,
+                    links: comment.content.jumpURLs, size: typeSize, scale: emoteScale,
+                    includesTimes: environment.commentTimeJump != nil, bold: environment.legibilityWeight == .bold,
+                    locale: environment.locale, direction: environment.layoutDirection)
+                var tasks: [Task<Void, Never>] = [Task.detached(priority: .utility) {
+                    guard !Task.isCancelled else { return }
+                    _ = metrics.canExpand(at: width)
+                }]
                 if let task = BiliImageLoader.prefetch(comment.member.secureAvatarURL,
                                                        pointSize: CGSize(width: CommentLayout.avatarSize,
                                                                          height: CommentLayout.avatarSize),
@@ -322,7 +348,7 @@ struct CommentCollectionView: UIViewRepresentable {
                                                        typeSize: typeSize, scale: emoteScale)
                     })
                 }
-                if !tasks.isEmpty { prefetches[indexPath] = Prefetch(id: id, tasks: tasks) }
+                prefetches[indexPath] = Prefetch(id: id, tasks: tasks)
             }
         }
 

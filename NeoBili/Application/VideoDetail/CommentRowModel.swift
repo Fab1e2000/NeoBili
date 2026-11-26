@@ -38,20 +38,4 @@ final class CommentRowActions {
     func toggleExpansion(_ comment: Comment) {
         viewModel.toggleExpanded(comment)
     }
-
-    func copyMessage(_ message: String) {
-        viewModel.actionMessage = String(localized: "已复制全文")
-    }
-
-    func canDelete(_ comment: Comment, accountID: Int?, isLoggedIn: Bool) -> Bool {
-        viewModel.canDelete(comment, accountID: accountID, isLoggedIn: isLoggedIn)
-    }
-
-    func deletion(for comment: Comment, root: Comment?, accountID: Int?, isLoggedIn: Bool) -> CommentsViewModel.Deletion? {
-        viewModel.deletion(for: comment, root: root, accountID: accountID, isLoggedIn: isLoggedIn)
-    }
-
-    func delete(_ deletion: CommentsViewModel.Deletion, accountID: Int?, isLoggedIn: Bool) {
-        Task { await viewModel.delete(deletion, accountID: accountID, isLoggedIn: isLoggedIn) }
-    }
 }

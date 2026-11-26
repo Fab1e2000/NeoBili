@@ -77,7 +77,7 @@ final class CommentEmoteStore {
         let size: RenderSize
     }
 
-    /// 返回已按目标高度缩放的表情。未就绪时调用方显示原文。
+    /// 返回已按目标高度缩放的表情。未就绪时调用方使用同尺寸占位图。
     func image(for url: URL, height: CGFloat, scale: CGFloat = 1) -> UIImage? {
         let request = RenderRequest(url: url, size: RenderSize(height: height, scale: scale))
         if let cached = scaledCache.value(for: request) { return cached }
@@ -138,7 +138,7 @@ final class CommentEmoteStore {
                 originalsCache.insert(prepared, for: url, cost: Self.pixelCost(prepared))
             }
             for size in sizes { try await prepareRender(RenderRequest(url: url, size: size), from: prepared) }
-        } catch { /* Keep the textual emote until a later appearance can retry. */ }
+        } catch { /* Keep the fixed placeholder until a later appearance can retry. */ }
     }
 
     private func prepareRender(_ request: RenderRequest, from image: UIImage) async throws {
@@ -244,26 +244,16 @@ final class CommentEmoteStore {
 
     /// `Text` 里的图片是按点尺寸原样画的，没法再 resize，所以在这里就缩到位。
     private nonisolated static func scaled(_ image: UIImage, toHeight height: CGFloat, scale: CGFloat) -> UIImage {
-        let width = height * image.size.width / image.size.height
-        let pixelWidth = width * scale
-        let pixelHeight = height * scale
-        let maximumSide: CGFloat = 4096
-        // Standard RGBA uses four bytes per pixel. Leave room for row
-        // alignment and pixel rounding before allocating the canvas.
-        let rowPaddingAllowance: CGFloat = 256
-        let pixelBudget = (CGFloat(scaledByteBudget) - rowPaddingAllowance * maximumSide) / 4
-        let reduction = min(1, maximumSide / max(pixelWidth, pixelHeight),
-                            sqrt(pixelBudget / (ceil(pixelWidth) * ceil(pixelHeight))))
-        let size = reduction == 1 ? CGSize(width: width, height: height) : CGSize(
-            width: max(1, floor(pixelWidth * reduction)) / scale,
-            height: max(1, floor(pixelHeight * reduction)) / scale
-        )
+        let size = CGSize(width: height, height: height)
+        let ratio = height / max(image.size.width, image.size.height)
+        let fitted = CGSize(width: image.size.width * ratio, height: image.size.height * ratio)
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = scale
         format.preferredRange = .standard
         format.opaque = false
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: size))
+            image.draw(in: CGRect(x: (height - fitted.width) / 2, y: (height - fitted.height) / 2,
+                                  width: fitted.width, height: fitted.height))
         }
     }
 }
@@ -271,8 +261,7 @@ final class CommentEmoteStore {
 /// 一段可能带表情的评论正文。
 ///
 /// 正文里的表情是 `[doge]` 这样的字面量。这里把它按表情表切成若干段，
-/// 图片就绪的换成图，没就绪或不认识的仍按原文显示——所以图还没下载完的时候
-/// 读起来也不会缺字。
+/// 已知表情使用同尺寸的占位图和位图，未知表情保留原文。
 struct CommentEmoteText: View {
     let message: String
     let emotes: [String: CommentEmote]
@@ -286,7 +275,7 @@ struct CommentEmoteText: View {
     var prefixBadge: Image? = nil
     var prefixSuffix: String = ""
     var jumpURLs: [String: CommentJumpLink] = [:]
-    /// 隐藏的高度探针共享可见正文的图片请求，仅观察已加载的表情。
+    /// 静态渲染与测试可以只读已有缓存。
     var loadsEmotes = true
 
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -368,16 +357,35 @@ struct CommentEmoteText: View {
                 return partial + Text(CommentLinks.attributed(value, metadata: jumpURLs, includesTimes: timeJump != nil))
             case .emote(let literal, let emote):
                 guard let url = emote.secureURL, let font = scaledFont else { return partial + Text(literal) }
-                guard let image = store.image(for: url, height: Self.emoteHeight(for: emote, font: font), scale: displayScale) else {
-                    hasMissingImages = true
-                    // 还没下载好就先显示原来那段文字，不留空洞。
-                    return partial + Text(literal)
-                }
-                // 往下沉一点，见 `emoteBaselineOffset`。
+                let height = Self.emoteHeight(for: emote, font: font)
+                let bitmap = store.image(for: url, height: height, scale: displayScale)
+                if bitmap == nil { hasMissingImages = true }
+                let image = bitmap ?? Self.placeholder(height: height, scale: displayScale)
                 return partial + Text(Image(uiImage: image)).baselineOffset(baseline)
             }
         }
         return (text, hasMissingImages)
+    }
+
+    private static let placeholders: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 64
+        return cache
+    }()
+
+    private static func placeholder(height: CGFloat, scale: CGFloat) -> UIImage {
+        let key = "\(height)|\(scale)" as NSString
+        if let cached = placeholders.object(forKey: key) { return cached }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        let size = CGSize(width: height, height: height)
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            UIColor.secondaryLabel.withAlphaComponent(0.18).setFill()
+            UIBezierPath(roundedRect: CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1),
+                         cornerRadius: height / 4).fill()
+        }
+        placeholders.setObject(image, forKey: key)
+        return image
     }
 
     /// 降部高度的取用比例。0 就是回到 SwiftUI 默认的基线对齐。
@@ -397,7 +405,7 @@ struct CommentEmoteText: View {
     /// 高度从 `UIFontMetrics` 按当前档位现算，不经过 `@ScaledMetric`——
     /// 后者不跟随本 App 注入的档位（文字在变、表情基准值不变），
     /// 表情大小会和文字脱节。
-    private static func emoteHeight(for emote: CommentEmote, font: UIFont) -> CGFloat {
+    nonisolated static func emoteHeight(for emote: CommentEmote, font: UIFont) -> CGFloat {
         if emote.heightMultiplier >= 2 {
             return (font.pointSize * emote.heightMultiplier).rounded()
         }
@@ -405,7 +413,7 @@ struct CommentEmoteText: View {
     }
 
     /// 当前档位下这套样式的实际字体。
-    private static func scaledFont(textStyle: Font.TextStyle, typeSize: DynamicTypeSize) -> UIFont {
+    nonisolated static func scaledFont(textStyle: Font.TextStyle, typeSize: DynamicTypeSize) -> UIFont {
         let category = Self.contentCategory(typeSize)
         let traits = UITraitCollection(preferredContentSizeCategory: category)
         let style: UIFont.TextStyle
@@ -421,7 +429,7 @@ struct CommentEmoteText: View {
     }
 
     /// 把 SwiftUI 的档位枚举翻成 UIKit 的内容大小分类。
-    private static func contentCategory(_ size: DynamicTypeSize) -> UIContentSizeCategory {
+    nonisolated private static func contentCategory(_ size: DynamicTypeSize) -> UIContentSizeCategory {
         switch size {
         case .xSmall: .extraSmall
         case .small: .small

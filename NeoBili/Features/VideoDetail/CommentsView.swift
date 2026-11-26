@@ -51,6 +51,8 @@ struct CommentsList: View {
                 loadError(message)
             }
         }
+        .environment(\.commentCardAnimations, cardAnimations)
+        .commentMenuHost(viewModel: viewModel)
         .removalFill(ids: rows.map(\.comment.id), enabled: cardAnimations && !reduceMotion)
         .commentThreadHost(viewModel: viewModel)
         .commentLinkHost()
@@ -98,6 +100,7 @@ struct CommentsView: View {
             canCollapse: canCollapse,
             animatesRemoval: cardAnimations && !reduceMotion
         )
+        .commentMenuHost(viewModel: viewModel, nativeList: true)
         .overlay {
             if viewModel.comments.isEmpty, !viewModel.isWaitingForFirstComments {
                 GeometryReader { proxy in
