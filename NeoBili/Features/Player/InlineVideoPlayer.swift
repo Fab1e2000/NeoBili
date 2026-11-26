@@ -17,6 +17,7 @@ struct InlineVideoPlayer: View {
     var onToggleCompact: (() -> Void)? = nil
     var isCompact = false
     var isDanmakuSuppressed = false
+    var expandedSurfaceHeight: CGFloat?
     var controlsSafeAreaInsets = EdgeInsets()
     var onDismiss: (() -> Void)? = nil
     var videoTitle = ""
@@ -48,8 +49,18 @@ struct InlineVideoPlayer: View {
             // 这里刻意不加 `.id(session)`：换 session 由 `PlayerSurface` 的容器
             // 自己接管（见 PlayerSurfaceContainerController）。用 id 强制重建
             // 反而会让 SwiftUI 拆掉正在渲染的那一层，出现有声音没画面。
-            PlayerSurface(session: viewModel.session)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            GeometryReader { viewport in
+                let size = viewport.size
+                let ratio = viewModel.displayAspectRatio
+                let height = !isFullScreen && ratio != nil ? expandedSurfaceHeight ?? size.height : size.height
+                let fittedHeight = ratio.flatMap { $0.isFinite && $0 > 0 ? min(height, size.width / $0) : nil }
+                let scale = fittedHeight.map { $0 > 0 ? min(1, size.height / $0) : 1 } ?? 1
+                PlayerSurface(session: viewModel.session)
+                    .frame(width: size.width, height: height)
+                    .scaleEffect(scale)
+                    .position(x: size.width / 2, y: size.height / 2)
+            }
+            .clipped()
 
             if let danmaku = viewModel.danmaku {
                 DanmakuView(controller: danmaku, isFullScreen: isFullScreen, isSuppressed: isDanmakuSuppressed)

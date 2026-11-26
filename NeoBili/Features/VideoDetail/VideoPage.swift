@@ -187,9 +187,7 @@ struct VideoPage: View {
 
     /// 视频页的完整内容：播放区、选项栏、简介与评论。
     private var videoPageRoot: some View {
-        @Bindable var store = store
-
-        return GeometryReader { geometry in
+        GeometryReader { geometry in
             // 竖屏播放区从顶部安全区下沿开始，避免画面进入屏幕圆角。
             // 把安全区还原为整屏尺寸，竖屏高度上限不会在进出全屏时因安全区变化而跳动。
             let layoutSize = CGSize(
@@ -215,7 +213,7 @@ struct VideoPage: View {
                     isFullScreen: isFullScreen,
                     size: CGSize(width: geometry.size.width, height: geometry.size.height)
                 ) { isVideoHidden in
-                    videoArea(isVideoHidden: isVideoHidden)
+                    videoArea(isVideoHidden: isVideoHidden, expandedHeight: layout.expandedHeight)
                 }
                 .background {
                     PlayerReturnGestureGuard(enabled: spacePath.isEmpty)
@@ -230,7 +228,7 @@ struct VideoPage: View {
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { detailErrorHeight = $0 }
                     }
                     VStack(spacing: 0) {
-                        VideoSectionBar(selection: $store.section,
+                        VideoSectionBar(selection: Binding(get: { store.section }, set: { store.section = $0 }),
                                         commentCount: store.commentsViewModel?.displayCount ?? viewModel?.detail?.stat.reply ?? 0,
                                         showsComments: store.offline == nil,
                                         onSendDanmaku: sendDanmakuAction)
@@ -239,14 +237,13 @@ struct VideoPage: View {
                         let canvasHeight = max(0, geometry.size.height + geometry.safeAreaInsets.bottom
                                                - layout.minimumHeight - sectionBarHeight
                                                - (store.player != nil && viewModel?.errorMessage != nil ? detailErrorHeight : 0))
-                        VideoScrollCanvas(height: canvasHeight, content: sectionPages
-                            .environment(\.commentBottomInset, geometry.safeAreaInsets.bottom)
-                            .environment(\.videoScrollContext, VideoScrollContext(
-                                minimumContentHeight: max(0, canvasHeight - (layout.expandedHeight - layout.minimumHeight)
-                                                          + layout.maximumDistance(for: collapsePhase)),
-                                reservation: layout.expandedHeight - layout.minimumHeight,
-                                distance: { collapseMotion.distance },
-                                isActive: { store.section == $0 && canInteractWithVideoCollapse })))
+                        VideoSectionCanvas(height: canvasHeight,
+                            minimumHeight: max(0, canvasHeight - (layout.expandedHeight - layout.minimumHeight)
+                                               + layout.maximumDistance(for: collapsePhase)),
+                            reservation: layout.expandedHeight - layout.minimumHeight,
+                            enabled: canInteractWithVideoCollapse, store: store, motion: collapseMotion) {
+                                sectionPages.environment(\.commentBottomInset, geometry.safeAreaInsets.bottom)
+                            }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(uiColor: .systemBackground))
@@ -348,7 +345,7 @@ struct VideoPage: View {
     }
 
     @ViewBuilder
-    private func videoArea(isVideoHidden: Bool) -> some View {
+    private func videoArea(isVideoHidden: Bool, expandedHeight: CGFloat) -> some View {
         if let player = store.player {
             InlineVideoPlayer(
                 viewModel: player,
@@ -360,6 +357,7 @@ struct VideoPage: View {
                 onToggleCompact: compactVideoAction,
                 isCompact: collapseMotion.distance > 0,
                 isDanmakuSuppressed: isVideoHidden,
+                expandedSurfaceHeight: expandedHeight,
                 controlsSafeAreaInsets: isFullScreen ? controlsSafeArea : EdgeInsets(),
                 onDismiss: store.goBack,
                 videoTitle: viewModel?.detail?.title ?? store.route?.title ?? "",
@@ -469,32 +467,8 @@ struct VideoPage: View {
     /// 简介和评论使用原生横向 ScrollView 分页，与选项栏共享选中状态。
     /// 容器不预留页码指示器区域，纵向滚动仍由各自列表持有。
     private var sectionPages: some View {
-        @Bindable var store = store
-
-        let position = Binding<VideoPageSection?>(
-            get: { store.section },
-            set: { if let newValue = $0 { store.section = newValue } }
-        )
-
-        return ScrollView(.horizontal) {
-            LazyHStack(spacing: 0) {
-                descriptionSection
-                    .frame(maxHeight: .infinity)
-                    .containerRelativeFrame(.horizontal)
-                    .id(VideoPageSection.description)
-
-                if store.offline == nil {
-                    commentsSection
-                        .frame(maxHeight: .infinity)
-                        .containerRelativeFrame(.horizontal)
-                        .id(VideoPageSection.comments)
-                }
-            }
-            .scrollTargetLayout()
-        }
-        .scrollPosition(id: position)
-        .scrollTargetBehavior(.paging)
-        .scrollIndicators(.hidden, axes: .horizontal)
+        VideoSectionPager(selection: Binding(get: { store.section }, set: { store.section = $0 }),
+                          showsComments: store.offline == nil, description: descriptionSection, comments: commentsSection)
     }
 
     @ViewBuilder
@@ -732,6 +706,59 @@ struct VideoPage: View {
             // 等实际横屏后再清除竖屏全屏标记，方向请求失败时仍保留完整播放器。
             OrientationController.setPlaybackOrientation(.landscape, owner: orientationOwner)
         }
+    }
+}
+
+private struct VideoSectionCanvas<Content: View>: View {
+    let height: CGFloat
+    let minimumHeight: CGFloat
+    let reservation: CGFloat
+    let enabled: Bool
+    let content: Content
+    private let context: VideoScrollContext
+
+    init(height: CGFloat, minimumHeight: CGFloat, reservation: CGFloat, enabled: Bool,
+         store: NowPlayingStore, motion: VideoCollapseMotion, @ViewBuilder content: () -> Content) {
+        self.height = height
+        self.minimumHeight = minimumHeight
+        self.reservation = reservation
+        self.enabled = enabled
+        self.content = content()
+        context = motion.scrollContext(store: store, minimumHeight: minimumHeight, reservation: reservation)
+    }
+
+    var body: some View {
+        VideoScrollCanvas(height: height, content: content.environment(\.videoScrollContext, context))
+            .onChange(of: enabled, initial: true) { _, value in context.enabled = value }
+            .onChange(of: minimumHeight, initial: true) { _, value in context.minimumContentHeight = value }
+            .onChange(of: reservation, initial: true) { _, value in context.reservation = value }
+    }
+}
+
+struct VideoSectionPager<Description: View, Comments: View>: View {
+    @Binding var selection: VideoPageSection
+    let showsComments: Bool
+    let description: Description
+    let comments: Comments
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 0) {
+                description.frame(maxHeight: .infinity).containerRelativeFrame(.horizontal)
+                    .id(VideoPageSection.description)
+                if showsComments {
+                    comments.frame(maxHeight: .infinity).containerRelativeFrame(.horizontal)
+                        .id(VideoPageSection.comments)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .defaultScrollAnchor(showsComments && selection == .comments ? .trailing : .leading, for: .initialOffset)
+        .scrollPosition(id: Binding(get: { selection }, set: {
+            if let section = $0, section != selection { selection = section }
+        }))
+        .scrollTargetBehavior(.paging)
+        .scrollIndicators(.hidden, axes: .horizontal)
     }
 }
 

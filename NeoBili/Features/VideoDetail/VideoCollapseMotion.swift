@@ -7,6 +7,15 @@ import SwiftUI
 final class VideoCollapseMotion {
     var distance: CGFloat = 0
 
+    @ObservationIgnored private var context: VideoScrollContext?
+    func scrollContext(store: NowPlayingStore, minimumHeight: CGFloat, reservation: CGFloat) -> VideoScrollContext {
+        if let context { return context }
+        let context = VideoScrollContext(minimumContentHeight: minimumHeight, reservation: reservation,
+            distance: { [weak self] in self?.distance ?? 0 }, isActive: { [weak store] in store?.section == $0 })
+        self.context = context
+        return context
+    }
+
     /// 当前布局下的实际折叠距离。布局刚变化、上一份布局还没更新的那一帧，
     /// 沿用旧布局换算可见高度，避免异步元数据与首帧不同拍时跳高。
     func resolvedDistance(layout: InlineVideoCollapseLayout,

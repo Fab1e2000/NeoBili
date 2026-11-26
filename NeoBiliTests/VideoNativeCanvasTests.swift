@@ -52,11 +52,18 @@ final class VideoNativeCanvasTests: XCTestCase {
         XCTAssertLessThan(horizontal.contentOffset.x, horizontal.bounds.width - 1)
         try await Task.sleep(for: .milliseconds(900))
         XCTAssertEqual(horizontal.contentOffset.x, horizontal.bounds.width, accuracy: 1)
+        model.section = .description
+        try await Task.sleep(for: .milliseconds(180))
+        XCTAssertTrue(vertical.isDescendant(of: horizontal), "Returning must keep the original scroll view")
+        XCTAssertEqual(horizontal.contentOffset.x, 0, accuracy: 1)
+        model.section = .comments
+        try await Task.sleep(for: .milliseconds(180))
         model.errorHeight = 96
         model.loadingComments = true
         try await Task.sleep(for: .milliseconds(100))
         let loading = try XCTUnwrap(descendants(host.view).compactMap { $0 as? UIScrollView }.first {
-            $0.contentSize.height > 400 && $0.contentSize.height < 1500
+            $0 !== horizontal && $0.isDescendant(of: horizontal)
+                && $0.contentSize.height > 400 && $0.contentSize.height < 1500
                 && $0.contentSize.width < $0.bounds.width + 1
         })
         let loadingSize = loading.bounds.size
@@ -96,9 +103,11 @@ final class VideoNativeCanvasTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
         try await Task.sleep(for: .milliseconds(300))
         window.layoutIfNeeded()
-        let scroll = try XCTUnwrap(descendants(host.view).compactMap { $0 as? UIScrollView }.first {
-            $0.contentSize.height > 1000 && $0.contentSize.width < $0.bounds.width + 1
+        let scroll = try XCTUnwrap(descendants(host.view).compactMap { $0 as? UICollectionView }.first { $0.refreshControl != nil })
+        let pager = try XCTUnwrap(descendants(host.view).compactMap { $0 as? UIScrollView }.first {
+            scroll.isDescendant(of: $0) && $0.contentSize.width > $0.bounds.width * 1.5
         })
+        XCTAssertEqual(pager.contentOffset.x, pager.bounds.width, accuracy: 1)
         let canvasOrigin = scroll.convert(scroll.bounds.origin, to: window).y
         for distance: CGFloat in [0, 498, 333, 0] {
             model.distance = distance
@@ -198,13 +207,9 @@ private struct NativeCanvasFixture: View {
         }.background(.black)
     }
     private var pages: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 0) {
-                page("简介", section: .description).id(VideoPageSection.description)
-                page("评论", section: .comments).id(VideoPageSection.comments)
-            }.scrollTargetLayout()
-        }.scrollPosition(id: Binding(get: { model.section }, set: { if let value = $0 { model.section = value } }))
-            .scrollTargetBehavior(.paging).scrollIndicators(.hidden, axes: .horizontal)
+        VideoSectionPager(selection: $model.section, showsComments: true,
+                          description: page("简介", section: .description),
+                          comments: page("评论", section: .comments))
     }
     private func page(_ name: String, section: VideoPageSection) -> some View {
         Group {

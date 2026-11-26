@@ -3,14 +3,20 @@ import SwiftUI
 import UIKit
 
 extension EnvironmentValues {
+    @Entry var commentMenuRegistry: CommentMenuRegistry?
+    @Entry var commentCardAnimations = CardAnimationSettings.defaultValue
     @Entry var openCommentAuthor: EnvironmentAction<CommentMember>? = nil
 }
 
 extension View {
     func commentAuthorHost() -> some View { modifier(CommentAuthorHost()) }
-    func commentActions(comment: Comment, root: Comment? = nil, surface: UIColor,
-                        isDeleting: Bool, actions: CommentRowActions) -> some View {
-        CommentActions(content: self, comment: comment, root: root, surface: surface, isDeleting: isDeleting, actions: actions)
+    func commentActions(comment: Comment, root: Comment?, surface: UIColor, isDeleting: Bool) -> some View {
+        CommentMenuSource(content: self, target: CommentMenuTarget(comment: comment, root: root, isDeleting: isDeleting),
+                          surface: surface)
+    }
+
+    func commentMenuHost(viewModel: CommentsViewModel, nativeList: Bool = false) -> some View {
+        modifier(CommentMenuHost(viewModel: viewModel, nativeList: nativeList))
     }
 }
 
@@ -31,64 +37,124 @@ private struct CommentAuthorHost: ViewModifier {
     }
 }
 
-private struct CommentActions<Content: View>: View {
-    let content: Content
+struct CommentMenuTarget: Hashable {
     let comment: Comment
     let root: Comment?
-    let surface: UIColor
     let isDeleting: Bool
-    let actions: CommentRowActions
-    @Environment(AccountStore.self) private var account
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var deletion: CommentsViewModel.Deletion?
-    @State private var sourceSize: CGSize?
+}
+
+struct CommentMenuCommand: Identifiable {
+    let id: String
+    let title: String
+    let symbol: String
+    var destructive = false
+    var disabled = false
+    let perform: () -> Void
+
+    @MainActor func action() -> UIAction {
+        var attributes: UIMenuElement.Attributes = destructive ? .destructive : []
+        if disabled { attributes.insert(.disabled) }
+        let action = UIAction(title: title, image: UIImage(systemName: symbol), attributes: attributes) { _ in perform() }
+        action.accessibilityIdentifier = id
+        return action
+    }
+}
+
+@MainActor @Observable final class CommentMenuRegistry {
+    let markers = ResolvedMenuRegistry<CommentMenuTarget>()
+    var commands: (CommentMenuTarget) -> [CommentMenuCommand] = { _ in [] }
+
+    init() {
+        markers.menu = { [weak self] target in
+            UIMenu(children: self?.commands(target).map { $0.action() } ?? [])
+        }
+    }
+}
+
+private struct CommentMenuSource<Content: View>: View {
+    let content: Content
+    let target: CommentMenuTarget
+    let surface: UIColor
+    @Environment(\.commentMenuRegistry) private var registry
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
-        let source = content
-            .background(Color(uiColor: surface), in: shape)
-            .contentShape(.interaction, Rectangle())
-            .contentShape(.contextMenuPreview, shape)
-        Group {
-            if colorScheme == .dark {
-                source
-                    .onGeometryChange(for: CGSize.self, of: { $0.size }) { sourceSize = $0 }
-                    .contextMenu { menuItems } preview: {
-                        let elevated = UIColor { [surface] traits in
+        content
+            .background(Color(uiColor: surface), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .background {
+                if let registry {
+                    ResolvedMenuMarker(id: target, registry: registry.markers, cornerRadius: 4, previewBackground: surface) { values in
+                        let elevated = UIColor { traits in
                             surface.resolvedColor(with: traits.modifyingTraits { $0.userInterfaceLevel = .elevated })
                         }
-                        content
-                            .frame(width: sourceSize?.width, height: sourceSize?.height, alignment: .topLeading)
-                            .background(Color(uiColor: elevated), in: shape)
+                        return UIHostingConfiguration {
+                            content.environment(\.self, values).background(Color(uiColor: elevated))
+                        }.margins(.all, 0).makeContentView()
                     }
-            } else {
-                source.contextMenu { menuItems }
+                }
             }
-        }
-        .alert("删除这条评论？", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }),
-               presenting: deletion) { target in
-            Button("取消", role: .cancel) {}
-            Button("删除", role: .destructive) {
-                actions.delete(target, accountID: account.accountID, isLoggedIn: account.isLoggedIn)
+            .accessibilityActions {
+                ForEach(registry?.commands(target) ?? []) { command in
+                    Button(command.title, action: command.perform)
+                        .disabled(command.disabled)
+                        .accessibilityIdentifier(command.id)
+                }
             }
-        } message: { _ in Text("删除后无法恢复。") }
-        .onChange(of: account.sessionID) { deletion = nil }
+    }
+}
+
+private struct CommentMenuHost: ViewModifier {
+    let viewModel: CommentsViewModel
+    let nativeList: Bool
+    @Environment(AccountStore.self) private var account
+    @State private var registry = CommentMenuRegistry()
+    private struct PendingDeletion {
+        let model: CommentsViewModel
+        let target: CommentsViewModel.Deletion
+        let accountSession: UUID
+    }
+    @State private var deletion: PendingDeletion?
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.commentMenuRegistry, registry)
+            .background {
+                if !nativeList { ResolvedMenuInstaller(registry: registry.markers, menu: registry.markers.menu) }
+            }
+            .onAppear { registry.commands = commands }
+            .onChange(of: ObjectIdentifier(viewModel)) {
+                deletion = nil
+                registry.commands = commands
+            }
+            .onDisappear { registry.commands = { _ in [] } }
+            .alert("删除这条评论？", isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }),
+                   presenting: deletion) { target in
+                Button("取消", role: .cancel) {}
+                Button("删除", role: .destructive) {
+                    guard target.model === viewModel, target.accountSession == account.sessionID else { return }
+                    Task { await target.model.delete(target.target, accountID: account.accountID, isLoggedIn: account.isLoggedIn) }
+                }
+            } message: { _ in Text("删除后无法恢复。") }
+            .onChange(of: account.sessionID) { deletion = nil }
     }
 
-    @ViewBuilder private var menuItems: some View {
-        Button("复制全文", systemImage: "doc.on.doc") {
+    private func commands(_ target: CommentMenuTarget) -> [CommentMenuCommand] {
+        let comment = target.comment
+        let copy = CommentMenuCommand(id: "comment.copy.\(comment.id)", title: String(localized: "复制全文"),
+                                      symbol: "doc.on.doc") {
             UIPasteboard.general.string = comment.message
-            actions.copyMessage(comment.message)
+            viewModel.actionMessage = String(localized: "已复制全文")
         }
-        .accessibilityIdentifier("comment.copy.\(comment.id)")
-        if actions.canDelete(comment, accountID: account.accountID, isLoggedIn: account.isLoggedIn) {
-            Button("删除评论", systemImage: "trash", role: .destructive) {
-                deletion = actions.deletion(for: comment, root: root,
-                                            accountID: account.accountID, isLoggedIn: account.isLoggedIn)
-            }
-            .disabled(isDeleting)
-            .accessibilityIdentifier("comment.delete.\(comment.id)")
+        guard viewModel.canDelete(comment, accountID: account.accountID, isLoggedIn: account.isLoggedIn)
+        else { return [copy] }
+        let session = account.sessionID
+        let remove = CommentMenuCommand(id: "comment.delete.\(comment.id)", title: String(localized: "删除评论"),
+                                        symbol: "trash", destructive: true, disabled: target.isDeleting) {
+            guard account.sessionID == session,
+                  let request = viewModel.deletion(for: comment, root: target.root, accountID: account.accountID,
+                                                   isLoggedIn: account.isLoggedIn) else { return }
+            deletion = PendingDeletion(model: viewModel, target: request, accountSession: session)
         }
+        return [copy, remove]
     }
 }
 
@@ -126,11 +192,11 @@ struct CommentUPBadge: View {
 
 struct CommentUPInteraction: View {
     let comment: Comment
+    @Environment(\.dynamicTypeSize) private var size
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { labels }
-            VStack(alignment: .leading, spacing: 4) { labels }
-        }
+        let layout = size.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                                              : AnyLayout(HStackLayout(spacing: 8))
+        layout { labels }
         .font(.app(.caption2)).foregroundStyle(.secondary)
     }
     @ViewBuilder private var labels: some View {

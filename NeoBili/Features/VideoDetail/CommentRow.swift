@@ -48,7 +48,7 @@ struct CommentRow: View, Equatable {
                     actions.toggleExpansion(comment)
                 }
                     .commentActions(comment: comment, root: model.root, surface: .systemBackground,
-                                    isDeleting: model.isDeleting, actions: actions)
+                                    isDeleting: model.isDeleting)
                     .padding(.top, CommentLayout.nameMessageSpacing)
 
                 if !comment.pictures.isEmpty {
@@ -68,7 +68,7 @@ struct CommentRow: View, Equatable {
                     .padding(.top, CommentLayout.actionRowGap)
 
                 if model.showsReplies {
-                    CommentReplyPreview(comment: comment, model: model, actions: actions)
+                    CommentReplyPreview(comment: comment, model: model)
                 }
             }
 
@@ -149,176 +149,83 @@ private struct CommentLikeButton: View {
 
 }
 
-/// 高度变化和展开状态只更新正文，不重建头像、操作行或楼中楼。
+/// 根据父布局给出的宽度直接确定正文与按钮的位置。
 struct ExpandableCommentMessage: View {
     let comment: Comment
     /// 展开状态由评论模型持有；列表宿主复用或行重配时不会丢失。
     let isExpanded: Bool
     let onToggle: () -> Void
-    @State private var overflowMessageHeight: CGFloat = 0
-    @State private var collapsedMessageHeight: CGFloat = 0
-    @State private var availableWidth: CGFloat = 0
-    @Environment(\.dynamicTypeSize) private var typeSize
-    @Environment(\.displayScale) private var displayScale
-
-    /// 纯文字评论的展开判定按（正文、宽度、字号档位、缩放）缓存；
-    /// 含表情的行仍现测，因为表情图异步就绪会改变排版。
-    private struct MeasurementKey: Hashable {
-        let message: String
-        let width: CGFloat
-        let typeSize: DynamicTypeSize
-        let scale: CGFloat
-
-        var cacheKey: NSString { "\(width)|\(typeSize)|\(scale)|\(message)" as NSString }
-    }
-    @MainActor private static let expandCache: NSCache<NSString, NSNumber> = {
-        let cache = NSCache<NSString, NSNumber>()
-        cache.countLimit = 512
-        return cache
-    }()
-
-    private var measurementKey: MeasurementKey? {
-        guard comment.emotes.isEmpty, availableWidth > 1 else { return nil }
-        return MeasurementKey(message: comment.message,
-                              width: (availableWidth * displayScale).rounded() / displayScale,
-                              typeSize: typeSize, scale: displayScale)
-    }
-
-    private static func cachedCanExpand(_ key: MeasurementKey) -> Bool? {
-        expandCache.object(forKey: key.cacheKey)?.boolValue
-    }
-
-    private func storeCanExpand(_ canExpand: Bool, for key: MeasurementKey) {
-        Self.expandCache.setObject(NSNumber(value: canExpand), forKey: key.cacheKey)
-    }
-
-    // MARK: - 正文展开折叠
+    @Environment(\.dynamicTypeSize) private var size
+    @Environment(\.displayScale) private var scale
+    @Environment(\.commentTimeJump) private var timeJump
+    @Environment(\.locale) private var locale
+    @Environment(\.layoutDirection) private var direction
+    @Environment(\.legibilityWeight) private var legibility
 
     var body: some View {
-        if Self.canTryUnwrappedLayout(comment) {
-            // Only use the probe-free branch if every explicit line fits at
-            // the actual font and width, including accessibility sizes.
-            ViewThatFits(in: .horizontal) {
-                messageBody
-                    .foregroundStyle(.primary)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: true, vertical: true)
-                probedMessage
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            probedMessage
-        }
-    }
-
-    static func canTryUnwrappedLayout(_ comment: Comment) -> Bool {
-        guard comment.emotes.isEmpty, comment.content.jumpURLs.isEmpty,
-              comment.message.utf8.prefix(513).count <= 512 else { return false }
-        var lines = 1
-        var previousWasCR = false
-        for scalar in comment.message.unicodeScalars {
-            if CharacterSet.newlines.contains(scalar), !(scalar == "\n" && previousWasCR) {
-                lines += 1
-                if lines > CommentLayout.collapsedMessageLines { return false }
-            }
-            previousWasCR = scalar == "\r"
-        }
-        return true
-    }
-
-    /// 正文与展开按钮使用独立 VStack，统一管理它们与外层区块的间距。
-    private var probedMessage: some View {
-        let key = measurementKey
-        let hasCachedResult = key.map { Self.cachedCanExpand($0) != nil } ?? false
-        return VStack(alignment: .leading, spacing: CommentLayout.textVerticalSpacing) {
-            messageBody
+        let metrics = CommentMessageMetrics(message: comment.message, emotes: comment.emotes,
+            links: comment.content.jumpURLs, size: size, scale: scale,
+            includesTimes: timeJump != nil, bold: legibility == .bold, locale: locale, direction: direction)
+        CommentMessageLayout(metrics: metrics, expanded: isExpanded) {
+            CommentEmoteText(message: comment.message, emotes: comment.emotes,
+                             font: .app(.subheadline), textStyle: .subheadline, jumpURLs: comment.content.jumpURLs)
                 .foregroundStyle(.primary)
                 .lineLimit(isExpanded ? nil : CommentLayout.collapsedMessageLines)
                 .fixedSize(horizontal: false, vertical: true)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
-                    if availableWidth != $0 { availableWidth = $0 }
-                }
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                    if !isExpanded { collapsedMessageHeight = $0 }
-                }
-                .background {
-                    if !hasCachedResult { messageMeasurements }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if canExpandMessage {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { onToggle() }
-                } label: {
-                    Text(isExpanded ? "收起" : "展开")
-                        .frame(minWidth: 44, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel(isExpanded ? "收起评论正文" : "展开评论正文")
-                .font(.app(.caption, weight: .medium))
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-            }
-        }
-    }
-
-    private var messageBody: some View {
-        CommentEmoteText(message: comment.message, emotes: comment.emotes,
-                         font: .app(.subheadline), textStyle: .subheadline, jumpURLs: comment.content.jumpURLs)
-    }
-
-    private var measuredMessageBody: some View {
-        CommentEmoteText(message: comment.message, emotes: comment.emotes,
-                         font: .app(.subheadline), textStyle: .subheadline, jumpURLs: comment.content.jumpURLs, loadsEmotes: false)
-    }
-
-    /// 只比较六行和七行即可知道是否溢出，不为收起的长文排版全部内容。
-    private var messageMeasurements: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .topLeading) {
-                // 收起时直接使用可见正文的高度，避免每条评论再排一份六行正文。
-                // 展开后才补这个探针，字号或宽度变化时仍能正确判断能否收起。
-                if isExpanded {
-                    measuredMessageBody
-                        .lineLimit(CommentLayout.collapsedMessageLines)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: geometry.size.width, alignment: .leading)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                            collapsedMessageHeight = $0
-                        }
-                }
-                measuredMessageBody
-                    .lineLimit(CommentLayout.collapsedMessageLines + 1)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(width: geometry.size.width, alignment: .leading)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                        overflowMessageHeight = height
-                        if let key = measurementKey, collapsedMessageHeight > 0 {
-                            storeCanExpand(height > collapsedMessageHeight + 0.5, for: key)
-                        }
+            GeometryReader { slot in
+                if slot.size.height > 0 {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { onToggle() }
+                    } label: {
+                        Text(isExpanded ? "收起" : "展开")
+                            .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
+                    .accessibilityLabel(isExpanded ? "收起评论正文" : "展开评论正文")
+                    .font(.app(.caption, weight: .medium))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                }
             }
-            .hidden()
-            .accessibilityHidden(true)
-            .allowsHitTesting(false)
         }
     }
+}
 
-    private var canExpandMessage: Bool {
-        if let key = measurementKey, let cached = Self.cachedCanExpand(key) { return cached }
-        return collapsedMessageHeight > 0 && overflowMessageHeight > collapsedMessageHeight + 0.5
+/// Measure the visible Text at its actual proposal. Only the button consumes
+/// additional space, and its zero-height proposal removes its accessibility node.
+private struct CommentMessageLayout: Layout {
+    let metrics: CommentMessageMetrics
+    let expanded: Bool
+
+    private func dimensions(width: CGFloat, subviews: Subviews) -> (body: CGFloat, button: CGFloat) {
+        let body = metrics.bodyHeight(width: width, expanded: expanded) {
+            subviews[0].sizeThatFits(.init(width: width, height: nil)).height
+        }
+        let button: CGFloat = metrics.canExpand(at: width) ? max(44, metrics.buttonHeight) : 0
+        return (body, button)
     }
 
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? subviews[0].sizeThatFits(.unspecified).width
+        let d = dimensions(width: width, subviews: subviews)
+        return CGSize(width: width, height: d.body + d.button + (d.button > 0 ? CommentLayout.textVerticalSpacing : 0))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let d = dimensions(width: bounds.width, subviews: subviews)
+        subviews[0].place(at: bounds.origin, proposal: .init(width: bounds.width, height: d.body))
+        subviews[1].place(at: CGPoint(x: bounds.minX, y: bounds.maxY - d.button),
+                          proposal: .init(width: bounds.width, height: d.button))
+    }
 }
 
 private struct CommentReplyPreview: View {
     let comment: Comment
     let model: CommentRowModel
-    let actions: CommentRowActions
     @Environment(\.openCommentThread) private var openCommentThread
     @Environment(\.removalFillTracksIdentity) private var tracksIdentity
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(CardAnimationSettings.masterKey) private var cardAnimations = CardAnimationSettings.defaultValue
+    @Environment(\.commentCardAnimations) private var cardAnimations
 
     private var animatesPreviewRemoval: Bool { tracksIdentity && cardAnimations && !reduceMotion }
 
@@ -340,7 +247,7 @@ private struct CommentReplyPreview: View {
             ForEach(model.previewReplies, id: \.comment.id) { reply in
                 // 用户名和内容排在同一段文字里，这样回复读起来更紧凑。
                 // 用户名单独作为一段前缀交给同一个渲染器，表情才能和文字排在一行。
-                CommentPreviewMessage(reply: reply, root: comment, actions: actions)
+                CommentPreviewMessage(reply: reply, root: comment)
                     .removalFillTransition()
                     // 楼中楼只折叠回复数量，不截断单条正文，也不预留隐藏行高度。
                     .lineLimit(nil)
@@ -384,7 +291,6 @@ private struct CommentReplyPreview: View {
 struct CommentPreviewMessage: View {
     let reply: CommentRowModel.Reply
     let root: Comment
-    let actions: CommentRowActions
     @Environment(\.openCommentAuthor) private var openAuthor
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var size
@@ -408,7 +314,7 @@ struct CommentPreviewMessage: View {
             })
             .frame(maxWidth: .infinity, alignment: .leading)
             .commentActions(comment: comment, root: root, surface: .secondarySystemBackground,
-                            isDeleting: reply.isDeleting, actions: actions)
+                            isDeleting: reply.isDeleting)
             .disabled(reply.isDeleting)
             .opacity(reply.isDeleting ? 0.5 : 1)
             .accessibilityIdentifier("comment.preview.\(comment.id)")
